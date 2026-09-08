@@ -20,6 +20,7 @@ computer, where the native libraries are not present.
 
 local ffi = require("ffi")
 local Raster = require("ink/raster")
+local Shapes = require("ink/shapes")
 
 local Export = {}
 
@@ -43,7 +44,11 @@ local function replay(canvas, ink_put, erase_put)
             local r, g, b = opRGB(op)
             put = ink_put(r, g, b, op.alpha or 255)
         end
-        Raster.path(op.pts, op.width / 2, put)
+        if op.kind == "shape" then
+            Shapes.render(op, put)
+        else
+            Raster.path(op.pts, op.width / 2, put)
+        end
     end
 end
 

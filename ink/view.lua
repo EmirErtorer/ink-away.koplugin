@@ -52,6 +52,7 @@ local COLORS = {
 local Canvas = require("ink/canvas")
 local InkGeom = require("ink/geom")
 local Raster = require("ink/raster")
+local Shapes = require("ink/shapes")
 local Export = require("ink/export")
 
 local Screen = Device.screen
@@ -146,10 +147,18 @@ function InkAwayView:init()
     self.screen_w, self.screen_h = W, H
     self.dimen = GeomUI:new{ x = 0, y = 0, w = W, h = H }
     self.closing = false
-    self.tool = "pen"          -- "pen" | "erase" | "pan"
+    self.tool = "pen"          -- "pen" | "erase" | "pan" | "shape"
     self.capturing = false     -- a pen/erase stroke is in progress
     self.pending_lift = nil    -- {x,y}: finger lifted, stroke not yet committed
     self.pan_last = nil        -- last point of a pan drag in progress (screen)
+
+    -- Shapes: the chosen shape and whether it is filled; drag/preview state.
+    self.shape = "rect"        -- "line"|"curve"|"rect"|"ellipse"|"triangle"
+    self.shape_fill = false
+    self.shape_drag = nil      -- {x0,y0,x1,y1} in screen coords, while stretching
+    self.curve_stage = nil     -- nil | "bend" (second phase of the curve tool)
+    self.shape_preview = nil   -- op (screen coords) drawn on top in paintTo
+    self._preview_rect = nil   -- last previewed screen rect, for tidy refreshes
 
     -- Pen: width in canvas pixels (constant thickness in the export regardless
     -- of zoom) and opacity 0-255. The eraser is a good deal fatter.
@@ -271,15 +280,17 @@ end
 
 function InkAwayView:buildToolbar()
     local specs = {
-        -- tapping Pen when it is already the active tool opens its settings
-        { id = "pen",   label = _("Pen"),   cb = function()
+        -- tapping a tool when it is already active opens its settings
+        { id = "pen",   label = _("Pen"),   tool = true, cb = function()
             if self.tool == "pen" then self:openPenSettings() else self:setTool("pen") end
         end },
-        -- tapping Eraser when it is already active opens its size setting
-        { id = "erase", label = _("Eraser"), cb = function()
+        { id = "erase", label = _("Erase"), tool = true, cb = function()
             if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
         end },
-        { id = "pan",   label = _("Pan"),   cb = function() self:setTool("pan") end },
+        { id = "shape", label = _("Shapes"), tool = true, cb = function()
+            self:setTool("shape"); self:openShapePicker()
+        end },
+        { id = "pan",   label = _("Pan"),   tool = true, cb = function() self:setTool("pan") end },
         { id = "zoomout", label = _("Zoom −"), cb = function() self:zoomStep(-1) end },
         { id = "zoomin",  label = _("Zoom +"), cb = function() self:zoomStep(1) end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
@@ -288,6 +299,8 @@ function InkAwayView:buildToolbar()
     }
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
+    -- shrink the font a little on narrow screens so the labels never truncate
+    local font_size = math.max(11, math.min(16, math.floor(btn_w / 6)))
     self.tool_buttons = {}
     local row = {}
     for i, s in ipairs(specs) do
@@ -296,15 +309,14 @@ function InkAwayView:buildToolbar()
             text = s.label,
             callback = s.cb,
             width = w,
-            bordersize = 0,
-            radius = 0,
-            margin = 0,
-            text_font_size = 16,
-            show_parent = self,   -- so the button's tap refresh targets us
+            bordersize = Size.border.default,   -- a real border so it reads as a button
+            radius = Screen:scaleBySize(5),
+            margin = Size.margin.small,
+            padding = Size.padding.small,
+            text_font_size = font_size,
+            show_parent = self,
         }
-        if s.id == "pen" or s.id == "erase" or s.id == "pan" then
-            self.tool_buttons[s.id] = { button = b, label = s.label }
-        end
+        if s.tool then self.tool_buttons[s.id] = { button = b, label = s.label } end
         row[i] = b
     end
     self.toolbar = FrameContainer:new{
@@ -330,6 +342,8 @@ end
 function InkAwayView:setTool(tool)
     if self.tool == tool then return end
     self:flushPending()        -- commit any stroke still in progress first
+    -- a curve waiting for its bend is committed straight; other half-drags drop
+    if self.curve_stage == "bend" then self:commitCurve() else self:cancelShape() end
     self.pan_last = nil
     self.tool = tool
     self:refreshToolLabels()
@@ -440,6 +454,51 @@ function InkAwayView:openEraserSettings()
     UIManager:show(dlg)
 end
 
+-- Shape chooser. Each entry shows the actual shape glyph next to its name; the
+-- current one gets a checkmark. Shapes are drawn with the pen's size, opacity
+-- and colour.
+function InkAwayView:openShapePicker()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if self._shape_dialog then UIManager:close(self._shape_dialog) end
+
+    local items = {
+        { { "\u{2571} " .. _("Line"),   "line",     false },
+          { "\u{2312} " .. _("Curve"),  "curve",    false } },
+        { { "\u{25EF} " .. _("Ellipse"),        "ellipse", false },
+          { "\u{25CF} " .. _("Ellipse filled"), "ellipse", true } },
+        { { "\u{25AD} " .. _("Rectangle"),        "rect", false },
+          { "\u{25AC} " .. _("Rectangle filled"), "rect", true } },
+        { { "\u{25B3} " .. _("Triangle"),        "triangle", false },
+          { "\u{25B2} " .. _("Triangle filled"), "triangle", true } },
+    }
+
+    local buttons = {}
+    for _, r in ipairs(items) do
+        local row = {}
+        for _, e in ipairs(r) do
+            local label, shape, fill = e[1], e[2], e[3]
+            row[#row + 1] = {
+                text = label,
+                checked_func = function()
+                    return self.shape == shape and self.shape_fill == fill
+                end,
+                callback = function()
+                    self.shape, self.shape_fill = shape, fill
+                    self:refreshToolLabels()
+                    self:openShapePicker()   -- reopen to move the checkmark
+                end,
+            }
+        end
+        buttons[#buttons + 1] = row
+    end
+    buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
+    buttons[#buttons + 1] = {{ text = _("Done"),
+        callback = function() UIManager:close(self._shape_dialog) end }}
+
+    self._shape_dialog = ButtonDialog:new{ title = _("Shapes"), title_align = "center", buttons = buttons }
+    UIManager:show(self._shape_dialog)
+end
+
 ------------------------------------------------------------------------------
 -- Zoom  (consistent multiplicative steps between fit and ZOOM_MAX)
 ------------------------------------------------------------------------------
@@ -494,7 +553,11 @@ function InkAwayView:composeCanvas()
     self.canvas_bb:paintRect(0, 0, W, H, WHITE)
     for _, op in ipairs(self.canvas.ops) do
         local put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
-        Raster.path(op.pts, op.width / 2, put)
+        if op.kind == "shape" then
+            Shapes.render(op, put)
+        else
+            Raster.path(op.pts, op.width / 2, put)
+        end
     end
 end
 
@@ -629,6 +692,169 @@ function InkAwayView:flushPending()
 end
 
 ------------------------------------------------------------------------------
+-- Shapes: rubber-band placement (drag to stretch, like a paint program). The
+-- committed drawing in canvas_bb is never touched while stretching; the shape
+-- is drawn on top in paintTo and only its changed rectangle is refreshed, so it
+-- stays snappy. On release the shape is stamped into the master and folded in.
+------------------------------------------------------------------------------
+
+-- Screen-coordinate op for the current drag, drawn as the live preview.
+local function screenShapeOp(self, shape, fill, x0, y0, x1, y1, cx, cy)
+    return {
+        kind = "shape", shape = shape, fill = fill,
+        width = math.max(1, self.pen_width * self.view.zoom),
+        color = self.pen_color, alpha = self.pen_alpha,
+        pts = cx and { x0, y0, x1, y1, cx, cy } or { x0, y0, x1, y1 },
+    }
+end
+
+-- Padded screen rect touched by a preview op.
+function InkAwayView:previewRect(op)
+    local x0, y0, x1, y1 = Shapes.bounds(op)
+    local pad = op.width + 4
+    return { x = math.floor(x0 - pad), y = math.floor(y0 - pad),
+             x2 = math.ceil(x1 + pad), y2 = math.ceil(y1 + pad) }
+end
+
+-- Refresh the union of the previous and current preview rectangles, so the old
+-- outline is wiped (from the untouched base) and the new one drawn.
+function InkAwayView:refreshPreview()
+    local r = self.shape_preview and self:previewRect(self.shape_preview) or nil
+    local u = r
+    local prev = self._preview_rect
+    if prev then
+        if u then
+            u = { x = math.min(u.x, prev.x), y = math.min(u.y, prev.y),
+                  x2 = math.max(u.x2, prev.x2), y2 = math.max(u.y2, prev.y2) }
+        else
+            u = prev
+        end
+    end
+    self._preview_rect = r
+    if not u then return end
+    local v = self.view
+    local x = math.max(0, u.x)
+    local yy = math.max(v.area_y, u.y)
+    local x2 = math.min(self.screen_w, u.x2)
+    local y2 = math.min(v.area_y + v.area_h, u.y2)
+    if x2 > x and y2 > yy then
+        UIManager:setDirty(self, "fast", GeomUI:new{ x = x, y = yy, w = x2 - x, h = y2 - yy })
+    end
+end
+
+function InkAwayView:shapeTouch(pos)
+    if self.curve_stage == "bend" then
+        self.curve_ctrl = { x = pos.x, y = pos.y }
+        self.shape_preview = screenShapeOp(self, "curve", false,
+            self.curve_p0.x, self.curve_p0.y, self.curve_p1.x, self.curve_p1.y,
+            self.curve_ctrl.x, self.curve_ctrl.y)
+        self:refreshPreview()
+        return true
+    end
+    self.shape_drag = { x0 = pos.x, y0 = pos.y, x1 = pos.x, y1 = pos.y }
+    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill,
+        pos.x, pos.y, pos.x, pos.y)
+    self:refreshPreview()
+    return true
+end
+
+function InkAwayView:shapeMove(pos)
+    if not pos then return true end
+    if self.curve_stage == "bend" then
+        self.curve_ctrl = { x = pos.x, y = pos.y }
+        self.shape_preview = screenShapeOp(self, "curve", false,
+            self.curve_p0.x, self.curve_p0.y, self.curve_p1.x, self.curve_p1.y,
+            self.curve_ctrl.x, self.curve_ctrl.y)
+        self:refreshPreview()
+        return true
+    end
+    if not self.shape_drag then return false end
+    self.shape_drag.x1, self.shape_drag.y1 = pos.x, pos.y
+    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill,
+        self.shape_drag.x0, self.shape_drag.y0, pos.x, pos.y)
+    self:refreshPreview()
+    return true
+end
+
+function InkAwayView:shapeRelease(pos)
+    if self.curve_stage == "bend" then
+        if pos then self.curve_ctrl = { x = pos.x, y = pos.y } end
+        self:commitCurve()
+        return true
+    end
+    if not self.shape_drag then return false end
+    if pos then self.shape_drag.x1, self.shape_drag.y1 = pos.x, pos.y end
+    local d = self.shape_drag
+    local dx, dy = d.x1 - d.x0, d.y1 - d.y0
+    if dx * dx + dy * dy < 9 then      -- basically a tap: nothing to place
+        self:cancelShape()
+        return true
+    end
+    if self.shape == "curve" then
+        -- keep the straight segment on screen and wait for a bend drag
+        self.curve_p0 = { x = d.x0, y = d.y0 }
+        self.curve_p1 = { x = d.x1, y = d.y1 }
+        self.curve_ctrl = { x = (d.x0 + d.x1) / 2, y = (d.y0 + d.y1) / 2 }
+        self.curve_stage = "bend"
+        self.shape_drag = nil
+        return true
+    end
+    self:commitShape()
+    return true
+end
+
+-- Stamp a committed op into the 1:1 master.
+function InkAwayView:stampOpIntoCanvas(op)
+    if not self.canvas_bb then return end
+    local put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
+        self:opColor(op), nil)
+    if op.kind == "shape" then
+        Shapes.render(op, put)
+    else
+        Raster.path(op.pts, op.width / 2, put)
+    end
+end
+
+function InkAwayView:commitShape()
+    local d = self.shape_drag
+    local c0x, c0y = self:toCanvasClamped(d.x0, d.y0)
+    local c1x, c1y = self:toCanvasClamped(d.x1, d.y1)
+    local op = self.canvas:addShape(self.shape, self.shape_fill,
+        { c0x, c0y, c1x, c1y }, self.pen_width, self.pen_alpha, self.pen_color)
+    self:stampOpIntoCanvas(op)
+    self.shape_drag = nil
+    self.shape_preview = nil
+    self._preview_rect = nil
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+function InkAwayView:commitCurve()
+    local c0x, c0y = self:toCanvasClamped(self.curve_p0.x, self.curve_p0.y)
+    local c1x, c1y = self:toCanvasClamped(self.curve_p1.x, self.curve_p1.y)
+    local ccx, ccy = self:toCanvasClamped(self.curve_ctrl.x, self.curve_ctrl.y)
+    local op = self.canvas:addShape("curve", false,
+        { c0x, c0y, c1x, c1y, ccx, ccy }, self.pen_width, self.pen_alpha, self.pen_color)
+    self:stampOpIntoCanvas(op)
+    self.curve_stage = nil
+    self.curve_p0, self.curve_p1, self.curve_ctrl = nil, nil, nil
+    self.shape_preview = nil
+    self._preview_rect = nil
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+-- Drop any in-progress shape and wipe its preview.
+function InkAwayView:cancelShape()
+    if not (self.shape_drag or self.curve_stage or self.shape_preview) then return end
+    self.shape_drag = nil
+    self.curve_stage = nil
+    self.curve_p0, self.curve_p1, self.curve_ctrl = nil, nil, nil
+    self.shape_preview = nil
+    self:refreshPreview()   -- clears the old preview region from the base
+end
+
+------------------------------------------------------------------------------
 -- Pan, shared by the Pan tool and two finger pan. It works from one step to the
 -- next, so it stays reliable even when the panel sends events unevenly.
 ------------------------------------------------------------------------------
@@ -652,6 +878,7 @@ end
 function InkAwayView:onIaTouch(_, ges)
     local pos = ges.pos
     if not pos or not self:inArea(pos.x, pos.y) then return false end
+    if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
         self.pan_last = { x = pos.x, y = pos.y }
         return true
@@ -676,6 +903,7 @@ end
 
 function InkAwayView:onIaPan(_, ges)
     local pos = ges.pos
+    if self.tool == "shape" then return self:shapeMove(pos) end
     if self.tool == "pan" then
         if self.pan_last then
             self:panByScreen(pos.x - self.pan_last.x, pos.y - self.pan_last.y)
@@ -695,6 +923,7 @@ end
 InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
+    if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
     if self.tool == "pan" then
         self.pan_last = nil
         return true
@@ -708,6 +937,7 @@ end
 InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
+    if self.tool == "shape" then return self:shapeRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "pan" then
         self.pan_last = nil
         return true
@@ -721,8 +951,9 @@ function InkAwayView:onIaSwipe(_, ges)
 end
 
 function InkAwayView:onIaTap(_, ges)
-    -- Toolbar taps are consumed by the buttons before this runs. A tap inside
-    -- the area finishes the dot started by the preceding touch.
+    -- Toolbar taps are consumed by the buttons before this runs.
+    if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
+    -- A tap inside the area finishes the dot started by the preceding touch.
     if self.capturing then
         if ges and ges.pos then self:addScreenPoint(ges.pos.x, ges.pos.y, false) end
         self:scheduleFinalize(ges and ges.pos and ges.pos.x or 0,
@@ -734,8 +965,8 @@ end
 
 function InkAwayView:onIaHold(_, ges)
     -- Soak up holds inside the area so they don't turn into a long press menu;
-    -- the stroke is already live from the touch.
-    if self.capturing then return true end
+    -- the stroke or shape is already live from the touch.
+    if self.capturing or self.shape_drag or self.curve_stage then return true end
     local pos = ges and ges.pos
     return pos and self:inArea(pos.x, pos.y) or false
 end
@@ -745,6 +976,7 @@ end
 -- fingers moved since the last step.
 function InkAwayView:onIaTwoPan(_, ges)
     self:flushPending()
+    self:cancelShape()   -- a two-finger pan drops any half-placed shape
     local pos = ges.pos
     if not self.pan_last then
         self.pan_last = { x = pos.x, y = pos.y }
@@ -823,6 +1055,23 @@ function InkAwayView:paintTo(bb, x, y)
     end
     if fy1 > ay0 and fy1 <= ay1 then
         bb:paintRect(math.max(fx0, x), math.min(fy1, ay1 - 1), math.min(fx1, x + self.screen_w) - math.max(fx0, x), 1, FRAME)
+    end
+
+    -- live shape preview drawn on top of the (untouched) drawing, clipped to
+    -- the area so it never spills onto the toolbar
+    if self.shape_preview then
+        local color = displayColor(self.shape_preview.color, self.shape_preview.alpha)
+        local sw = self.screen_w
+        local cy0, cy1 = y + v.area_y, y + v.area_y + v.area_h
+        local put = function(px, py, len)
+            py = py + y
+            if py < cy0 or py >= cy1 then return end
+            px = px + x
+            if px < x then len = len + (px - x); px = x end
+            if px + len > x + sw then len = x + sw - px end
+            if len > 0 then bb:paintRect(px, py, len, 1, color) end
+        end
+        Shapes.render(self.shape_preview, put)
     end
 end
 

@@ -81,6 +81,17 @@ function Canvas:cancelStroke()
     self.live = nil
 end
 
+-- Commit a shape as one op (shapes are placed whole, not point by point).
+-- `pts` is { x0,y0, x1,y1 [, cx,cy] } in canvas coordinates. Returns the op.
+function Canvas:addShape(shape, fill, pts, width, alpha, color)
+    local op = {
+        kind = "shape", shape = shape, fill = fill and true or false,
+        width = width, alpha = alpha or 255, color = color, pts = pts,
+    }
+    self.ops[#self.ops + 1] = op
+    return op
+end
+
 -- Remove and return the most recent committed op, or nil if there is none.
 function Canvas:undo()
     local n = #self.ops

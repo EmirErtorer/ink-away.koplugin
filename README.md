@@ -10,8 +10,9 @@ Ink Away is meant to stay small. It is a drawing canvas, not a full paint progra
 
 - A blank fullscreen canvas at your screen's resolution.
 - Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
-- A pen with adjustable thickness and opacity, so you can draw faint, translucent ink when you want it.
-- An eraser that takes ink away rather than painting white over it (see Transparency below).
+- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), so you can draw faint, translucent ink when you want it.
+- Shapes: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program.
+- An eraser with an adjustable size that takes ink away rather than painting white over it (see Transparency below).
 - Undo, one step for each time you lift your finger.
 - Smooth zoom, in even steps from "whole page" up to 8×, with panning for close work.
 - Save as a transparent PNG or a white JPEG, always at the exact canvas size.
@@ -42,8 +43,9 @@ Open the top menu, go to the Tools tab (More tools), and tap "Ink Away (drawing 
 
 A thin toolbar runs across the top and the rest of the screen is your canvas. A faint frame shows exactly what will be exported.
 
-- **Pen**: draw with your finger. Tap for a dot, drag for a line. Tap Pen again while it is already the active tool to open its settings, where you set the thickness (in canvas pixels, so it stays the same in the export) and the opacity.
-- **Eraser**: the same gesture, but it removes ink. It is a fair bit wider than the pen.
+- **Pen**: draw with your finger. Tap for a dot, drag for a line. Tap Pen again while it is already the active tool to open its settings: size, opacity, a row of grey shades, and, on colour screens, a row of colours.
+- **Shapes**: tap Shapes to choose a shape (line, curve, rectangle, ellipse, or triangle, filled or outline). Then drag on the canvas: the first touch is one corner, and the shape stretches to follow your finger until you lift. For the curve, drag once to set the line, then drag again to bend it. Shapes use the pen's current size, opacity, and colour.
+- **Eraser**: the same gesture, but it removes ink. Tap Eraser again while it is active to set its size.
 - **Pan**: drag with one finger to move around, which helps when you are zoomed in. You can also pan with two fingers at any time, whatever tool is selected. The canvas follows your finger, so dragging right moves the drawing right.
 - **Zoom**: each press changes the zoom by a fixed factor (1.5×), between the level where the whole page fits and 8×. Zooming only changes what you see. It never changes the size of the exported image.
 - **Undo**: remove the last stroke, one step for each time you lifted your finger. Undoing an eraser stroke brings back the ink it had removed.
@@ -78,7 +80,8 @@ Ink Away asks KOReader for the current screen size and makes the canvas match, s
 
 ## Known limitations
 
-- The pen is one colour, black. Only its thickness and opacity change. That is on purpose.
+- On a grey e-ink screen the colour row is hidden, since the panel cannot show colour; you get the grey shades instead. A colour you pick on a colour device still exports in colour.
+- A white pen is invisible on the white working canvas. It only makes sense for the exported overlay.
 - While you draw, the screen uses a fast refresh that flashes very little, which can leave a little ghosting behind. It is tidied up when you lift your finger, and some ghosting over a long session is just how e-ink behaves; a full refresh clears it.
 - To keep a line in one piece when the touch panel drops contact for a moment, a finished stroke stays open for a fraction of a second. A fresh touch very close by within that moment counts as the same stroke.
 - Panning a heavily drawn canvas at high zoom has to repaint the visible ink, so it can feel a little slow on weaker devices.
