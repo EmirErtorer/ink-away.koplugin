@@ -1,0 +1,11 @@
+# Build artefacts
+*.zip
+dist/
+*.png
+.DS_Store
+
+# Local test suite and its mock KOReader environment: kept out of the repo
+tests/
+
+# Keep the release workflow tracked 
+!.github/**
