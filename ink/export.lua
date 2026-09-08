@@ -21,8 +21,21 @@ computer, where the native libraries are not present.
 local ffi = require("ffi")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
+local Fill = require("ink/fill")
 
 local Export = {}
+
+-- Draw an op's geometry through `put` (shapes, fills and strokes all share this).
+local function paintGeom(op, put)
+    if op.kind == "shape" then
+        Shapes.render(op, put)
+    elseif op.kind == "fill" then
+        Fill.render(op, put)
+    else
+        Raster.path(op.pts, op.width / 2, put)
+    end
+end
+Export.paintGeom = paintGeom
 
 -- An op's ink colour as r,g,b (0-255). Missing colour means black.
 local function opRGB(op)
@@ -44,11 +57,7 @@ local function replay(canvas, ink_put, erase_put)
             local r, g, b = opRGB(op)
             put = ink_put(r, g, b, op.alpha or 255)
         end
-        if op.kind == "shape" then
-            Shapes.render(op, put)
-        else
-            Raster.path(op.pts, op.width / 2, put)
-        end
+        paintGeom(op, put)
     end
 end
 
@@ -128,6 +137,40 @@ function Export.buildRGB(canvas)
     end
     replay(canvas, ink_put, erase_put)
     return buf, n
+end
+
+-- Build a tightly packed 8-bit grey buffer of the drawing over white (ink dark,
+-- untouched areas white). Used by the flood fill to find an enclosed area.
+function Export.buildGray(canvas)
+    local w, h = canvas.w, canvas.h
+    local n = w * h
+    local buf = ffi.new("uint8_t[?]", n)
+    ffi.fill(buf, n, 0xFF)
+    local function clamp_run(x, y, len)
+        if y < 0 or y >= h then return end
+        if x < 0 then len = len + x; x = 0 end
+        if x + len > w then len = w - x end
+        if len <= 0 then return end
+        return x, len
+    end
+    local function ink_put(r, g, b, alpha)
+        local lum = 0.299 * r + 0.587 * g + 0.114 * b
+        local g8 = math.floor(255 - alpha * (255 - lum) / 255 + 0.5)
+        return function(x, y, len)
+            local cx, clen = clamp_run(x, y, len)
+            if not cx then return end
+            local base = y * w + cx
+            for i = 0, clen - 1 do buf[base + i] = g8 end
+        end
+    end
+    local function erase_put(x, y, len)
+        local cx, clen = clamp_run(x, y, len)
+        if not cx then return end
+        local base = y * w + cx
+        for i = 0, clen - 1 do buf[base + i] = 0xFF end
+    end
+    replay(canvas, ink_put, erase_put)
+    return buf
 end
 
 -- Save the canvas as a PNG with a transparent background. Returns ok, err.

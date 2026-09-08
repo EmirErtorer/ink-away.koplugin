@@ -4,14 +4,15 @@ A small finger drawing canvas for KOReader, made for e-ink readers like the Kind
 
 Open a blank page, draw with your finger, and save the result as a PNG with a real transparent background, or as a JPEG on white, at the exact pixel size of your screen. The transparent PNG is the whole point: it lets you draw your own sleep screen covers and overlays that sit cleanly on top of anything.
 
-Ink Away is meant to stay small. It is a drawing canvas, not a full paint program. You get one black pen, an eraser, undo, zoom, pan, and save. There are no colours, layers, brushes, text, or networking.
+Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; shapes; a paint bucket; an eraser; undo; zoom and pan; and save. There are no layers, no text, and no networking.
 
 ## Features
 
 - A blank fullscreen canvas at your screen's resolution.
 - Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
 - A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), so you can draw faint, translucent ink when you want it.
-- Shapes: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program.
+- Shapes: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program. Hold a placed shape to rotate, recolour, resize, restyle its opacity, or delete it.
+- A paint bucket that fills an enclosed area with one tap, in the current shade or colour and opacity.
 - An eraser with an adjustable size that takes ink away rather than painting white over it (see Transparency below).
 - Undo, one step for each time you lift your finger.
 - Smooth zoom, in even steps from "whole page" up to 8×, with panning for close work.
@@ -44,7 +45,8 @@ Open the top menu, go to the Tools tab (More tools), and tap "Ink Away (drawing 
 A thin toolbar runs across the top and the rest of the screen is your canvas. A faint frame shows exactly what will be exported.
 
 - **Pen**: draw with your finger. Tap for a dot, drag for a line. Tap Pen again while it is already the active tool to open its settings: size, opacity, a row of grey shades, and, on colour screens, a row of colours.
-- **Shapes**: tap Shapes to choose a shape (line, curve, rectangle, ellipse, or triangle, filled or outline). Then drag on the canvas: the first touch is one corner, and the shape stretches to follow your finger until you lift. For the curve, drag once to set the line, then drag again to bend it. Shapes use the pen's current size, opacity, and colour.
+- **Shapes**: tap Shapes to choose a shape (line, curve, rectangle, ellipse, or triangle, filled or outline). Then drag on the canvas: the first touch is one corner, and the shape stretches to follow your finger until you lift. For the curve, drag once to set the line, then drag again to bend it. Shapes use the pen's current size, opacity, and colour. Hold a shape you have drawn to open a small menu beside it, where you can rotate it (drag to spin it freely), recolour it, change its size or opacity, or delete it.
+- **Fill (paint bucket)**: in the Shapes menu, choose "Fill area". Then tap inside an enclosed region and it fills with the current shade or colour and opacity, up to the surrounding lines. If the outline has a gap the fill spreads through it, the same as a paint program.
 - **Eraser**: the same gesture, but it removes ink. Tap Eraser again while it is active to set its size.
 - **Pan**: drag with one finger to move around, which helps when you are zoomed in. You can also pan with two fingers at any time, whatever tool is selected. The canvas follows your finger, so dragging right moves the drawing right.
 - **Zoom**: each press changes the zoom by a fixed factor (1.5×), between the level where the whole page fits and 8×. Zooming only changes what you see. It never changes the size of the exported image.

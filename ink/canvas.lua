@@ -92,6 +92,13 @@ function Canvas:addShape(shape, fill, pts, width, alpha, color)
     return op
 end
 
+-- Commit a flood fill as one op. `runs` is a flat { x,y,len, ... } run list.
+function Canvas:addFillOp(runs, color, alpha)
+    local op = { kind = "fill", runs = runs, color = color, alpha = alpha or 255 }
+    self.ops[#self.ops + 1] = op
+    return op
+end
+
 -- Remove and return the most recent committed op, or nil if there is none.
 function Canvas:undo()
     local n = #self.ops

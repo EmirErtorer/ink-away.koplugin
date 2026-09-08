@@ -53,6 +53,7 @@ local Canvas = require("ink/canvas")
 local InkGeom = require("ink/geom")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
+local Fill = require("ink/fill")
 local Export = require("ink/export")
 
 local Screen = Device.screen
@@ -159,6 +160,8 @@ function InkAwayView:init()
     self.curve_stage = nil     -- nil | "bend" (second phase of the curve tool)
     self.shape_preview = nil   -- op (screen coords) drawn on top in paintTo
     self._preview_rect = nil   -- last previewed screen rect, for tidy refreshes
+    self.selected = nil        -- {op, idx}: shape picked by a long press
+    self.rotating = nil        -- rotation-in-progress state
 
     -- Pen: width in canvas pixels (constant thickness in the export regardless
     -- of zoom) and opacity 0-255. The eraser is a good deal fatter.
@@ -333,8 +336,10 @@ end
 function InkAwayView:refreshToolLabels()
     -- U+25CF BLACK CIRCLE, written as explicit UTF-8 bytes for portability
     local BULLET = "\226\151\143 "
+    -- the fill tool lives under the Shapes button, so mark Shapes for it too
+    local active = (self.tool == "fill") and "shape" or self.tool
     for id, entry in pairs(self.tool_buttons) do
-        local mark = (self.tool == id) and BULLET or ""
+        local mark = (active == id) and BULLET or ""
         entry.button:setText(mark .. entry.label, entry.button.width)
     end
 end
@@ -356,29 +361,32 @@ local function sameColor(a, b)
     return a and b and a[1] == b[1] and a[2] == b[2] and a[3] == b[3]
 end
 
--- One row of colour swatches for the pen dialog. Each is a coloured button; the
--- selected one gets a thick border so it reads on any shade (a checkmark would
--- vanish on a dark swatch). Tapping picks that colour and reopens the dialog so
--- the selection updates.
-function InkAwayView:swatchRow(entries)
-    local n = #entries
+-- One row of colour swatches. Each is a coloured button; the selected one gets
+-- a thick border so it reads on any shade (a checkmark would vanish on a dark
+-- swatch). `current` is the rgb to mark; `onpick(rgb)` is called on a tap.
+function InkAwayView:swatchRowFor(entries, current, onpick)
     local sw = math.floor(math.min(self.screen_w, self.screen_h) * 0.9 / 6)
     local row = {}
     for _, e in ipairs(entries) do
-        local selected = sameColor(self.pen_color, e.rgb)
+        local selected = sameColor(current, e.rgb)
         row[#row + 1] = {
             text = "",
             background = Blitbuffer.ColorRGB32(e.rgb[1], e.rgb[2], e.rgb[3], 0xFF),
             width = sw,
             bordersize = selected and Size.border.thick or Size.border.default,
             radius = 0,
-            callback = function()
-                self.pen_color = { e.rgb[1], e.rgb[2], e.rgb[3] }
-                self:openPenSettings()   -- reopen to show the new selection
-            end,
+            callback = function() onpick(e.rgb) end,
         }
     end
-    return row, n
+    return row
+end
+
+-- Pen swatch row: marks the pen colour, and picking one reopens the pen popup.
+function InkAwayView:swatchRow(entries)
+    return self:swatchRowFor(entries, self.pen_color, function(rgb)
+        self.pen_color = { rgb[1], rgb[2], rgb[3] }
+        self:openPenSettings()
+    end)
 end
 
 -- Pen settings popup: size and opacity together, plus shade and (on colour
@@ -491,6 +499,17 @@ function InkAwayView:openShapePicker()
         end
         buttons[#buttons + 1] = row
     end
+    -- paint bucket: fill an enclosed area on tap, using the pen's colour/opacity
+    buttons[#buttons + 1] = {{
+        text = "\u{25A8} " .. _("Fill area (tap inside)"),
+        checked_func = function() return self.tool == "fill" end,
+        callback = function()
+            self.tool = "fill"
+            self:cancelShape()
+            self:refreshToolLabels()
+            UIManager:close(self._shape_dialog)
+        end,
+    }}
     buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
     buttons[#buttons + 1] = {{ text = _("Done"),
         callback = function() UIManager:close(self._shape_dialog) end }}
@@ -552,11 +571,9 @@ function InkAwayView:composeCanvas()
     local W, H = self.view.canvas_w, self.view.canvas_h
     self.canvas_bb:paintRect(0, 0, W, H, WHITE)
     for _, op in ipairs(self.canvas.ops) do
-        local put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
-        if op.kind == "shape" then
-            Shapes.render(op, put)
-        else
-            Raster.path(op.pts, op.width / 2, put)
+        if not op.hidden then      -- a shape being rotated is drawn as a preview
+            local put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
+            Export.paintGeom(op, put)
         end
     end
 end
@@ -808,11 +825,7 @@ function InkAwayView:stampOpIntoCanvas(op)
     if not self.canvas_bb then return end
     local put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
         self:opColor(op), nil)
-    if op.kind == "shape" then
-        Shapes.render(op, put)
-    else
-        Raster.path(op.pts, op.width / 2, put)
-    end
+    Export.paintGeom(op, put)
 end
 
 function InkAwayView:commitShape()
@@ -855,6 +868,203 @@ function InkAwayView:cancelShape()
 end
 
 ------------------------------------------------------------------------------
+-- Paint bucket: flood fill an enclosed area on tap.
+------------------------------------------------------------------------------
+
+function InkAwayView:doFill(pos)
+    self:flushPending()
+    local cx, cy = self:toCanvasClamped(pos.x, pos.y)
+    local gray = Export.buildGray(self.canvas)
+    local runs = Fill.compute(gray, self.view.canvas_w, self.view.canvas_h,
+        math.floor(cx), math.floor(cy), 40)
+    if not runs or #runs == 0 then return end
+    local op = self.canvas:addFillOp(runs, self.pen_color, self.pen_alpha)
+    self:stampOpIntoCanvas(op)
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+------------------------------------------------------------------------------
+-- Editing a placed shape: hold one to pick it, then rotate / recolour / resize
+-- / delete it from a small menu anchored beside it.
+------------------------------------------------------------------------------
+
+-- Find the top-most shape op under a screen point. Returns {op, idx} or nil.
+function InkAwayView:hitTestShape(sx, sy)
+    local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
+    for i = #self.canvas.ops, 1, -1 do
+        local op = self.canvas.ops[i]
+        if op.kind == "shape" then
+            local tol = (op.width or 6) / 2 + 8 / self.view.zoom
+            if Shapes.hit(op, cx, cy, tol) then return { op = op, idx = i } end
+        end
+    end
+    return nil
+end
+
+-- A screen-coordinate copy of a shape op (for the rotate preview overlay).
+function InkAwayView:screenShapeFromOp(op, angle)
+    local v = self.view
+    local sp = {}
+    for i = 1, #op.pts, 2 do
+        local sx, sy = InkGeom.toScreen(v, op.pts[i], op.pts[i + 1])
+        sp[#sp + 1] = sx
+        sp[#sp + 1] = sy
+    end
+    return {
+        kind = "shape", shape = op.shape, fill = op.fill, angle = angle,
+        width = math.max(1, (op.width or 2) * v.zoom),
+        color = op.color, alpha = op.alpha, pts = sp,
+    }
+end
+
+function InkAwayView:openShapeMenu(sel)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if self._shape_menu then UIManager:close(self._shape_menu) end
+    local op = sel.op
+    local dlg
+    local function close() if dlg then UIManager:close(dlg) end end
+    dlg = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        anchor = function()
+            local x0, y0, x1, y1 = Shapes.bounds(op)
+            local sx0, sy0 = InkGeom.toScreen(self.view, x0, y0)
+            local sx1, sy1 = InkGeom.toScreen(self.view, x1, y1)
+            return GeomUI:new{ x = math.floor(sx0), y = math.floor(sy0),
+                               w = math.ceil(sx1 - sx0), h = math.ceil(sy1 - sy0) }
+        end,
+        buttons = {
+            {
+                { text = "\u{21BB} " .. _("Rotate"), callback = function() close(); self:beginRotate(sel) end },
+                { text = "\u{2715} " .. _("Delete"), callback = function() close(); self:deleteSelected(sel) end },
+            },
+            {
+                { text = "\u{25D1} " .. _("Colour"),  callback = function() close(); self:editSelectedColour(sel) end },
+                { text = "\u{25A9} " .. _("Opacity"), callback = function() close(); self:editSelectedOpacity(sel) end },
+                { text = "\u{25CF} " .. _("Size"),    callback = function() close(); self:editSelectedSize(sel) end },
+            },
+            {{ text = _("Done"), callback = close }},
+        },
+    }
+    self._shape_menu = dlg
+    UIManager:show(dlg)
+end
+
+function InkAwayView:deleteSelected(sel)
+    table.remove(self.canvas.ops, sel.idx)
+    self.selected = nil
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+function InkAwayView:editSelectedColour(sel)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local op = sel.op
+    local dlg
+    local function repaint()
+        self:composeCanvas(); self:renderView()
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+    end
+    local function pick(rgb)
+        op.color = { rgb[1], rgb[2], rgb[3] }
+        repaint()
+        UIManager:close(dlg)
+        self:editSelectedColour(sel)   -- reopen to move the selection border
+    end
+    local buttons = { self:swatchRowFor(SHADES, op.color, pick) }
+    if Device.hasColorScreen and Device:hasColorScreen() then
+        buttons[#buttons + 1] = self:swatchRowFor(COLORS, op.color, pick)
+    end
+    buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
+    dlg = ButtonDialog:new{ title = _("Shape colour"), title_align = "center", buttons = buttons }
+    UIManager:show(dlg)
+end
+
+function InkAwayView:editSelectedSize(sel)
+    local SpinWidget = require("ui/widget/spinwidget")
+    local op = sel.op
+    UIManager:show(SpinWidget:new{
+        title_text = _("Shape line size"),
+        value = op.width, value_min = 1, value_max = 60, value_step = 1, value_hold_step = 6,
+        unit = _("px"),
+        callback = function(spin)
+            op.width = math.max(1, math.floor(spin.value))
+            self:composeCanvas(); self:renderView()
+            UIManager:setDirty(self, "ui", self:areaScreenRect())
+        end,
+    })
+end
+
+function InkAwayView:editSelectedOpacity(sel)
+    local SpinWidget = require("ui/widget/spinwidget")
+    local op = sel.op
+    UIManager:show(SpinWidget:new{
+        title_text = _("Shape opacity"),
+        value = math.floor((op.alpha or 255) / 255 * 100 + 0.5),
+        value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
+        unit = "%",
+        callback = function(spin)
+            op.alpha = math.max(1, math.min(255, math.floor(spin.value / 100 * 255 + 0.5)))
+            self:composeCanvas(); self:renderView()
+            UIManager:setDirty(self, "ui", self:areaScreenRect())
+        end,
+    })
+end
+
+-- Rotation: hide the shape from the master, show it as a preview, and let a drag
+-- spin it freely about its centre. Cheap per frame (only the preview redraws).
+function InkAwayView:beginRotate(sel)
+    local op = sel.op
+    op.hidden = true
+    self.rotating = { op = op, base = op.angle or 0, cur = op.angle or 0 }
+    self:composeCanvas(); self:renderView()
+    self.shape_preview = self:screenShapeFromOp(op, op.angle or 0)
+    self._preview_rect = nil
+    self:refreshPreview()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    UIManager:show(InfoMessage:new{
+        text = _("Drag anywhere to rotate the shape; lift to finish."), timeout = 2 })
+end
+
+function InkAwayView:rotateCentreScreen(op)
+    local x0, y0, x1, y1 = op.pts[1], op.pts[2], op.pts[3], op.pts[4]
+    return InkGeom.toScreen(self.view, (x0 + x1) / 2, (y0 + y1) / 2)
+end
+
+function InkAwayView:rotateTouch(pos)
+    local r = self.rotating
+    local cx, cy = self:rotateCentreScreen(r.op)
+    r.cx, r.cy = cx, cy
+    r.grab = math.atan2(pos.y - cy, pos.x - cx)
+    return true
+end
+
+function InkAwayView:rotateMove(pos)
+    local r = self.rotating
+    if not r.grab then return self:rotateTouch(pos) end
+    local a = math.atan2(pos.y - r.cy, pos.x - r.cx)
+    r.cur = r.base + (a - r.grab)
+    self.shape_preview = self:screenShapeFromOp(r.op, r.cur)
+    self:refreshPreview()
+    return true
+end
+
+function InkAwayView:rotateEnd()
+    local r = self.rotating
+    if not r then return true end
+    r.op.angle = r.cur or r.base
+    r.op.hidden = nil
+    self.rotating = nil
+    self.shape_preview = nil
+    self._preview_rect = nil
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    return true
+end
+
+------------------------------------------------------------------------------
 -- Pan, shared by the Pan tool and two finger pan. It works from one step to the
 -- next, so it stays reliable even when the panel sends events unevenly.
 ------------------------------------------------------------------------------
@@ -878,6 +1088,8 @@ end
 function InkAwayView:onIaTouch(_, ges)
     local pos = ges.pos
     if not pos or not self:inArea(pos.x, pos.y) then return false end
+    if self.rotating then return self:rotateTouch(pos) end
+    if self.tool == "fill" then self:doFill(pos); return true end
     if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
         self.pan_last = { x = pos.x, y = pos.y }
@@ -903,6 +1115,8 @@ end
 
 function InkAwayView:onIaPan(_, ges)
     local pos = ges.pos
+    if self.rotating then return self:rotateMove(pos) end
+    if self.tool == "fill" then return true end   -- fill is a tap, ignore drags
     if self.tool == "shape" then return self:shapeMove(pos) end
     if self.tool == "pan" then
         if self.pan_last then
@@ -923,6 +1137,8 @@ end
 InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
+    if self.rotating then return self:rotateEnd() end
+    if self.tool == "fill" then return true end
     if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
     if self.tool == "pan" then
         self.pan_last = nil
@@ -937,6 +1153,8 @@ end
 InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
+    if self.rotating then return self:rotateEnd() end
+    if self.tool == "fill" then return true end
     if self.tool == "shape" then return self:shapeRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "pan" then
         self.pan_last = nil
@@ -952,6 +1170,8 @@ end
 
 function InkAwayView:onIaTap(_, ges)
     -- Toolbar taps are consumed by the buttons before this runs.
+    if self.rotating then return self:rotateEnd() end
+    if self.tool == "fill" then return true end   -- fill already happened on touch
     if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
     -- A tap inside the area finishes the dot started by the preceding touch.
     if self.capturing then
@@ -964,11 +1184,17 @@ function InkAwayView:onIaTap(_, ges)
 end
 
 function InkAwayView:onIaHold(_, ges)
-    -- Soak up holds inside the area so they don't turn into a long press menu;
-    -- the stroke or shape is already live from the touch.
-    if self.capturing or self.shape_drag or self.curve_stage then return true end
+    -- A hold on a placed shape picks it and opens its little edit menu. Otherwise
+    -- soak up holds inside the area so they don't become a long press menu.
+    if self.capturing or self.shape_drag or self.curve_stage or self.rotating then return true end
     local pos = ges and ges.pos
-    return pos and self:inArea(pos.x, pos.y) or false
+    if not (pos and self:inArea(pos.x, pos.y)) then return false end
+    local sel = self:hitTestShape(pos.x, pos.y)
+    if sel then
+        self.selected = sel
+        self:openShapeMenu(sel)
+    end
+    return true
 end
 
 -- Two finger pan works whatever tool is active. Commit any stroke in progress
