@@ -24,9 +24,30 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local InputDialog = require("ui/widget/inputdialog")
+local RenderImage = require("ui/renderimage")
+local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
+
+-- Grey shades, the primary choice on e-ink. Ordered dark to light.
+local SHADES = {
+    { name = _("Black"),      rgb = { 0x00, 0x00, 0x00 } },
+    { name = _("Dark grey"),  rgb = { 0x44, 0x44, 0x44 } },
+    { name = _("Grey"),       rgb = { 0x88, 0x88, 0x88 } },
+    { name = _("Light grey"), rgb = { 0xBB, 0xBB, 0xBB } },
+    { name = _("White"),      rgb = { 0xFF, 0xFF, 0xFF } },
+}
+
+-- Colours, offered only on colour screens (colour e-ink, Android, desktop).
+local COLORS = {
+    { name = _("Red"),    rgb = { 0xD0, 0x00, 0x00 } },
+    { name = _("Orange"), rgb = { 0xE0, 0x70, 0x00 } },
+    { name = _("Yellow"), rgb = { 0xE8, 0xC0, 0x00 } },
+    { name = _("Green"),  rgb = { 0x00, 0x90, 0x00 } },
+    { name = _("Blue"),   rgb = { 0x00, 0x50, 0xD0 } },
+    { name = _("Purple"), rgb = { 0x80, 0x00, 0xB0 } },
+}
 
 local Canvas = require("ink/canvas")
 local InkGeom = require("ink/geom")
@@ -52,9 +73,36 @@ local ZOOM_MAX = 8.0
 
 -- A grey that, over the white canvas, looks like black ink at the given alpha,
 -- so the display matches the exported PNG and JPEG. alpha 255 is black, 0 white.
-local function inkColor(alpha)
-    local g = 255 - alpha
-    return Blitbuffer.ColorRGB32(g, g, g, 0xFF)
+-- On-screen colour for ink of rgb {r,g,b} drawn at opacity `alpha`, composited
+-- over the white canvas so the display matches the exported image. rgb defaults
+-- to black. On a grey e-ink panel the blitter turns the result into the right
+-- shade; on a colour screen it shows in colour.
+local function displayColor(rgb, alpha)
+    local a = alpha or 255
+    local r = rgb and rgb[1] or 0
+    local g = rgb and rgb[2] or 0
+    local b = rgb and rgb[3] or 0
+    local function over(c) return math.floor(255 - a * (255 - c) / 255 + 0.5) end
+    return Blitbuffer.ColorRGB32(over(r), over(g), over(b), 0xFF)
+end
+
+-- A span writer that paints horizontal runs into `bb`, clipped to w x h, and
+-- (optionally) grows `acc` to cover everything it touched. Shared by the 1:1
+-- master bitmap and the on-screen buffer so both are stamped the same way.
+local function spanWriter(bb, w, h, color, acc)
+    return function(x, y, len)
+        if y < 0 or y >= h then return end
+        if x < 0 then len = len + x; x = 0 end
+        if x + len > w then len = w - x end
+        if len <= 0 then return end
+        bb:paintRect(x, y, len, 1, color)
+        if acc then
+            if x < acc.x0 then acc.x0 = x end
+            if x + len > acc.x1 then acc.x1 = x + len end
+            if y < acc.y0 then acc.y0 = y end
+            if y + 1 > acc.y1 then acc.y1 = y + 1 end
+        end
+    end
 end
 
 local InkAwayView = InputContainer:extend{
@@ -105,9 +153,10 @@ function InkAwayView:init()
 
     -- Pen: width in canvas pixels (constant thickness in the export regardless
     -- of zoom) and opacity 0-255. The eraser is a good deal fatter.
-    self.pen_width = math.max(2, math.floor(W / 320 + 0.5) * 2)
+    self.pen_width = 15               -- canvas px; a comfortable default
     self.pen_alpha = 255
-    self.eraser_width = self.pen_width * 6
+    self.pen_color = { 0x00, 0x00, 0x00 }   -- {r,g,b}; black to start
+    self.eraser_width = 40            -- canvas px; adjustable, like the pen
     -- How close a fresh touch must land (screen px) to count as the same stroke.
     self.bridge_dist = math.max(24, math.floor(W / 22))
 
@@ -153,16 +202,23 @@ function InkAwayView:init()
         self.key_events = { IaClose = { { Device.input.group.Back } } }
     end
 
-    -- One reused display buffer for the drawing area.
-    self.area_bb = Blitbuffer.new(self.view.area_w, self.view.area_h, Screen.bb:getType())
-    self:composeAll()
+    -- Two buffers, both reused for the whole session:
+    --  * canvas_bb is the drawing at 1:1 (the full canvas size). Strokes are
+    --    stamped here once, at their real size, independent of zoom.
+    --  * area_bb is what actually shows on screen. Zoom and pan just scale a
+    --    crop of canvas_bb into it (a fast mupdf blit), so their cost depends
+    --    only on the screen size, never on how much has been drawn or how far
+    --    it is zoomed in.
+    local bbtype = Screen.bb:getType()
+    self.canvas_bb = Blitbuffer.new(self.view.canvas_w, self.view.canvas_h, bbtype)
+    self.area_bb = Blitbuffer.new(self.view.area_w, self.view.area_h, bbtype)
+    self:composeCanvas()
+    self:renderView()
 end
 
 function InkAwayView:free()
-    if self.area_bb then
-        self.area_bb:free()
-        self.area_bb = nil
-    end
+    if self.area_bb then self.area_bb:free(); self.area_bb = nil end
+    if self.canvas_bb then self.canvas_bb:free(); self.canvas_bb = nil end
 end
 
 function InkAwayView:onShow()
@@ -185,9 +241,10 @@ function InkAwayView:relayout()
     self.zoom_min = InkGeom.fitZoom(v)
     v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
+    -- the canvas keeps its size; only the on-screen buffer follows the screen
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
-    self:composeAll()
+    self:renderView()
 end
 
 function InkAwayView:onSetDimensions()
@@ -218,7 +275,10 @@ function InkAwayView:buildToolbar()
         { id = "pen",   label = _("Pen"),   cb = function()
             if self.tool == "pen" then self:openPenSettings() else self:setTool("pen") end
         end },
-        { id = "erase", label = _("Eraser"), cb = function() self:setTool("erase") end },
+        -- tapping Eraser when it is already active opens its size setting
+        { id = "erase", label = _("Eraser"), cb = function()
+            if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
+        end },
         { id = "pan",   label = _("Pan"),   cb = function() self:setTool("pan") end },
         { id = "zoomout", label = _("Zoom −"), cb = function() self:zoomStep(-1) end },
         { id = "zoomin",  label = _("Zoom +"), cb = function() self:zoomStep(1) end },
@@ -277,22 +337,104 @@ function InkAwayView:setTool(tool)
         x = 0, y = 0, w = self.screen_w, h = self.view.area_y })
 end
 
--- Pen thickness + opacity, applied to subsequent strokes.
+-- Is the pen currently set to this rgb?
+local function sameColor(a, b)
+    return a and b and a[1] == b[1] and a[2] == b[2] and a[3] == b[3]
+end
+
+-- One row of colour swatches for the pen dialog. Each is a coloured button; the
+-- selected one gets a thick border so it reads on any shade (a checkmark would
+-- vanish on a dark swatch). Tapping picks that colour and reopens the dialog so
+-- the selection updates.
+function InkAwayView:swatchRow(entries)
+    local n = #entries
+    local sw = math.floor(math.min(self.screen_w, self.screen_h) * 0.9 / 6)
+    local row = {}
+    for _, e in ipairs(entries) do
+        local selected = sameColor(self.pen_color, e.rgb)
+        row[#row + 1] = {
+            text = "",
+            background = Blitbuffer.ColorRGB32(e.rgb[1], e.rgb[2], e.rgb[3], 0xFF),
+            width = sw,
+            bordersize = selected and Size.border.thick or Size.border.default,
+            radius = 0,
+            callback = function()
+                self.pen_color = { e.rgb[1], e.rgb[2], e.rgb[3] }
+                self:openPenSettings()   -- reopen to show the new selection
+            end,
+        }
+    end
+    return row, n
+end
+
+-- Pen settings popup: size and opacity together, plus shade and (on colour
+-- screens) colour swatches. Rebuilt and reshown whenever something changes.
 function InkAwayView:openPenSettings()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if self._pen_dialog then UIManager:close(self._pen_dialog) end
+
+    local pct = math.floor(self.pen_alpha / 255 * 100 + 0.5)
+    local buttons = {}
+
+    -- size + opacity, opened together in a precise slider dialog
+    buttons[#buttons + 1] = {{
+        text = string.format(_("Size %d px   •   Opacity %d%%"), self.pen_width, pct),
+        callback = function()
+            UIManager:close(self._pen_dialog)
+            self:openSizeOpacity()
+        end,
+    }}
+
+    -- shades (primary on e-ink)
+    buttons[#buttons + 1] = {{ text = _("Shade"), enabled = false }}
+    buttons[#buttons + 1] = self:swatchRow(SHADES)
+
+    -- colours, only where the screen can show them
+    if Device.hasColorScreen and Device:hasColorScreen() then
+        buttons[#buttons + 1] = {{ text = _("Colour (colour screens)"), enabled = false }}
+        buttons[#buttons + 1] = self:swatchRow(COLORS)
+    end
+
+    buttons[#buttons + 1] = {{ text = _("Done"),
+        callback = function() UIManager:close(self._pen_dialog) end }}
+
+    self._pen_dialog = ButtonDialog:new{ title = _("Pen"), title_align = "center", buttons = buttons }
+    UIManager:show(self._pen_dialog)
+end
+
+-- The precise size + opacity slider dialog, reached from the pen popup.
+function InkAwayView:openSizeOpacity()
     local DoubleSpinWidget = require("ui/widget/doublespinwidget")
     local dlg
     dlg = DoubleSpinWidget:new{
-        title_text = _("Pen settings"),
-        info_text = _("Thickness is in canvas pixels; opacity sets how transparent the ink is in the export."),
-        left_text = _("Thickness"),
-        left_min = 1, left_max = 40, left_step = 1,
+        title_text = _("Pen size and opacity"),
+        info_text = _("Size is in canvas pixels. Opacity sets how transparent the ink is; lower means more see-through in the export."),
+        left_text = _("Size"),
+        left_min = 1, left_max = 60, left_step = 1,
         left_value = self.pen_width,
         right_text = _("Opacity %"),
         right_min = 5, right_max = 100, right_step = 5,
         right_value = math.floor(self.pen_alpha / 255 * 100 + 0.5),
-        callback = function(thickness, opacity)
-            self.pen_width = math.max(1, math.floor(thickness))
+        callback = function(size, opacity)
+            self.pen_width = math.max(1, math.floor(size))
             self.pen_alpha = math.max(1, math.min(255, math.floor(opacity / 100 * 255 + 0.5)))
+            self:openPenSettings()   -- back to the pen popup with the new values
+        end,
+    }
+    UIManager:show(dlg)
+end
+
+-- Eraser size, the same idea as the pen's size control.
+function InkAwayView:openEraserSettings()
+    local SpinWidget = require("ui/widget/spinwidget")
+    local dlg = SpinWidget:new{
+        title_text = _("Eraser size"),
+        info_text = _("The eraser's width, in canvas pixels."),
+        value = self.eraser_width,
+        value_min = 4, value_max = 120, value_step = 2, value_hold_step = 10,
+        unit = _("px"),
+        callback = function(spin)
+            self.eraser_width = math.max(1, math.floor(spin.value))
         end,
     }
     UIManager:show(dlg)
@@ -315,7 +457,7 @@ function InkAwayView:setZoom(new_zoom, anchor_sx, anchor_sy)
     v.pan_x = acx - (anchor_sx - v.area_x) / v.zoom
     v.pan_y = acy - (anchor_sy - v.area_y) / v.zoom
     InkGeom.clampPan(v)
-    self:composeAll()
+    self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
     return true
 end
@@ -327,7 +469,7 @@ function InkAwayView:zoomStep(dir)
 end
 
 ------------------------------------------------------------------------------
--- Compositing into area_bb
+-- Rendering
 ------------------------------------------------------------------------------
 
 -- The drawing area as a screen rect. A fresh Geom every call, because setDirty
@@ -337,70 +479,99 @@ function InkAwayView:areaScreenRect()
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
 
--- Build a span writer that paints into area_bb with the given colour, tracking
--- the touched bounding box, in area coordinates, in `acc`.
-function InkAwayView:areaPut(color, acc)
-    local bb = self.area_bb
-    local aw, ah = self.view.area_w, self.view.area_h
-    return function(x, y, len)
-        if y < 0 or y >= ah then return end
-        if x < 0 then len = len + x; x = 0 end
-        if x + len > aw then len = aw - x end
-        if len <= 0 then return end
-        bb:paintRect(x, y, len, 1, color)
-        if x < acc.x0 then acc.x0 = x end
-        if x + len > acc.x1 then acc.x1 = x + len end
-        if y < acc.y0 then acc.y0 = y end
-        if y + 1 > acc.y1 then acc.y1 = y + 1 end
-    end
+-- The colour a committed op is drawn with on screen (ink shade at its opacity,
+-- or the background for an eraser).
+function InkAwayView:opColor(op)
+    if op.kind == "erase" then return WHITE end
+    return displayColor(op.color, op.alpha or 255)
 end
 
--- Stamp a single op (in canvas coords) into area_bb. Returns the touched
--- rect in area coordinates, or nil.
-function InkAwayView:stampOp(op)
-    local color = (op.kind == "erase") and WHITE or inkColor(op.alpha or 255)
-    local acc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
-    local put = self:areaPut(color, acc)
-    -- move the canvas points into area coordinates, keep width in screen px
-    local spts = {}
-    local pts = op.pts
-    for i = 1, #pts, 2 do
-        local ax, ay = self:toAreaLocal(pts[i], pts[i + 1])
-        spts[#spts + 1] = ax
-        spts[#spts + 1] = ay
-    end
-    Raster.path(spts, (op.width * self.view.zoom) / 2, put)
-    if acc.x1 < acc.x0 then return nil end
-    return { x = acc.x0, y = acc.y0, w = acc.x1 - acc.x0, h = acc.y1 - acc.y0 }
-end
-
--- Rebuild the whole drawing area from the committed ops.
-function InkAwayView:composeAll()
-    if not self.area_bb then return end
-    self.area_bb:paintRect(0, 0, self.view.area_w, self.view.area_h, WHITE)
+-- Rebuild the 1:1 master bitmap from the committed ops. Cost is proportional to
+-- the ink drawn, not the zoom, and it only runs on open, undo, clear, or resize.
+function InkAwayView:composeCanvas()
+    if not self.canvas_bb then return end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    self.canvas_bb:paintRect(0, 0, W, H, WHITE)
     for _, op in ipairs(self.canvas.ops) do
-        self:stampOp(op)
+        local put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
+        Raster.path(op.pts, op.width / 2, put)
     end
+end
+
+-- Rebuild what is on screen from the master bitmap: take the visible crop of
+-- canvas_bb (a zero-copy viewport) and scale it into area_bb with mupdf's fast
+-- C scaler. This is the whole reason zoom and pan are cheap: the work is a
+-- single scale of one screenful, whatever the zoom or the amount of ink.
+function InkAwayView:renderView()
+    if not (self.area_bb and self.canvas_bb) then return end
+    local v = self.view
+    local W, H = v.canvas_w, v.canvas_h
+    self.area_bb:paintRect(0, 0, v.area_w, v.area_h, WHITE)
+
+    -- visible crop of the canvas, clamped inside it
+    local sx = math.max(0, math.min(W - 1, math.floor(v.pan_x)))
+    local sy = math.max(0, math.min(H - 1, math.floor(v.pan_y)))
+    local sw = math.max(1, math.min(W - sx, math.ceil(v.area_w / v.zoom)))
+    local sh = math.max(1, math.min(H - sy, math.ceil(v.area_h / v.zoom)))
+
+    local dw = math.max(1, math.floor(sw * v.zoom))
+    local dh = math.max(1, math.floor(sh * v.zoom))
+    -- where that crop lands in the area: a positive margin when the whole page
+    -- fits (letterbox), or a sub-pixel nudge when zoomed in, which we clamp to
+    -- the area and trim so the blit always stays in bounds
+    local ox = math.max(0, math.floor((sx - v.pan_x) * v.zoom))
+    local oy = math.max(0, math.floor((sy - v.pan_y) * v.zoom))
+    local bw = math.min(dw, v.area_w - ox)
+    local bh = math.min(dh, v.area_h - oy)
+    if bw < 1 or bh < 1 then return end
+
+    local sub = self.canvas_bb:viewport(sx, sy, sw, sh)     -- shares memory
+    local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
+    self.area_bb:blitFrom(scaled, ox, oy, 0, 0, bw, bh)
+    if scaled ~= sub and scaled.free then scaled:free() end
 end
 
 ------------------------------------------------------------------------------
 -- Drawing gesture handlers
 ------------------------------------------------------------------------------
 
--- Stamp the segment ending at area point (ax,ay) onto area_bb and refresh just
--- that rectangle. `fresh` starts a new segment (no line back to the last point).
-function InkAwayView:stampLive(ax, ay, fresh)
-    local color = (self.tool == "erase") and WHITE or inkColor(self.pen_alpha)
-    local width = (self.tool == "erase") and self.eraser_width or self.pen_width
-    local acc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
-    local put = self:areaPut(color, acc)
-    local seg
-    if self.last_ax and not fresh then
-        seg = { self.last_ax, self.last_ay, ax, ay }
-    else
-        seg = { ax, ay }
+-- Current live ink colour and width, from the active tool.
+function InkAwayView:liveColor()
+    if self.tool == "erase" then return WHITE end
+    return displayColor(self.pen_color, self.pen_alpha)
+end
+function InkAwayView:liveWidth()
+    return (self.tool == "erase") and self.eraser_width or self.pen_width
+end
+
+-- Stamp the live segment ending at canvas point (cx,cy) into BOTH buffers: the
+-- 1:1 master (so a later zoom/pan re-render is correct) and the on-screen buffer
+-- at the current zoom (so drawing feels immediate). Only the on-screen dirty
+-- rectangle is refreshed. `fresh` starts a new segment with no line back.
+function InkAwayView:stampLive(cx, cy, fresh)
+    local color = self:liveColor()
+    local width = self:liveWidth()
+
+    -- master, at 1:1
+    if self.canvas_bb then
+        local cput = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h, color, nil)
+        if self.last_cx and not fresh then
+            Raster.path({ self.last_cx, self.last_cy, cx, cy }, width / 2, cput)
+        else
+            Raster.path({ cx, cy }, width / 2, cput)
+        end
+        self.last_cx, self.last_cy = cx, cy
     end
-    Raster.path(seg, (width * self.view.zoom) / 2, put)
+
+    -- on screen, at the current zoom
+    local ax, ay = self:toAreaLocal(cx, cy)
+    local acc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
+    local aput = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, acc)
+    if self.last_ax and not fresh then
+        Raster.path({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, aput)
+    else
+        Raster.path({ ax, ay }, (width * self.view.zoom) / 2, aput)
+    end
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
         local v = self.view
@@ -413,21 +584,20 @@ function InkAwayView:stampLive(ax, ay, fresh)
     end
 end
 
--- Add a screen point to the live stroke (in canvas coords) and draw it.
+-- Add a screen point to the live stroke (kept in canvas coords) and draw it.
 function InkAwayView:addScreenPoint(sx, sy, fresh)
     local cx, cy = self:toCanvasClamped(sx, sy)
     self.canvas:addPoint(cx, cy)
-    local ax, ay = self:toAreaLocal(cx, cy)
-    self:stampLive(ax, ay, fresh)
+    self:stampLive(cx, cy, fresh)
 end
 
 function InkAwayView:beginStroke(sx, sy)
     self.canvas:startStroke(self.tool == "erase" and "erase" or "ink",
-        self.tool == "erase" and self.eraser_width or self.pen_width,
-        self.pen_alpha)
+        self:liveWidth(), self.pen_alpha, self.pen_color)
     self.capturing = true
     self.pending_lift = nil
     self.last_ax, self.last_ay = nil, nil
+    self.last_cx, self.last_cy = nil, nil
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -447,6 +617,7 @@ function InkAwayView:finalizeStroke()
     self.pending_lift = nil
     self.capturing = false
     self.last_ax, self.last_ay = nil, nil
+    self.last_cx, self.last_cy = nil, nil
     self.canvas:finishStroke()
     -- a clean partial refresh settles any ghosting the fast refresh left behind
     UIManager:setDirty(self, "ui", self:areaScreenRect())
@@ -468,7 +639,7 @@ function InkAwayView:panByScreen(dx, dy)
     v.pan_x = v.pan_x - dx / v.zoom
     v.pan_y = v.pan_y - dy / v.zoom
     InkGeom.clampPan(v)
-    self:composeAll()
+    self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 
@@ -600,7 +771,8 @@ function InkAwayView:undo()
         UIManager:show(InfoMessage:new{ text = _("Nothing to undo."), timeout = 1 })
         return
     end
-    self:composeAll()
+    self:composeCanvas()   -- rebuild the master from the remaining ops
+    self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 

@@ -5,7 +5,7 @@ image are both produced by replaying these ops in order.
 
 An op is:
     { kind = "ink" | "erase", width = <canvas px>, alpha = 0..255,
-      pts = { x1,y1, x2,y2, ... } }
+      color = { r, g, b } or nil (black), pts = { x1,y1, x2,y2, ... } }
 
 Points are in canvas coordinates, so a stroke keeps the same thickness and
 position in the exported W x H image whatever zoom it was drawn at.
@@ -46,9 +46,10 @@ function Canvas:opCount()
 end
 
 -- Begin a new stroke. `kind` is "ink" or "erase"; `alpha` (0-255) is the ink
--- opacity (ignored for erase, which always clears fully). Defaults to opaque.
-function Canvas:startStroke(kind, width, alpha)
-    self.live = { kind = kind, width = width, alpha = alpha or 255, pts = {} }
+-- opacity (ignored for erase, which always clears fully); `color` is an optional
+-- {r,g,b} table (defaults to black). Opacity defaults to opaque.
+function Canvas:startStroke(kind, width, alpha, color)
+    self.live = { kind = kind, width = width, alpha = alpha or 255, color = color, pts = {} }
 end
 
 -- Add a raw point, in canvas coordinates, to the live stroke. Repeated points are

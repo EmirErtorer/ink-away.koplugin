@@ -23,15 +23,26 @@ local Raster = require("ink/raster")
 
 local Export = {}
 
--- Ink is plain black. There is no colour picker, on purpose (see README).
-local INK_R, INK_G, INK_B = 0, 0, 0
+-- An op's ink colour as r,g,b (0-255). Missing colour means black.
+local function opRGB(op)
+    local c = op.color
+    if not c then return 0, 0, 0 end
+    return c[1] or 0, c[2] or 0, c[3] or 0
+end
 
--- Replay every committed op into `buf`. `ink_put(alpha)` gives back the span
--- writer for an ink stroke at that opacity; `erase_put` clears. The RGBA and RGB
--- builders share this so both match the rasterizer pixel for pixel.
+-- Replay every committed op into `buf`. `ink_put(r,g,b,alpha)` gives back the
+-- span writer for an ink stroke of that colour and opacity; `erase_put` clears.
+-- The RGBA and RGB builders share this so both match the rasterizer pixel for
+-- pixel.
 local function replay(canvas, ink_put, erase_put)
     for _, op in ipairs(canvas.ops) do
-        local put = (op.kind == "erase") and erase_put or ink_put(op.alpha or 255)
+        local put
+        if op.kind == "erase" then
+            put = erase_put
+        else
+            local r, g, b = opRGB(op)
+            put = ink_put(r, g, b, op.alpha or 255)
+        end
         Raster.path(op.pts, op.width / 2, put)
     end
 end
@@ -48,14 +59,14 @@ function Export.buildRGBA(canvas)
         if x + len > w then len = w - x end
         return x, len
     end
-    local function ink_put(alpha)
+    local function ink_put(r, g, b, alpha)
         return function(x, y, len)
             local cx, clen = clamp_run(x, y, len)
             if not cx then return end
             local base = (y * w + cx) * 4
             for i = 0, clen - 1 do
                 local o = base + i * 4
-                buf[o] = INK_R; buf[o + 1] = INK_G; buf[o + 2] = INK_B; buf[o + 3] = alpha
+                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b; buf[o + 3] = alpha
             end
         end
     end
@@ -85,18 +96,19 @@ function Export.buildRGB(canvas)
         if x + len > w then len = w - x end
         return x, len
     end
-    -- JPEG has no alpha, so lay the ink over white. A partly transparent pen
-    -- turns into a matching grey (value 255 - alpha), which is how it looks on
-    -- the white canvas anyway.
-    local function ink_put(alpha)
-        local g = 255 - alpha
+    -- JPEG has no alpha, so lay the ink over white. Each channel becomes
+    -- 255 - alpha*(255-c)/255, which is exactly how the ink looks on the white
+    -- canvas (a partly transparent black pen turns into the matching grey).
+    local function ink_put(r, g, b, alpha)
+        local function over(c) return math.floor(255 - alpha * (255 - c) / 255 + 0.5) end
+        local orr, og, ob = over(r), over(g), over(b)
         return function(x, y, len)
             local cx, clen = clamp_run(x, y, len)
             if not cx then return end
             local base = (y * w + cx) * 3
             for i = 0, clen - 1 do
                 local o = base + i * 3
-                buf[o] = g; buf[o + 1] = g; buf[o + 2] = g
+                buf[o] = orr; buf[o + 1] = og; buf[o + 2] = ob
             end
         end
     end
