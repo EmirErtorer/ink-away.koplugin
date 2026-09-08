@@ -4,6 +4,8 @@ A small finger drawing canvas for KOReader, made for e-ink readers like the Kind
 
 Open a blank page, draw with your finger, and save the result as a PNG with a real transparent background, or as a JPEG on white, at the exact pixel size of your screen. The transparent PNG is the whole point: it lets you draw your own sleep screen covers and overlays that sit cleanly on top of anything.
 
+![A hand-drawn "Hello World" exported as a transparent PNG and set as the Kindle sleep screen](assets/screenshots/sleep-screen.png)
+
 Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; shapes; a paint bucket; an eraser; undo; zoom and pan; and save. There are no layers, no text, and no networking.
 
 ## Features
@@ -19,6 +21,28 @@ Ink Away is meant to stay simple and focused. You get a pen with adjustable size
 - Save as a transparent PNG or a white JPEG, always at the exact canvas size.
 - Pick the folder and file name with KOReader's own file browser.
 - Made with e-ink in mind: it repaints only the part of the screen that changed, keeps one screen buffer around, and builds the big export image only while it is saving.
+
+## Screenshots
+
+The pen's size, opacity, and shade or colour, in one place:
+
+![Pen settings popup with size, opacity and grey shades](assets/screenshots/pen-settings.png)
+
+Shapes (line, curve, rectangle, ellipse, triangle, filled or outline) and the paint bucket:
+
+![Shapes menu](assets/screenshots/shapes-menu.png)
+
+Hold a shape in Pan mode to rotate, recolour, resize, change its opacity, or delete it:
+
+![Shape edit menu beside a triangle](assets/screenshots/shape-edit.png)
+
+The paint bucket fills an enclosed area in one tap (here a triangle filled grey):
+
+![A triangle filled grey with the paint bucket](assets/screenshots/fill.png)
+
+Save as a transparent PNG or a white JPEG:
+
+![Save dialog offering PNG or JPEG](assets/screenshots/save.png)
 
 ## Requirements
 

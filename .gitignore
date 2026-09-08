@@ -9,3 +9,6 @@ tests/
 
 # Keep the release workflow tracked 
 !.github/**
+
+# but do keep the README screenshots
+!assets/screenshots/**
