@@ -168,6 +168,8 @@ function InkAwayView:init()
     self.pen_width = 15               -- canvas px; a comfortable default
     self.pen_alpha = 255
     self.pen_color = { 0x00, 0x00, 0x00 }   -- {r,g,b}; black to start
+    self.fill_color = { 0x88, 0x88, 0x88 }  -- paint bucket has its own colour...
+    self.fill_alpha = 255                   -- ...and opacity, set from its menu
     self.eraser_width = 40            -- canvas px; adjustable, like the pen
     -- How close a fresh touch must land (screen px) to count as the same stroke.
     self.bridge_dist = math.max(24, math.floor(W / 22))
@@ -501,13 +503,17 @@ function InkAwayView:openShapePicker()
     end
     -- paint bucket: fill an enclosed area on tap, using the pen's colour/opacity
     buttons[#buttons + 1] = {{
-        text = "\u{25A8} " .. _("Fill area (tap inside)"),
+        text = "\u{25A8} " .. _("Fill area (hold to set colour)"),
         checked_func = function() return self.tool == "fill" end,
         callback = function()
             self.tool = "fill"
             self:cancelShape()
             self:refreshToolLabels()
             UIManager:close(self._shape_dialog)
+        end,
+        hold_callback = function()
+            UIManager:close(self._shape_dialog)
+            self:openFillSettings()
         end,
     }}
     buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
@@ -871,6 +877,41 @@ end
 -- Paint bucket: flood fill an enclosed area on tap.
 ------------------------------------------------------------------------------
 
+-- The paint bucket's own colour/opacity, so it need not share the pen's.
+function InkAwayView:openFillSettings()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local function pick(rgb)
+        self.fill_color = { rgb[1], rgb[2], rgb[3] }
+        UIManager:close(dlg)
+        self:openFillSettings()
+    end
+    local pct = math.floor(self.fill_alpha / 255 * 100 + 0.5)
+    local buttons = {}
+    buttons[#buttons + 1] = {{
+        text = string.format(_("Opacity %d%%"), pct),
+        callback = function()
+            UIManager:close(dlg)
+            local SpinWidget = require("ui/widget/spinwidget")
+            UIManager:show(SpinWidget:new{
+                title_text = _("Fill opacity"), value = pct,
+                value_min = 5, value_max = 100, value_step = 5, unit = "%",
+                callback = function(s)
+                    self.fill_alpha = math.max(1, math.min(255, math.floor(s.value / 100 * 255 + 0.5)))
+                    self:openFillSettings()
+                end,
+            })
+        end,
+    }}
+    buttons[#buttons + 1] = self:swatchRowFor(SHADES, self.fill_color, pick)
+    if Device.hasColorScreen and Device:hasColorScreen() then
+        buttons[#buttons + 1] = self:swatchRowFor(COLORS, self.fill_color, pick)
+    end
+    buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
+    dlg = ButtonDialog:new{ title = _("Fill colour and opacity"), title_align = "center", buttons = buttons }
+    UIManager:show(dlg)
+end
+
 function InkAwayView:doFill(pos)
     self:flushPending()
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
@@ -878,7 +919,7 @@ function InkAwayView:doFill(pos)
     local runs = Fill.compute(gray, self.view.canvas_w, self.view.canvas_h,
         math.floor(cx), math.floor(cy), 40)
     if not runs or #runs == 0 then return end
-    local op = self.canvas:addFillOp(runs, self.pen_color, self.pen_alpha)
+    local op = self.canvas:addFillOp(runs, self.fill_color, self.fill_alpha)
     self:stampOpIntoCanvas(op)
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
@@ -1189,10 +1230,14 @@ function InkAwayView:onIaHold(_, ges)
     if self.capturing or self.shape_drag or self.curve_stage or self.rotating then return true end
     local pos = ges and ges.pos
     if not (pos and self:inArea(pos.x, pos.y)) then return false end
-    local sel = self:hitTestShape(pos.x, pos.y)
-    if sel then
-        self.selected = sel
-        self:openShapeMenu(sel)
+    -- selecting a placed shape only happens in Pan mode, so a hold never fights
+    -- with drawing in the pen or shape tools
+    if self.tool == "pan" then
+        local sel = self:hitTestShape(pos.x, pos.y)
+        if sel then
+            self.selected = sel
+            self:openShapeMenu(sel)
+        end
     end
     return true
 end
