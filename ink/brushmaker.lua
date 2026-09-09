@@ -49,10 +49,25 @@ function BrushMaker:init()
     self.btn_h = Screen:scaleBySize(48)
     self.title_h = Screen:scaleBySize(40)
     local rows = #Brushes.FIELDS
-    self.box_h = self.title_h + self.preview_h + self.pad
-                 + rows * self.row_h + self.btn_h + self.pad * 2
+    local function measure()
+        self.box_h = self.title_h + self.preview_h + self.pad
+                     + rows * self.row_h + self.btn_h + self.pad * 2
+    end
+    measure()
+    -- if the panel is taller than the screen (high-DPI devices), shrink its
+    -- parts to fit so the title and the Save/Cancel buttons are never clipped
+    local avail = sh - Screen:scaleBySize(24)
+    if self.box_h > avail then
+        local k = avail / self.box_h
+        self.title_h = math.floor(self.title_h * k)
+        self.preview_h = math.floor(self.preview_h * k)
+        self.row_h = math.floor(self.row_h * k)
+        self.btn_h = math.floor(self.btn_h * k)
+        self.pad = math.max(4, math.floor(self.pad * k))
+        measure()
+    end
     self.box_x = math.floor((sw - self.box_w) / 2)
-    self.box_y = math.floor((sh - self.box_h) / 2)
+    self.box_y = math.max(Screen:scaleBySize(12), math.floor((sh - self.box_h) / 2))
     self.dimen = Geom:new{ x = self.box_x, y = self.box_y, w = self.box_w, h = self.box_h }
 
     self.preview_bb = Blitbuffer.new(self.box_w - self.pad * 2, self.preview_h, Screen.bb:getType())
