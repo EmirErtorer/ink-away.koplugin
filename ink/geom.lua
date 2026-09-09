@@ -180,4 +180,38 @@ function Geom.rdp(pts, tol)
     return out
 end
 
+------------------------------------------------------------------------------
+-- Input aids: stabilizer, grid snap, angle snap
+------------------------------------------------------------------------------
+
+-- Exponential smoothing (the stabilizer). Moves the smoothed point a fraction
+-- `alpha` of the way to the raw point; alpha 1 = no smoothing, small = heavy.
+function Geom.ema(px, py, x, y, alpha)
+    return px + (x - px) * alpha, py + (y - py) * alpha
+end
+
+-- Map a 0..100 stabilizer strength to an EMA alpha. 0 -> 1 (off); 100 -> ~0.08.
+function Geom.stabilizerAlpha(strength)
+    local s = math.max(0, math.min(100, strength or 0)) / 100
+    return 1 - s * 0.92
+end
+
+-- Snap a point to the nearest grid intersection of the given spacing.
+function Geom.snapToGrid(x, y, spacing)
+    if not spacing or spacing <= 0 then return x, y end
+    return math.floor(x / spacing + 0.5) * spacing,
+           math.floor(y / spacing + 0.5) * spacing
+end
+
+-- Snap the segment from (x0,y0) to (x1,y1) to the nearest 45-degree direction,
+-- keeping its length. Returns the adjusted end point.
+function Geom.snapAngle(x0, y0, x1, y1)
+    local dx, dy = x1 - x0, y1 - y0
+    local len = math.sqrt(dx * dx + dy * dy)
+    if len < 1 then return x1, y1 end
+    local step = math.pi / 4
+    local a = math.floor(math.atan2(dy, dx) / step + 0.5) * step
+    return x0 + math.cos(a) * len, y0 + math.sin(a) * len
+end
+
 return Geom

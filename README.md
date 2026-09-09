@@ -12,7 +12,11 @@ Ink Away is meant to stay simple and focused. You get a pen with adjustable size
 
 - A blank fullscreen canvas at your screen's resolution.
 - Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
-- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), so you can draw faint, translucent ink when you want it.
+- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: plain ink, pencil, or charcoal (a grainy texture that reads well on e-ink).
+- A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
+- Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
+- **Undo and redo**.
+- An optional **grid** with snapping, and a snap-to-45° for straight lines and neat squares/circles.
 - Shapes: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program. Hold a placed shape to rotate, recolour, resize, restyle its opacity, or delete it.
 - A paint bucket that fills an enclosed area with one tap, in the current shade or colour and opacity.
 - An eraser with an adjustable size that takes ink away rather than painting white over it (see Transparency below).
@@ -78,7 +82,11 @@ A thin toolbar runs across the top and the rest of the screen is your canvas. A 
 - **Save**: choose PNG or JPEG, pick a folder, name the file, and it is written.
 - **Exit**: leave the canvas. If you have unsaved work it asks first.
 
-Nothing is saved on its own. If you leave without saving, the drawing is gone.
+- **Settings (gear)**: the gear button opens redo, project actions (new, open, save), the grid and snapping toggles, the stabilizer strength, and the autosave mode.
+
+To edit a placed shape, switch to **Pan** and hold it (see Shapes above). Hold **Fill area** in the Shapes menu to set the bucket's own colour and opacity.
+
+Autosave and projects are separate from the image export: a project keeps your editable strokes so you can keep drawing later, while Save writes a finished PNG or JPEG. Autosave defaults to saving once when you leave (gentle on battery); set it to off or to an interval of a few minutes in the gear menu.
 
 ### Zoom, pan, and the canvas size
 

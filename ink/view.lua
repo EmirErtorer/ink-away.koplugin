@@ -55,6 +55,7 @@ local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
 local Fill = require("ink/fill")
 local Export = require("ink/export")
+local Project = require("ink/project")
 
 local Screen = Device.screen
 
@@ -139,6 +140,32 @@ function InkAwayView:toAreaLocal(cx, cy)
     return (cx - v.pan_x) * v.zoom, (cy - v.pan_y) * v.zoom
 end
 
+-- Snap a screen point to the grid (in canvas space) when grid snapping is on.
+function InkAwayView:snapScreen(sx, sy)
+    if not self.snap_grid then return sx, sy end
+    local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
+    cx, cy = InkGeom.snapToGrid(cx, cy, self.grid_size)
+    return InkGeom.toScreen(self.view, cx, cy)
+end
+
+------------------------------------------------------------------------------
+-- Preferences (kept in KOReader's global settings so they persist)
+------------------------------------------------------------------------------
+
+function InkAwayView:getSetting(key, default)
+    local G = rawget(_G, "G_reader_settings")
+    if G and G.readSetting then
+        local v = G:readSetting(key)
+        if v ~= nil then return v end
+    end
+    return default
+end
+
+function InkAwayView:setSetting(key, value)
+    local G = rawget(_G, "G_reader_settings")
+    if G and G.saveSetting then G:saveSetting(key, value) end
+end
+
 ------------------------------------------------------------------------------
 -- Lifecycle
 ------------------------------------------------------------------------------
@@ -173,6 +200,17 @@ function InkAwayView:init()
     self.eraser_width = 40            -- canvas px; adjustable, like the pen
     -- How close a fresh touch must land (screen px) to count as the same stroke.
     self.bridge_dist = math.max(24, math.floor(W / 22))
+
+    -- Preferences and drawing aids, loaded from saved settings.
+    self.pen_style   = self:getSetting("inkaway_pen_style", "solid")   -- solid|pencil|charcoal|marker
+    self.stabilizer  = self:getSetting("inkaway_stabilizer", 40)       -- 0..100
+    self.grid_on     = self:getSetting("inkaway_grid", false)
+    self.grid_size   = self:getSetting("inkaway_grid_size", math.max(24, math.floor(W / 16)))
+    self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
+    self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
+    self.autosave    = self:getSetting("inkaway_autosave", "exit")     -- off|exit|periodic
+    self.dirty = false
+    self._autosave_tick = function() self:autosaveTick() end
 
     -- The canvas has a fixed size: the current screen dimensions.
     self.canvas = Canvas.new(W, H)
@@ -226,8 +264,55 @@ function InkAwayView:init()
     local bbtype = Screen.bb:getType()
     self.canvas_bb = Blitbuffer.new(self.view.canvas_w, self.view.canvas_h, bbtype)
     self.area_bb = Blitbuffer.new(self.view.area_w, self.view.area_h, bbtype)
+
+    self:restoreSession()   -- reopen the last drawing if one was kept
     self:composeCanvas()
     self:renderView()
+    self:scheduleAutosave()
+end
+
+------------------------------------------------------------------------------
+-- Projects and autosave
+------------------------------------------------------------------------------
+
+-- Path of the kept "last session" file.
+function InkAwayView:sessionPath()
+    local ok, DataStorage = pcall(require, "datastorage")
+    local dir = (ok and DataStorage and DataStorage:getSettingsDir()) or "/tmp"
+    return dir .. "/inkaway_session." .. Project.EXT
+end
+
+-- Load ops from a project into the canvas, if they fit this screen. Returns ok.
+function InkAwayView:loadProjectData(data)
+    if not data or not data.ops then return false end
+    self.canvas:setOps(data.ops)
+    self.selected, self.rotating = nil, nil
+    self.dirty = false
+    return true
+end
+
+function InkAwayView:restoreSession()
+    if self.autosave == "off" then return end
+    local data = Project.load(self:sessionPath())
+    if data then self:loadProjectData(data) end
+end
+
+function InkAwayView:saveSession()
+    if self.canvas:isEmpty() then return end
+    Project.save(self.canvas, self:sessionPath())
+end
+
+function InkAwayView:scheduleAutosave()
+    UIManager:unschedule(self._autosave_tick)
+    if self.autosave == "periodic" then
+        UIManager:scheduleIn(180, self._autosave_tick)   -- every 3 minutes
+    end
+end
+
+function InkAwayView:autosaveTick()
+    if self.closing then return end
+    if self.dirty then self:saveSession(); self.dirty = false end
+    self:scheduleAutosave()
 end
 
 function InkAwayView:free()
@@ -269,6 +354,8 @@ end
 function InkAwayView:onCloseWidget()
     self.closing = true
     UIManager:unschedule(self._finalize)
+    UIManager:unschedule(self._autosave_tick)
+    if self.autosave ~= "off" then self:saveSession() end
     -- Leave the screen clean underneath.
     UIManager:setDirty(nil, "full")
     self:free()
@@ -296,9 +383,10 @@ function InkAwayView:buildToolbar()
             self:setTool("shape"); self:openShapePicker()
         end },
         { id = "pan",   label = _("Pan"),   tool = true, cb = function() self:setTool("pan") end },
-        { id = "zoomout", label = _("Zoom −"), cb = function() self:zoomStep(-1) end },
-        { id = "zoomin",  label = _("Zoom +"), cb = function() self:zoomStep(1) end },
+        { id = "zoomout", label = "\u{2212}", cb = function() self:zoomStep(-1) end },  -- minus
+        { id = "zoomin",  label = "+",        cb = function() self:zoomStep(1) end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
+        { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
         { id = "save",  label = _("Save"),  cb = function() self:onSave() end },
         { id = "exit",  label = _("Exit"),  cb = function() self:promptExit() end },
     }
@@ -408,6 +496,22 @@ function InkAwayView:openPenSettings()
             self:openSizeOpacity()
         end,
     }}
+
+    -- brush style
+    local styles = { { "solid", _("Ink") }, { "pencil", _("Pencil") }, { "charcoal", _("Charcoal") } }
+    local style_row = {}
+    for _, s in ipairs(styles) do
+        style_row[#style_row + 1] = {
+            text = (self.pen_style == s[1] and "\u{25CF} " or "") .. s[2],
+            callback = function()
+                self.pen_style = s[1]
+                self:setSetting("inkaway_pen_style", s[1])
+                self:openPenSettings()
+            end,
+        }
+    end
+    buttons[#buttons + 1] = {{ text = _("Style"), enabled = false }}
+    buttons[#buttons + 1] = style_row
 
     -- shades (primary on e-ink)
     buttons[#buttons + 1] = {{ text = _("Shade"), enabled = false }}
@@ -637,14 +741,21 @@ end
 function InkAwayView:stampLive(cx, cy, fresh)
     local color = self:liveColor()
     local width = self:liveWidth()
+    local style = (self.tool == "erase") and nil or self.pen_style
+    local density = style and Raster.STYLE_DENSITY[style]
+    local seed = self.live_seed or 0
+    local function stroke(seg, r, put)
+        if density then Raster.pathGrain(seg, r, put, density, seed)
+        else Raster.path(seg, r, put) end
+    end
 
     -- master, at 1:1
     if self.canvas_bb then
         local cput = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h, color, nil)
         if self.last_cx and not fresh then
-            Raster.path({ self.last_cx, self.last_cy, cx, cy }, width / 2, cput)
+            stroke({ self.last_cx, self.last_cy, cx, cy }, width / 2, cput)
         else
-            Raster.path({ cx, cy }, width / 2, cput)
+            stroke({ cx, cy }, width / 2, cput)
         end
         self.last_cx, self.last_cy = cx, cy
     end
@@ -654,9 +765,9 @@ function InkAwayView:stampLive(cx, cy, fresh)
     local acc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
     local aput = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, acc)
     if self.last_ax and not fresh then
-        Raster.path({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, aput)
+        stroke({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, aput)
     else
-        Raster.path({ ax, ay }, (width * self.view.zoom) / 2, aput)
+        stroke({ ax, ay }, (width * self.view.zoom) / 2, aput)
     end
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
@@ -671,15 +782,27 @@ function InkAwayView:stampLive(cx, cy, fresh)
 end
 
 -- Add a screen point to the live stroke (kept in canvas coords) and draw it.
+-- The stabilizer smooths the finger's path toward a trailing point, so wobble
+-- becomes a clean line; strength 0 draws the raw point.
 function InkAwayView:addScreenPoint(sx, sy, fresh)
     local cx, cy = self:toCanvasClamped(sx, sy)
+    if fresh then
+        self.sm_x, self.sm_y = cx, cy
+    else
+        local a = InkGeom.stabilizerAlpha(self.stabilizer)
+        self.sm_x, self.sm_y = InkGeom.ema(self.sm_x, self.sm_y, cx, cy, a)
+        cx, cy = self.sm_x, self.sm_y
+    end
     self.canvas:addPoint(cx, cy)
     self:stampLive(cx, cy, fresh)
 end
 
 function InkAwayView:beginStroke(sx, sy)
-    self.canvas:startStroke(self.tool == "erase" and "erase" or "ink",
-        self:liveWidth(), self.pen_alpha, self.pen_color)
+    local is_erase = self.tool == "erase"
+    self.live_seed = math.random(1, 1000000)
+    self.canvas:startStroke(is_erase and "erase" or "ink",
+        self:liveWidth(), self.pen_alpha, self.pen_color,
+        is_erase and nil or self.pen_style, self.live_seed)
     self.capturing = true
     self.pending_lift = nil
     self.last_ax, self.last_ay = nil, nil
@@ -705,6 +828,7 @@ function InkAwayView:finalizeStroke()
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     self.canvas:finishStroke()
+    self.dirty = true
     -- a clean partial refresh settles any ghosting the fast refresh left behind
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
@@ -774,9 +898,9 @@ function InkAwayView:shapeTouch(pos)
         self:refreshPreview()
         return true
     end
-    self.shape_drag = { x0 = pos.x, y0 = pos.y, x1 = pos.x, y1 = pos.y }
-    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill,
-        pos.x, pos.y, pos.x, pos.y)
+    local x0, y0 = self:snapScreen(pos.x, pos.y)
+    self.shape_drag = { x0 = x0, y0 = y0, x1 = x0, y1 = y0 }
+    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, x0, y0, x0, y0)
     self:refreshPreview()
     return true
 end
@@ -792,9 +916,20 @@ function InkAwayView:shapeMove(pos)
         return true
     end
     if not self.shape_drag then return false end
-    self.shape_drag.x1, self.shape_drag.y1 = pos.x, pos.y
-    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill,
-        self.shape_drag.x0, self.shape_drag.y0, pos.x, pos.y)
+    local d = self.shape_drag
+    local x1, y1 = self:snapScreen(pos.x, pos.y)
+    if self.snap_angle then
+        if self.shape == "line" or self.shape == "curve" then
+            x1, y1 = InkGeom.snapAngle(d.x0, d.y0, x1, y1)
+        else   -- constrain rect/ellipse/triangle to a square/circle
+            local ex, ey = x1 - d.x0, y1 - d.y0
+            local m = math.max(math.abs(ex), math.abs(ey))
+            x1 = d.x0 + (ex < 0 and -m or m)
+            y1 = d.y0 + (ey < 0 and -m or m)
+        end
+    end
+    d.x1, d.y1 = x1, y1
+    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, d.x0, d.y0, x1, y1)
     self:refreshPreview()
     return true
 end
@@ -841,6 +976,7 @@ function InkAwayView:commitShape()
     local op = self.canvas:addShape(self.shape, self.shape_fill,
         { c0x, c0y, c1x, c1y }, self.pen_width, self.pen_alpha, self.pen_color)
     self:stampOpIntoCanvas(op)
+    self.dirty = true
     self.shape_drag = nil
     self.shape_preview = nil
     self._preview_rect = nil
@@ -855,6 +991,7 @@ function InkAwayView:commitCurve()
     local op = self.canvas:addShape("curve", false,
         { c0x, c0y, c1x, c1y, ccx, ccy }, self.pen_width, self.pen_alpha, self.pen_color)
     self:stampOpIntoCanvas(op)
+    self.dirty = true
     self.curve_stage = nil
     self.curve_p0, self.curve_p1, self.curve_ctrl = nil, nil, nil
     self.shape_preview = nil
@@ -921,8 +1058,149 @@ function InkAwayView:doFill(pos)
     if not runs or #runs == 0 then return end
     local op = self.canvas:addFillOp(runs, self.fill_color, self.fill_alpha)
     self:stampOpIntoCanvas(op)
+    self.dirty = true
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+------------------------------------------------------------------------------
+-- Settings menu (gear): drawing aids, projects, autosave.
+------------------------------------------------------------------------------
+
+function InkAwayView:refreshArea()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+function InkAwayView:setAutosave(mode)
+    self.autosave = mode
+    self:setSetting("inkaway_autosave", mode)
+    self:scheduleAutosave()
+end
+
+function InkAwayView:openStabilizer()
+    local SpinWidget = require("ui/widget/spinwidget")
+    UIManager:show(SpinWidget:new{
+        title_text = _("Stabilizer"),
+        info_text = _("How much finger wobble is smoothed out. 0 draws exactly what your finger does; higher is smoother but the line trails a little behind."),
+        value = self.stabilizer, value_min = 0, value_max = 100, value_step = 5, value_hold_step = 20,
+        callback = function(spin)
+            self.stabilizer = math.floor(spin.value)
+            self:setSetting("inkaway_stabilizer", self.stabilizer)
+            self:openSettings()
+        end,
+    })
+end
+
+function InkAwayView:openSettings()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if self._settings_dialog then UIManager:close(self._settings_dialog) end
+    local dlg
+    local function reopen() self:openSettings() end
+    local function onoff(b) return b and _("on") or _("off") end
+    local function tog(key, field, redraw)
+        self[field] = not self[field]
+        self:setSetting(key, self[field])
+        if redraw then self:refreshArea() end
+        reopen()
+    end
+    local function mark(m) return (self.autosave == m) and "\u{25CF} " or "" end
+    local buttons = {
+        {{ text = _("Redo"), callback = function() UIManager:close(dlg); self:redo() end }},
+        {
+            { text = _("New"),          callback = function() UIManager:close(dlg); self:newDrawing() end },
+            { text = _("Open project"), callback = function() UIManager:close(dlg); self:openProject() end },
+            { text = _("Save project"), callback = function() UIManager:close(dlg); self:saveProject() end },
+        },
+        {
+            { text = _("Grid: ") .. onoff(self.grid_on),      callback = function() tog("inkaway_grid", "grid_on", true) end },
+            { text = _("Snap grid: ") .. onoff(self.snap_grid), callback = function() tog("inkaway_snap_grid", "snap_grid") end },
+            { text = _("Snap 45°: ") .. onoff(self.snap_angle), callback = function() tog("inkaway_snap_angle", "snap_angle") end },
+        },
+        {{ text = string.format(_("Stabilizer: %d"), self.stabilizer),
+           callback = function() UIManager:close(dlg); self:openStabilizer() end }},
+        {
+            { text = mark("off") .. _("No autosave"),  callback = function() self:setAutosave("off"); reopen() end },
+            { text = mark("exit") .. _("Save on exit"), callback = function() self:setAutosave("exit"); reopen() end },
+            { text = mark("periodic") .. _("Every 3 min"), callback = function() self:setAutosave("periodic"); reopen() end },
+        },
+        {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
+    }
+    dlg = ButtonDialog:new{ title = _("Settings"), title_align = "center", buttons = buttons }
+    self._settings_dialog = dlg
+    UIManager:show(dlg)
+end
+
+------------------------------------------------------------------------------
+-- Projects: new / open / save (the editable drawing, not the image export).
+------------------------------------------------------------------------------
+
+function InkAwayView:newDrawing()
+    local function fresh()
+        self.canvas:setOps({})
+        self.selected, self.rotating = nil, nil
+        self.dirty = false
+        self:composeCanvas(); self:renderView()
+        UIManager:setDirty(self, "full")
+    end
+    if self.canvas:isEmpty() then fresh(); return end
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = _("Start a new drawing? The current one will be cleared."),
+        ok_text = _("New"), ok_callback = fresh,
+    })
+end
+
+function InkAwayView:openProject()
+    local PathChooser = require("ui/widget/pathchooser")
+    UIManager:show(PathChooser:new{
+        select_directory = false, select_file = true, show_files = true,
+        path = self:defaultDir(),
+        onConfirm = function(path)
+            local data, err = Project.load(path)
+            if data and self:loadProjectData(data) then
+                self:composeCanvas(); self:renderView()
+                UIManager:setDirty(self, "full")
+            else
+                UIManager:show(InfoMessage:new{
+                    text = _("Could not open that project.\n") .. tostring(err) })
+            end
+        end,
+    })
+end
+
+function InkAwayView:saveProject()
+    local PathChooser = require("ui/widget/pathchooser")
+    UIManager:show(PathChooser:new{
+        select_directory = true, select_file = false, show_files = true,
+        path = self:defaultDir(),
+        onConfirm = function(dir)
+            last_save_dir = dir
+            local InputDialog = require("ui/widget/inputdialog")
+            local name = os.date("ink-%Y%m%d-%H%M%S")
+            local d
+            d = InputDialog:new{
+                title = _("Project name"),
+                input = name,
+                buttons = {{
+                    { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+                    { text = _("Save"), is_enter_default = true, callback = function()
+                        local n = d:getInputText()
+                        UIManager:close(d)
+                        if not n or n == "" then n = name end
+                        n = n:gsub("[/\\]", "_")
+                        if not n:lower():match("%." .. Project.EXT .. "$") then n = n .. "." .. Project.EXT end
+                        local sep = (dir:sub(-1) == "/") and "" or "/"
+                        local ok, e = Project.save(self.canvas, dir .. sep .. n)
+                        UIManager:show(InfoMessage:new{
+                            text = ok and (_("Project saved:\n") .. dir .. sep .. n)
+                                        or (_("Could not save project.\n") .. tostring(e)) })
+                    end },
+                }},
+            }
+            UIManager:show(d)
+            d:onShowKeyboard()
+        end,
+    })
 end
 
 ------------------------------------------------------------------------------
@@ -976,13 +1254,20 @@ function InkAwayView:openShapeMenu(sel)
         end,
         buttons = {
             {
-                { text = "\u{21BB} " .. _("Rotate"), callback = function() close(); self:beginRotate(sel) end },
-                { text = "\u{2715} " .. _("Delete"), callback = function() close(); self:deleteSelected(sel) end },
+                { text = "\u{21BB} " .. _("Rotate"),    callback = function() close(); self:beginRotate(sel) end },
+                { text = "\u{29C9} " .. _("Duplicate"), callback = function() close(); self:duplicateSelected(sel) end },
+                { text = "\u{2715} " .. _("Delete"),    callback = function() close(); self:deleteSelected(sel) end },
             },
             {
                 { text = "\u{25D1} " .. _("Colour"),  callback = function() close(); self:editSelectedColour(sel) end },
                 { text = "\u{25A9} " .. _("Opacity"), callback = function() close(); self:editSelectedOpacity(sel) end },
                 { text = "\u{25CF} " .. _("Size"),    callback = function() close(); self:editSelectedSize(sel) end },
+            },
+            {
+                { text = "\u{2190}", callback = function() close(); self:nudgeSelected(sel, -1, 0) end },
+                { text = "\u{2191}", callback = function() close(); self:nudgeSelected(sel, 0, -1) end },
+                { text = "\u{2193}", callback = function() close(); self:nudgeSelected(sel, 0, 1) end },
+                { text = "\u{2192}", callback = function() close(); self:nudgeSelected(sel, 1, 0) end },
             },
             {{ text = _("Done"), callback = close }},
         },
@@ -991,31 +1276,63 @@ function InkAwayView:openShapeMenu(sel)
     UIManager:show(dlg)
 end
 
+-- Apply an edit to the selected op through copy-on-write, so undo/redo work.
+function InkAwayView:applyEdit(sel, mutate)
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(sel.op)
+    mutate(clone)
+    self.canvas:replaceOp(sel.idx, clone)
+    sel.op = clone
+    if self.selected then self.selected.op = clone end
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
 function InkAwayView:deleteSelected(sel)
-    table.remove(self.canvas.ops, sel.idx)
+    self.canvas:pushHistory()
+    self.canvas:removeOp(sel.idx)
     self.selected = nil
+    self.dirty = true
     self:composeCanvas()
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 
+-- Duplicate the selected shape, offset a little, and select the copy.
+function InkAwayView:duplicateSelected(sel)
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(sel.op)
+    local d = self.grid_on and self.grid_size or 14
+    for i = 1, #clone.pts, 2 do clone.pts[i] = clone.pts[i] + d; clone.pts[i + 1] = clone.pts[i + 1] + d end
+    self.canvas.ops[#self.canvas.ops + 1] = clone
+    self.selected = { op = clone, idx = #self.canvas.ops }
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:openShapeMenu(self.selected)
+end
+
+-- Nudge the selected shape by (dx,dy) canvas px (a grid step, or a few px).
+function InkAwayView:nudgeSelected(sel, dirx, diry)
+    local step = self.grid_on and self.grid_size or 6
+    self:applyEdit(sel, function(o)
+        for i = 1, #o.pts, 2 do o.pts[i] = o.pts[i] + dirx * step; o.pts[i + 1] = o.pts[i + 1] + diry * step end
+    end)
+    self:openShapeMenu(sel)   -- keep the menu up for repeated nudges
+end
+
 function InkAwayView:editSelectedColour(sel)
     local ButtonDialog = require("ui/widget/buttondialog")
-    local op = sel.op
     local dlg
-    local function repaint()
-        self:composeCanvas(); self:renderView()
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
-    end
     local function pick(rgb)
-        op.color = { rgb[1], rgb[2], rgb[3] }
-        repaint()
+        self:applyEdit(sel, function(o) o.color = { rgb[1], rgb[2], rgb[3] } end)
         UIManager:close(dlg)
         self:editSelectedColour(sel)   -- reopen to move the selection border
     end
-    local buttons = { self:swatchRowFor(SHADES, op.color, pick) }
+    local buttons = { self:swatchRowFor(SHADES, sel.op.color, pick) }
     if Device.hasColorScreen and Device:hasColorScreen() then
-        buttons[#buttons + 1] = self:swatchRowFor(COLORS, op.color, pick)
+        buttons[#buttons + 1] = self:swatchRowFor(COLORS, sel.op.color, pick)
     end
     buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
     dlg = ButtonDialog:new{ title = _("Shape colour"), title_align = "center", buttons = buttons }
@@ -1030,9 +1347,7 @@ function InkAwayView:editSelectedSize(sel)
         value = op.width, value_min = 1, value_max = 60, value_step = 1, value_hold_step = 6,
         unit = _("px"),
         callback = function(spin)
-            op.width = math.max(1, math.floor(spin.value))
-            self:composeCanvas(); self:renderView()
-            UIManager:setDirty(self, "ui", self:areaScreenRect())
+            self:applyEdit(sel, function(o) o.width = math.max(1, math.floor(spin.value)) end)
         end,
     })
 end
@@ -1046,9 +1361,9 @@ function InkAwayView:editSelectedOpacity(sel)
         value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
         unit = "%",
         callback = function(spin)
-            op.alpha = math.max(1, math.min(255, math.floor(spin.value / 100 * 255 + 0.5)))
-            self:composeCanvas(); self:renderView()
-            UIManager:setDirty(self, "ui", self:areaScreenRect())
+            self:applyEdit(sel, function(o)
+                o.alpha = math.max(1, math.min(255, math.floor(spin.value / 100 * 255 + 0.5)))
+            end)
         end,
     })
 end
@@ -1058,7 +1373,7 @@ end
 function InkAwayView:beginRotate(sel)
     local op = sel.op
     op.hidden = true
-    self.rotating = { op = op, base = op.angle or 0, cur = op.angle or 0 }
+    self.rotating = { op = op, idx = sel.idx, base = op.angle or 0, cur = op.angle or 0 }
     self:composeCanvas(); self:renderView()
     self.shape_preview = self:screenShapeFromOp(op, op.angle or 0)
     self._preview_rect = nil
@@ -1094,11 +1409,19 @@ end
 function InkAwayView:rotateEnd()
     local r = self.rotating
     if not r then return true end
-    r.op.angle = r.cur or r.base
     r.op.hidden = nil
     self.rotating = nil
     self.shape_preview = nil
     self._preview_rect = nil
+    if math.abs((r.cur or r.base) - r.base) > 1e-4 then
+        -- commit the new angle through copy-on-write so it can be undone
+        self.canvas:pushHistory()
+        local clone = self.canvas:cloneOp(r.op)
+        clone.angle = r.cur
+        self.canvas:replaceOp(r.idx, clone)
+        if self.selected then self.selected.op = clone end
+        self.dirty = true
+    end
     self:composeCanvas()
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
@@ -1269,12 +1592,27 @@ end
 
 function InkAwayView:undo()
     self:flushPending()
-    local op = self.canvas:undo()
-    if not op then
+    if self.rotating then self:rotateEnd() end
+    if not self.canvas:undo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to undo."), timeout = 1 })
         return
     end
-    self:composeCanvas()   -- rebuild the master from the remaining ops
+    self.selected = nil
+    self.dirty = true
+    self:composeCanvas()   -- rebuild the master from the restored ops
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+function InkAwayView:redo()
+    self:flushPending()
+    if not self.canvas:redo() then
+        UIManager:show(InfoMessage:new{ text = _("Nothing to redo."), timeout = 1 })
+        return
+    end
+    self.selected = nil
+    self.dirty = true
+    self:composeCanvas()
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
@@ -1305,6 +1643,24 @@ function InkAwayView:paintTo(bb, x, y)
     self.toolbar:paintTo(bb, x, y)
     -- drawing area
     bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
+    -- optional grid, drawn on top as a light guide (never part of the drawing)
+    if self.grid_on and self.grid_size and self.grid_size > 0 then
+        local ay0, ay1 = y + v.area_y, y + v.area_y + v.area_h
+        local ax0, ax1 = x, x + self.screen_w
+        local gx = 0
+        while gx <= v.canvas_w do
+            local sx = math.floor(x + InkGeom.toScreen(v, gx, 0))
+            if sx >= ax0 and sx < ax1 then bb:paintRect(sx, ay0, 1, ay1 - ay0, FRAME) end
+            gx = gx + self.grid_size
+        end
+        local gy = 0
+        while gy <= v.canvas_h do
+            local _, syf = InkGeom.toScreen(v, 0, gy)
+            local sy = math.floor(y + syf)
+            if sy >= ay0 and sy < ay1 then bb:paintRect(ax0, sy, ax1 - ax0, 1, FRAME) end
+            gy = gy + self.grid_size
+        end
+    end
     -- the frame marking the page: where the full W x H export sits on screen
     local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
     local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
