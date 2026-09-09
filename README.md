@@ -6,13 +6,19 @@ Open a blank page, draw with your finger, and save the result as a PNG with a re
 
 ![A hand-drawn "Hello World" exported as a transparent PNG and set as the Kindle sleep screen](assets/screenshots/sleep-screen.png)
 
-Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; shapes; a paint bucket; an eraser; undo; zoom and pan; and save. There are no layers, no text, and no networking.
+Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; brushes you can make yourself; shapes and arrows; a paint bucket; an eraser; undo and redo; zoom and pan; a symmetry mode; an optional background picture to draw over; and save, whole page or a chosen area. There are no layers, no text, and no networking.
 
 ## Features
 
 - A blank fullscreen canvas at your screen's resolution.
 - Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
-- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: ink, charcoal, acrylic, hatch, or stipple.
+- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: ink, pencil, acrylic, hatch, or stipple.
+- **Make your own brushes**. A brush maker lets you tune the feel with sliders (ink, grain, soft edge, spread, tooth) while a sample stroke redraws live. Name it and it joins the pen menu, and it stays there across restarts and updates. Hold a made brush in the menu to delete it.
+- A **symmetry mode**: draw on one side and it mirrors as you go, vertical, horizontal, or four way. It works with the pen, the eraser, shapes, the paint bucket, and even rotating or duplicating a shape.
+- **Arrows**: straight or curved, single or double headed, with an adjustable arrowhead size.
+- An **open image as background**: pick a PNG or JPEG and draw over it. Your drawing (and the grid) sit on top. When you save you decide whether the picture goes with it or you export just your drawing.
+- **Export the whole page or just a part**: choose an area with a quick drag so a signature in the middle of the screen comes out on its own, at its own size.
+- **Ghosting cleanup** (optional): e-ink leaves faint ghosts behind the fast refreshes used while drawing, so you can have it do one full refresh every so many strokes to wipe them. Off by default.
 - A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
 - Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
 - **Undo and redo**.
@@ -72,17 +78,26 @@ Open the top menu, go to the Tools tab (More tools), and tap "Ink Away (drawing 
 
 A thin toolbar runs across the top and the rest of the screen is your canvas. A faint frame shows exactly what will be exported.
 
-- **Pen**: draw with your finger. Tap for a dot, drag for a line. Tap Pen again while it is already the active tool to open its settings: size, opacity, a row of grey shades, and, on colour screens, a row of colours.
-- **Shapes**: tap Shapes to choose a shape (line, curve, rectangle, ellipse, or triangle, filled or outline). Then drag on the canvas: the first touch is one corner, and the shape stretches to follow your finger until you lift. For the curve, drag once to set the line, then drag again to bend it. Shapes use the pen's current size, opacity, and colour. To edit a shape you have already drawn, switch to the **Pan** tool and hold on the shape: a small menu opens beside it where you can rotate it (drag to spin it freely), recolour it, change its size or opacity, or delete it. This only works in Pan mode, so a hold never clashes with drawing in the pen or shape tools.
+- **Pen**: draw with your finger. Tap for a dot, drag for a line. Tap Pen again while it is already the active tool to open its settings: size, opacity, the brush style, a row of grey shades, and, on colour screens, a row of colours. The style row also has a **Create brush** button that opens the brush maker (see below).
+- **Create brush**: sliders set how much ink the brush lays down, how coarse its grain is, how soft its edge is, how far it spreads, and how much the paper tooth breaks it up, and a sample stroke redraws as you drag so you tune by eye. Give it a name and it appears in the pen menu from then on. It is kept with your KOReader settings, so it survives restarts and plugin updates. To remove one, hold it in the pen menu.
+- **Shapes and arrows**: tap Shapes to choose a shape (line, curve, rectangle, ellipse, or triangle, filled or outline) or an arrow (straight or curved, single or double headed, with an arrowhead size you can set). Then drag on the canvas: the first touch is one corner, and the shape stretches to follow your finger until you lift. For the curve, drag once to set the line, then drag again to bend it. Shapes use the pen's current size, opacity, and colour. To edit a shape you have already drawn, switch to the **Pan** tool and hold on the shape: a small menu opens beside it where you can rotate it (drag to spin it freely), recolour it, change its size or opacity, or delete it. This only works in Pan mode, so a hold never clashes with drawing in the pen or shape tools.
 - **Fill (paint bucket)**: in the Shapes menu, choose "Fill area", then tap inside an enclosed region and it fills up to the surrounding lines. If the outline has a gap the fill spreads through it, the same as a paint program. The bucket keeps its own colour and opacity: hold "Fill area" in the Shapes menu to set them, so you do not have to change the pen each time.
 - **Eraser**: the same gesture, but it removes ink. Tap Eraser again while it is active to set its size.
 - **Pan**: drag with one finger to move around, which helps when you are zoomed in. You can also pan with two fingers at any time, whatever tool is selected. The canvas follows your finger, so dragging right moves the drawing right.
 - **Zoom**: each press changes the zoom by a fixed factor (1.5×), between the level where the whole page fits and 8×. Zooming only changes what you see. It never changes the size of the exported image.
 - **Undo**: remove the last stroke, one step for each time you lifted your finger. Undoing an eraser stroke brings back the ink it had removed.
-- **Save**: choose PNG or JPEG, pick a folder, name the file, and it is written.
+- **Save**: one compact dialog. Pick the format (PNG or JPEG), leave the area as the whole page or tap to drag a box around just the part you want, and, if a background picture is loaded, choose whether to include it. Then Save, pick a folder, and name the file.
 - **Exit**: leave the canvas. If you have unsaved work it asks first.
 
-- **Settings (gear)**: the gear button opens redo, project actions (new, open, save), the grid and snapping toggles, the stabilizer strength, and the autosave mode.
+- **Settings (gear)**: the gear button opens redo, project actions (new, open, save), **symmetry**, the grid, a **background image**, **ghosting cleanup**, and the autosave mode. The fiddlier toggles (snap to grid, snap to 45°, stabilizer) sit one tap away under "Guides and aids" so the first screen stays calm.
+
+### Symmetry
+
+Turn symmetry on in the gear menu and everything you draw is mirrored as you go: vertical mirrors left and right, horizontal mirrors top and bottom, and four way does both. It works with the pen, the eraser, shapes, the paint bucket, and even rotating or duplicating a placed shape, and it is fast because the mirroring happens deep in the drawing pipeline, not by drawing everything twice by hand. It is off by default, and each stroke remembers the mode it was drawn with, so turning it off later leaves the mirrored strokes you already made in place.
+
+### Background image
+
+From the gear menu, "Background" lets you open a PNG or JPEG (a transparent PNG works too). It fills the canvas, and your drawing and the grid sit on top of it. When you save you decide, in the save dialog, whether the picture is included or you export just your drawing. The grid is never part of a saved image either way. Choosing "Remove background" clears it.
 
 To edit a placed shape, switch to **Pan** and hold it (see Shapes above). Hold **Fill area** in the Shapes menu to set the bucket's own colour and opacity.
 

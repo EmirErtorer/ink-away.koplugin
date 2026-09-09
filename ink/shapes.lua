@@ -112,6 +112,32 @@ local function fillPolygon(poly, put)
     end
 end
 
+-- Arrowhead segments for a line or curve carrying op.arrow ("end" or "both").
+-- Each is a {tx,ty, bx,by} barb, worked out from the tangent at the tip so the
+-- head follows the shape's direction (and its rotation, since poly is already
+-- rotated). Returns a list of such segments (empty when there is no arrow).
+local function arrowSegs(op, poly)
+    local segs = {}
+    if op.arrow ~= "end" and op.arrow ~= "both" then return segs end
+    if op.shape ~= "line" and op.shape ~= "curve" then return segs end
+    local n = floor(#poly / 2)
+    if n < 2 then return segs end
+    local head = op.head or max(12, (op.width or 2) * 3)
+    local ca, sa = cos(0.4887), sin(0.4887)   -- barb half-angle ~28 degrees
+    local function tip(txi, tyi, fxi, fyi)
+        local tx, ty = poly[txi], poly[tyi]
+        local dx, dy = tx - poly[fxi], ty - poly[fyi]
+        local len = sqrt(dx * dx + dy * dy)
+        if len < 1e-3 then return end
+        dx, dy = dx / len, dy / len
+        segs[#segs + 1] = { tx, ty, tx - head * (dx * ca - dy * sa), ty - head * (dx * sa + dy * ca) }
+        segs[#segs + 1] = { tx, ty, tx - head * (dx * ca + dy * sa), ty + head * (dx * sa - dy * ca) }
+    end
+    tip(2 * n - 1, 2 * n, 2 * n - 3, 2 * n - 2)      -- head at the last point
+    if op.arrow == "both" then tip(1, 2, 3, 4) end   -- and at the first
+    return segs
+end
+
 -- Render a shape op with the given span writer.
 function Shapes.render(op, put)
     local poly, closed = boundary(op)
@@ -128,19 +154,22 @@ function Shapes.render(op, put)
             line[#line + 1] = poly[2]
         end
         Raster.path(line, r, put)
+        for _, s in ipairs(arrowSegs(op, poly)) do Raster.path(s, r, put) end
     end
 end
 
--- Bounding box {x0,y0,x1,y1} of the shape as actually drawn (rotation included).
+-- Bounding box {x0,y0,x1,y1} of the shape as actually drawn (rotation and any
+-- arrowheads included).
 function Shapes.bounds(op)
     local poly = boundary(op)
     local x0, y0 = poly[1], poly[2]
     local x1, y1 = x0, y0
-    for i = 3, #poly, 2 do
-        local x, y = poly[i], poly[i + 1]
+    local function grow(x, y)
         if x < x0 then x0 = x elseif x > x1 then x1 = x end
         if y < y0 then y0 = y elseif y > y1 then y1 = y end
     end
+    for i = 3, #poly, 2 do grow(poly[i], poly[i + 1]) end
+    for _, s in ipairs(arrowSegs(op, poly)) do grow(s[3], s[4]) end
     return x0, y0, x1, y1
 end
 

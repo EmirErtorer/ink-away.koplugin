@@ -104,6 +104,16 @@ Raster.STYLES = {
     stipple    = { density = 0.55, cell = 3, edge = 0.15, grow = 0.10 },
 }
 
+-- Register a custom (user made) brush under `key` so ops that name it resolve
+-- here just like a built-in style. Called on startup for every saved brush, so
+-- a project or an export always finds the style it was drawn with.
+function Raster.registerStyle(key, params)
+    if type(key) ~= "string" or type(params) ~= "table" then return end
+    local st = {}
+    for k, v in pairs(params) do st[k] = v end
+    Raster.STYLES[key] = st
+end
+
 local floor, sqrt, ceil, max = math.floor, math.sqrt, math.ceil, math.max
 
 -- Whether pixel (x,y) is inked for this style, given d2 = (distance/r)^2. Kept
