@@ -94,8 +94,9 @@ end
 --   pattern  : nil | "hatch" | "stipple" | "streak"
 Raster.STYLES = {
     solid      = { solid = true },
-    pencil     = { density = 0.40, cell = 1, edge = 0.45, grow = 0.05 },
-    charcoal   = { density = 0.95, cell = 2, edge = 0.30, grow = 0.35 },
+    -- pencil: fine, even grain; dark enough that black reads black, still textured
+    pencil     = { density = 0.74, cell = 1, edge = 0.35, grow = 0.06 },
+    charcoal   = { density = 0.82, cell = 2, edge = 0.55, grow = 0.45, tooth = 4 },
     marker     = { density = 0.66, cell = 1, edge = 0.05, grow = 0.02 },
     watercolor = { density = 0.62, cell = 3, edgedark = 0.55, grow = 0.45, blotch = true },
     acrylic    = { density = 0.92, cell = 2, edge = 0.15, grow = 0.10, pattern = "streak" },
@@ -103,25 +104,30 @@ Raster.STYLES = {
     stipple    = { density = 0.55, cell = 3, edge = 0.15, grow = 0.10 },
 }
 
-local floor, sqrt = math.floor, math.sqrt
+local floor, sqrt, ceil, max = math.floor, math.sqrt, math.ceil, math.max
 
--- Whether pixel (x,y) at relative distance t (0..1+grow) is inked for this style.
-local function inked(st, x, y, t, seed)
-    local grow = st.grow or 0
-    if t > 1 + grow then return false end
+-- Whether pixel (x,y) is inked for this style, given d2 = (distance/r)^2. Kept
+-- free of a per-pixel sqrt (the square root is only needed for the soft fringe
+-- beyond the rim) so textured brushes stay responsive.
+local function inked(st, x, y, d2, seed, outer)
+    if d2 > outer then return false end
     local p = st.density or 1
-    local tc = t > 1 and 1 or t
-    if st.edge then p = p * (1 - st.edge * tc * tc) end          -- dry, fading edge
-    if st.edgedark then p = p * (1 + st.edgedark * tc * tc) end  -- wet, pooling edge
-    if t > 1 then p = p * 0.35 * (1 - (t - 1) / grow) end        -- soft fringe past rim
+    local tc2 = d2 < 1 and d2 or 1               -- min(t,1)^2
+    if st.edge then p = p * (1 - st.edge * tc2) end
+    if st.edgedark then p = p * (1 + st.edgedark * tc2) end
+    if d2 > 1 then p = p * 0.35 * (1 - (sqrt(d2) - 1) / (st.grow or 1)) end
     local pat = st.pattern
     if pat == "hatch" then
-        if ((x - y) % 7) >= 2 then return false end
+        if ((x - y) % 6) >= 3 then return false end   -- thick diagonal hatching
     elseif pat == "streak" then
         if hash01(0, floor(y / 2), seed) > 0.85 then return false end
     end
     if st.blotch then
         p = p * (0.45 + 0.75 * hash01(floor(x / 7), floor(y / 7), seed + 9))
+    end
+    if st.tooth then   -- paper-tooth: some patches catch more grain than others
+        local tc = st.tooth
+        p = p * (0.5 + 1.0 * hash01(floor(x / tc), floor(y / tc), seed + 7))
     end
     local cell = st.cell or 1
     local h = (cell > 1) and hash01(floor(x / cell), floor(y / cell), seed)
@@ -132,33 +138,38 @@ end
 -- A textured disc for style `st`.
 function Raster.discTex(cx, cy, r, put, st, seed)
     if r < 0.5 then r = 0.5 end
-    local rmax = r * (1 + (st.grow or 0))
+    local grow = st.grow or 0
+    local outer = (1 + grow) * (1 + grow)
+    local inv_r2 = 1 / (r * r)
     local icx, icy = floor(cx + 0.5), floor(cy + 0.5)
-    local ir = floor(rmax)
+    local ir = floor(r * (1 + grow))
     for dy = -ir, ir do
         local y = icy + dy
+        local dy2 = dy * dy
         for dx = -ir, ir do
-            local d = sqrt(dx * dx + dy * dy) / r
-            if d <= 1 + (st.grow or 0) then
-                local x = icx + dx
-                if inked(st, x, y, d, seed) then put(x, y, 1) end
+            local d2 = (dx * dx + dy2) * inv_r2
+            if d2 <= outer and inked(st, icx + dx, y, d2, seed, outer) then
+                put(icx + dx, y, 1)
             end
         end
     end
 end
 
--- Like Raster.path but with a textured pen style.
+-- Like Raster.path but with a textured pen style. Discs are stepped coarser
+-- than the solid path (the texture hides the wider spacing), which keeps
+-- textured strokes about as responsive as plain ink.
 function Raster.pathTex(pts, r, put, st, seed)
     local n = floor(#pts / 2)
     if n == 0 then return end
+    local step = max(1, r * 0.4)
     local px, py = pts[1], pts[2]
     Raster.discTex(px, py, r, put, st, seed)
     for i = 2, n do
         local nx, ny = pts[2 * i - 1], pts[2 * i]
         local dx, dy = nx - px, ny - py
-        local dist2 = dx * dx + dy * dy
-        if dist2 >= 1 then
-            local steps = math.ceil(sqrt(dist2))
+        local dist = sqrt(dx * dx + dy * dy)
+        if dist >= step then
+            local steps = ceil(dist / step)
             local inv = 1 / steps
             for s = 1, steps do
                 Raster.discTex(px + dx * (s * inv), py + dy * (s * inv), r, put, st, seed)

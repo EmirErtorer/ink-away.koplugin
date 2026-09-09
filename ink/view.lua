@@ -202,7 +202,9 @@ function InkAwayView:init()
     self.bridge_dist = math.max(24, math.floor(W / 22))
 
     -- Preferences and drawing aids, loaded from saved settings.
-    self.pen_style   = self:getSetting("inkaway_pen_style", "solid")   -- solid|pencil|charcoal|marker
+    self.pen_style   = self:getSetting("inkaway_pen_style", "solid")   -- solid|charcoal|acrylic|hatch|stipple
+    local avail = { solid = true, pencil = true, acrylic = true, hatch = true, stipple = true }
+    if not avail[self.pen_style] then self.pen_style = "solid" end
     self.stabilizer  = self:getSetting("inkaway_stabilizer", 40)       -- 0..100
     self.grid_on     = self:getSetting("inkaway_grid", false)
     self.grid_style  = self:getSetting("inkaway_grid_style", "square")  -- square|dots|lines|iso|thirds
@@ -212,6 +214,9 @@ function InkAwayView:init()
     self.autosave    = self:getSetting("inkaway_autosave", "exit")     -- off|exit|periodic
     self.dirty = false
     self._autosave_tick = function() self:autosaveTick() end
+
+    -- Default save folder: koreader/ink away drawings, created once.
+    self.default_dir = self:ensureDefaultDir()
 
     -- The canvas has a fixed size: the current screen dimensions.
     self.canvas = Canvas.new(W, H)
@@ -357,9 +362,21 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
     if self.autosave ~= "off" then self:saveSession() end
+    -- Close any of our popups so nothing is left shown or referenced.
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_settings_dialog" }) do
+        if self[key] then UIManager:close(self[key]); self[key] = nil end
+    end
+    -- Release the large buffers and drop references so the GC can reclaim them.
+    self:free()
+    self.selected, self.rotating, self.shape_preview = nil, nil, nil
+    if self.canvas then
+        self.canvas.ops, self.canvas.undo_stack, self.canvas.redo_stack = {}, {}, {}
+    end
+    -- Reclaim our large buffers and ops now, so the next session starts clean
+    -- rather than inheriting the heap pressure (which shows up as slowdown).
+    collectgarbage("collect")
     -- Leave the screen clean underneath.
     UIManager:setDirty(nil, "full")
-    self:free()
 end
 
 function InkAwayView:onIaClose()
@@ -498,26 +515,22 @@ function InkAwayView:openPenSettings()
         end,
     }}
 
-    -- brush style (two rows). Marker/watercolor/acrylic are experimental looks.
-    local style_rows = {
-        { { "solid", _("Ink") }, { "pencil", _("Pencil") }, { "charcoal", _("Charcoal") }, { "marker", _("Marker") } },
-        { { "watercolor", _("Watercolour") }, { "acrylic", _("Acrylic") }, { "hatch", _("Hatch") }, { "stipple", _("Stipple") } },
-    }
-    buttons[#buttons + 1] = {{ text = _("Style"), enabled = false }}
-    for _, sr in ipairs(style_rows) do
-        local row = {}
-        for _, s in ipairs(sr) do
-            row[#row + 1] = {
-                text = (self.pen_style == s[1] and "\u{25CF} " or "") .. s[2],
-                callback = function()
-                    self.pen_style = s[1]
-                    self:setSetting("inkaway_pen_style", s[1])
-                    self:openPenSettings()
-                end,
-            }
-        end
-        buttons[#buttons + 1] = row
+    -- brush style
+    local styles = { { "solid", _("Ink") }, { "pencil", _("Pencil") },
+                     { "acrylic", _("Acrylic") }, { "hatch", _("Hatch") }, { "stipple", _("Stipple") } }
+    local style_row = {}
+    for _, s in ipairs(styles) do
+        style_row[#style_row + 1] = {
+            text = (self.pen_style == s[1] and "\u{25CF} " or "") .. s[2],
+            callback = function()
+                self.pen_style = s[1]
+                self:setSetting("inkaway_pen_style", s[1])
+                self:openPenSettings()
+            end,
+        }
     end
+    buttons[#buttons + 1] = {{ text = _("Style"), enabled = false }}
+    buttons[#buttons + 1] = style_row
 
     -- shades (primary on e-ink)
     buttons[#buttons + 1] = {{ text = _("Shade"), enabled = false }}
@@ -774,15 +787,19 @@ function InkAwayView:drawGridInto()
             if y >= 0 and y < ah then self.area_bb:paintRect(0, y, aw, 1, col) end
             cy = cy + g
         end
-    elseif style == "dots" then                     -- dot at each intersection
+    elseif style == "dots" then                     -- dark dot at each intersection
+        local dot = math.max(3, math.floor(Screen:scaleBySize(3)))
+        local dcol = Blitbuffer.COLOR_BLACK           -- dots need to be visible
         local cy = 0
         while cy <= v.canvas_h do
-            local y = math.floor(ay(cy))
-            if y >= -1 and y < ah then
+            local y = math.floor(ay(cy)) - math.floor(dot / 2)
+            if y + dot >= 0 and y < ah then
                 local cx = 0
                 while cx <= v.canvas_w do
-                    local x = math.floor(ax(cx))
-                    if x >= 0 and x < aw and y >= 0 then self.area_bb:paintRect(x, y, 2, 2, col) end
+                    local x = math.floor(ax(cx)) - math.floor(dot / 2)
+                    if x >= 0 and x + dot <= aw and y >= 0 and y + dot <= ah then
+                        self.area_bb:paintRect(x, y, dot, dot, dcol)
+                    end
                     cx = cx + g
                 end
             end
@@ -841,7 +858,8 @@ end
 function InkAwayView:stampLive(cx, cy, fresh)
     local color = self:liveColor()
     local width = self:liveWidth()
-    local style = (self.tool == "erase") and nil or self.pen_style
+    local style = nil
+    if self.tool ~= "erase" then style = self.pen_style end   -- eraser is always solid
     local st = style and Raster.STYLES[style]
     local textured = st and not st.solid
     local seed = self.live_seed or 0
@@ -911,9 +929,10 @@ end
 function InkAwayView:beginStroke(sx, sy)
     local is_erase = self.tool == "erase"
     self.live_seed = math.random(1, 1000000)
+    local style = nil
+    if not is_erase then style = self.pen_style end
     self.canvas:startStroke(is_erase and "erase" or "ink",
-        self:liveWidth(), self.pen_alpha, self.pen_color,
-        is_erase and nil or self.pen_style, self.live_seed)
+        self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed)
     self.capturing = true
     self.pending_lift = nil
     self.last_ax, self.last_ay = nil, nil
@@ -1351,7 +1370,7 @@ function InkAwayView:saveProject()
         select_directory = true, select_file = false, show_files = true,
         path = self:defaultDir(),
         onConfirm = function(dir)
-            last_save_dir = dir
+            self:rememberDir(dir)
             local InputDialog = require("ui/widget/inputdialog")
             local name = os.date("ink-%Y%m%d-%H%M%S")
             local d
@@ -1893,14 +1912,35 @@ function InkAwayView:onSave()
     UIManager:show(dialog)
 end
 
-function InkAwayView:defaultDir()
-    if last_save_dir then return last_save_dir end
-    local ok, fmutil = pcall(require, "apps/filemanager/filemanagerutil")
-    if ok and fmutil and fmutil.getDefaultDir then
-        local d = fmutil.getDefaultDir()
-        if d then return d end
+-- Create (once) koreader/ink away drawings and return its path, or a fallback.
+function InkAwayView:ensureDefaultDir()
+    local ok, DataStorage = pcall(require, "datastorage")
+    local base = (ok and DataStorage and DataStorage:getDataDir()) or "/"
+    local dir = base .. "/ink away drawings"
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if lok and lfs then
+        if lfs.attributes(dir, "mode") ~= "directory" then pcall(lfs.mkdir, dir) end
+        if lfs.attributes(dir, "mode") == "directory" then return dir end
     end
-    return "/"
+    return base
+end
+
+-- Where the save/open dialogs start: the last folder used, else the default.
+function InkAwayView:defaultDir()
+    local last = self:getSetting("inkaway_last_dir")
+    if last then
+        local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+        if not (lok and lfs) or lfs.attributes(last, "mode") == "directory" then
+            return last
+        end
+    end
+    return self.default_dir or "/"
+end
+
+-- Remember a folder as the last one used, for next time.
+function InkAwayView:rememberDir(dir)
+    last_save_dir = dir
+    self:setSetting("inkaway_last_dir", dir)
 end
 
 function InkAwayView:chooseDestination(fmt)
@@ -1912,7 +1952,7 @@ function InkAwayView:chooseDestination(fmt)
         show_files = true,
         path = self:defaultDir(),
         onConfirm = function(dir)
-            last_save_dir = dir
+            self:rememberDir(dir)
             self:promptFilename(fmt, dir)
         end,
     }

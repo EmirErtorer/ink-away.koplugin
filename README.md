@@ -12,7 +12,7 @@ Ink Away is meant to stay simple and focused. You get a pen with adjustable size
 
 - A blank fullscreen canvas at your screen's resolution.
 - Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
-- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: plain ink, pencil, or charcoal (a grainy texture that reads well on e-ink).
+- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: ink, charcoal, acrylic, hatch, or stipple.
 - A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
 - Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
 - **Undo and redo**.
@@ -106,7 +106,7 @@ JPEG cannot store transparency, so a JPEG export lays your ink over a solid whit
 
 ## Where files go
 
-You pick the destination folder every time you save, using KOReader's folder browser, and you type the file name (the right extension is added for you). Ink Away remembers the last folder you used for the rest of the session. If a name already exists it is overwritten, so choose a new name if you want to keep both.
+The first time it runs, Ink Away creates an "ink away drawings" folder inside your KOReader folder and uses it as the default place to save, so you don't have to hunt for a folder. You can still pick any destination when you save, and it remembers the last folder you used (across sessions) so the picker starts there next time. You type the file name and the right extension is added. If a name already exists it is overwritten, so choose a new name to keep both.
 
 ## Device compatibility
 
