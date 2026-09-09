@@ -738,13 +738,14 @@ function InkAwayView:renderView()
     local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
     self.area_bb:blitFrom(scaled, ox, oy, 0, 0, bw, bh)
     if scaled ~= sub and scaled.free then scaled:free() end
-
-    if self.grid_on then self:drawGridInto() end   -- baked in once, not per paint
+    -- The grid is NOT drawn here: it is a paint-time overlay (see drawGrid), so
+    -- it never lives in area_bb, the eraser can never rub it out, and it never
+    -- reaches the export (which is rebuilt from the ops, not from any buffer).
 end
 
--- A thin line into area_bb (area coords), clipped to it. Used for grid guides.
-function InkAwayView:gridLine(x0, y0, x1, y1, color)
-    local bb, aw, ah = self.area_bb, self.view.area_w, self.view.area_h
+-- A thin line into `bb` at screen offset (ox,oy), clipped to the drawing area.
+function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color)
+    local aw, ah = self.view.area_w, self.view.area_h
     local dx, dy = x1 - x0, y1 - y0
     local steps = math.max(math.abs(dx), math.abs(dy))
     if steps < 1 then return end
@@ -752,13 +753,15 @@ function InkAwayView:gridLine(x0, y0, x1, y1, color)
     local x, y = x0, y0
     for _ = 0, steps do
         local px, py = math.floor(x + 0.5), math.floor(y + 0.5)
-        if px >= 0 and px < aw and py >= 0 and py < ah then bb:paintRect(px, py, 1, 1, color) end
+        if px >= 0 and px < aw and py >= 0 and py < ah then bb:paintRect(ox + px, oy + py, 1, 1, color) end
         x = x + ix; y = y + iy
     end
 end
 
--- Draw the current grid style into area_bb (display only; never exported).
-function InkAwayView:drawGridInto()
+-- Draw the current grid style into `bb` at screen offset (ox,oy). Display only:
+-- painted onto the screen buffer each frame, never baked into area_bb, so the
+-- eraser leaves it alone and it stays out of the saved PNG or JPEG.
+function InkAwayView:drawGrid(bb, ox, oy)
     local v = self.view
     local aw, ah = v.area_w, v.area_h
     local g = self.grid_size
@@ -766,14 +769,22 @@ function InkAwayView:drawGridInto()
     local col = FRAME
     local function ax(cx) return (cx - v.pan_x) * v.zoom end
     local function ay(cy) return (cy - v.pan_y) * v.zoom end
+    -- paint a rect given in area coords, clipped to the area and then offset
+    local function rect(px, py, w, h, c)
+        if px < 0 then w = w + px; px = 0 end
+        if py < 0 then h = h + py; py = 0 end
+        if px + w > aw then w = aw - px end
+        if py + h > ah then h = ah - py end
+        if w > 0 and h > 0 then bb:paintRect(ox + px, oy + py, w, h, c) end
+    end
 
     if style == "thirds" then
         -- rule of thirds over the page rectangle
         for i = 1, 2 do
             local x = ax(v.canvas_w * i / 3)
-            if x >= 0 and x < aw then self.area_bb:paintRect(math.floor(x), 0, 1, ah, col) end
+            if x >= 0 and x < aw then rect(math.floor(x), 0, 1, ah, col) end
             local y = ay(v.canvas_h * i / 3)
-            if y >= 0 and y < ah then self.area_bb:paintRect(0, math.floor(y), aw, 1, col) end
+            if y >= 0 and y < ah then rect(0, math.floor(y), aw, 1, col) end
         end
         return
     end
@@ -784,7 +795,7 @@ function InkAwayView:drawGridInto()
         local cy = 0
         while cy <= v.canvas_h do
             local y = math.floor(ay(cy))
-            if y >= 0 and y < ah then self.area_bb:paintRect(0, y, aw, 1, col) end
+            if y >= 0 and y < ah then rect(0, y, aw, 1, col) end
             cy = cy + g
         end
     elseif style == "dots" then                     -- dark dot at each intersection
@@ -798,7 +809,7 @@ function InkAwayView:drawGridInto()
                 while cx <= v.canvas_w do
                     local x = math.floor(ax(cx)) - math.floor(dot / 2)
                     if x >= 0 and x + dot <= aw and y >= 0 and y + dot <= ah then
-                        self.area_bb:paintRect(x, y, dot, dot, dcol)
+                        rect(x, y, dot, dot, dcol)
                     end
                     cx = cx + g
                 end
@@ -809,7 +820,7 @@ function InkAwayView:drawGridInto()
         local cx = 0
         while cx <= v.canvas_w do
             local x = ax(cx)
-            if x >= 0 and x < aw then self.area_bb:paintRect(math.floor(x), 0, 1, ah, col) end
+            if x >= 0 and x < aw then rect(math.floor(x), 0, 1, ah, col) end
             cx = cx + g
         end
         local slope = math.tan(math.rad(30))
@@ -818,21 +829,21 @@ function InkAwayView:drawGridInto()
         local start = -math.ceil(ah * slope / spacing) * spacing
         local b = start
         while b <= v.canvas_w * v.zoom + ah do
-            self:gridLine(ax(0) + b, 0, ax(0) + b + ah * slope, ah, col)      -- down-right
-            self:gridLine(ax(0) + b, ah, ax(0) + b + ah * slope, 0, col)      -- up-right
+            self:gridLine(bb, ox, oy, ax(0) + b, 0, ax(0) + b + ah * slope, ah, col)   -- down-right
+            self:gridLine(bb, ox, oy, ax(0) + b, ah, ax(0) + b + ah * slope, 0, col)   -- up-right
             b = b + spacing * v.zoom
         end
     else                                            -- "square"
         local cx = 0
         while cx <= v.canvas_w do
             local x = math.floor(ax(cx))
-            if x >= 0 and x < aw then self.area_bb:paintRect(x, 0, 1, ah, col) end
+            if x >= 0 and x < aw then rect(x, 0, 1, ah, col) end
             cx = cx + g
         end
         local cy = 0
         while cy <= v.canvas_h do
             local y = math.floor(ay(cy))
-            if y >= 0 and y < ah then self.area_bb:paintRect(0, y, aw, 1, col) end
+            if y >= 0 and y < ah then rect(0, y, aw, 1, col) end
             cy = cy + g
         end
     end
@@ -1350,7 +1361,7 @@ function InkAwayView:openProject()
     local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = false, select_file = true, show_files = true,
-        path = self:defaultDir(),
+        path = self:projectDir(),
         onConfirm = function(path)
             local data, err = Project.load(path)
             if data and self:loadProjectData(data) then
@@ -1368,9 +1379,9 @@ function InkAwayView:saveProject()
     local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = true, select_file = false, show_files = true,
-        path = self:defaultDir(),
+        path = self:projectDir(),
         onConfirm = function(dir)
-            self:rememberDir(dir)
+            self:rememberProjectDir(dir)
             local InputDialog = require("ui/widget/inputdialog")
             local name = os.date("ink-%Y%m%d-%H%M%S")
             local d
@@ -1837,8 +1848,11 @@ function InkAwayView:paintTo(bb, x, y)
     bb:paintRect(x, y, self.screen_w, self.screen_h, WHITE)
     -- toolbar
     self.toolbar:paintTo(bb, x, y)
-    -- drawing area (the grid, if any, is already baked into area_bb by renderView)
+    -- drawing area (the committed strokes, at the current zoom/pan)
     bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
+    -- grid guides on top, straight onto the screen buffer so they never mix into
+    -- the drawing: the eraser can't rub them out and they stay out of the export
+    if self.grid_on then self:drawGrid(bb, x + v.area_x, y + v.area_y) end
     -- the frame marking the page: where the full W x H export sits on screen
     local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
     local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
@@ -1912,35 +1926,65 @@ function InkAwayView:onSave()
     UIManager:show(dialog)
 end
 
--- Create (once) koreader/ink away drawings and return its path, or a fallback.
+-- Set up koreader/ink away/{drawings,projects} once and remember both paths:
+-- drawings holds the exported PNG/JPEG images, projects holds the editable
+-- .inkaway files. Returns the drawings path (the image default), or a fallback.
+-- Also tidies away the old flat "ink away drawings" folder from earlier
+-- versions, but only if it is empty, so nothing you saved there is ever removed.
 function InkAwayView:ensureDefaultDir()
     local ok, DataStorage = pcall(require, "datastorage")
     local base = (ok and DataStorage and DataStorage:getDataDir()) or "/"
-    local dir = base .. "/ink away drawings"
+    local parent   = base .. "/ink away"
+    local drawings = parent .. "/drawings"
+    local projects = parent .. "/projects"
+    self.projects_dir = base
     local lok, lfs = pcall(require, "libs/libkoreader-lfs")
     if lok and lfs then
-        if lfs.attributes(dir, "mode") ~= "directory" then pcall(lfs.mkdir, dir) end
-        if lfs.attributes(dir, "mode") == "directory" then return dir end
+        local function mk(d)
+            if lfs.attributes(d, "mode") ~= "directory" then pcall(lfs.mkdir, d) end
+            return lfs.attributes(d, "mode") == "directory"
+        end
+        mk(parent); mk(drawings)
+        if mk(projects) then self.projects_dir = projects end
+        -- remove the old flat folder if it is now empty (never if it holds files)
+        local old = base .. "/ink away drawings"
+        if lfs.attributes(old, "mode") == "directory" then pcall(lfs.rmdir, old) end
+        -- forget any remembered pointer into that old folder so pickers start fresh
+        if self:getSetting("inkaway_last_dir") == old then self:setSetting("inkaway_last_dir", drawings) end
+        if lfs.attributes(drawings, "mode") == "directory" then return drawings end
     end
     return base
 end
 
--- Where the save/open dialogs start: the last folder used, else the default.
-function InkAwayView:defaultDir()
-    local last = self:getSetting("inkaway_last_dir")
-    if last then
-        local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-        if not (lok and lfs) or lfs.attributes(last, "mode") == "directory" then
-            return last
-        end
-    end
-    return self.default_dir or "/"
+-- Return `p` if it is an existing directory, else nil.
+local function existingDir(p)
+    if not p then return nil end
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not (lok and lfs) or lfs.attributes(p, "mode") == "directory" then return p end
+    return nil
 end
 
--- Remember a folder as the last one used, for next time.
+-- Where the image save dialog starts: last image folder used, else drawings.
+function InkAwayView:defaultDir()
+    return existingDir(self:getSetting("inkaway_last_dir")) or self.default_dir or "/"
+end
+
+-- Where the project open/save dialogs start: last project folder used, else
+-- the projects folder (kept separate from the image folder on purpose).
+function InkAwayView:projectDir()
+    return existingDir(self:getSetting("inkaway_last_project_dir"))
+        or self.projects_dir or self.default_dir or "/"
+end
+
+-- Remember the last image folder used, for next time.
 function InkAwayView:rememberDir(dir)
     last_save_dir = dir
     self:setSetting("inkaway_last_dir", dir)
+end
+
+-- Remember the last project folder used, for next time.
+function InkAwayView:rememberProjectDir(dir)
+    self:setSetting("inkaway_last_project_dir", dir)
 end
 
 function InkAwayView:chooseDestination(fmt)

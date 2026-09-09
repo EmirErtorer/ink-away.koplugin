@@ -16,7 +16,7 @@ Ink Away is meant to stay simple and focused. You get a pen with adjustable size
 - A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
 - Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
 - **Undo and redo**.
-- An optional **grid** (square, dots, ruled lines, isometric, or rule of thirds) with snapping, and a snap-to-45° for straight lines.
+- An optional **grid** (square, dots, ruled lines, isometric, or rule of thirds) with snapping, and a snap-to-45° for straight lines. It is a guide on screen only: the eraser leaves it alone and it never shows up in a saved image.
 - Shapes: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program. Hold a placed shape to rotate, recolour, resize, restyle its opacity, or delete it.
 - A paint bucket that fills an enclosed area with one tap, in the current shade or colour and opacity.
 - An eraser with an adjustable size that takes ink away rather than painting white over it (see Transparency below).
@@ -106,7 +106,7 @@ JPEG cannot store transparency, so a JPEG export lays your ink over a solid whit
 
 ## Where files go
 
-The first time it runs, Ink Away creates an "ink away drawings" folder inside your KOReader folder and uses it as the default place to save, so you don't have to hunt for a folder. You can still pick any destination when you save, and it remembers the last folder you used (across sessions) so the picker starts there next time. You type the file name and the right extension is added. If a name already exists it is overwritten, so choose a new name to keep both.
+The first time it runs, Ink Away creates an "ink away" folder inside your KOReader folder, with two folders inside it: "drawings" for the images you export and "projects" for the editable project files. Saving a PNG or JPEG starts in "drawings"; opening or saving a project starts in "projects". You can still pick any destination, and each dialog remembers the last folder you used (across sessions) so it starts there next time. You type the file name and the right extension is added. If a name already exists it is overwritten, so choose a new name to keep both.
 
 ## Device compatibility
 
