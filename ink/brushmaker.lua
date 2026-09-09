@@ -89,6 +89,14 @@ function BrushMaker:init()
     end
 end
 
+-- Refresh the whole panel when first shown, so it renders in full straight away
+-- (otherwise only the region left by the closing pen popup gets refreshed, which
+-- clips the title and buttons until the first slider move).
+function BrushMaker:onShow()
+    UIManager:setDirty(self, "ui", self.panel)
+    return true
+end
+
 -- Screen rect of slider `i`'s draggable track.
 function BrushMaker:trackRect(i)
     local x = self.box_x + self.pad
