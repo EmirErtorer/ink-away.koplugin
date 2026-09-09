@@ -205,6 +205,7 @@ function InkAwayView:init()
     self.pen_style   = self:getSetting("inkaway_pen_style", "solid")   -- solid|pencil|charcoal|marker
     self.stabilizer  = self:getSetting("inkaway_stabilizer", 40)       -- 0..100
     self.grid_on     = self:getSetting("inkaway_grid", false)
+    self.grid_style  = self:getSetting("inkaway_grid_style", "square")  -- square|dots|lines|iso|thirds
     self.grid_size   = self:getSetting("inkaway_grid_size", math.max(24, math.floor(W / 16)))
     self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
@@ -497,21 +498,26 @@ function InkAwayView:openPenSettings()
         end,
     }}
 
-    -- brush style
-    local styles = { { "solid", _("Ink") }, { "pencil", _("Pencil") }, { "charcoal", _("Charcoal") } }
-    local style_row = {}
-    for _, s in ipairs(styles) do
-        style_row[#style_row + 1] = {
-            text = (self.pen_style == s[1] and "\u{25CF} " or "") .. s[2],
-            callback = function()
-                self.pen_style = s[1]
-                self:setSetting("inkaway_pen_style", s[1])
-                self:openPenSettings()
-            end,
-        }
-    end
+    -- brush style (two rows). Marker/watercolor/acrylic are experimental looks.
+    local style_rows = {
+        { { "solid", _("Ink") }, { "pencil", _("Pencil") }, { "charcoal", _("Charcoal") }, { "marker", _("Marker") } },
+        { { "watercolor", _("Watercolour") }, { "acrylic", _("Acrylic") }, { "hatch", _("Hatch") }, { "stipple", _("Stipple") } },
+    }
     buttons[#buttons + 1] = {{ text = _("Style"), enabled = false }}
-    buttons[#buttons + 1] = style_row
+    for _, sr in ipairs(style_rows) do
+        local row = {}
+        for _, s in ipairs(sr) do
+            row[#row + 1] = {
+                text = (self.pen_style == s[1] and "\u{25CF} " or "") .. s[2],
+                callback = function()
+                    self.pen_style = s[1]
+                    self:setSetting("inkaway_pen_style", s[1])
+                    self:openPenSettings()
+                end,
+            }
+        end
+        buttons[#buttons + 1] = row
+    end
 
     -- shades (primary on e-ink)
     buttons[#buttons + 1] = {{ text = _("Shade"), enabled = false }}
@@ -719,6 +725,100 @@ function InkAwayView:renderView()
     local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
     self.area_bb:blitFrom(scaled, ox, oy, 0, 0, bw, bh)
     if scaled ~= sub and scaled.free then scaled:free() end
+
+    if self.grid_on then self:drawGridInto() end   -- baked in once, not per paint
+end
+
+-- A thin line into area_bb (area coords), clipped to it. Used for grid guides.
+function InkAwayView:gridLine(x0, y0, x1, y1, color)
+    local bb, aw, ah = self.area_bb, self.view.area_w, self.view.area_h
+    local dx, dy = x1 - x0, y1 - y0
+    local steps = math.max(math.abs(dx), math.abs(dy))
+    if steps < 1 then return end
+    local ix, iy = dx / steps, dy / steps
+    local x, y = x0, y0
+    for _ = 0, steps do
+        local px, py = math.floor(x + 0.5), math.floor(y + 0.5)
+        if px >= 0 and px < aw and py >= 0 and py < ah then bb:paintRect(px, py, 1, 1, color) end
+        x = x + ix; y = y + iy
+    end
+end
+
+-- Draw the current grid style into area_bb (display only; never exported).
+function InkAwayView:drawGridInto()
+    local v = self.view
+    local aw, ah = v.area_w, v.area_h
+    local g = self.grid_size
+    local style = self.grid_style or "square"
+    local col = FRAME
+    local function ax(cx) return (cx - v.pan_x) * v.zoom end
+    local function ay(cy) return (cy - v.pan_y) * v.zoom end
+
+    if style == "thirds" then
+        -- rule of thirds over the page rectangle
+        for i = 1, 2 do
+            local x = ax(v.canvas_w * i / 3)
+            if x >= 0 and x < aw then self.area_bb:paintRect(math.floor(x), 0, 1, ah, col) end
+            local y = ay(v.canvas_h * i / 3)
+            if y >= 0 and y < ah then self.area_bb:paintRect(0, math.floor(y), aw, 1, col) end
+        end
+        return
+    end
+
+    if not g or g <= 0 then return end
+
+    if style == "lines" then                       -- ruled horizontal lines
+        local cy = 0
+        while cy <= v.canvas_h do
+            local y = math.floor(ay(cy))
+            if y >= 0 and y < ah then self.area_bb:paintRect(0, y, aw, 1, col) end
+            cy = cy + g
+        end
+    elseif style == "dots" then                     -- dot at each intersection
+        local cy = 0
+        while cy <= v.canvas_h do
+            local y = math.floor(ay(cy))
+            if y >= -1 and y < ah then
+                local cx = 0
+                while cx <= v.canvas_w do
+                    local x = math.floor(ax(cx))
+                    if x >= 0 and x < aw and y >= 0 then self.area_bb:paintRect(x, y, 2, 2, col) end
+                    cx = cx + g
+                end
+            end
+            cy = cy + g
+        end
+    elseif style == "iso" then                      -- isometric: verticals + 30 deg diagonals
+        local cx = 0
+        while cx <= v.canvas_w do
+            local x = ax(cx)
+            if x >= 0 and x < aw then self.area_bb:paintRect(math.floor(x), 0, 1, ah, col) end
+            cx = cx + g
+        end
+        local slope = math.tan(math.rad(30))
+        local spacing = g / math.cos(math.rad(30))
+        -- two diagonal families, offset so they cover the whole area
+        local start = -math.ceil(ah * slope / spacing) * spacing
+        local b = start
+        while b <= v.canvas_w * v.zoom + ah do
+            self:gridLine(ax(0) + b, 0, ax(0) + b + ah * slope, ah, col)      -- down-right
+            self:gridLine(ax(0) + b, ah, ax(0) + b + ah * slope, 0, col)      -- up-right
+            b = b + spacing * v.zoom
+        end
+    else                                            -- "square"
+        local cx = 0
+        while cx <= v.canvas_w do
+            local x = math.floor(ax(cx))
+            if x >= 0 and x < aw then self.area_bb:paintRect(x, 0, 1, ah, col) end
+            cx = cx + g
+        end
+        local cy = 0
+        while cy <= v.canvas_h do
+            local y = math.floor(ay(cy))
+            if y >= 0 and y < ah then self.area_bb:paintRect(0, y, aw, 1, col) end
+            cy = cy + g
+        end
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -742,10 +842,11 @@ function InkAwayView:stampLive(cx, cy, fresh)
     local color = self:liveColor()
     local width = self:liveWidth()
     local style = (self.tool == "erase") and nil or self.pen_style
-    local density = style and Raster.STYLE_DENSITY[style]
+    local st = style and Raster.STYLES[style]
+    local textured = st and not st.solid
     local seed = self.live_seed or 0
     local function stroke(seg, r, put)
-        if density then Raster.pathGrain(seg, r, put, density, seed)
+        if textured then Raster.pathTex(seg, r, put, st, seed)
         else Raster.path(seg, r, put) end
     end
 
@@ -771,6 +872,16 @@ function InkAwayView:stampLive(cx, cy, fresh)
     end
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
+        -- grow the whole-stroke bbox (area coords) for a tidy refresh at the end
+        local sr = self._stroke_rect
+        if not sr then
+            self._stroke_rect = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
+        else
+            if acc.x0 < sr.x0 then sr.x0 = acc.x0 end
+            if acc.y0 < sr.y0 then sr.y0 = acc.y0 end
+            if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
+            if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
+        end
         local v = self.view
         UIManager:setDirty(self, "fast", GeomUI:new{
             x = v.area_x + math.floor(acc.x0),
@@ -807,6 +918,7 @@ function InkAwayView:beginStroke(sx, sy)
     self.pending_lift = nil
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
+    self._stroke_rect = nil
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -827,10 +939,25 @@ function InkAwayView:finalizeStroke()
     self.capturing = false
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
+    local was_erase = self.tool == "erase"
     self.canvas:finishStroke()
     self.dirty = true
-    -- a clean partial refresh settles any ghosting the fast refresh left behind
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
+    -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
+    -- (which fully repaints black/white) to clear them.
+    local mode = was_erase and "flashui" or "ui"
+    local sr, v = self._stroke_rect, self.view
+    if sr then
+        UIManager:setDirty(self, mode, GeomUI:new{
+            x = v.area_x + math.floor(sr.x0) - 2,
+            y = v.area_y + math.floor(sr.y0) - 2,
+            w = math.ceil(sr.x1 - sr.x0) + 4,
+            h = math.ceil(sr.y1 - sr.y0) + 4,
+        })
+    else
+        UIManager:setDirty(self, mode, self:areaScreenRect())
+    end
+    self._stroke_rect = nil
 end
 
 -- Commit immediately if a stroke is open (or pending). Safe to call any time.
@@ -917,21 +1044,22 @@ function InkAwayView:shapeMove(pos)
     end
     if not self.shape_drag then return false end
     local d = self.shape_drag
-    local x1, y1 = self:snapScreen(pos.x, pos.y)
-    if self.snap_angle then
-        if self.shape == "line" or self.shape == "curve" then
-            x1, y1 = InkGeom.snapAngle(d.x0, d.y0, x1, y1)
-        else   -- constrain rect/ellipse/triangle to a square/circle
-            local ex, ey = x1 - d.x0, y1 - d.y0
-            local m = math.max(math.abs(ex), math.abs(ey))
-            x1 = d.x0 + (ex < 0 and -m or m)
-            y1 = d.y0 + (ey < 0 and -m or m)
-        end
-    end
-    d.x1, d.y1 = x1, y1
-    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, d.x0, d.y0, x1, y1)
+    d.x1, d.y1 = self:shapeEndPoint(pos)
+    self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, d.x0, d.y0, d.x1, d.y1)
     self:refreshPreview()
     return true
+end
+
+-- Snap the drag's end point: to the grid (if on), and to 45-degree steps for a
+-- line or curve (if angle snapping is on). Rectangles and ellipses are NOT
+-- forced square, so you can draw any proportion.
+function InkAwayView:shapeEndPoint(pos)
+    local d = self.shape_drag
+    local x1, y1 = self:snapScreen(pos.x, pos.y)
+    if self.snap_angle and (self.shape == "line" or self.shape == "curve") then
+        x1, y1 = InkGeom.snapAngle(d.x0, d.y0, x1, y1)
+    end
+    return x1, y1
 end
 
 function InkAwayView:shapeRelease(pos)
@@ -941,7 +1069,7 @@ function InkAwayView:shapeRelease(pos)
         return true
     end
     if not self.shape_drag then return false end
-    if pos then self.shape_drag.x1, self.shape_drag.y1 = pos.x, pos.y end
+    if pos then self.shape_drag.x1, self.shape_drag.y1 = self:shapeEndPoint(pos) end
     local d = self.shape_drag
     local dx, dy = d.x1 - d.x0, d.y1 - d.y0
     if dx * dx + dy * dy < 9 then      -- basically a tap: nothing to place
@@ -1077,6 +1205,48 @@ function InkAwayView:setAutosave(mode)
     self:scheduleAutosave()
 end
 
+function InkAwayView:openGridStyle()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local opts = {
+        { "square", _("Square grid") }, { "dots", _("Dot grid") },
+        { "lines", _("Ruled lines") }, { "iso", _("Isometric") },
+        { "thirds", _("Rule of thirds") },
+    }
+    local buttons = {}
+    for _, o in ipairs(opts) do
+        buttons[#buttons + 1] = {{
+            text = (self.grid_style == o[1] and "\u{25CF} " or "") .. o[2],
+            callback = function()
+                self.grid_style = o[1]
+                self:setSetting("inkaway_grid_style", o[1])
+                self.grid_on = true
+                self:setSetting("inkaway_grid", true)
+                UIManager:close(dlg)
+                self:renderView(); self:refreshArea()
+                self:openSettings()
+            end,
+        }}
+    end
+    dlg = ButtonDialog:new{ title = _("Grid style"), title_align = "center", buttons = buttons }
+    UIManager:show(dlg)
+end
+
+function InkAwayView:openGridSize()
+    local SpinWidget = require("ui/widget/spinwidget")
+    UIManager:show(SpinWidget:new{
+        title_text = _("Grid spacing"),
+        value = self.grid_size, value_min = 8, value_max = 200, value_step = 4, value_hold_step = 20,
+        unit = _("px"),
+        callback = function(spin)
+            self.grid_size = math.max(4, math.floor(spin.value))
+            self:setSetting("inkaway_grid_size", self.grid_size)
+            self:renderView(); self:refreshArea()
+            self:openSettings()
+        end,
+    })
+end
+
 function InkAwayView:openStabilizer()
     local SpinWidget = require("ui/widget/spinwidget")
     UIManager:show(SpinWidget:new{
@@ -1112,7 +1282,14 @@ function InkAwayView:openSettings()
             { text = _("Save project"), callback = function() UIManager:close(dlg); self:saveProject() end },
         },
         {
-            { text = _("Grid: ") .. onoff(self.grid_on),      callback = function() tog("inkaway_grid", "grid_on", true) end },
+            { text = _("Grid: ") .. onoff(self.grid_on), callback = function()
+                self.grid_on = not self.grid_on; self:setSetting("inkaway_grid", self.grid_on)
+                self:renderView(); self:refreshArea(); reopen()
+            end },
+            { text = _("Style: ") .. self.grid_style, callback = function() UIManager:close(dlg); self:openGridStyle() end },
+            { text = _("Size"), callback = function() UIManager:close(dlg); self:openGridSize() end },
+        },
+        {
             { text = _("Snap grid: ") .. onoff(self.snap_grid), callback = function() tog("inkaway_snap_grid", "snap_grid") end },
             { text = _("Snap 45°: ") .. onoff(self.snap_angle), callback = function() tog("inkaway_snap_angle", "snap_angle") end },
         },
@@ -1641,26 +1818,8 @@ function InkAwayView:paintTo(bb, x, y)
     bb:paintRect(x, y, self.screen_w, self.screen_h, WHITE)
     -- toolbar
     self.toolbar:paintTo(bb, x, y)
-    -- drawing area
+    -- drawing area (the grid, if any, is already baked into area_bb by renderView)
     bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
-    -- optional grid, drawn on top as a light guide (never part of the drawing)
-    if self.grid_on and self.grid_size and self.grid_size > 0 then
-        local ay0, ay1 = y + v.area_y, y + v.area_y + v.area_h
-        local ax0, ax1 = x, x + self.screen_w
-        local gx = 0
-        while gx <= v.canvas_w do
-            local sx = math.floor(x + InkGeom.toScreen(v, gx, 0))
-            if sx >= ax0 and sx < ax1 then bb:paintRect(sx, ay0, 1, ay1 - ay0, FRAME) end
-            gx = gx + self.grid_size
-        end
-        local gy = 0
-        while gy <= v.canvas_h do
-            local _, syf = InkGeom.toScreen(v, 0, gy)
-            local sy = math.floor(y + syf)
-            if sy >= ay0 and sy < ay1 then bb:paintRect(ax0, sy, ax1 - ax0, 1, FRAME) end
-            gy = gy + self.grid_size
-        end
-    end
     -- the frame marking the page: where the full W x H export sits on screen
     local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
     local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)

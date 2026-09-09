@@ -32,9 +32,9 @@ local function paintGeom(op, put)
     elseif op.kind == "fill" then
         Fill.render(op, put)
     else
-        local density = op.kind == "ink" and op.style and Raster.STYLE_DENSITY[op.style]
-        if density then
-            Raster.pathGrain(op.pts, op.width / 2, put, density, op.seed or 0)
+        local st = op.kind == "ink" and op.style and Raster.STYLES[op.style]
+        if st and not st.solid then
+            Raster.pathTex(op.pts, op.width / 2, put, st, op.seed or 0)
         else
             Raster.path(op.pts, op.width / 2, put)
         end

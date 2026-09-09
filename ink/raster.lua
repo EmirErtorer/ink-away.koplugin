@@ -74,47 +74,100 @@ function Raster.path(pts, r, put)
     end
 end
 
--- A grainy disc: instead of a solid fill, each pixel is kept with probability
--- `density` (via the stable hash), giving a pencil/charcoal texture. Emitted as
--- single-pixel spans through `put`.
-function Raster.discGrain(cx, cy, r, put, density, seed)
+-- Textured pen styles. Each is a per-pixel test: given the pixel, its distance
+-- from the stamp centre (0 at centre, 1 at the rim) and the stable hash, decide
+-- whether to ink it. This is how the styles get their distinct feel on grey
+-- e-ink, where "lighter" is really "fewer black pixels among the white".
+--   density : base fraction of pixels inked
+--   edge    : how much thinner the ink gets toward the rim (0 = flat)
+--   grow    : how far past the nominal radius the texture scatters (fraction)
+--   pattern : nil | "hatch" (diagonal lines) | "stipple" (coarse dots) | "streak"
+--   blotch  : uneven, cloudy coverage (for a washy look)
+-- Per style:
+--   density  : base fraction of pixels inked
+--   cell     : grain clump size in px (grains this big read as pigment, not TV
+--              static; 1 = finest)
+--   edge     : fade toward the rim (soft, dry edge) 0..1
+--   edgedark : build up toward the rim (wet pooling) 0..1
+--   grow     : how far past the radius the texture scatters (fraction)
+--   blotch   : cloudy, uneven coverage (a wash)
+--   pattern  : nil | "hatch" | "stipple" | "streak"
+Raster.STYLES = {
+    solid      = { solid = true },
+    pencil     = { density = 0.40, cell = 1, edge = 0.45, grow = 0.05 },
+    charcoal   = { density = 0.95, cell = 2, edge = 0.30, grow = 0.35 },
+    marker     = { density = 0.66, cell = 1, edge = 0.05, grow = 0.02 },
+    watercolor = { density = 0.62, cell = 3, edgedark = 0.55, grow = 0.45, blotch = true },
+    acrylic    = { density = 0.92, cell = 2, edge = 0.15, grow = 0.10, pattern = "streak" },
+    hatch      = { density = 1.00, cell = 1, pattern = "hatch" },
+    stipple    = { density = 0.55, cell = 3, edge = 0.15, grow = 0.10 },
+}
+
+local floor, sqrt = math.floor, math.sqrt
+
+-- Whether pixel (x,y) at relative distance t (0..1+grow) is inked for this style.
+local function inked(st, x, y, t, seed)
+    local grow = st.grow or 0
+    if t > 1 + grow then return false end
+    local p = st.density or 1
+    local tc = t > 1 and 1 or t
+    if st.edge then p = p * (1 - st.edge * tc * tc) end          -- dry, fading edge
+    if st.edgedark then p = p * (1 + st.edgedark * tc * tc) end  -- wet, pooling edge
+    if t > 1 then p = p * 0.35 * (1 - (t - 1) / grow) end        -- soft fringe past rim
+    local pat = st.pattern
+    if pat == "hatch" then
+        if ((x - y) % 7) >= 2 then return false end
+    elseif pat == "streak" then
+        if hash01(0, floor(y / 2), seed) > 0.85 then return false end
+    end
+    if st.blotch then
+        p = p * (0.45 + 0.75 * hash01(floor(x / 7), floor(y / 7), seed + 9))
+    end
+    local cell = st.cell or 1
+    local h = (cell > 1) and hash01(floor(x / cell), floor(y / cell), seed)
+                          or hash01(x, y, seed)
+    return h < p
+end
+
+-- A textured disc for style `st`.
+function Raster.discTex(cx, cy, r, put, st, seed)
     if r < 0.5 then r = 0.5 end
-    local r2 = r * r
-    local icx, icy, ir = math.floor(cx + 0.5), math.floor(cy + 0.5), math.floor(r)
+    local rmax = r * (1 + (st.grow or 0))
+    local icx, icy = floor(cx + 0.5), floor(cy + 0.5)
+    local ir = floor(rmax)
     for dy = -ir, ir do
-        local span = math.floor(math.sqrt(r2 - dy * dy) + 0.5)
         local y = icy + dy
-        for dx = -span, span do
-            local x = icx + dx
-            if hash01(x, y, seed) < density then put(x, y, 1) end
+        for dx = -ir, ir do
+            local d = sqrt(dx * dx + dy * dy) / r
+            if d <= 1 + (st.grow or 0) then
+                local x = icx + dx
+                if inked(st, x, y, d, seed) then put(x, y, 1) end
+            end
         end
     end
 end
 
--- Like Raster.path but grainy, for pencil/charcoal styles.
-function Raster.pathGrain(pts, r, put, density, seed)
-    local n = math.floor(#pts / 2)
+-- Like Raster.path but with a textured pen style.
+function Raster.pathTex(pts, r, put, st, seed)
+    local n = floor(#pts / 2)
     if n == 0 then return end
     local px, py = pts[1], pts[2]
-    Raster.discGrain(px, py, r, put, density, seed)
+    Raster.discTex(px, py, r, put, st, seed)
     for i = 2, n do
         local nx, ny = pts[2 * i - 1], pts[2 * i]
         local dx, dy = nx - px, ny - py
         local dist2 = dx * dx + dy * dy
         if dist2 >= 1 then
-            local steps = math.ceil(math.sqrt(dist2))
+            local steps = math.ceil(sqrt(dist2))
             local inv = 1 / steps
             for s = 1, steps do
-                Raster.discGrain(px + dx * (s * inv), py + dy * (s * inv), r, put, density, seed)
+                Raster.discTex(px + dx * (s * inv), py + dy * (s * inv), r, put, st, seed)
             end
         else
-            Raster.discGrain(nx, ny, r, put, density, seed)
+            Raster.discTex(nx, ny, r, put, st, seed)
         end
         px, py = nx, ny
     end
 end
-
--- Grain density for each pen style (nil = solid, no grain).
-Raster.STYLE_DENSITY = { pencil = 0.5, charcoal = 0.72 }
 
 return Raster
