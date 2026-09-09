@@ -68,7 +68,11 @@ function BrushMaker:init()
     end
     self.box_x = math.floor((sw - self.box_w) / 2)
     self.box_y = math.max(Screen:scaleBySize(12), math.floor((sh - self.box_h) / 2))
-    self.dimen = Geom:new{ x = self.box_x, y = self.box_y, w = self.box_w, h = self.box_h }
+    -- span the whole screen so the panel is always inside the painted and
+    -- refreshed region (a box-sized dimen let the edges fall outside on some
+    -- devices); keep the box rect separately for the cheap slider refreshes
+    self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+    self.panel = Geom:new{ x = self.box_x, y = self.box_y, w = self.box_w, h = self.box_h }
 
     self.preview_bb = Blitbuffer.new(self.box_w - self.pad * 2, self.preview_h, Screen.bb:getType())
     self:renderPreview()
@@ -215,7 +219,7 @@ function BrushMaker:schedulePreview()
     self._preview_cb = self._preview_cb or function()
         self._preview_pending = false
         self:renderPreview()
-        UIManager:setDirty(self, "fast", self.dimen)
+        UIManager:setDirty(self, "fast", self.panel)
     end
     UIManager:scheduleIn(0.06, self._preview_cb)
 end
@@ -226,7 +230,7 @@ function BrushMaker:setSlider(px, py)
     if self.params[f.id] ~= val then
         self.params[f.id] = val
         self:schedulePreview()
-        UIManager:setDirty(self, "fast", self.dimen)   -- move the knob now (cheap)
+        UIManager:setDirty(self, "fast", self.panel)   -- move the knob now (cheap)
     end
     return true
 end
