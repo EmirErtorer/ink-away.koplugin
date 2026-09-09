@@ -22,7 +22,7 @@ Ink Away is meant to stay simple and focused. You get a pen with adjustable size
 - A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
 - Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
 - **Undo and redo**.
-- An optional **grid** (square, dots, ruled lines, isometric, or rule of thirds) with snapping, and a snap-to-45° for straight lines. It is a guide on screen only: the eraser leaves it alone and it never shows up in a saved image.
+- An optional **grid** (square, dots, ruled lines, isometric, or rule of thirds) with snapping, and a snap-to-45° for straight lines. You can set how strong it looks, from a faint guide up to solid like drawn ink. It is a guide on screen only: the eraser leaves it alone and it never shows up in a saved image.
 - Shapes: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program. Hold a placed shape to rotate, recolour, resize, restyle its opacity, or delete it.
 - A paint bucket that fills an enclosed area with one tap, in the current shade or colour and opacity.
 - An eraser with an adjustable size that takes ink away rather than painting white over it (see Transparency below).

@@ -229,6 +229,7 @@ function InkAwayView:init()
     self.grid_on     = self:getSetting("inkaway_grid", false)
     self.grid_style  = self:getSetting("inkaway_grid_style", "square")  -- square|dots|lines|iso|thirds
     self.grid_size   = self:getSetting("inkaway_grid_size", math.max(24, math.floor(W / 16)))
+    self.grid_strength = self:getSetting("inkaway_grid_strength", 45)   -- 1..100, 100 = ink black
     self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off|vert|horiz|quad
@@ -912,7 +913,11 @@ function InkAwayView:drawGrid(bb, ox, oy)
     local aw, ah = v.area_w, v.area_h
     local g = self.grid_size
     local style = self.grid_style or "square"
-    local col = FRAME
+    -- strength 1..100 maps to a grey: faint at low values, solid black at 100,
+    -- so the reader can make the grid a light guide or as dark as drawn ink
+    local lvl = math.floor(255 - (self.grid_strength or 45) / 100 * 255 + 0.5)
+    if lvl < 0 then lvl = 0 elseif lvl > 255 then lvl = 255 end
+    local col = Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF)
     local function ax(cx) return (cx - v.pan_x) * v.zoom end
     local function ay(cy) return (cy - v.pan_y) * v.zoom end
     -- paint a rect given in area coords, clipped to the area and then offset
@@ -944,9 +949,9 @@ function InkAwayView:drawGrid(bb, ox, oy)
             if y >= 0 and y < ah then rect(0, y, aw, 1, col) end
             cy = cy + g
         end
-    elseif style == "dots" then                     -- dark dot at each intersection
+    elseif style == "dots" then                     -- a dot at each intersection
         local dot = math.max(3, math.floor(Screen:scaleBySize(3)))
-        local dcol = Blitbuffer.COLOR_BLACK           -- dots need to be visible
+        local dcol = col                              -- follow the grid strength
         local cy = 0
         while cy <= v.canvas_h do
             local y = math.floor(ay(cy)) - math.floor(dot / 2)
@@ -1684,6 +1689,24 @@ function InkAwayView:openGridSize()
     })
 end
 
+function InkAwayView:openGridStrength()
+    local SpinWidget = require("ui/widget/spinwidget")
+    UIManager:show(SpinWidget:new{
+        title_text = _("Grid strength"),
+        info_text = _("How dark the grid lines look, from a faint guide up to solid, like drawn ink."),
+        value = self.grid_strength, value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
+        unit = "%",
+        callback = function(spin)
+            self.grid_strength = math.max(1, math.min(100, math.floor(spin.value)))
+            self:setSetting("inkaway_grid_strength", self.grid_strength)
+            self.grid_on = true
+            self:setSetting("inkaway_grid", true)
+            self:refreshArea()
+            self:openSettings()
+        end,
+    })
+end
+
 function InkAwayView:openStabilizer()
     local SpinWidget = require("ui/widget/spinwidget")
     UIManager:show(SpinWidget:new{
@@ -1731,6 +1754,7 @@ function InkAwayView:openSettings()
             end },
             { text = _("Style: ") .. self.grid_style, callback = function() UIManager:close(dlg); self:openGridStyle() end },
             { text = _("Size"), callback = function() UIManager:close(dlg); self:openGridSize() end },
+            { text = _("Strength"), callback = function() UIManager:close(dlg); self:openGridStrength() end },
         },
         {{ text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end }},
         {
