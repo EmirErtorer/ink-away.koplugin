@@ -62,13 +62,16 @@ end
 -- out of the same replay with no extra bookkeeping. Everything (the RGBA and RGB
 -- builders, and the fill's grey buffer) shares this, so all stay pixel for pixel
 -- identical to the rasterizer.
-local function replay(canvas, ink_put, erase_put)
+-- `erase_put_for(op)` is a factory returning the span writer for an erase op, so
+-- a "hard" erase (one that also removes the background) can behave differently
+-- from an ordinary one.
+local function replay(canvas, ink_put, erase_put_for)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
         local put
         if op.kind == "erase" then
-            put = erase_put
+            put = erase_put_for(op)
         else
             local r, g, b = opRGB(op)
             put = ink_put(r, g, b, op.alpha or 255)
@@ -85,8 +88,10 @@ local function dims(canvas, rect)
 end
 
 -- Build a tightly packed RGBA buffer (ow*oh*4 bytes), transparent where no ink.
--- `rect` optionally crops to {x,y,w,h}. Returns buf, byte_count, ow, oh.
-function Export.buildRGBA(canvas, rect)
+-- `rect` optionally crops to {x,y,w,h}. `clear_mask` (optional, ow*oh bytes) is
+-- set to 1 wherever a "hard" erase (op.ebg) clears, so the background composite
+-- can leave those pixels transparent. Returns buf, byte_count, ow, oh.
+function Export.buildRGBA(canvas, rect, clear_mask)
     local ow, oh, offx, offy = dims(canvas, rect)
     local n = ow * oh * 4
     local buf = ffi.new("uint8_t[?]", n)  -- starts all zero, so fully transparent
@@ -110,16 +115,23 @@ function Export.buildRGBA(canvas, rect)
             end
         end
     end
-    local function erase_put(x, y, len)
-        local cx, cy, clen = clamp_run(x, y, len)
-        if not cx then return end
-        local base = (cy * ow + cx) * 4
-        for i = 0, clen - 1 do
-            local o = base + i * 4
-            buf[o] = 0; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = 0
+    local function make_erase(hard)
+        return function(x, y, len)
+            local cx, cy, clen = clamp_run(x, y, len)
+            if not cx then return end
+            local base = (cy * ow + cx) * 4
+            for i = 0, clen - 1 do
+                local o = base + i * 4
+                buf[o] = 0; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = 0
+            end
+            if hard and clear_mask then
+                local mb = cy * ow + cx
+                for i = 0, clen - 1 do clear_mask[mb + i] = 1 end
+            end
         end
     end
-    replay(canvas, ink_put, erase_put)
+    local soft_erase, hard_erase = make_erase(false), make_erase(true)
+    replay(canvas, ink_put, function(op) return op.ebg and hard_erase or soft_erase end)
     return buf, n, ow, oh
 end
 
@@ -163,7 +175,7 @@ function Export.buildRGB(canvas, rect)
             buf[o] = 0xFF; buf[o + 1] = 0xFF; buf[o + 2] = 0xFF
         end
     end
-    replay(canvas, ink_put, erase_put)
+    replay(canvas, ink_put, function() return erase_put end)
     return buf, n, ow, oh
 end
 
@@ -198,20 +210,21 @@ function Export.buildGray(canvas)
         local base = y * w + cx
         for i = 0, clen - 1 do buf[base + i] = 0xFF end
     end
-    replay(canvas, ink_put, erase_put)
+    replay(canvas, ink_put, function() return erase_put end)
     return buf
 end
 
 -- Composite the ink RGBA layer `ink` over the background RGBA `bg` (both packed
 -- ow*oh*4). `bg` is canvas sized; `offx,offy` place the crop within it. Writes
 -- the result back into `ink`. Standard "source over" alpha compositing.
-local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy)
+local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy, clear_mask)
     for y = 0, oh - 1 do
         local by = (y + offy)
         for x = 0, ow - 1 do
-            local io = (y * ow + x) * 4
+            local i = y * ow + x
+            local io = i * 4
             local ai = ink[io + 3]
-            if ai < 255 then
+            if ai < 255 and not (clear_mask and clear_mask[i] == 1) then
                 local bo = (by * bgw + (x + offx)) * 4
                 local ab = bg[bo + 3]
                 if ab > 0 then
@@ -237,11 +250,13 @@ end
 function Export.savePNG(canvas, path, opts)
     opts = opts or {}
     local Png = require("ffi/png")
-    local buf, _, ow, oh = Export.buildRGBA(canvas, opts.rect)
+    local ow, oh = dims(canvas, opts.rect)
+    local mask = opts.bg and ffi.new("uint8_t[?]", ow * oh) or nil
+    local buf = Export.buildRGBA(canvas, opts.rect, mask)
     if opts.bg then
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
-        compositeOverBg(buf, ow, oh, opts.bg, canvas.w, offx, offy)
+        compositeOverBg(buf, ow, oh, opts.bg, canvas.w, offx, offy, mask)
     end
     return Png.encodeToFile(path, buf, ow, oh, 4)
 end
@@ -255,10 +270,12 @@ function Export.saveJPEG(canvas, path, quality, opts)
     if opts.bg then
         -- composite ink over the background, then flatten the result onto white
         local rgba
-        rgba, _, ow, oh = Export.buildRGBA(canvas, opts.rect)
+        ow, oh = dims(canvas, opts.rect)
+        local mask = ffi.new("uint8_t[?]", ow * oh)
+        rgba = Export.buildRGBA(canvas, opts.rect, mask)
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
-        compositeOverBg(rgba, ow, oh, opts.bg, canvas.w, offx, offy)
+        compositeOverBg(rgba, ow, oh, opts.bg, canvas.w, offx, offy, mask)
         rgb = ffi.new("uint8_t[?]", ow * oh * 3)
         for i = 0, ow * oh - 1 do
             local a = rgba[i * 4 + 3] / 255

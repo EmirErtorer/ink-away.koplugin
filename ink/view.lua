@@ -127,6 +127,25 @@ local function spanWriter(bb, w, h, color, acc)
     end
 end
 
+-- A span writer that restores the background image over the run (instead of
+-- painting a colour). Used by the eraser when it should reveal the background
+-- rather than clear to white. Optionally grows `acc` like spanWriter.
+local function bgSpanWriter(bb, bg, w, h, acc)
+    return function(x, y, len)
+        if y < 0 or y >= h then return end
+        if x < 0 then len = len + x; x = 0 end
+        if x + len > w then len = w - x end
+        if len <= 0 then return end
+        bb:blitFrom(bg, x, y, x, y, len, 1)
+        if acc then
+            if x < acc.x0 then acc.x0 = x end
+            if x + len > acc.x1 then acc.x1 = x + len end
+            if y < acc.y0 then acc.y0 = y end
+            if y + 1 > acc.y1 then acc.y1 = y + 1 end
+        end
+    end
+end
+
 local InkAwayView = InputContainer:extend{
     name = "inkaway_view",
     covers_fullscreen = true,
@@ -234,6 +253,7 @@ function InkAwayView:init()
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off|vert|horiz|quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- 0 = off, else stroke count
+    self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- eraser also removes the background?
     self._strokes_since_full = 0
     self.autosave    = self:getSetting("inkaway_autosave", "exit")     -- off|exit|periodic
     self.dirty = false
@@ -652,10 +672,30 @@ function InkAwayView:openSizeOpacity()
     UIManager:show(dlg)
 end
 
--- Eraser size, the same idea as the pen's size control.
+-- Eraser menu: size, and whether the eraser also removes the background image.
 function InkAwayView:openEraserSettings()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local buttons = {
+        {{ text = string.format(_("Size: %d px"), self.eraser_width),
+           callback = function() UIManager:close(dlg); self:openEraserSize() end }},
+        {{ text = _("Erase background: ") .. (self.erase_bg and _("on") or _("off")),
+           callback = function()
+               self.erase_bg = not self.erase_bg
+               self:setSetting("inkaway_erase_bg", self.erase_bg)
+               UIManager:close(dlg); self:openEraserSettings()
+           end }},
+        {{ text = _("When off, the eraser removes your ink but leaves the background picture untouched."), enabled = false }},
+        {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
+    }
+    dlg = ButtonDialog:new{ title = _("Eraser"), title_align = "center", buttons = buttons }
+    UIManager:show(dlg)
+end
+
+-- The eraser's width, in canvas pixels.
+function InkAwayView:openEraserSize()
     local SpinWidget = require("ui/widget/spinwidget")
-    local dlg = SpinWidget:new{
+    UIManager:show(SpinWidget:new{
         title_text = _("Eraser size"),
         info_text = _("The eraser's width, in canvas pixels."),
         value = self.eraser_width,
@@ -663,9 +703,9 @@ function InkAwayView:openEraserSettings()
         unit = _("px"),
         callback = function(spin)
             self.eraser_width = math.max(1, math.floor(spin.value))
+            self:openEraserSettings()
         end,
-    }
-    UIManager:show(dlg)
+    })
 end
 
 -- Arrowhead size, in canvas pixels (used by the arrow shapes).
@@ -848,7 +888,12 @@ function InkAwayView:composeCanvas()
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(self.canvas.ops) do
         if not op.hidden then      -- a shape being rotated is drawn as a preview
-            local put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
+            local put
+            if op.kind == "erase" and not op.ebg and self.bg_bb then
+                put = bgSpanWriter(self.canvas_bb, self.bg_bb, W, H, nil)  -- reveal the background
+            else
+                put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
+            end
             Export.paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy))
         end
     end
@@ -1017,7 +1062,51 @@ end
 -- 1:1 master (so a later zoom/pan re-render is correct) and the on-screen buffer
 -- at the current zoom (so drawing feels immediate). Only the on-screen dirty
 -- rectangle is refreshed. `fresh` starts a new segment with no line back.
+-- The eraser, when set to leave the background, restores the background image
+-- along its path in the master and re-renders the affected area, so erasing
+-- takes away your ink but the picture underneath shows through (matching what a
+-- background-keeping export produces).
+function InkAwayView:stampEraseRestore(cx, cy, fresh)
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local r = self.eraser_width / 2
+    local px, py = self.last_cx, self.last_cy
+    local put = bgSpanWriter(self.canvas_bb, self.bg_bb, W, H, nil)
+    if self.symmetry ~= "off" then
+        local rx, ry = Symmetry.canvasRefs(W, H)
+        put = Symmetry.wrap(put, self.symmetry, rx, ry)
+    end
+    if px and not fresh then
+        Raster.path({ px, py, cx, cy }, r, put)
+    else
+        Raster.path({ cx, cy }, r, put)
+    end
+    self.last_cx, self.last_cy = cx, cy
+    self:renderView()   -- cheap crop-scale of the master, now showing the background
+    local zr = r * self.view.zoom + 2
+    local ax0, ay0 = self:toAreaLocal(px or cx, py or cy)
+    local ax1, ay1 = self:toAreaLocal(cx, cy)
+    local acc = {
+        x0 = math.min(ax0, ax1) - zr, y0 = math.min(ay0, ay1) - zr,
+        x1 = math.max(ax0, ax1) + zr, y1 = math.max(ay0, ay1) + zr,
+    }
+    local sr = self._stroke_rect
+    if not sr then
+        self._stroke_rect = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
+    else
+        if acc.x0 < sr.x0 then sr.x0 = acc.x0 end
+        if acc.y0 < sr.y0 then sr.y0 = acc.y0 end
+        if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
+        if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
+    end
+    for _, rr in ipairs(self:symAreaRects(acc)) do
+        self:dirtyAreaRect("fast", rr, 1)
+    end
+end
+
 function InkAwayView:stampLive(cx, cy, fresh)
+    if self.tool == "erase" and not self.erase_bg and self.bg_bb then
+        return self:stampEraseRestore(cx, cy, fresh)
+    end
     local color = self:liveColor()
     local width = self:liveWidth()
     local style = nil
@@ -1111,6 +1200,8 @@ function InkAwayView:beginStroke(sx, sy)
     self.canvas:startStroke(is_erase and "erase" or "ink",
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
+    -- a "hard" erase also removes the background; the soft default leaves it
+    if is_erase and self.erase_bg and self.canvas.live then self.canvas.live.ebg = true end
     self.capturing = true
     self.pending_lift = nil
     self.last_ax, self.last_ay = nil, nil
