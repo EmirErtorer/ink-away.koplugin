@@ -27,12 +27,15 @@ local BUILTIN = {
 
 -- The sliders a brush is built from, each 0..1 unless noted, with how they map
 -- onto the rasterizer's fields. This is the whole vocabulary of the brush maker.
+-- Ranges are kept modest on purpose: large spread/tooth make a brush scan many
+-- more pixels per stamp, so capping them keeps a made brush about as quick as a
+-- built in one.
 Brushes.FIELDS = {
     { id = "density",  label = "Ink",       min = 0.2,  max = 1.0 },
-    { id = "cell",     label = "Grain",     min = 1,    max = 5,  step = 1 },
+    { id = "cell",     label = "Grain",     min = 1,    max = 4,  step = 1 },
     { id = "edge",     label = "Soft edge", min = 0.0,  max = 0.9 },
-    { id = "grow",     label = "Spread",    min = 0.0,  max = 0.6 },
-    { id = "tooth",    label = "Tooth",     min = 0,    max = 6,  step = 1 },
+    { id = "grow",     label = "Spread",    min = 0.0,  max = 0.35 },
+    { id = "tooth",    label = "Tooth",     min = 0,    max = 4,  step = 1 },
 }
 
 -- A sensible starting point for a brand new brush.

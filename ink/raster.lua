@@ -135,7 +135,7 @@ local function inked(st, x, y, d2, seed, outer)
     if st.blotch then
         p = p * (0.45 + 0.75 * hash01(floor(x / 7), floor(y / 7), seed + 9))
     end
-    if st.tooth then   -- paper-tooth: some patches catch more grain than others
+    if st.tooth and st.tooth > 0 then   -- paper-tooth: some patches catch more grain
         local tc = st.tooth
         p = p * (0.5 + 1.0 * hash01(floor(x / tc), floor(y / tc), seed + 7))
     end

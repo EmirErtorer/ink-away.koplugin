@@ -190,13 +190,28 @@ function BrushMaker:sliderAt(px, py)
     end
 end
 
+-- Re-render the sample stroke at most ~16 times a second, coalescing a burst of
+-- drag samples into one render. The knob still tracks the finger every event
+-- (that is just a repaint), but the heavier stroke render is throttled, so the
+-- e-ink refresh queue never backs up and the panel stays responsive.
+function BrushMaker:schedulePreview()
+    if self._preview_pending then return end
+    self._preview_pending = true
+    self._preview_cb = self._preview_cb or function()
+        self._preview_pending = false
+        self:renderPreview()
+        UIManager:setDirty(self, "fast", self.dimen)
+    end
+    UIManager:scheduleIn(0.06, self._preview_cb)
+end
+
 function BrushMaker:setSlider(px, py)
     local f, val = self:sliderAt(px, py)
     if not f then return false end
     if self.params[f.id] ~= val then
         self.params[f.id] = val
-        self:renderPreview()
-        UIManager:setDirty(self, "ui", self.dimen)
+        self:schedulePreview()
+        UIManager:setDirty(self, "fast", self.dimen)   -- move the knob now (cheap)
     end
     return true
 end
@@ -247,6 +262,7 @@ function BrushMaker:promptName()
 end
 
 function BrushMaker:onCloseWidget()
+    if self._preview_cb then UIManager:unschedule(self._preview_cb) end
     if self.preview_bb then self.preview_bb:free(); self.preview_bb = nil end
 end
 

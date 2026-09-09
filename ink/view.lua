@@ -13,6 +13,7 @@ small changed rectangle is refreshed. The big RGBA export buffer, which is the
 full canvas size, is built only when you save and is never kept around.
 ]]
 
+local ffi = require("ffi")
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local ButtonDialog = require("ui/widget/buttondialog")
@@ -63,6 +64,22 @@ local Screen = Device.screen
 
 -- Remembered across saves within a KOReader session (module scope).
 local last_save_dir = nil
+
+-- Worked out once: are a BBRGB32 buffer's bytes laid out R,G,B,A (so they can be
+-- copied straight into an RGBA export buffer) or B,G,R,A (so R and B must swap)?
+local rgb32_is_rgba = nil
+local function rgb32IsRGBA()
+    if rgb32_is_rgba ~= nil then return rgb32_is_rgba end
+    rgb32_is_rgba = true
+    pcall(function()
+        local probe = Blitbuffer.new(1, 1, Blitbuffer.TYPE_BBRGB32)
+        probe:setPixel(0, 0, Blitbuffer.ColorRGB32(10, 20, 30, 40))
+        local p = ffi.cast("uint8_t*", probe.data)
+        rgb32_is_rgba = (p[0] == 10 and p[1] == 20 and p[2] == 30)
+        probe:free()
+    end)
+    return rgb32_is_rgba
+end
 
 local WHITE = Blitbuffer.COLOR_WHITE
 local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
@@ -776,6 +793,41 @@ function InkAwayView:areaScreenRect()
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
 
+-- Given a changed rectangle of the base (un-mirrored) stroke in area-local
+-- coordinates, return that rectangle plus one for each mirror image the current
+-- symmetry produces. This keeps refreshes to a few small rectangles instead of
+-- one huge box spanning the drawn side and all its mirrors (which would make
+-- every stroke a near full-screen refresh, the symmetry slowdown).
+function InkAwayView:symAreaRects(acc)
+    local base = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
+    local rects = { base }
+    local sym = self.symmetry
+    if not sym or sym == "off" then return rects end
+    local v = self.view
+    local kx = (v.canvas_w - 2 * v.pan_x) * v.zoom
+    local ky = (v.canvas_h - 2 * v.pan_y) * v.zoom
+    local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
+    local function flipX(r) return { x0 = kx - r.x1, y0 = r.y0, x1 = kx - r.x0, y1 = r.y1 } end
+    local function flipY(r) return { x0 = r.x0, y0 = ky - r.y1, x1 = r.x1, y1 = ky - r.y0 } end
+    if mx then rects[#rects + 1] = flipX(base) end
+    if my then rects[#rects + 1] = flipY(base) end
+    if mx and my then rects[#rects + 1] = flipY(flipX(base)) end
+    return rects
+end
+
+-- Refresh one area-local rectangle (clipped to the drawing area) at `mode`.
+function InkAwayView:dirtyAreaRect(mode, r, pad)
+    pad = pad or 0
+    local v = self.view
+    local x0 = math.max(0, math.floor(r.x0) - pad)
+    local y0 = math.max(0, math.floor(r.y0) - pad)
+    local x1 = math.min(v.area_w, math.ceil(r.x1) + pad)
+    local y1 = math.min(v.area_h, math.ceil(r.y1) + pad)
+    if x1 <= x0 or y1 <= y0 then return end
+    UIManager:setDirty(self, mode, GeomUI:new{
+        x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
+end
+
 -- The colour a committed op is drawn with on screen (ink shade at its opacity,
 -- or the background for an eraser).
 function InkAwayView:opColor(op)
@@ -989,13 +1041,23 @@ function InkAwayView:stampLive(cx, cy, fresh)
         self.last_cx, self.last_cy = cx, cy
     end
 
-    -- on screen, at the current zoom
+    -- on screen, at the current zoom. `acc` tracks only the base image; the
+    -- mirror images are painted through a writer that does NOT grow acc, so the
+    -- refresh stays a few small rects (one per image) instead of one giant box.
     local ax, ay = self:toAreaLocal(cx, cy)
     local acc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
-    local aput = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, acc)
+    local baseput = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, acc)
+    local aput = baseput
     if sym and sym ~= "off" then
         local arefx, arefy = Symmetry.areaRefs(self.view)
-        aput = Symmetry.wrap(aput, sym, arefx, arefy)
+        local mirror = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, nil)
+        local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
+        aput = function(x, y, len)
+            baseput(x, y, len)
+            if mx then mirror(arefx(x, len), y, len) end
+            if my then mirror(x, arefy(y), len) end
+            if mx and my then mirror(arefx(x, len), arefy(y), len) end
+        end
     end
     if self.last_ax and not fresh then
         stroke({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, aput)
@@ -1004,7 +1066,7 @@ function InkAwayView:stampLive(cx, cy, fresh)
     end
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
-        -- grow the whole-stroke bbox (area coords) for a tidy refresh at the end
+        -- grow the whole-stroke (base) bbox for a tidy refresh at the end
         local sr = self._stroke_rect
         if not sr then
             self._stroke_rect = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
@@ -1014,13 +1076,9 @@ function InkAwayView:stampLive(cx, cy, fresh)
             if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
             if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
         end
-        local v = self.view
-        UIManager:setDirty(self, "fast", GeomUI:new{
-            x = v.area_x + math.floor(acc.x0),
-            y = v.area_y + math.floor(acc.y0),
-            w = math.ceil(acc.x1 - acc.x0) + 1,
-            h = math.ceil(acc.y1 - acc.y0) + 1,
-        })
+        for _, r in ipairs(self:symAreaRects(acc)) do
+            self:dirtyAreaRect("fast", r, 1)
+        end
     end
 end
 
@@ -1080,14 +1138,13 @@ function InkAwayView:finalizeStroke()
     -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
     -- (which fully repaints black/white) to clear them.
     local mode = was_erase and "flashui" or "ui"
-    local sr, v = self._stroke_rect, self.view
+    local sr = self._stroke_rect
     if sr then
-        UIManager:setDirty(self, mode, GeomUI:new{
-            x = v.area_x + math.floor(sr.x0) - 2,
-            y = v.area_y + math.floor(sr.y0) - 2,
-            w = math.ceil(sr.x1 - sr.x0) + 4,
-            h = math.ceil(sr.y1 - sr.y0) + 4,
-        })
+        -- refresh the base rect and each mirror rect separately, so an erase
+        -- under symmetry flashes a few small areas rather than the whole screen
+        for _, r in ipairs(self:symAreaRects(sr)) do
+            self:dirtyAreaRect(mode, r, 2)
+        end
     else
         UIManager:setDirty(self, mode, self:areaScreenRect())
     end
@@ -1311,8 +1368,20 @@ end
 
 function InkAwayView:cropMove(pos)
     if not (pos and self._crop_screen) then return true end
-    self._crop_screen.x1, self._crop_screen.y1 = pos.x, pos.y
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    local c = self._crop_screen
+    local ox0, oy0, ox1, oy1 = c.x0, c.y0, c.x1, c.y1   -- previous box
+    c.x1, c.y1 = pos.x, pos.y
+    -- refresh only the union of the old and new selection boxes, and use a fast
+    -- (non-flashing) refresh so dragging stays smooth instead of queueing full
+    -- grayscale updates
+    local v = self.view
+    local minx = math.max(v.area_x, math.min(ox0, ox1, c.x0, c.x1) - 3)
+    local miny = math.max(v.area_y, math.min(oy0, oy1, c.y0, c.y1) - 3)
+    local maxx = math.min(v.area_x + v.area_w, math.max(ox0, ox1, c.x0, c.x1) + 3)
+    local maxy = math.min(v.area_y + v.area_h, math.max(oy0, oy1, c.y0, c.y1) + 3)
+    if maxx > minx and maxy > miny then
+        UIManager:setDirty(self, "fast", GeomUI:new{ x = minx, y = miny, w = maxx - minx, h = maxy - miny })
+    end
     return true
 end
 
@@ -1463,25 +1532,26 @@ function InkAwayView:openGhostClean()
     })
 end
 
--- Read every pixel of a decoded image into a tightly packed RGBA FFI buffer at
--- canvas size, so the export can composite the drawing over it. Alpha is kept
--- where the source has it (a transparent PNG stays transparent), else opaque.
-function InkAwayView:bbToRGBA(bb, W, H)
-    local ffi = require("ffi")
+-- Build a canvas-sized RGBA FFI buffer from the background (a BBRGB32 whose
+-- memory is already r,g,b,alpha). One memcpy per row, not a million per-pixel
+-- reads, so it is quick even on a Kindle. Alpha is kept, so a transparent PNG
+-- stays transparent. Returns the buffer, or nil.
+function InkAwayView:buildBgRGBA()
+    if not self.bg_bb then return nil end
+    local W, H = self.view.canvas_w, self.view.canvas_h
     local buf = ffi.new("uint8_t[?]", W * H * 4)
-    for y = 0, H - 1 do
-        local row = y * W
-        for x = 0, W - 1 do
-            local c = bb:getPixel(x, y)
-            local o = (row + x) * 4
-            -- getColorRGB32 gives r,g,b,alpha for every buffer type (alpha 255
-            -- for formats without one), so a transparent PNG keeps its holes
-            local okc, rgb = pcall(function() return c:getColorRGB32() end)
-            if okc and rgb then
-                buf[o] = rgb.r; buf[o + 1] = rgb.g; buf[o + 2] = rgb.b; buf[o + 3] = rgb.alpha
-            else
-                buf[o] = c:getR(); buf[o + 1] = c:getG(); buf[o + 2] = c:getB(); buf[o + 3] = 0xFF
-            end
+    local ok = pcall(function()
+        local src = ffi.cast("uint8_t*", self.bg_bb.data)
+        local stride = self.bg_bb.stride or (W * 4)
+        for y = 0, H - 1 do
+            ffi.copy(buf + y * W * 4, src + y * stride, W * 4)
+        end
+    end)
+    if not ok then return nil end
+    if not rgb32IsRGBA() then     -- the panel stores B,G,R,A: swap R and B back
+        for i = 0, W * H - 1 do
+            local o = i * 4
+            buf[o], buf[o + 2] = buf[o + 2], buf[o]
         end
     end
     return buf
@@ -1490,21 +1560,32 @@ end
 function InkAwayView:loadBackground(path)
     local RenderImage = require("ui/renderimage")
     local W, H = self.view.canvas_w, self.view.canvas_h
-    local ok, img = pcall(function() return RenderImage:renderImageFile(path, false, W, H) end)
+    local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
     if not ok or not img then
         UIManager:show(InfoMessage:new{ text = _("Could not open that image.") })
         return
     end
-    if img:getWidth() ~= W or img:getHeight() ~= H then
-        local scaled = RenderImage:scaleBlitBuffer(img, W, H, false)
-        if scaled ~= img then if img.free then img:free() end; img = scaled end
+    -- fit the picture inside the canvas keeping its aspect (no stretching),
+    -- then centre it on a canvas-sized RGB32 buffer with white margins
+    local iw, ih = img:getWidth(), img:getHeight()
+    local scale = math.min(W / iw, H / ih)
+    local dw = math.max(1, math.floor(iw * scale + 0.5))
+    local dh = math.max(1, math.floor(ih * scale + 0.5))
+    local fitted = img
+    if dw ~= iw or dh ~= ih then
+        fitted = RenderImage:scaleBlitBuffer(img, dw, dh, false)
     end
-    local okr, rgba = pcall(function() return self:bbToRGBA(img, W, H) end)
-    self.bg_rgba = okr and rgba or nil
+    local bg = Blitbuffer.new(W, H, Blitbuffer.TYPE_BBRGB32)
+    bg:fill(WHITE)
+    bg:blitFrom(fitted, math.floor((W - dw) / 2), math.floor((H - dh) / 2), 0, 0, dw, dh)
+    if fitted ~= img and fitted.free then fitted:free() end
+    if img.free then img:free() end
+
     if self.bg_bb then self.bg_bb:free() end
-    self.bg_bb = img
+    self.bg_bb = bg
     self.bg_path = path
     self.export_bg = true
+    self.bg_rgba = self:buildBgRGBA()
     self.dirty = true
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "full")
@@ -1692,6 +1773,7 @@ function InkAwayView:newDrawing()
         self.canvas:setOps({})
         self.selected, self.rotating = nil, nil
         self.dirty = false
+        os.remove(self:sessionPath())   -- so reopening does not restore the old drawing
         self:composeCanvas(); self:renderView()
         UIManager:setDirty(self, "full")
     end
