@@ -1235,6 +1235,11 @@ function InkAwayView:shapeTouch(pos)
         self:refreshPreview()
         return true
     end
+    -- If a previous shape never got its release (a dropped lift event), place it
+    -- now instead of silently losing it when this new drag begins.
+    if self.shape_drag then
+        if self.shape == "curve" then self:cancelShape() else self:commitShape() end
+    end
     local x0, y0 = self:snapScreen(pos.x, pos.y)
     self.shape_drag = { x0 = x0, y0 = y0, x1 = x0, y1 = y0 }
     self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, x0, y0, x0, y0)
@@ -1245,6 +1250,8 @@ end
 function InkAwayView:shapeMove(pos)
     if not pos then return true end
     if self.curve_stage == "bend" then
+        local c = self.curve_ctrl
+        if c and c.x == pos.x and c.y == pos.y then return true end   -- no change, skip
         self.curve_ctrl = { x = pos.x, y = pos.y }
         self.shape_preview = screenShapeOp(self, "curve", false,
             self.curve_p0.x, self.curve_p0.y, self.curve_p1.x, self.curve_p1.y,
@@ -1254,7 +1261,9 @@ function InkAwayView:shapeMove(pos)
     end
     if not self.shape_drag then return false end
     local d = self.shape_drag
-    d.x1, d.y1 = self:shapeEndPoint(pos)
+    local nx, ny = self:shapeEndPoint(pos)
+    if nx == d.x1 and ny == d.y1 then return true end   -- endpoint unchanged, skip the flash
+    d.x1, d.y1 = nx, ny
     self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, d.x0, d.y0, d.x1, d.y1)
     self:refreshPreview()
     return true
@@ -2158,7 +2167,10 @@ function InkAwayView:onIaSwipe(_, ges)
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.rotating then return self:rotateEnd() end
     if self.tool == "fill" then return true end
-    if self.tool == "shape" then return self:shapeRelease(ges and (ges.end_pos or ges.pos)) end
+    -- For a shape, only trust the swipe's END position; its start position would
+    -- collapse the shape to a dot and cancel it. With no end_pos, keep the last
+    -- dragged size (tracked by shapeMove).
+    if self.tool == "shape" then return self:shapeRelease(ges and ges.end_pos) end
     if self.tool == "pan" then
         self.pan_last = nil
         return true

@@ -193,19 +193,25 @@ function Shapes.hit(op, px, py, tol)
         end
         if inside then return true end
     end
-    -- distance to the boundary segments
-    local last = closed and n or (n - 1)
+    -- distance to a segment, squared
     local t2 = tol * tol
-    for i = 1, last do
-        local ax, ay = poly[2 * i - 1], poly[2 * i]
-        local ni = (i % n) + 1
-        local bx, by = poly[2 * ni - 1], poly[2 * ni]
+    local function nearSeg(ax, ay, bx, by)
         local dx, dy = bx - ax, by - ay
         local len2 = dx * dx + dy * dy
         local t = len2 > 0 and ((px - ax) * dx + (py - ay) * dy) / len2 or 0
         if t < 0 then t = 0 elseif t > 1 then t = 1 end
         local ex, ey = ax + t * dx - px, ay + t * dy - py
-        if ex * ex + ey * ey <= t2 then return true end
+        return ex * ex + ey * ey <= t2
+    end
+    -- boundary segments
+    local last = closed and n or (n - 1)
+    for i = 1, last do
+        local ni = (i % n) + 1
+        if nearSeg(poly[2 * i - 1], poly[2 * i], poly[2 * ni - 1], poly[2 * ni]) then return true end
+    end
+    -- arrowhead barbs, so an arrow can be grabbed by its head too
+    for _, s in ipairs(arrowSegs(op, poly)) do
+        if nearSeg(s[1], s[2], s[3], s[4]) then return true end
     end
     return false
 end
