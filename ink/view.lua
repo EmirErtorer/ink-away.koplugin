@@ -111,13 +111,28 @@ end
 -- A span writer that paints horizontal runs into `bb`, clipped to w x h, and
 -- (optionally) grows `acc` to cover everything it touched. Shared by the 1:1
 -- master bitmap and the on-screen buffer so both are stamped the same way.
+--
+-- KOReader's paintRect flattens any fill colour to grey (it takes getColor8()
+-- first), even into an RGB32 buffer, so a coloured pen would show grey on a
+-- colour screen. For a chromatic colour we therefore fill pixel by pixel with
+-- setPixel, which keeps the colour. This only happens when a colour was actually
+-- picked (colour screens only); black and grey ink keep the fast paintRect path.
 local function spanWriter(bb, w, h, color, acc)
+    local chromatic = false
+    if color and color.getColorRGB32 then
+        local c = color:getColorRGB32()
+        chromatic = (c.r ~= c.g) or (c.g ~= c.b)
+    end
     return function(x, y, len)
         if y < 0 or y >= h then return end
         if x < 0 then len = len + x; x = 0 end
         if x + len > w then len = w - x end
         if len <= 0 then return end
-        bb:paintRect(x, y, len, 1, color)
+        if chromatic then
+            for i = 0, len - 1 do bb:setPixel(x + i, y, color) end
+        else
+            bb:paintRect(x, y, len, 1, color)
+        end
         if acc then
             if x < acc.x0 then acc.x0 = x end
             if x + len > acc.x1 then acc.x1 = x + len end
@@ -202,6 +217,15 @@ end
 function InkAwayView:setSetting(key, value)
     local G = rawget(_G, "G_reader_settings")
     if G and G.saveSetting then G:saveSetting(key, value) end
+end
+
+-- Whether to offer the colour picker: yes on a real colour screen. Setting the
+-- INKAWAY_FORCE_MONO environment variable forces it off, which is handy in the
+-- desktop emulator (which always reports a colour screen) for previewing how the
+-- plugin looks on a plain grey e-ink device.
+function InkAwayView:colorScreen()
+    if os.getenv("INKAWAY_FORCE_MONO") then return false end
+    return (Device.hasColorScreen and Device:hasColorScreen()) and true or false
 end
 
 ------------------------------------------------------------------------------
@@ -553,6 +577,73 @@ function InkAwayView:swatchRow(entries)
     end)
 end
 
+-- The reader's saved custom colours (a list of {r,g,b}), persisted so they last.
+function InkAwayView:getCustomColors()
+    local list = self:getSetting("inkaway_custom_colors")
+    return type(list) == "table" and list or {}
+end
+
+function InkAwayView:addCustomColor(rgb)
+    local list = self:getCustomColors()
+    for _, c in ipairs(list) do
+        if c[1] == rgb[1] and c[2] == rgb[2] and c[3] == rgb[3] then return end  -- already saved
+    end
+    list[#list + 1] = { rgb[1], rgb[2], rgb[3] }
+    while #list > 18 do table.remove(list, 1) end   -- 3 rows of 6, oldest drops out
+    self:setSetting("inkaway_custom_colors", list)
+end
+
+function InkAwayView:removeCustomColor(rgb)
+    local list = self:getCustomColors()
+    for i, c in ipairs(list) do
+        if c[1] == rgb[1] and c[2] == rgb[2] and c[3] == rgb[3] then table.remove(list, i); break end
+    end
+    self:setSetting("inkaway_custom_colors", list)
+end
+
+-- A row of saved-colour swatches: tap to use, hold to delete.
+function InkAwayView:customSwatchRow(entries)
+    local sw = math.floor(math.min(self.screen_w, self.screen_h) * 0.9 / 6)
+    local row = {}
+    for _, rgb in ipairs(entries) do
+        local col = rgb
+        row[#row + 1] = {
+            text = "",
+            background = Blitbuffer.ColorRGB32(col[1], col[2], col[3], 0xFF),
+            width = sw,
+            bordersize = sameColor(self.pen_color, col) and Size.border.thick or Size.border.default,
+            radius = 0,
+            callback = function()
+                self.pen_color = { col[1], col[2], col[3] }
+                self:openPenSettings()
+            end,
+            hold_callback = function()
+                self:removeCustomColor(col)
+                self:openPenSettings()
+            end,
+        }
+    end
+    return row
+end
+
+-- Open the colour wheel to pick (and optionally save) an exact colour.
+function InkAwayView:openColorPicker()
+    local ok, ColorPicker = pcall(require, "ink/colorpicker")
+    if not ok then return end
+    UIManager:show(ColorPicker:new{
+        color = self.pen_color,
+        on_pick = function(rgb)
+            self.pen_color = { rgb[1], rgb[2], rgb[3] }
+            self:openPenSettings()
+        end,
+        on_save = function(rgb)
+            self.pen_color = { rgb[1], rgb[2], rgb[3] }
+            self:addCustomColor(rgb)
+            self:openPenSettings()
+        end,
+    })
+end
+
 -- Pen settings popup: size and opacity together, plus shade and (on colour
 -- screens) colour swatches. Rebuilt and reshown whenever something changes.
 function InkAwayView:openPenSettings()
@@ -599,9 +690,19 @@ function InkAwayView:openPenSettings()
     buttons[#buttons + 1] = self:swatchRow(SHADES)
 
     -- colours, only where the screen can show them
-    if Device.hasColorScreen and Device:hasColorScreen() then
+    if self:colorScreen() then
         buttons[#buttons + 1] = {{ text = _("Colour (colour screens)"), enabled = false }}
         buttons[#buttons + 1] = self:swatchRow(COLORS)
+        -- saved custom colours: rows of six, added only as you save them (up to
+        -- three rows). Hold a swatch to delete it.
+        local customs = self:getCustomColors()
+        for i = 1, #customs, 6 do
+            local chunk = {}
+            for j = i, math.min(i + 5, #customs) do chunk[#chunk + 1] = customs[j] end
+            buttons[#buttons + 1] = self:customSwatchRow(chunk)
+        end
+        buttons[#buttons + 1] = {{ text = _("Custom colour\u{2026} (wheel)"),
+            callback = function() UIManager:close(self._pen_dialog); self:openColorPicker() end }}
     end
 
     buttons[#buttons + 1] = {{ text = _("Done"),
@@ -1550,7 +1651,7 @@ function InkAwayView:openFillSettings()
         end,
     }}
     buttons[#buttons + 1] = self:swatchRowFor(SHADES, self.fill_color, pick)
-    if Device.hasColorScreen and Device:hasColorScreen() then
+    if self:colorScreen() then
         buttons[#buttons + 1] = self:swatchRowFor(COLORS, self.fill_color, pick)
     end
     buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
@@ -2090,7 +2191,7 @@ function InkAwayView:editSelectedColour(sel)
         self:editSelectedColour(sel)   -- reopen to move the selection border
     end
     local buttons = { self:swatchRowFor(SHADES, sel.op.color, pick) }
-    if Device.hasColorScreen and Device:hasColorScreen() then
+    if self:colorScreen() then
         buttons[#buttons + 1] = self:swatchRowFor(COLORS, sel.op.color, pick)
     end
     buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
