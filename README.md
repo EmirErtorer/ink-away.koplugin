@@ -36,40 +36,6 @@ Turn on symmetry and one stroke becomes four:
 - Pick the folder and file name with KOReader's own file browser.
 - Made with e-ink in mind: it repaints only the part of the screen that changed, keeps one screen buffer around, and builds the big export image only while it is saving.
 
-## Screenshots
-
-Make your own brush with sliders and a live sample stroke:
-
-![The brush maker with Ink, Grain, Soft edge, Spread and Tooth sliders above a live sample stroke](assets/screenshots/brush-maker.png)
-
-The gear menu keeps the everyday actions up front and tucks the fiddly toggles one tap away:
-
-![Settings menu with redo, projects, symmetry, grid with strength, background, ghosting and autosave](assets/screenshots/settings-menu.png)
-
-Symmetry: off, vertical, horizontal, or four way:
-
-![Symmetry menu](assets/screenshots/symmetry-menu.png)
-
-The pen's size, opacity, and shade or colour, in one place:
-
-![Pen settings popup with size, opacity and grey shades](assets/screenshots/pen-settings.png)
-
-Shapes (line, curve, rectangle, ellipse, triangle, filled or outline), arrows, and the paint bucket:
-
-![Shapes menu](assets/screenshots/shapes-menu.png)
-
-Hold a shape in Pan mode to rotate, recolour, resize, change its opacity, or delete it:
-
-![Shape edit menu beside a triangle](assets/screenshots/shape-edit.png)
-
-The paint bucket fills an enclosed area in one tap (here a triangle filled grey):
-
-![A triangle filled grey with the paint bucket](assets/screenshots/fill.png)
-
-Save as a transparent PNG or a white JPEG:
-
-![Save dialog offering PNG or JPEG](assets/screenshots/save.png)
-
 ## Requirements
 
 KOReader, any reasonably recent build. Ink Away only uses KOReader's own APIs and the image encoders that already ship with it, so there is nothing else to install on the device.
@@ -116,8 +82,6 @@ Turn symmetry on in the gear menu and everything you draw is mirrored as you go:
 From the gear menu, "Background" lets you open a PNG or JPEG (a transparent PNG works too). It fills the canvas, and your drawing and the grid sit on top of it. When you save you decide, in the save dialog, whether the picture is included or you export just your drawing. The grid is never part of a saved image either way. Choosing "Remove background" clears it.
 
 A handy trick for sleep screens: take a screenshot of your own home screen, open it as the background, and draw right on top of it. Every mark lands pixel perfect over the real thing, so your art lines up exactly with your clock, covers and shelves. Then export just your drawing and it drops onto the real screen in the spots you planned.
-
-![A home screen screenshot opened as the background, with an arrow drawn on top to point out a book, lined up exactly over the real layout](assets/screenshots/background.png)
 
 To edit a placed shape, switch to **Pan** and hold it (see Shapes above). Hold **Fill area** in the Shapes menu to set the bucket's own colour and opacity.
 
