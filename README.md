@@ -8,6 +8,10 @@ Open a blank page, draw with your finger, and save the result as a PNG with a re
 
 Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; brushes you can make yourself; shapes and arrows; a paint bucket; an eraser; undo and redo; zoom and pan; a symmetry mode; an optional background picture to draw over; and save, whole page or a chosen area. There are no layers, no text, and no networking.
 
+Turn on symmetry and one stroke becomes four:
+
+![Four way symmetry: a single spiral mirrored into all four quarters of the page](assets/screenshots/symmetry.png)
+
 ## Features
 
 - A blank fullscreen canvas at your screen's resolution.
@@ -34,11 +38,23 @@ Ink Away is meant to stay simple and focused. You get a pen with adjustable size
 
 ## Screenshots
 
+Make your own brush with sliders and a live sample stroke:
+
+![The brush maker with Ink, Grain, Soft edge, Spread and Tooth sliders above a live sample stroke](assets/screenshots/brush-maker.png)
+
+The gear menu keeps the everyday actions up front and tucks the fiddly toggles one tap away:
+
+![Settings menu with redo, projects, symmetry, grid with strength, background, ghosting and autosave](assets/screenshots/settings-menu.png)
+
+Symmetry: off, vertical, horizontal, or four way:
+
+![Symmetry menu](assets/screenshots/symmetry-menu.png)
+
 The pen's size, opacity, and shade or colour, in one place:
 
 ![Pen settings popup with size, opacity and grey shades](assets/screenshots/pen-settings.png)
 
-Shapes (line, curve, rectangle, ellipse, triangle, filled or outline) and the paint bucket:
+Shapes (line, curve, rectangle, ellipse, triangle, filled or outline), arrows, and the paint bucket:
 
 ![Shapes menu](assets/screenshots/shapes-menu.png)
 
@@ -98,6 +114,10 @@ Turn symmetry on in the gear menu and everything you draw is mirrored as you go:
 ### Background image
 
 From the gear menu, "Background" lets you open a PNG or JPEG (a transparent PNG works too). It fills the canvas, and your drawing and the grid sit on top of it. When you save you decide, in the save dialog, whether the picture is included or you export just your drawing. The grid is never part of a saved image either way. Choosing "Remove background" clears it.
+
+A handy trick for sleep screens: take a screenshot of your own home screen, open it as the background, and draw right on top of it. Every mark lands pixel perfect over the real thing, so your art lines up exactly with your clock, covers and shelves. Then export just your drawing and it drops onto the real screen in the spots you planned.
+
+![A home screen screenshot opened as the background, with an arrow drawn on top to point out a book, lined up exactly over the real layout](assets/screenshots/background.png)
 
 To edit a placed shape, switch to **Pan** and hold it (see Shapes above). Hold **Fill area** in the Shapes menu to set the bucket's own colour and opacity.
 
