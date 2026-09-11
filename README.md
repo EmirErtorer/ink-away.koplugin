@@ -8,10 +8,14 @@ Here is a quick look:
 
 <video src="https://github.com/user-attachments/assets/e6b5eeba-c5c7-4495-b273-91da3c10720d" controls muted></video>
 
-Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; brushes you can make yourself; shapes and arrows; a paint bucket; an eraser; undo and redo; zoom and pan; a symmetry mode; an optional background picture to draw over; and save, whole page or a chosen area. There are no layers, no text, and no networking.
+Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; brushes you can make yourself; shapes and arrows; a paint bucket; an eraser; undo and redo; zoom and pan; a symmetry mode; an optional background picture to draw over; and save, whole page or a chosen area. There are no layers, no typed text, and no networking.
+
+It is also a proper note taking tool. Open a **notebook** and write across many pages, or open **any PDF as a notebook** and write straight on top of it, then export the whole thing back to a normal paged PDF. And a **lasso** lets you loop around part of a drawing or a page and move, duplicate or delete it as one piece.
 
 ## Features
 
+- A **notebook mode**: a multi page notebook you can write, sketch and annotate across. Start blank, or **open any PDF as a notebook** and write on every page. Paper styles include lined, grid, dotted, left margin, and Cornell, with adjustable line spacing and strength. Flip pages, tap the page number to jump anywhere, or open a thumbnail overview grid, and add, duplicate, reorder or delete pages. Export the whole notebook to a real paged PDF (white or warm sandpaper paper, optional page numbers, all pages or only the ones you wrote on or a range). It opens as a fixed page document on any device.
+- A **lasso select**, on the canvas and on notebook pages: draw a loop around ink, shapes or a filled area and it becomes one selection you can drag freely, duplicate, or delete.
 - A blank fullscreen canvas at your screen's resolution.
 - Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
 - A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: ink, pencil, acrylic, hatch, or stipple. On a colour screen you also get a **colour wheel** for mixing any colour you like and saving your favourites as swatches, and your ink now draws in colour on screen, not just in the export.
@@ -52,7 +56,7 @@ KOReader, any reasonably recent build. Ink Away only uses KOReader's own APIs an
 
 ## Opening it
 
-Open the top menu, go to the Tools tab (More tools), and tap "Ink Away (drawing canvas)". You can also assign it to a gesture in KOReader's gesture manager; the action is called "Open Ink Away".
+Open the top menu, go to the Tools tab, and tap "Ink Away (drawing canvas)" near the top of the list. You can also assign it to a gesture in KOReader's gesture manager; the action is called "Open Ink Away".
 
 ## Using it
 
@@ -69,7 +73,18 @@ A thin toolbar runs across the top and the rest of the screen is your canvas. A 
 - **Save**: one compact dialog. Pick the format (PNG or JPEG), leave the area as the whole page or tap to drag a box around just the part you want, and, if a background picture is loaded, choose whether to include it. Then Save, pick a folder, and name the file.
 - **Exit**: leave the canvas. If you have unsaved work it asks first.
 
-- **Settings (gear)**: the gear button opens redo, project actions (new, open, save), **symmetry**, the grid, a **background image**, **ghosting cleanup**, and the autosave mode. The fiddlier toggles (snap to grid, snap to 45°, stabilizer) sit one tap away under "Guides and aids" so the first screen stays calm.
+- **Lasso select**: in the Shapes menu choose "Lasso select", then draw a loop around anything (ink, shapes, or a filled area). What you circle becomes a selection with a box around it. Drag inside the box to move the whole group, or tap the box for options to duplicate, delete or deselect it. It works the same on the plain canvas and on a notebook page.
+- **Settings (gear)**: the gear button opens New drawing and New notebook, undo and redo, project actions (open and save), **Open PDF as notebook**, **symmetry**, the grid or (in a notebook) the paper, a **background image**, **ghosting cleanup**, and the autosave mode. The fiddlier toggles (snap to grid, snap to 45°, stabilizer) sit one tap away under "Guides and aids" so the first screen stays calm.
+
+### Notebook mode
+
+Open a notebook from the gear menu with **New notebook** and pick the paper: lined, grid, dotted, left margin, Cornell, or blank. You can change the line spacing and how strong the ruling looks at any time, and every drawing tool (pen, shapes, arrows, fill, eraser, lasso, symmetry) works on a page exactly as it does on the plain canvas.
+
+A strip along the bottom holds the page controls. Prev and Next turn pages, the plus adds one, and the page number in the middle opens the page menu. From there you can jump straight to any page number, open a **thumbnail overview** of the whole notebook and tap a page to land on it, or duplicate, reorder and delete pages.
+
+**Open a PDF as a notebook** from the gear menu and each page of the PDF becomes a page you can write straight on top of. Bring in a textbook, a paper, a worksheet or a form and mark it up by hand. Pages are drawn only as you reach them, the same way the reader itself works, so even a long document opens quickly.
+
+**Export to a PDF** with Save. Choose white or a warm sandpaper paper tint, turn page numbers on or off, and export the whole notebook, only the pages you actually wrote on, or a page range. The result is an ordinary paged PDF that opens on any device. When it saves it offers to open it right away, and it also keeps an editable copy so you can come back and keep writing.
 
 ### Symmetry
 
@@ -103,7 +118,11 @@ JPEG cannot store transparency, so a JPEG export lays your ink over a solid whit
 
 ## Where files go
 
-The first time it runs, Ink Away creates an "ink away" folder inside your KOReader folder, with two folders inside it: "drawings" for the images you export and "projects" for the editable project files. Saving a PNG or JPEG starts in "drawings"; opening or saving a project starts in "projects". You can still pick any destination, and each dialog remembers the last folder you used (across sessions) so it starts there next time. You type the file name and the right extension is added. If a name already exists it is overwritten, so choose a new name to keep both.
+Ink Away keeps its files in an "ink away" folder inside your KOReader folder, sorted into four clearly named folders: "drawings" for the images you export, "drawing projects" for the editable drawing files, "notebooks" for the PDFs you export from a notebook, and "notebook projects" for the editable notebook files. Each save dialog starts in the right folder and remembers the last one you used, and you can still pick any destination.
+
+To make sure nothing is ever a dead end, an editable copy is kept for you automatically: when you save a drawing image, a matching drawing project is saved under the same name, and when you export a notebook to PDF, a matching notebook project is saved too. So even if you never open "Save project" yourself, you can always come back and keep working. You can of course still save a project by hand from the gear menu.
+
+If you are upgrading from an earlier version, your existing projects are sorted into the new folders once, automatically, the first time you open Ink Away, and nothing is deleted.
 
 ## Device compatibility
 
