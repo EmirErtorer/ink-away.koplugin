@@ -333,7 +333,10 @@ end
 -- Assemble a notebook (a list of per-page ops lists) into a single PDF at
 -- `path`, one fixed-size page each, with the shared `template` ruling. Pages
 -- are rendered to JPEG one at a time through a scratch file in `tmp_dir`, so
--- memory stays flat no matter how many pages. Returns ok, err.
+-- memory stays flat no matter how many pages. `bg` is an optional background:
+-- either one RGBA buffer shared by every page, or a function(i) -> RGBA buffer
+-- that renders each page's own background on demand (used for PDF import).
+-- Returns ok, err.
 function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg)
     local Pdf = require("ink/pdf")
     local Canvas = require("ink/canvas")
@@ -342,8 +345,9 @@ function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg)
     for i, ops in ipairs(pages) do
         local c = Canvas.new(w, h)
         c:setOps(ops)
+        local page_bg = (type(bg) == "function") and bg(i) or bg
         local tmp = tmp_dir .. "/inkaway_page_" .. i .. ".jpg"
-        local ok, err = Export.saveJPEG(c, tmp, quality or 85, { template = template, bg = bg })
+        local ok, err = Export.saveJPEG(c, tmp, quality or 85, { template = template, bg = page_bg })
         if not ok then return false, err end
         local f = io.open(tmp, "rb")
         if not f then return false, "could not read rendered page" end

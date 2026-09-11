@@ -1901,13 +1901,20 @@ end
 function InkAwayView:renderPdfPage(doc, pageno)
     if not doc then return nil end
     local Document = require("document/document")
+    local Geom = require("ui/geometry")
     local W, H = self.view.canvas_w, self.view.canvas_h
     local img
     pcall(function()
         local native = Document.getNativePageDimensions(doc, pageno)
         if not (native and native.w and native.h) then return end
         local zoom = math.min(W / native.w, H / native.h)
-        local tile = Document.renderPage(doc, pageno, nil, zoom, 0, 1.0, 1.0, false)
+        -- Always pass an explicit full-page rect. Without it, a page too large to
+        -- fit KOReader's tile cache (e.g. an A4 page at fit-zoom) is refused
+        -- outright ("no render region ... won't render") and comes back blank; a
+        -- rect makes it render that region uncached instead.
+        local rect = Geom:new{ x = 0, y = 0,
+            w = math.floor(native.w * zoom + 0.5), h = math.floor(native.h * zoom + 0.5) }
+        local tile = Document.renderPage(doc, pageno, rect, zoom, 0, 1.0, 1.0, false)
         if tile and tile.bb then img = fitIntoCanvasBB(tile.bb:copy(), W, H) end
     end)
     return img
@@ -2105,7 +2112,7 @@ function InkAwayView:openSettings()
     for _, row in ipairs({
         {{ text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end }},
         {
-            { text = _("Background image or PDF\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
+            { text = _("Background image\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
             { text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end },
         },
         {

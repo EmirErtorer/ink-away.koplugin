@@ -284,6 +284,12 @@ end
 
 function BrushMaker:onCloseWidget()
     if self.preview_bb then self.preview_bb:free(); self.preview_bb = nil end
+    -- The maker is a floating panel over the canvas; when it leaves, repaint the
+    -- whole screen so its frame is wiped and the canvas underneath is restored.
+    -- "all" re-runs every remaining widget's paintTo (nil would only refresh the
+    -- e-ink from the stale buffer). Without this the panel's edges linger and the
+    -- name entry that opens next leaves a panel-shaped hole where it was.
+    UIManager:setDirty("all", "full")
 end
 
 return BrushMaker
