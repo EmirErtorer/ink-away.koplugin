@@ -147,6 +147,39 @@ local function opCentroid(op)
     return sx / n, sy / n
 end
 
+-- Is an op picked by a lasso polygon (canvas coords)? An op counts as selected
+-- when most of it sits inside the loop (a fraction of its points, sampled and
+-- capped so a dense ink stroke stays cheap), OR when its centre is inside (so a
+-- big shape looped around its middle still selects). The point-fraction test is
+-- what makes ink as easy to grab as a shape: a stroke's average point is often
+-- outside a loop that clearly encircles the stroke, but its points are not.
+local function opInPoly(op, poly)
+    local inside, total = 0, 0
+    local function sample(x, y)
+        total = total + 1
+        if pointInPoly(x, y, poly) then inside = inside + 1 end
+    end
+    if op.pts then
+        local pairs_n = #op.pts / 2
+        local step = math.max(1, math.floor(pairs_n / 48))   -- <= ~48 samples
+        for p = 0, pairs_n - 1, step do
+            local i = p * 2 + 1
+            sample(op.pts[i], op.pts[i + 1])
+        end
+    elseif op.runs then
+        local triples = #op.runs / 3
+        local step = math.max(1, math.floor(triples / 48))
+        for t = 0, triples - 1, step do
+            local i = t * 3 + 1
+            sample(op.runs[i], op.runs[i + 1])
+        end
+    end
+    if total == 0 then return false end
+    if inside / total >= 0.5 then return true end
+    local cx, cy = opCentroid(op)
+    return (cx and pointInPoly(cx, cy, poly)) or false
+end
+
 -- Accumulate an op's bounds into x0,y0,x1,y1 (canvas coords). Returns updated four.
 local function accumBounds(op, x0, y0, x1, y1)
     local function acc(x, y)
@@ -411,6 +444,10 @@ function InkAwayView:init()
 
     -- Bound once so it can be scheduled and unscheduled by identity.
     self._finalize = function() self:finalizeStroke() end
+    -- Coalesced refresh while dragging a lasso selection: many pan events collapse
+    -- into at most one small refresh per interval, so the e-ink panel is never
+    -- flooded (which on device froze it mid-refresh).
+    self._sel_refresh_tick = function() self:selRefreshNow() end
 
     self:buildToolbar()
     local th = self.toolbar:getSize().h
@@ -563,6 +600,7 @@ function InkAwayView:onCloseWidget()
     self.closing = true
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
+    if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
     for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_settings_dialog", "_save_dialog" }) do
@@ -2765,6 +2803,7 @@ end
 ------------------------------------------------------------------------------
 
 function InkAwayView:clearSelection()
+    if self._sel_refresh_tick then self:stopSelRefresh() end
     self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
@@ -2795,10 +2834,7 @@ end
 function InkAwayView:computeSelection(poly)
     local idxs = {}
     for i, op in ipairs(self.canvas.ops) do
-        if op.kind ~= "erase" then
-            local cx, cy = opCentroid(op)
-            if cx and pointInPoly(cx, cy, poly) then idxs[#idxs + 1] = i end
-        end
+        if op.kind ~= "erase" and opInPoly(op, poly) then idxs[#idxs + 1] = i end
     end
     if #idxs == 0 then self.selection = nil; return false end
     self.selection = { idxs = idxs }
@@ -2900,10 +2936,63 @@ function InkAwayView:openSelectionMenu()
     UIManager:show(dlg)
 end
 
+-- The selection box as a screen rect at drag offset (dx,dy), padded. Nil if none.
+function InkAwayView:selBoxScreenRect(dx, dy)
+    local b = self.selection and self.selection.bbox
+    if not b then return nil end
+    local v = self.view
+    local x0, y0 = InkGeom.toScreen(v, b.x0, b.y0)
+    local x1, y1 = InkGeom.toScreen(v, b.x1, b.y1)
+    local pad = 8
+    return { x = math.floor(math.min(x0, x1) + dx) - pad,
+             y = math.floor(math.min(y0, y1) + dy) - pad,
+             w = math.floor(math.abs(x1 - x0)) + pad * 2,
+             h = math.floor(math.abs(y1 - y0)) + pad * 2 }
+end
+
+-- Refresh just the box's old and new footprints (a "fast" e-ink update), which
+-- is far cheaper than the whole area and does not pile up refreshes.
+function InkAwayView:selRefreshNow()
+    self._sel_refresh_pending = false
+    if not (self.sel_press and self.selection) then return end
+    local cur = self:selBoxScreenRect(self.sel_press.dx, self.sel_press.dy)
+    if not cur then return end
+    local r = cur
+    local last = self._sel_last_rect
+    if last then
+        local x0, y0 = math.min(r.x, last.x), math.min(r.y, last.y)
+        local x1 = math.max(r.x + r.w, last.x + last.w)
+        local y1 = math.max(r.y + r.h, last.y + last.h)
+        r = { x = x0, y = y0, w = x1 - x0, h = y1 - y0 }
+    end
+    self._sel_last_rect = cur
+    local v = self.view
+    local x0 = math.max(v.area_x, r.x)
+    local y0 = math.max(v.area_y, r.y)
+    local x1 = math.min(v.area_x + v.area_w, r.x + r.w)
+    local y1 = math.min(v.area_y + v.area_h, r.y + r.h)
+    if x1 > x0 and y1 > y0 then
+        UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+    end
+end
+
+function InkAwayView:scheduleSelRefresh()
+    if self._sel_refresh_pending then return end
+    self._sel_refresh_pending = true
+    UIManager:scheduleIn(0.08, self._sel_refresh_tick)   -- at most ~12 refreshes/sec
+end
+
+function InkAwayView:stopSelRefresh()
+    UIManager:unschedule(self._sel_refresh_tick)
+    self._sel_refresh_pending = false
+    self._sel_last_rect = nil
+end
+
 -- Gesture entry points for the lasso tool, dispatched from the main handlers.
 function InkAwayView:lassoTouch(pos)
     if self.selection and self:inSelBBoxScreen(pos.x, pos.y) then
         self.sel_press = { x = pos.x, y = pos.y, dx = 0, dy = 0, moved = false }
+        self._sel_last_rect = self:selBoxScreenRect(0, 0)   -- seed for the union refresh
         return true
     end
     self:clearSelection()
@@ -2917,15 +3006,18 @@ function InkAwayView:lassoPan(pos)
         self.sel_press.moved = true
         self.sel_press.dx = pos.x - self.sel_press.x
         self.sel_press.dy = pos.y - self.sel_press.y
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:scheduleSelRefresh()      -- throttled small refresh; never floods e-ink
         return true
     end
     if self.lassoing and self.lasso_scr then
+        local px, py = self.lasso_scr[#self.lasso_scr - 1], self.lasso_scr[#self.lasso_scr]
         self.lasso_scr[#self.lasso_scr + 1] = pos.x
         self.lasso_scr[#self.lasso_scr + 1] = pos.y
-        -- refresh only a small region around the new dot; the loop trail left by
-        -- earlier dots stays on the panel, so the whole path shows as it is drawn
-        UIManager:setDirty(self, "fast", GeomUI:new{ x = pos.x - 6, y = pos.y - 6, w = 12, h = 12 })
+        -- refresh the box spanning the new segment; the trail of earlier segments
+        -- stays on the panel, so the whole loop shows as it is drawn
+        local x0, y0 = math.min(px, pos.x) - 3, math.min(py, pos.y) - 3
+        local x1, y1 = math.max(px, pos.x) + 3, math.max(py, pos.y) + 3
+        UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
         return true
     end
     return true
@@ -2936,6 +3028,7 @@ function InkAwayView:lassoRelease(pos)
         local moved = self.sel_press.moved
         local dx, dy = self.sel_press.dx, self.sel_press.dy
         self.sel_press = nil
+        self:stopSelRefresh()
         if moved then self:selMoveCommit(dx, dy) end
         return true
     end
@@ -2949,6 +3042,7 @@ end
 
 function InkAwayView:lassoTap(pos)
     self.sel_press = nil
+    self:stopSelRefresh()
     if self.lassoing then self:lassoFinish(); return true end
     if self.selection then
         if pos and self:inSelBBoxScreen(pos.x, pos.y) then self:openSelectionMenu()
@@ -3044,10 +3138,19 @@ function InkAwayView:paintTo(bb, x, y)
         local ax0, ay0 = x + v.area_x, y + v.area_y
         local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
         if self.lassoing and self.lasso_scr then
-            for i = 1, #self.lasso_scr, 2 do
-                local px, py = self.lasso_scr[i], self.lasso_scr[i + 1]
-                if px >= ax0 and px < ax1 - 2 and py >= ay0 and py < ay1 - 2 then
+            local pts = self.lasso_scr
+            local function dot(px, py)
+                if px >= ax0 and px < ax1 - 3 and py >= ay0 and py < ay1 - 3 then
                     bb:paintRect(px, py, 3, 3, BLACKC)
+                end
+            end
+            dot(pts[1], pts[2])
+            for i = 3, #pts, 2 do           -- draw each segment as a connected line
+                local x0s, y0s = pts[i - 2], pts[i - 1]
+                local dxs, dys = pts[i] - x0s, pts[i + 1] - y0s
+                local steps = math.max(1, math.floor(math.max(math.abs(dxs), math.abs(dys)) / 3))
+                for s = 1, steps do
+                    dot(math.floor(x0s + dxs * s / steps), math.floor(y0s + dys * s / steps))
                 end
             end
         end
