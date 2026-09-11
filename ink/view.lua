@@ -59,6 +59,14 @@ local Export = require("ink/export")
 local Project = require("ink/project")
 local Symmetry = require("ink/symmetry")
 local Brushes = require("ink/brushes")
+local Notebook = require("ink/notebook")
+local Template = require("ink/template")
+
+-- PDF paper colours (shown in the exported PDF; grey e-ink can't show the tint).
+local PAPERS = {
+    white = { 255, 255, 255 },
+    sand  = { 240, 230, 200 },   -- warm "sandpaper" / legal-pad
+}
 
 local Screen = Device.screen
 
@@ -83,6 +91,48 @@ end
 
 local WHITE = Blitbuffer.COLOR_WHITE
 local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
+
+-- Map a grid/ruling strength (1..100) to a grey level: faint at low values,
+-- solid black at 100, so a guide can be a whisper or as dark as drawn ink.
+local function strengthToLevel(s)
+    local lvl = math.floor(255 - (s or 45) / 100 * 255 + 0.5)
+    if lvl < 0 then lvl = 0 elseif lvl > 255 then lvl = 255 end
+    return lvl
+end
+
+-- Convert a canvas-sized BBRGB32 into a packed RGBA FFI buffer (r,g,b,a), one
+-- memcpy per row. Panels that store B,G,R,A get R/B swapped back. Returns buf or nil.
+local function bbToRGBA(bb, W, H)
+    if not bb then return nil end
+    local buf = ffi.new("uint8_t[?]", W * H * 4)
+    local ok = pcall(function()
+        local src = ffi.cast("uint8_t*", bb.data)
+        local stride = bb.stride or (W * 4)
+        for y = 0, H - 1 do ffi.copy(buf + y * W * 4, src + y * stride, W * 4) end
+    end)
+    if not ok then return nil end
+    if not rgb32IsRGBA() then
+        for i = 0, W * H - 1 do local o = i * 4; buf[o], buf[o + 2] = buf[o + 2], buf[o] end
+    end
+    return buf
+end
+
+-- Fit a source BlitBuffer inside a W x H page keeping its aspect, centre it on a
+-- white RGB32 page, and free the source. Returns the new page BlitBuffer.
+local function fitIntoCanvasBB(img, W, H)
+    local iw, ih = img:getWidth(), img:getHeight()
+    local scale = math.min(W / iw, H / ih)
+    local dw = math.max(1, math.floor(iw * scale + 0.5))
+    local dh = math.max(1, math.floor(ih * scale + 0.5))
+    local fitted = img
+    if dw ~= iw or dh ~= ih then fitted = RenderImage:scaleBlitBuffer(img, dw, dh, false) end
+    local bg = Blitbuffer.new(W, H, Blitbuffer.TYPE_BBRGB32)
+    bg:fill(WHITE)
+    bg:blitFrom(fitted, math.floor((W - dw) / 2), math.floor((H - dh) / 2), 0, 0, dw, dh)
+    if fitted ~= img and fitted.free then fitted:free() end
+    if img.free then img:free() end
+    return bg
+end
 
 -- When the finger lifts, wait this long before committing the stroke. If a
 -- fresh touch lands nearby within the window, treat it as the SAME stroke.
@@ -224,7 +274,12 @@ end
 -- desktop emulator (which always reports a colour screen) for previewing how the
 -- plugin looks on a plain grey e-ink device.
 function InkAwayView:colorScreen()
-    if os.getenv("INKAWAY_FORCE_MONO") then return false end
+    -- A testing override honoured only in the desktop emulator (which always
+    -- reports a colour screen), so the grey UI can be previewed there. Real
+    -- hardware never reads the environment variable.
+    if Device.isEmulator and Device:isEmulator() and os.getenv("INKAWAY_FORCE_MONO") then
+        return false
+    end
     return (Device.hasColorScreen and Device:hasColorScreen()) and true or false
 end
 
@@ -293,8 +348,14 @@ function InkAwayView:init()
     self.save_area = nil           -- nil = whole page, or a crop rect in canvas px
     self.selecting_crop = false    -- dragging out an export area
 
-    -- Default folders: koreader/ink away/{drawings,projects}, created once.
+    -- Default folders: koreader/ink away/{drawings,projects,notebooks}, created once.
     self.default_dir = self:ensureDefaultDir()
+
+    -- Notebook mode: nil = a single canvas (the classic mode); a Notebook table
+    -- when the reader is working through pages. nb_bar_h reserves room for the
+    -- bottom page-nav strip, and is 0 in canvas mode so nothing else changes.
+    self.notebook = nil
+    self.nb_bar_h = 0
 
     -- The canvas has a fixed size: the current screen dimensions.
     self.canvas = Canvas.new(W, H)
@@ -305,7 +366,7 @@ function InkAwayView:init()
     self:buildToolbar()
     local th = self.toolbar:getSize().h
     self.view = {
-        area_x = 0, area_y = th, area_w = W, area_h = H - th,
+        area_x = 0, area_y = th, area_w = W, area_h = H - th - self.nb_bar_h,
         canvas_w = W, canvas_h = H,
         zoom = 1, pan_x = 0, pan_y = 0,
     }
@@ -378,10 +439,20 @@ end
 function InkAwayView:restoreSession()
     if self.autosave == "off" then return end
     local data = Project.load(self:sessionPath())
-    if data then self:loadProjectData(data) end
+    if not data then return end
+    if Project.isNotebook(data) then
+        self:openNotebookData(data)      -- comes back as a notebook, not a flat canvas
+    else
+        self:loadProjectData(data)
+    end
 end
 
 function InkAwayView:saveSession()
+    if self.notebook then
+        self:nbSyncOut()
+        Project.saveNotebook(self.notebook, self:sessionPath())
+        return
+    end
     if self.canvas:isEmpty() then return end
     Project.save(self.canvas, self:sessionPath())
 end
@@ -420,9 +491,10 @@ function InkAwayView:relayout()
     self.dimen.w, self.dimen.h = W, H     -- mutate in place; GestureRanges hold it
     self:buildToolbar()
     self[1] = self.toolbar
+    if self.notebook then self.nb_bar_h = self:nbBarHeight() end
     local th = self.toolbar:getSize().h
     local v = self.view
-    v.area_x, v.area_y, v.area_w, v.area_h = 0, th, W, H - th
+    v.area_x, v.area_y, v.area_w, v.area_h = 0, th, W, H - th - self.nb_bar_h
     self.zoom_min = InkGeom.fitZoom(v)
     v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
@@ -447,6 +519,7 @@ function InkAwayView:onCloseWidget()
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
+    self:closeNotebookPDF()
     self:free()
     self.selected, self.rotating, self.shape_preview = nil, nil, nil
     if self.canvas then
@@ -986,6 +1059,14 @@ function InkAwayView:composeCanvas()
     if self.bg_bb then     -- the background picture sits under everything
         self.canvas_bb:blitFrom(self.bg_bb, 0, 0, 0, 0, W, H)
     end
+    -- notebook ruling under the ink (grey at the template's strength; the paper
+    -- tint is applied at export)
+    if self.notebook and self.notebook.template and self.notebook.template.style ~= "blank" then
+        local t = self.notebook.template
+        local lvl = strengthToLevel(t.strength)
+        local put = spanWriter(self.canvas_bb, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
+        Template.render(t.style, W, H, t.size or 40, put)
+    end
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(self.canvas.ops) do
         if not op.hidden then      -- a shape being rotated is drawn as a preview
@@ -1061,8 +1142,7 @@ function InkAwayView:drawGrid(bb, ox, oy)
     local style = self.grid_style or "square"
     -- strength 1..100 maps to a grey: faint at low values, solid black at 100,
     -- so the reader can make the grid a light guide or as dark as drawn ink
-    local lvl = math.floor(255 - (self.grid_strength or 45) / 100 * 255 + 0.5)
-    if lvl < 0 then lvl = 0 elseif lvl > 255 then lvl = 255 end
+    local lvl = strengthToLevel(self.grid_strength)
     local col = Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF)
     local function ax(cx) return (cx - v.pan_x) * v.zoom end
     local function ay(cy) return (cy - v.pan_y) * v.zoom end
@@ -1743,50 +1823,15 @@ end
 -- reads, so it is quick even on a Kindle. Alpha is kept, so a transparent PNG
 -- stays transparent. Returns the buffer, or nil.
 function InkAwayView:buildBgRGBA()
-    if not self.bg_bb then return nil end
-    local W, H = self.view.canvas_w, self.view.canvas_h
-    local buf = ffi.new("uint8_t[?]", W * H * 4)
-    local ok = pcall(function()
-        local src = ffi.cast("uint8_t*", self.bg_bb.data)
-        local stride = self.bg_bb.stride or (W * 4)
-        for y = 0, H - 1 do
-            ffi.copy(buf + y * W * 4, src + y * stride, W * 4)
-        end
-    end)
-    if not ok then return nil end
-    if not rgb32IsRGBA() then     -- the panel stores B,G,R,A: swap R and B back
-        for i = 0, W * H - 1 do
-            local o = i * 4
-            buf[o], buf[o + 2] = buf[o + 2], buf[o]
-        end
-    end
-    return buf
+    return bbToRGBA(self.bg_bb, self.view.canvas_w, self.view.canvas_h)
 end
 
-function InkAwayView:loadBackground(path)
-    local RenderImage = require("ui/renderimage")
+-- Place an already-rendered source BlitBuffer as the background: fit it inside
+-- the canvas keeping aspect (no stretching), centre it on a canvas-sized RGB32
+-- buffer with white margins, and take ownership of `img` (it is freed here).
+function InkAwayView:placeBackground(img, path)
     local W, H = self.view.canvas_w, self.view.canvas_h
-    local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
-    if not ok or not img then
-        UIManager:show(InfoMessage:new{ text = _("Could not open that image.") })
-        return
-    end
-    -- fit the picture inside the canvas keeping its aspect (no stretching),
-    -- then centre it on a canvas-sized RGB32 buffer with white margins
-    local iw, ih = img:getWidth(), img:getHeight()
-    local scale = math.min(W / iw, H / ih)
-    local dw = math.max(1, math.floor(iw * scale + 0.5))
-    local dh = math.max(1, math.floor(ih * scale + 0.5))
-    local fitted = img
-    if dw ~= iw or dh ~= ih then
-        fitted = RenderImage:scaleBlitBuffer(img, dw, dh, false)
-    end
-    local bg = Blitbuffer.new(W, H, Blitbuffer.TYPE_BBRGB32)
-    bg:fill(WHITE)
-    bg:blitFrom(fitted, math.floor((W - dw) / 2), math.floor((H - dh) / 2), 0, 0, dw, dh)
-    if fitted ~= img and fitted.free then fitted:free() end
-    if img.free then img:free() end
-
+    local bg = fitIntoCanvasBB(img, W, H)
     if self.bg_bb then self.bg_bb:free() end
     self.bg_bb = bg
     self.bg_path = path
@@ -1796,6 +1841,17 @@ function InkAwayView:loadBackground(path)
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "full")
 end
+
+function InkAwayView:loadBackground(path)
+    local RenderImage = require("ui/renderimage")
+    local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
+    if not ok or not img then
+        UIManager:show(InfoMessage:new{ text = _("Could not open that image.") })
+        return
+    end
+    self:placeBackground(img, path)
+end
+
 
 function InkAwayView:removeBackground()
     if self.bg_bb then self.bg_bb:free() end
@@ -1830,16 +1886,57 @@ function InkAwayView:openBackground()
     if self.bg_bb then
         buttons[#buttons + 1] = {{ text = _("Remove background"),
             callback = function() UIManager:close(dlg); self:removeBackground() end }}
-        buttons[#buttons + 1] = {{ text = _("When you save you can include the picture, or export just your drawing. Either way the grid is left out."), enabled = false }}
+        buttons[#buttons + 1] = {{ text = _("At save time you can include the picture or export just your drawing. The grid is always left out."), enabled = false }}
     else
-        buttons[#buttons + 1] = {{ text = _("Pick a PNG or JPEG to draw over. Your drawing (and the grid) sit on top of it."), enabled = false }}
+        buttons[#buttons + 1] = {{ text = _("Draw over a photo or screenshot; your drawing sits on top. To draw on a PDF, use \u{201C}Open PDF as notebook\u{201D} instead."), enabled = false }}
     end
     buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
     dlg = ButtonDialog:new{ title = _("Background image"), title_align = "center", buttons = buttons }
     UIManager:show(dlg)
 end
 
+-- Render one PDF page to a canvas-sized page BlitBuffer, on demand. Mirrors the
+-- call KOReader uses for cover thumbnails, so it is as fast as KOReader itself
+-- (and the result is cached by KOReader's DocCache). Returns a BlitBuffer or nil.
+function InkAwayView:renderPdfPage(doc, pageno)
+    if not doc then return nil end
+    local Document = require("document/document")
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local img
+    pcall(function()
+        local native = Document.getNativePageDimensions(doc, pageno)
+        if not (native and native.w and native.h) then return end
+        local zoom = math.min(W / native.w, H / native.h)
+        local tile = Document.renderPage(doc, pageno, nil, zoom, 0, 1.0, 1.0, false)
+        if tile and tile.bb then img = fitIntoCanvasBB(tile.bb:copy(), W, H) end
+    end)
+    return img
+end
+
+-- Notebook paper (ruling) chooser: edits the current notebook's template.
+function InkAwayView:openPaperStyle()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local opts = { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") }, { "blank", _("Blank") } }
+    local buttons = {}
+    for _, o in ipairs(opts) do
+        buttons[#buttons + 1] = {{
+            text = (self.notebook.template.style == o[1] and "\u{25CF} " or "") .. o[2],
+            callback = function()
+                self.notebook.template.style = o[1]
+                self.dirty = true
+                UIManager:close(dlg)
+                self:composeCanvas(); self:renderView(); self:refreshArea()
+                self:openSettings()
+            end,
+        }}
+    end
+    dlg = ButtonDialog:new{ title = _("Notebook paper"), title_align = "center", buttons = buttons }
+    UIManager:show(dlg)
+end
+
 function InkAwayView:openGridStyle()
+    if self.notebook then return self:openPaperStyle() end
     local ButtonDialog = require("ui/widget/buttondialog")
     local dlg
     local opts = {
@@ -1868,6 +1965,21 @@ end
 
 function InkAwayView:openGridSize()
     local SpinWidget = require("ui/widget/spinwidget")
+    if self.notebook then
+        local t = self.notebook.template
+        UIManager:show(SpinWidget:new{
+            title_text = _("Line spacing"),
+            value = t.size or 40, value_min = 12, value_max = 200, value_step = 4, value_hold_step = 20,
+            unit = _("px"),
+            callback = function(spin)
+                t.size = math.max(8, math.floor(spin.value))
+                self.dirty = true
+                self:composeCanvas(); self:renderView(); self:refreshArea()
+                self:openSettings()
+            end,
+        })
+        return
+    end
     UIManager:show(SpinWidget:new{
         title_text = _("Grid spacing"),
         value = self.grid_size, value_min = 8, value_max = 200, value_step = 4, value_hold_step = 20,
@@ -1883,6 +1995,22 @@ end
 
 function InkAwayView:openGridStrength()
     local SpinWidget = require("ui/widget/spinwidget")
+    if self.notebook then
+        local t = self.notebook.template
+        UIManager:show(SpinWidget:new{
+            title_text = _("Line strength"),
+            info_text = _("How dark the ruling looks, from a faint guide up to solid, like drawn ink."),
+            value = t.strength or 45, value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
+            unit = "%",
+            callback = function(spin)
+                t.strength = math.max(1, math.min(100, math.floor(spin.value)))
+                self.dirty = true
+                self:composeCanvas(); self:renderView(); self:refreshArea()
+                self:openSettings()
+            end,
+        })
+        return
+    end
     UIManager:show(SpinWidget:new{
         title_text = _("Grid strength"),
         info_text = _("How dark the grid lines look, from a faint guide up to solid, like drawn ink."),
@@ -1916,6 +2044,9 @@ end
 -- Short label for the current symmetry mode.
 local SYM_LABEL = { off = "off", vert = "vertical", horiz = "horizontal", quad = "four way" }
 
+-- Friendly names for the notebook paper (ruling) styles.
+local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"), blank = _("blank") }
+
 -- The gear menu. Kept deliberately uncluttered: the everyday actions sit up top,
 -- and the fiddlier toggles (snapping, stabilizer) live one tap away under
 -- "Guides and aids" so the first screen stays calm.
@@ -1928,18 +2059,18 @@ function InkAwayView:openSettings()
     local function mark(m) return (self.autosave == m) and "\u{25CF} " or "" end
     local ghost = (self.ghost_clean and self.ghost_clean > 0)
         and string.format(_("every %d"), self.ghost_clean) or _("off")
-    local buttons = {
-        {
-            { text = _("Redo"), callback = function() UIManager:close(dlg); self:redo() end },
-            { text = _("New"),  callback = function() UIManager:close(dlg); self:newDrawing() end },
-        },
-        {
-            { text = _("Open project"), callback = function() UIManager:close(dlg); self:openProject() end },
-            { text = _("Save project"), callback = function() UIManager:close(dlg); self:saveProject() end },
-        },
-        {{ text = string.format(_("Symmetry: %s"), _(SYM_LABEL[self.symmetry] or "off")),
-           callback = function() UIManager:close(dlg); self:openSymmetry() end }},
-        {
+    -- Paper/grid row differs by mode: a notebook has printed ruling (its
+    -- "paper"), the plain canvas has an on-screen grid guide.
+    local paper_row
+    if self.notebook then
+        paper_row = {
+            { text = _("Paper: ") .. TEMPLATE_LABEL[self.notebook.template.style or "lines"],
+              callback = function() UIManager:close(dlg); self:openGridStyle() end },
+            { text = _("Size"), callback = function() UIManager:close(dlg); self:openGridSize() end },
+            { text = _("Strength"), callback = function() UIManager:close(dlg); self:openGridStrength() end },
+        }
+    else
+        paper_row = {
             { text = _("Grid: ") .. onoff(self.grid_on), callback = function()
                 self.grid_on = not self.grid_on; self:setSetting("inkaway_grid", self.grid_on)
                 self:renderView(); self:refreshArea(); reopen()
@@ -1947,10 +2078,34 @@ function InkAwayView:openSettings()
             { text = _("Style: ") .. self.grid_style, callback = function() UIManager:close(dlg); self:openGridStyle() end },
             { text = _("Size"), callback = function() UIManager:close(dlg); self:openGridSize() end },
             { text = _("Strength"), callback = function() UIManager:close(dlg); self:openGridStrength() end },
+        }
+    end
+    local buttons = {
+        {
+            { text = _("New drawing"),  callback = function() UIManager:close(dlg); self:newDrawing() end },
+            { text = _("New notebook"), callback = function() UIManager:close(dlg); self:newNotebook() end },
         },
+        {
+            { text = _("Undo"), callback = function() UIManager:close(dlg); self:undo() end },
+            { text = _("Redo"), callback = function() UIManager:close(dlg); self:redo() end },
+        },
+        {
+            { text = _("Open project"), callback = function() UIManager:close(dlg); self:openProject() end },
+            { text = _("Save project"), callback = function() UIManager:close(dlg); self:saveProject() end },
+        },
+        {{ text = _("Open PDF as notebook"), callback = function() UIManager:close(dlg); self:openPdfAsNotebook() end }},
+    }
+    if self.notebook then
+        buttons[#buttons + 1] = {{ text = _("Delete page"),
+            callback = function() UIManager:close(dlg); self:nbDeletePage() end }}
+    end
+    buttons[#buttons + 1] = {{ text = string.format(_("Symmetry: %s"), _(SYM_LABEL[self.symmetry] or "off")),
+           callback = function() UIManager:close(dlg); self:openSymmetry() end }}
+    buttons[#buttons + 1] = paper_row
+    for _, row in ipairs({
         {{ text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end }},
         {
-            { text = _("Background\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
+            { text = _("Background image or PDF\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
             { text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end },
         },
         {
@@ -1959,7 +2114,9 @@ function InkAwayView:openSettings()
             { text = mark("periodic") .. _("3 min"), callback = function() self:setAutosave("periodic"); reopen() end },
         },
         {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
-    }
+    }) do
+        buttons[#buttons + 1] = row
+    end
     dlg = ButtonDialog:new{ title = _("Settings"), title_align = "center", buttons = buttons }
     self._settings_dialog = dlg
     UIManager:show(dlg)
@@ -1995,6 +2152,7 @@ end
 
 function InkAwayView:newDrawing()
     local function fresh()
+        self:exitNotebook()
         self.canvas:setOps({})
         self.selected, self.rotating = nil, nil
         self.dirty = false
@@ -2002,7 +2160,7 @@ function InkAwayView:newDrawing()
         self:composeCanvas(); self:renderView()
         UIManager:setDirty(self, "full")
     end
-    if self.canvas:isEmpty() then fresh(); return end
+    if self.canvas:isEmpty() and not self.notebook then fresh(); return end
     local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
         text = _("Start a new drawing? The current one will be cleared."),
@@ -2017,7 +2175,10 @@ function InkAwayView:openProject()
         path = self:projectDir(),
         onConfirm = function(path)
             local data, err = Project.load(path)
-            if data and self:loadProjectData(data) then
+            if data and Project.isNotebook(data) then
+                self:openNotebookData(data)
+            elseif data and self:loadProjectData(data) then
+                self:exitNotebook()
                 self:composeCanvas(); self:renderView()
                 UIManager:setDirty(self, "full")
             else
@@ -2036,7 +2197,7 @@ function InkAwayView:saveProject()
         onConfirm = function(dir)
             self:rememberProjectDir(dir)
             local InputDialog = require("ui/widget/inputdialog")
-            local name = os.date("ink-%Y%m%d-%H%M%S")
+            local name = os.date(self.notebook and "notebook-%Y%m%d-%H%M%S" or "ink-%Y%m%d-%H%M%S")
             local d
             d = InputDialog:new{
                 title = _("Project name"),
@@ -2050,7 +2211,13 @@ function InkAwayView:saveProject()
                         n = n:gsub("[/\\]", "_")
                         if not n:lower():match("%." .. Project.EXT .. "$") then n = n .. "." .. Project.EXT end
                         local sep = (dir:sub(-1) == "/") and "" or "/"
-                        local ok, e = Project.save(self.canvas, dir .. sep .. n)
+                        local ok, e
+                        if self.notebook then
+                            self:nbSyncOut()
+                            ok, e = Project.saveNotebook(self.notebook, dir .. sep .. n)
+                        else
+                            ok, e = Project.save(self.canvas, dir .. sep .. n)
+                        end
                         UIManager:show(InfoMessage:new{
                             text = ok and (_("Project saved:\n") .. dir .. sep .. n)
                                         or (_("Could not save project.\n") .. tostring(e)) })
@@ -2401,6 +2568,17 @@ end
 
 function InkAwayView:onIaTap(_, ges)
     -- Toolbar taps are consumed by the buttons before this runs.
+    -- Page-nav strip taps (notebook mode), below the drawing area.
+    local p = ges and ges.pos
+    if self.notebook and self.nb_bar_h > 0 and p then
+        local function hit(r) return r and p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
+        if hit(self._nb_plus) then self:nbAddPage(); return true end
+        if hit(self._nb_prev) then self:nbGo(-1); return true end
+        if hit(self._nb_next) then self:nbGo(1); return true end
+        -- swallow taps anywhere on the strip so they never fall through to drawing
+        local v = self.view
+        if p.y >= v.area_y + v.area_h then return true end
+    end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
     if self.tool == "fill" then return true end   -- fill already happened on touch
@@ -2513,7 +2691,9 @@ function InkAwayView:paintTo(bb, x, y)
     bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
     -- grid guides on top, straight onto the screen buffer so they never mix into
     -- the drawing: the eraser can't rub them out and they stay out of the export
-    if self.grid_on then self:drawGrid(bb, x + v.area_x, y + v.area_y) end
+    -- the canvas grid overlay is a canvas-mode guide; a notebook has its own
+    -- printed ruling, so never draw both (they would overlap)
+    if self.grid_on and not self.notebook then self:drawGrid(bb, x + v.area_x, y + v.area_y) end
     -- the frame marking the page: where the full W x H export sits on screen
     local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
     local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
@@ -2577,6 +2757,41 @@ function InkAwayView:paintTo(bb, x, y)
         bb:paintRect(cx0, cy0, 2, cy1 - cy0, BLACKC)
         bb:paintRect(cx1 - 2, cy0, 2, cy1 - cy0, BLACKC)
     end
+
+    -- notebook page-nav strip along the bottom (only in notebook mode)
+    if self.notebook and self.nb_bar_h > 0 then
+        local Font = require("ui/font")
+        local TextWidget = require("ui/widget/textwidget")
+        local nb = self.notebook
+        local h = self.nb_bar_h
+        local w = self.screen_w
+        local sy0 = y + v.area_y + v.area_h
+        bb:paintRect(x, sy0, w, h, WHITE)
+        bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
+        local face = Font:getFace("cfont", math.max(14, math.floor(h / 3)))
+        local cy = sy0 + math.floor(h / 2)
+        local function label(text, cx)
+            local t = TextWidget:new{ text = text, face = face, fgcolor = Blitbuffer.COLOR_BLACK }
+            local sz = t:getSize()
+            t:paintTo(bb, math.floor(cx - sz.w / 2), cy - math.floor(sz.h / 2))
+            t:free()
+        end
+        -- Layout: [ ‹ Prev ]  ...  i / n  [+]  ...  [ Next › ]
+        -- Prev/Next are wide tap zones at the two edges; the page counter sits
+        -- dead centre; the add-page button is a compact box in the clear gap
+        -- between the counter and the Next zone, so nothing ever overlaps.
+        local side = math.floor(w * 0.26)          -- prev / next tap zones
+        self._nb_prev = { x = x, y = sy0, w = side, h = h }
+        self._nb_next = { x = x + w - side, y = sy0, w = side, h = h }
+        local pw = math.max(44, math.min(h - 16, math.floor(w * 0.085)))
+        local plus_cx = math.floor(x + w * 0.62)   -- midway between centre and Next
+        self._nb_plus = { x = math.floor(plus_cx - pw / 2), y = sy0 + 8, w = pw, h = h - 16 }
+        label("\u{2039} Prev", x + side / 2)
+        label(string.format("%d / %d", nb.index, nb:count()), x + w / 2)
+        label("Next \u{203A}", x + w - side / 2)
+        bb:paintBorder(self._nb_plus.x, self._nb_plus.y, self._nb_plus.w, self._nb_plus.h, 2, FRAME)
+        label("+", self._nb_plus.x + self._nb_plus.w / 2)
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -2588,6 +2803,7 @@ end
 -- are toggles so it never turns into a wizard.
 function InkAwayView:onSave()
     self:flushPending()
+    if self.notebook then return self:exportNotebookPDF() end
     if self.canvas:isEmpty() and not self.bg_bb then
         UIManager:show(InfoMessage:new{ text = _("The canvas is empty."), timeout = 2 })
         return
@@ -2647,7 +2863,9 @@ function InkAwayView:ensureDefaultDir()
     local parent   = base .. "/ink away"
     local drawings = parent .. "/drawings"
     local projects = parent .. "/projects"
+    local notebooks = parent .. "/notebooks"
     self.projects_dir = base
+    self.notebooks_dir = base
     local lok, lfs = pcall(require, "libs/libkoreader-lfs")
     if lok and lfs then
         local function mk(d)
@@ -2656,6 +2874,7 @@ function InkAwayView:ensureDefaultDir()
         end
         mk(parent); mk(drawings)
         if mk(projects) then self.projects_dir = projects end
+        if mk(notebooks) then self.notebooks_dir = notebooks end
         -- remove the old flat folder if it is now empty (never if it holds files)
         local old = base .. "/ink away drawings"
         if lfs.attributes(old, "mode") == "directory" then pcall(lfs.rmdir, old) end
@@ -2695,6 +2914,425 @@ end
 -- Remember the last project folder used, for next time.
 function InkAwayView:rememberProjectDir(dir)
     self:setSetting("inkaway_last_project_dir", dir)
+end
+
+------------------------------------------------------------------------------
+-- Notebook mode: a fixed-size, multi-page canvas. Each page is an ops list,
+-- exactly like the single drawing, so every tool works unchanged. The current
+-- page stays loaded in self.canvas; navigation syncs it back to the page model
+-- (Notebook) and loads the next one, so only one page is ever composed at once.
+------------------------------------------------------------------------------
+
+-- Height of the bottom page-nav strip in notebook mode.
+function InkAwayView:nbBarHeight()
+    return math.max(48, math.floor(self.screen_h / 14))
+end
+
+-- Recompute the drawing area (it shrinks by nb_bar_h in notebook mode) and the
+-- fit zoom, then reallocate the on-screen buffer to the new height.
+function InkAwayView:recomputeArea()
+    local v = self.view
+    local th = self.toolbar:getSize().h
+    v.area_y = th
+    v.area_h = self.screen_h - th - self.nb_bar_h
+    if self.area_bb then self.area_bb:free() end
+    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self.zoom_min = InkGeom.fitZoom(v)
+    v.zoom = self.zoom_min
+    InkGeom.clampPan(v)
+end
+
+-- Save the on-screen canvas back into the current notebook page.
+function InkAwayView:nbSyncOut()
+    if self.notebook then self.notebook:setCurrentOps(self.canvas.ops) end
+end
+
+-- Load the current notebook page into the canvas and repaint.
+function InkAwayView:nbLoad()
+    if not self.notebook then return end
+    self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
+    self.canvas:setOps(self.notebook:currentOps())
+    self.selected, self.rotating = nil, nil
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "full")
+end
+
+-- Keep one open handle to the source PDF for the whole session, so page turns
+-- render straight away (KOReader caches the rendered pages) instead of paying
+-- the open cost each time.
+function InkAwayView:ensureNotebookPDF()
+    local t = self.notebook and self.notebook.template
+    if not (t and t.pdf_path) then return end
+    if self._nb_pdf_doc and self._nb_pdf_path == t.pdf_path then return end
+    self:closeNotebookPDF()
+    local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(t.pdf_path) end)
+    self._nb_pdf_doc = ok and doc or nil
+    self._nb_pdf_path = t.pdf_path
+end
+
+function InkAwayView:closeNotebookPDF()
+    if self._nb_pdf_doc then pcall(function() self._nb_pdf_doc:close() end) end
+    self._nb_pdf_doc, self._nb_pdf_path = nil, nil
+end
+
+-- For a PDF-backed notebook, put the current page's rendered PDF image behind
+-- the ink. Only the visible page is ever rendered or resident, so opening the
+-- PDF and turning pages stay fast no matter how many pages it has.
+function InkAwayView:loadNotebookPageBackground()
+    local nb = self.notebook
+    local t = nb and nb.template
+    if not (t and t.pdf_path) then return end
+    self:ensureNotebookPDF()
+    local img = self:renderPdfPage(self._nb_pdf_doc, nb.index)
+    if self.bg_bb then self.bg_bb:free() end
+    self.bg_bb = img            -- canvas-sized already; nil if the render failed
+    self.bg_rgba = nil          -- built on demand at export, never per page turn
+    self.bg_path = t.pdf_path
+    self.export_bg = true
+end
+
+-- Step to another page (delta -1/+1). Syncs the current page out first.
+function InkAwayView:nbGo(delta)
+    if not self.notebook then return end
+    local nb = self.notebook
+    local target = nb.index + delta
+    if target < 1 or target > nb:count() then return end
+    self:nbSyncOut()
+    nb:gotoPage(target)
+    self:nbLoad()
+    self.dirty = true
+end
+
+-- Insert a blank page after the current one and move to it.
+function InkAwayView:nbAddPage()
+    if not self.notebook then return end
+    self:nbSyncOut()
+    self.notebook:addPage()
+    self:nbLoad()
+    self.dirty = true
+end
+
+-- Remove the current page (with a confirm; never drops below one page).
+function InkAwayView:nbDeletePage()
+    if not self.notebook then return end
+    if self.notebook:count() <= 1 then
+        UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
+        return
+    end
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = _("Delete this page?"),
+        ok_text = _("Delete"),
+        ok_callback = function()
+            self.notebook:deletePage()
+            self:nbLoad()
+            self.dirty = true
+        end,
+    })
+end
+
+-- Enter notebook mode with a fresh notebook using `template`
+-- ({ style = "lines"|"grid"|"dots"|"blank", size = px }).
+function InkAwayView:startNotebook(template)
+    self:clearBackground()
+    self.save_area = nil
+    self.notebook = Notebook.new(self.screen_w, self.screen_h, template)
+    self.nb_bar_h = self:nbBarHeight()
+    self:recomputeArea()
+    self:nbLoad()
+    self.dirty = false
+    -- persist the fresh notebook straight away so a close before the next
+    -- autosave tick still brings it back as a notebook, not the old drawing
+    if self.autosave ~= "off" then self:saveSession() end
+end
+
+-- Rebuild notebook mode from a loaded v2 project.
+function InkAwayView:openNotebookData(data)
+    self:closeNotebookPDF()
+    self:clearBackground()
+    self.save_area = nil
+    self.notebook = Notebook.fromData(data)
+    -- pages were drawn at their own screen size; treat them at this screen size
+    self.notebook.w, self.notebook.h = self.screen_w, self.screen_h
+    self.nb_bar_h = self:nbBarHeight()
+    self:recomputeArea()
+    self:nbLoad()
+    self.dirty = false
+end
+
+-- Leave notebook mode and return to the single-canvas layout.
+function InkAwayView:exitNotebook()
+    if not self.notebook then return end
+    self:closeNotebookPDF()
+    self.notebook = nil
+    self.nb_bar_h = 0
+    self:recomputeArea()
+end
+
+-- Open an entire PDF as a notebook: one page per PDF page, each with the PDF
+-- page as its background to write on. Pages are rendered lazily on demand.
+function InkAwayView:startPdfNotebook(path)
+    local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(path) end)
+    if not ok or not doc then
+        UIManager:show(InfoMessage:new{ text = _("Could not open that PDF.") })
+        return
+    end
+    local pages = 1
+    pcall(function() pages = doc:getPageCount() or 1 end)
+    if not pages or pages < 1 then pages = 1 end
+    self:closeNotebookPDF()
+    self._nb_pdf_doc, self._nb_pdf_path = doc, path
+    self:clearBackground()
+    self.save_area = nil
+    self.notebook = Notebook.new(self.screen_w, self.screen_h, {
+        style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
+    })
+    local list = {}
+    for _ = 1, pages do list[#list + 1] = {} end   -- one empty ink layer per page
+    self.notebook.pages = list
+    self.notebook.index = 1
+    self.nb_bar_h = self:nbBarHeight()
+    self:recomputeArea()
+    self:nbLoad()
+    self.dirty = false
+    if self.autosave ~= "off" then self:saveSession() end
+end
+
+-- Pick a PDF and open it as a notebook (confirming first if there is work open).
+function InkAwayView:openPdfAsNotebook()
+    local PathChooser = require("ui/widget/pathchooser")
+    UIManager:show(PathChooser:new{
+        select_directory = false, select_file = true, show_files = true,
+        path = self:defaultDir(),
+        onConfirm = function(path)
+            if not path:lower():match("%.pdf$") then
+                UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
+                return
+            end
+            local function go() self:startPdfNotebook(path) end
+            if self.notebook or not self.canvas:isEmpty() then
+                local ConfirmBox = require("ui/widget/confirmbox")
+                UIManager:show(ConfirmBox:new{
+                    text = _("Open this PDF as a notebook? The current work will be cleared."),
+                    ok_text = _("Open"), ok_callback = go,
+                })
+            else
+                go()
+            end
+        end,
+    })
+end
+
+-- Remove any loaded background image (used when switching into notebook mode).
+function InkAwayView:clearBackground()
+    if self.bg_bb then pcall(function() self.bg_bb:free() end) end
+    self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
+    self.export_bg = true
+end
+
+-- Start a new notebook: ask which ruling to use, then enter notebook mode.
+function InkAwayView:newNotebook()
+    local function begin(style)
+        self.notebook_template_style = style
+        -- seed the paper with the reader's current grid spacing/strength so the
+        -- Size and Strength controls feel consistent between the two modes
+        self:startNotebook({ style = style, size = self.grid_size or 40, strength = self.grid_strength or 45 })
+    end
+    local function go(style)
+        if self.notebook or not self.canvas:isEmpty() then
+            local ConfirmBox = require("ui/widget/confirmbox")
+            UIManager:show(ConfirmBox:new{
+                text = _("Start a new notebook? The current work will be cleared."),
+                ok_text = _("New"), ok_callback = function() begin(style) end,
+            })
+        else
+            begin(style)
+        end
+    end
+    local dlg
+    local function row(style, label) return {{ text = label,
+        callback = function() UIManager:close(dlg); go(style) end }} end
+    dlg = ButtonDialog:new{
+        title = _("New notebook \u{2014} paper"), title_align = "center",
+        buttons = {
+            row("lines", _("Lined")),
+            row("grid",  _("Grid")),
+            row("dots",  _("Dotted")),
+            row("blank", _("Blank")),
+            {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }},
+        },
+    }
+    self._settings_dialog = dlg
+    UIManager:show(dlg)
+end
+
+-- Export the notebook to a single PDF (one fixed-size page per notebook page),
+-- with a paper-colour choice, then offer to open it in the reader.
+function InkAwayView:exportNotebookPDF()
+    self:nbSyncOut()
+    local nb = self.notebook
+    self.nb_paper = self.nb_paper or "white"
+    local dlg
+    local function paperBtn(k, label)
+        return { text = (self.nb_paper == k and "\u{25CF} " or "") .. label,
+                 callback = function() self.nb_paper = k; UIManager:close(dlg); self:exportNotebookPDF() end }
+    end
+    local buttons = {
+        {{ text = _("Paper colour"), enabled = false }},
+        { paperBtn("white", _("White")), paperBtn("sand", _("Sandpaper")) },
+    }
+    -- a PDF-backed notebook always prints its PDF pages, so no toggle there;
+    -- a manually loaded picture can be included or left out
+    if self.bg_bb and not (nb.template and nb.template.pdf_path) then
+        buttons[#buttons + 1] = {{
+            text = self.export_bg and _("Background: included") or _("Background: drawing only"),
+            callback = function() self.export_bg = not self.export_bg; UIManager:close(dlg); self:exportNotebookPDF() end,
+        }}
+    end
+    buttons[#buttons + 1] = {{ text = string.format(_("Export %d page(s) to PDF"), nb:count()),
+           callback = function() UIManager:close(dlg); self:chooseNotebookDestination() end }}
+    buttons[#buttons + 1] = {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }}
+    dlg = ButtonDialog:new{ title = _("Export notebook"), title_align = "center", buttons = buttons }
+    self._save_dialog = dlg
+    UIManager:show(dlg)
+end
+
+function InkAwayView:chooseNotebookDestination()
+    local PathChooser = require("ui/widget/pathchooser")
+    UIManager:show(PathChooser:new{
+        select_directory = true, select_file = false, show_files = true,
+        path = existingDir(self:getSetting("inkaway_last_notebook_dir"))
+            or self.notebooks_dir or self.default_dir or "/",
+        onConfirm = function(dir)
+            self:setSetting("inkaway_last_notebook_dir", dir)
+            self:promptNotebookFilename(dir)
+        end,
+    })
+end
+
+function InkAwayView:promptNotebookFilename(dir)
+    local InputDialog = require("ui/widget/inputdialog")
+    local name = os.date("notebook-%Y%m%d-%H%M%S")
+    local d
+    d = InputDialog:new{
+        title = _("PDF name"),
+        input = name,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+            { text = _("Export"), is_enter_default = true, callback = function()
+                local n = d:getInputText()
+                UIManager:close(d)
+                if not n or n == "" then n = name end
+                n = n:gsub("[/\\]", "_")
+                if not n:lower():match("%.pdf$") then n = n .. ".pdf" end
+                local sep = (dir:sub(-1) == "/") and "" or "/"
+                self:doNotebookExport(dir .. sep .. n)
+            end },
+        }},
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
+end
+
+function InkAwayView:doNotebookExport(path)
+    local nb = self.notebook
+    self:nbSyncOut()
+    -- copy the template so the export tint/strength never sticks to the working
+    -- notebook, and bake the ruling grey from the paper strength
+    local template = {}
+    for k, v in pairs(nb.template) do template[k] = v end
+    template.paper = PAPERS[self.nb_paper or "white"] or PAPERS.white
+    template.gray = strengthToLevel(template.strength)
+    local ok, DataStorage = pcall(require, "datastorage")
+    local tmp_dir = (ok and DataStorage and DataStorage:getSettingsDir()) or "/tmp"
+
+    -- background per page: a PDF-backed notebook renders each source page on
+    -- the fly (one at a time, so memory stays flat); otherwise a single loaded
+    -- picture is shared by every page when the reader asked to include it.
+    local bg
+    if template.pdf_path then
+        self:ensureNotebookPDF()
+        local doc = self._nb_pdf_doc
+        bg = function(i)
+            local img = self:renderPdfPage(doc, i)
+            if not img then return nil end
+            local rgba = bbToRGBA(img, nb.w, nb.h)
+            img:free()
+            return rgba
+        end
+    elseif self.export_bg and self.bg_bb then
+        bg = self.bg_rgba or self:buildBgRGBA()
+    end
+
+    -- Rendering every page to JPEG is synchronous and can take a moment on a
+    -- long notebook, so show a wait message and let it paint before we block.
+    local wait = InfoMessage:new{ text = string.format(_("Exporting %d page(s)\u{2026}"), nb:count()) }
+    UIManager:show(wait)
+    UIManager:nextTick(function()
+        local eok, err = Export.notebookToPDF(nb.pages, nb.w, nb.h, template, path, 85, tmp_dir, bg)
+        UIManager:close(wait)
+        if not eok then
+            UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(err) })
+            return
+        end
+        -- Also keep the editable notebook: save a project with the same name in
+        -- the projects folder, so closing right after exporting never loses the
+        -- work (people export the PDF and may not think to also "Save project").
+        local proj_saved = self:autoSaveNotebookProject(path)
+        -- make the PDF open as a full page with no auto-crop the first time
+        self:seedPdfView(path)
+        local ConfirmBox = require("ui/widget/confirmbox")
+        local msg = string.format(_("Notebook exported:\n%s"), path)
+        if proj_saved then msg = msg .. string.format(_("\n\nEditable copy kept in:\n%s"), proj_saved) end
+        UIManager:show(ConfirmBox:new{
+            text = msg .. _("\n\nOpen the PDF now?"),
+            ok_text = _("Open"),
+            ok_callback = function() self:openExportedPDF(path) end,
+        })
+    end)
+end
+
+-- Save the current notebook as an editable .inkaway project alongside the PDF,
+-- in the projects folder, using the PDF's base name. Returns the path or nil.
+function InkAwayView:autoSaveNotebookProject(pdf_path)
+    if not self.notebook then return nil end
+    local base = pdf_path:match("([^/\\]+)%.[Pp][Dd][Ff]$") or pdf_path:match("([^/\\]+)$") or "notebook"
+    local dir = self.projects_dir or self.default_dir
+    if not dir then return nil end
+    local sep = (dir:sub(-1) == "/") and "" or "/"
+    local proj = dir .. sep .. base .. "." .. Project.EXT
+    self:nbSyncOut()
+    local ok = Project.saveNotebook(self.notebook, proj)
+    return ok and proj or nil
+end
+
+-- Pre-seed a freshly exported PDF's sidecar so KOReader opens it as a whole
+-- page with no margin auto-crop (its defaults are page-width + auto-crop, which
+-- would zoom into the ink and clip it). Best effort; harmless if it fails.
+function InkAwayView:seedPdfView(path)
+    local dok, DocSettings = pcall(require, "docsettings")
+    if not (dok and DocSettings) then return end
+    pcall(function()
+        local ds = DocSettings:open(path)
+        if not ds then return end
+        ds:saveSetting("kopt_trim_page", 3)         -- 3 = "none": no margin cropping at all
+        ds:saveSetting("kopt_zoom_mode_genus", 4)   -- 4 = "page"
+        ds:saveSetting("kopt_zoom_mode_type", 2)    -- 2 = full (not width/height)
+        ds:flush()
+    end)
+end
+
+-- Hand a freshly exported PDF to KOReader's reader, closing the plugin view.
+function InkAwayView:openExportedPDF(path)
+    local rok, ReaderUI = pcall(require, "apps/reader/readerui")
+    if not (rok and ReaderUI) then
+        UIManager:show(InfoMessage:new{ text = _("Saved. Open it from your library."), timeout = 3 })
+        return
+    end
+    self.closing = true
+    self:saveSession()
+    UIManager:close(self)
+    UIManager:nextTick(function() ReaderUI:showReader(path) end)
 end
 
 function InkAwayView:chooseDestination(fmt)

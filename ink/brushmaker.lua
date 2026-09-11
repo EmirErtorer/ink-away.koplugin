@@ -79,12 +79,15 @@ function BrushMaker:init()
 
     if Device:isTouchDevice() then
         -- capture the whole screen so a touch outside the panel cannot fall
-        -- through and draw on the canvas behind it
+        -- through and draw on the canvas behind it. Rate-limit the pan with
+        -- GestureRange's own `rate` (KOReader's built-in mechanism, tuned per
+        -- device via Screen.low_pan_rate) rather than a hand-rolled timer.
         local full = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+        local pan_rate = Screen.low_pan_rate and 2.0 or 30.0
         self.ges_events = {
             BmTap = { GestureRange:new{ ges = "tap", range = full } },
-            BmPan = { GestureRange:new{ ges = "pan", range = full } },
-            BmHoldPan = { GestureRange:new{ ges = "hold_pan", range = full } },
+            BmPan = { GestureRange:new{ ges = "pan", range = full, rate = pan_rate } },
+            BmHoldPan = { GestureRange:new{ ges = "hold_pan", range = full, rate = pan_rate } },
         }
     end
 end
@@ -217,28 +220,15 @@ function BrushMaker:sliderAt(px, py)
     end
 end
 
--- Re-render the sample stroke at most ~16 times a second, coalescing a burst of
--- drag samples into one render. The knob still tracks the finger every event
--- (that is just a repaint), but the heavier stroke render is throttled, so the
--- e-ink refresh queue never backs up and the panel stays responsive.
-function BrushMaker:schedulePreview()
-    if self._preview_pending then return end
-    self._preview_pending = true
-    self._preview_cb = self._preview_cb or function()
-        self._preview_pending = false
-        self:renderPreview()
-        UIManager:setDirty(self, "fast", self.panel)
-    end
-    UIManager:scheduleIn(0.06, self._preview_cb)
-end
-
 function BrushMaker:setSlider(px, py)
     local f, val = self:sliderAt(px, py)
     if not f then return false end
     if self.params[f.id] ~= val then
+        -- Pan events are already rate-limited by the GestureRange, so we can
+        -- redraw the sample directly here without a separate throttle.
         self.params[f.id] = val
-        self:schedulePreview()
-        UIManager:setDirty(self, "fast", self.panel)   -- move the knob now (cheap)
+        self:renderPreview()
+        UIManager:setDirty(self, "fast", self.panel)
     end
     return true
 end
@@ -267,11 +257,16 @@ end
 BrushMaker.onBmHoldPan = BrushMaker.onBmPan
 
 function BrushMaker:promptName()
+    -- Close the full-screen maker FIRST, then show the name entry. Otherwise the
+    -- entry (and, on a device, the on-screen keyboard) is drawn behind this
+    -- full-screen modal and gets hidden. Capture what we need before closing.
+    local on_save, params, init_name = self.on_save, self.params, self.init_name
+    UIManager:close(self)
     local InputDialog = require("ui/widget/inputdialog")
     local dlg
     dlg = InputDialog:new{
         title = _("Name this brush"),
-        input = self.init_name or os.date("brush-%H%M%S"),
+        input = init_name or os.date("brush-%H%M%S"),
         buttons = {{
             { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
             { text = _("Save"), is_enter_default = true, callback = function()
@@ -279,8 +274,7 @@ function BrushMaker:promptName()
                 UIManager:close(dlg)
                 if not name or name == "" then return end
                 name = name:gsub("[/\\%[%]\"]", " ")   -- keep it a plain, storable name
-                UIManager:close(self)
-                if self.on_save then self.on_save(name, self.params) end
+                if on_save then on_save(name, params) end
             end },
         }},
     }
@@ -289,7 +283,6 @@ function BrushMaker:promptName()
 end
 
 function BrushMaker:onCloseWidget()
-    if self._preview_cb then UIManager:unschedule(self._preview_cb) end
     if self.preview_bb then self.preview_bb:free(); self.preview_bb = nil end
 end
 

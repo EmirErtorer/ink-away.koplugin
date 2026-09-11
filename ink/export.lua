@@ -91,7 +91,7 @@ end
 -- `rect` optionally crops to {x,y,w,h}. `clear_mask` (optional, ow*oh bytes) is
 -- set to 1 wherever a "hard" erase (op.ebg) clears, so the background composite
 -- can leave those pixels transparent. Returns buf, byte_count, ow, oh.
-function Export.buildRGBA(canvas, rect, clear_mask)
+function Export.buildRGBA(canvas, rect, clear_mask, template)
     local ow, oh, offx, offy = dims(canvas, rect)
     local n = ow * oh * 4
     local buf = ffi.new("uint8_t[?]", n)  -- starts all zero, so fully transparent
@@ -103,6 +103,21 @@ function Export.buildRGBA(canvas, rect, clear_mask)
         if x + len > ow then len = ow - x end
         if len <= 0 then return end
         return x, y, len
+    end
+    -- notebook ruling, opaque grey, so it prints on top of any background too
+    if template and template.style and template.style ~= "blank" then
+        local Template = require("ink/template")
+        local g = template.gray or 210
+        local tput = function(x, y, len)
+            local cx, cy, clen = clamp_run(x, y, len)
+            if not cx then return end
+            local base = (cy * ow + cx) * 4
+            for i = 0, clen - 1 do
+                local o = base + i * 4
+                buf[o] = g; buf[o + 1] = g; buf[o + 2] = g; buf[o + 3] = 255
+            end
+        end
+        Template.render(template.style, canvas.w, canvas.h, template.size or 40, tput)
     end
     local function ink_put(r, g, b, alpha)
         return function(x, y, len)
@@ -137,11 +152,22 @@ end
 
 -- Build a tightly packed RGB buffer (ow*oh*3 bytes) with ink composited over a
 -- solid white background (for JPEG, which has no transparency). `rect` optional.
-function Export.buildRGB(canvas, rect)
+-- `template` (optional {style,size}) draws a light grey notebook ruling under
+-- the ink, so a lined/grid/dotted page prints its paper too.
+function Export.buildRGB(canvas, rect, template)
     local ow, oh, offx, offy = dims(canvas, rect)
     local n = ow * oh * 3
     local buf = ffi.new("uint8_t[?]", n)
-    ffi.fill(buf, n, 0xFF)  -- white background
+    -- paper colour: white unless the template asks for a tint (e.g. sandpaper)
+    local pr, pg, pb = 255, 255, 255
+    if template and template.paper then
+        pr, pg, pb = template.paper[1], template.paper[2], template.paper[3]
+    end
+    if pr == pg and pg == pb then
+        ffi.fill(buf, n, pr)
+    else
+        for i = 0, ow * oh - 1 do local o = i * 3; buf[o] = pr; buf[o + 1] = pg; buf[o + 2] = pb end
+    end
     local function clamp_run(x, y, len)
         x = x - offx; y = y - offy
         if y < 0 or y >= oh then return end
@@ -172,8 +198,23 @@ function Export.buildRGB(canvas, rect)
         local base = (cy * ow + cx) * 3
         for i = 0, clen - 1 do
             local o = base + i * 3
-            buf[o] = 0xFF; buf[o + 1] = 0xFF; buf[o + 2] = 0xFF
+            buf[o] = pr; buf[o + 1] = pg; buf[o + 2] = pb
         end
+    end
+    -- notebook ruling first, so ink and erase sit on top of the paper
+    if template and template.style and template.style ~= "blank" then
+        local Template = require("ink/template")
+        local g = template.gray or 210
+        local tput = function(x, y, len)
+            local cx, cy, clen = clamp_run(x, y, len)
+            if not cx then return end
+            local base = (cy * ow + cx) * 3
+            for i = 0, clen - 1 do
+                local o = base + i * 3
+                buf[o] = g; buf[o + 1] = g; buf[o + 2] = g
+            end
+        end
+        Template.render(template.style, canvas.w, canvas.h, template.size or 40, tput)
     end
     replay(canvas, ink_put, function() return erase_put end)
     return buf, n, ow, oh
@@ -272,7 +313,7 @@ function Export.saveJPEG(canvas, path, quality, opts)
         local rgba
         ow, oh = dims(canvas, opts.rect)
         local mask = ffi.new("uint8_t[?]", ow * oh)
-        rgba = Export.buildRGBA(canvas, opts.rect, mask)
+        rgba = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
         compositeOverBg(rgba, ow, oh, opts.bg, canvas.w, offx, offy, mask)
@@ -284,9 +325,34 @@ function Export.saveJPEG(canvas, path, quality, opts)
             end
         end
     else
-        rgb, _, ow, oh = Export.buildRGB(canvas, opts.rect)
+        rgb, _, ow, oh = Export.buildRGB(canvas, opts.rect, opts.template)
     end
     return Jpeg.encodeToFile(path, rgb, ow, oh, 3, quality or 90, ow * 3)
+end
+
+-- Assemble a notebook (a list of per-page ops lists) into a single PDF at
+-- `path`, one fixed-size page each, with the shared `template` ruling. Pages
+-- are rendered to JPEG one at a time through a scratch file in `tmp_dir`, so
+-- memory stays flat no matter how many pages. Returns ok, err.
+function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg)
+    local Pdf = require("ink/pdf")
+    local Canvas = require("ink/canvas")
+    local doc = Pdf.new()
+    tmp_dir = tmp_dir or "/tmp"
+    for i, ops in ipairs(pages) do
+        local c = Canvas.new(w, h)
+        c:setOps(ops)
+        local tmp = tmp_dir .. "/inkaway_page_" .. i .. ".jpg"
+        local ok, err = Export.saveJPEG(c, tmp, quality or 85, { template = template, bg = bg })
+        if not ok then return false, err end
+        local f = io.open(tmp, "rb")
+        if not f then return false, "could not read rendered page" end
+        local bytes = f:read("*a")
+        f:close()
+        os.remove(tmp)
+        doc:addJPEGPage(bytes, w, h)
+    end
+    return doc:save(path)
 end
 
 return Export

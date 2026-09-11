@@ -102,10 +102,11 @@ function ColorPicker:init()
 
     if Device:isTouchDevice() then
         local full = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+        local pan_rate = Screen.low_pan_rate and 2.0 or 30.0   -- KOReader's per-device gesture rate
         self.ges_events = {
             CpTap = { GestureRange:new{ ges = "tap", range = full } },
-            CpPan = { GestureRange:new{ ges = "pan", range = full } },
-            CpHoldPan = { GestureRange:new{ ges = "hold_pan", range = full } },
+            CpPan = { GestureRange:new{ ges = "pan", range = full, rate = pan_rate } },
+            CpHoldPan = { GestureRange:new{ ges = "hold_pan", range = full, rate = pan_rate } },
         }
     end
 end

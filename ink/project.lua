@@ -38,12 +38,20 @@ local function ser(v, out)
     end
 end
 
--- Serialize a canvas to a project string.
-function Project.serialize(canvas)
-    local root = { v = 1, w = canvas.w, h = canvas.h, ops = canvas.ops }
+local function serializeRoot(root)
     local out = { "return " }
     ser(root, out)
     return table.concat(out)
+end
+
+-- Serialize a single-page canvas (v1) to a project string.
+function Project.serialize(canvas)
+    return serializeRoot({ v = 1, w = canvas.w, h = canvas.h, ops = canvas.ops })
+end
+
+-- Serialize a multi-page notebook (v2): the template plus one ops list per page.
+function Project.serializeNotebook(nb)
+    return serializeRoot({ v = 2, w = nb.w, h = nb.h, template = nb.template, pages = nb.pages })
 end
 
 -- Parse a project string. Returns a table { w, h, ops } or nil, error.
@@ -54,10 +62,15 @@ function Project.deserialize(str)
     local ok, data = pcall(chunk)
     if not ok or type(data) ~= "table" then return nil, "not a project" end
     if type(data.w) ~= "number" or type(data.h) ~= "number"
-        or type(data.ops) ~= "table" then
+        or (type(data.ops) ~= "table" and type(data.pages) ~= "table") then
         return nil, "missing fields"
     end
     return data
+end
+
+-- Is this parsed project a multi-page notebook (v2) rather than a single canvas?
+function Project.isNotebook(data)
+    return type(data) == "table" and type(data.pages) == "table"
 end
 
 -- Write the canvas to a file at `path`. Returns ok, err.
@@ -65,6 +78,15 @@ function Project.save(canvas, path)
     local f, err = io.open(path, "wb")
     if not f then return false, err end
     f:write(Project.serialize(canvas))
+    f:close()
+    return true
+end
+
+-- Write a notebook to a file at `path`. Returns ok, err.
+function Project.saveNotebook(nb, path)
+    local f, err = io.open(path, "wb")
+    if not f then return false, err end
+    f:write(Project.serializeNotebook(nb))
     f:close()
     return true
 end
