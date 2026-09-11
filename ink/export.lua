@@ -25,12 +25,63 @@ computer, where the native libraries are not present.
 ]]
 
 local ffi = require("ffi")
+local bit = require("bit")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
 local Fill = require("ink/fill")
 local Symmetry = require("ink/symmetry")
 
 local Export = {}
+
+-- A tiny 5x7 bitmap font (digits, slash, space) so the exporter can stamp a
+-- page-number footer without any font/text dependency (keeps this file usable
+-- headlessly and identical on every device). Each glyph is 7 rows of 5 bits.
+local GLYPHS = {
+    ["0"] = { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },
+    ["1"] = { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },
+    ["2"] = { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F },
+    ["3"] = { 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E },
+    ["4"] = { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 },
+    ["5"] = { 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E },
+    ["6"] = { 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E },
+    ["7"] = { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 },
+    ["8"] = { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E },
+    ["9"] = { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C },
+    ["/"] = { 0x01, 0x01, 0x02, 0x04, 0x08, 0x10, 0x10 },
+    [" "] = { 0, 0, 0, 0, 0, 0, 0 },
+}
+
+-- Stamp `text` (digits / slash / space) centred near the bottom of an ow x oh
+-- RGB buffer, at grey level `lvl`. Used for the optional page-number footer.
+function Export.drawFooter(buf, ow, oh, text, lvl)
+    if not text or text == "" then return end
+    lvl = lvl or 90
+    local gs = math.max(2, math.floor(oh / 320))     -- pixel size of one font dot
+    local cw = 6 * gs                                 -- glyph cell width (5 + 1 gap)
+    local total = #text * cw - gs
+    local x0 = math.floor((ow - total) / 2)
+    local y0 = oh - 7 * gs - math.max(gs * 2, math.floor(oh * 0.02))
+    if x0 < 0 or y0 < 0 then return end
+    for ci = 1, #text do
+        local g = GLYPHS[text:sub(ci, ci)] or GLYPHS[" "]
+        local gx = x0 + (ci - 1) * cw
+        for row = 1, 7 do
+            local bits = g[row]
+            for col = 0, 4 do
+                if bit.band(bits, bit.lshift(1, 4 - col)) ~= 0 then
+                    for dy = 0, gs - 1 do
+                        local py = y0 + (row - 1) * gs + dy
+                        local base = (py * ow + gx + col * gs) * 3
+                        for dx = 0, gs - 1 do
+                            local o = base + dx * 3
+                            buf[o] = lvl; buf[o + 1] = lvl; buf[o + 2] = lvl
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
 
 -- Draw an op's geometry through `put` (shapes, fills and strokes all share this).
 local function paintGeom(op, put)
@@ -302,21 +353,55 @@ function Export.savePNG(canvas, path, opts)
     return Png.encodeToFile(path, buf, ow, oh, 4)
 end
 
--- Save the canvas as a JPEG on a white background. `opts` as for savePNG.
--- Returns ok, err.
+-- Nearest-neighbour upscale of a packed RGBA buffer by integer factor s.
+local function upscaleRGBA(src, ow, oh, s)
+    local dw, dh = ow * s, oh * s
+    local dst = ffi.new("uint8_t[?]", dw * dh * 4)
+    for y = 0, dh - 1 do
+        local sy = math.floor(y / s)
+        for x = 0, dw - 1 do
+            local so = (sy * ow + math.floor(x / s)) * 4
+            local d = (y * dw + x) * 4
+            dst[d] = src[so]; dst[d + 1] = src[so + 1]; dst[d + 2] = src[so + 2]; dst[d + 3] = src[so + 3]
+        end
+    end
+    return dst, dw, dh
+end
+
+local function upscaleMask(src, ow, oh, s)
+    local dw, dh = ow * s, oh * s
+    local dst = ffi.new("uint8_t[?]", dw * dh)
+    for y = 0, dh - 1 do
+        local sy = math.floor(y / s)
+        for x = 0, dw - 1 do dst[y * dw + x] = src[sy * ow + math.floor(x / s)] end
+    end
+    return dst
+end
+
+-- Save the canvas as a JPEG on a white background. `opts` may carry `rect`,
+-- `template`, `bg`, `footer`, and `scale` (integer >1 renders the page at a
+-- higher pixel resolution: the background is expected pre-rendered at that
+-- size, the ink layer is upscaled to match, so text-heavy PDF pages stay crisp).
+-- Returns ok, err, pixel_w, pixel_h.
 function Export.saveJPEG(canvas, path, quality, opts)
     opts = opts or {}
     local Jpeg = require("ffi/jpeg")
     local ow, oh, rgb
     if opts.bg then
         -- composite ink over the background, then flatten the result onto white
-        local rgba
         ow, oh = dims(canvas, opts.rect)
         local mask = ffi.new("uint8_t[?]", ow * oh)
-        rgba = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
+        local rgba = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
-        compositeOverBg(rgba, ow, oh, opts.bg, canvas.w, offx, offy, mask)
+        local bgw = canvas.w
+        local s = opts.scale or 1
+        if s > 1 then      -- match the ink layer to the high-res background
+            rgba, ow, oh = upscaleRGBA(rgba, ow, oh, s)
+            mask = upscaleMask(mask, ow / s, oh / s, s)
+            offx, offy, bgw = 0, 0, ow
+        end
+        compositeOverBg(rgba, ow, oh, opts.bg, bgw, offx, offy, mask)
         rgb = ffi.new("uint8_t[?]", ow * oh * 3)
         for i = 0, ow * oh - 1 do
             local a = rgba[i * 4 + 3] / 255
@@ -327,7 +412,9 @@ function Export.saveJPEG(canvas, path, quality, opts)
     else
         rgb, _, ow, oh = Export.buildRGB(canvas, opts.rect, opts.template)
     end
-    return Jpeg.encodeToFile(path, rgb, ow, oh, 3, quality or 90, ow * 3)
+    if opts.footer then Export.drawFooter(rgb, ow, oh, opts.footer) end
+    local ok, err = Jpeg.encodeToFile(path, rgb, ow, oh, 3, quality or 90, ow * 3)
+    return ok, err, ow, oh
 end
 
 -- Assemble a notebook (a list of per-page ops lists) into a single PDF at
@@ -337,7 +424,11 @@ end
 -- either one RGBA buffer shared by every page, or a function(i) -> RGBA buffer
 -- that renders each page's own background on demand (used for PDF import).
 -- Returns ok, err.
-function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg)
+-- `opts` (optional): { footer = bool (stamp "i / n" page numbers),
+-- scale = integer (render pages at this pixel multiplier for crisp PDF text) }.
+function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg, opts)
+    opts = opts or {}
+    local scale = opts.scale or 1
     local Pdf = require("ink/pdf")
     local Canvas = require("ink/canvas")
     local doc = Pdf.new()
@@ -345,16 +436,19 @@ function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg)
     for i, ops in ipairs(pages) do
         local c = Canvas.new(w, h)
         c:setOps(ops)
-        local page_bg = (type(bg) == "function") and bg(i) or bg
+        local page_bg = (type(bg) == "function") and bg(i, scale) or bg
+        local jopts = { template = template, bg = page_bg,
+            scale = (page_bg and scale) or 1,
+            footer = opts.footer and (tostring(i) .. " / " .. #pages) or nil }
         local tmp = tmp_dir .. "/inkaway_page_" .. i .. ".jpg"
-        local ok, err = Export.saveJPEG(c, tmp, quality or 85, { template = template, bg = page_bg })
+        local ok, err, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)
         if not ok then return false, err end
         local f = io.open(tmp, "rb")
         if not f then return false, "could not read rendered page" end
         local bytes = f:read("*a")
         f:close()
         os.remove(tmp)
-        doc:addJPEGPage(bytes, w, h)
+        doc:addJPEGPage(bytes, w, h, pxw, pxh)
     end
     return doc:save(path)
 end

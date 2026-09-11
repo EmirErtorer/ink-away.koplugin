@@ -117,6 +117,55 @@ local function bbToRGBA(bb, W, H)
     return buf
 end
 
+-- Even-odd ray cast: is point (px,py) inside the polygon `poly` (flat x,y list)?
+local function pointInPoly(px, py, poly)
+    local n = #poly / 2
+    if n < 3 then return false end
+    local inside = false
+    local j = n
+    for i = 1, n do
+        local xi, yi = poly[i * 2 - 1], poly[i * 2]
+        local xj, yj = poly[j * 2 - 1], poly[j * 2]
+        if ((yi > py) ~= (yj > py))
+           and (px < (xj - xi) * (py - yi) / (yj - yi) + xi) then
+            inside = not inside
+        end
+        j = i
+    end
+    return inside
+end
+
+-- Average point of an op's geometry (canvas coords), or nil if it has none.
+local function opCentroid(op)
+    local sx, sy, n = 0, 0, 0
+    if op.pts then
+        for i = 1, #op.pts, 2 do sx = sx + op.pts[i]; sy = sy + op.pts[i + 1]; n = n + 1 end
+    elseif op.runs then
+        for i = 1, #op.runs, 3 do sx = sx + op.runs[i]; sy = sy + op.runs[i + 1]; n = n + 1 end
+    end
+    if n == 0 then return nil end
+    return sx / n, sy / n
+end
+
+-- Accumulate an op's bounds into x0,y0,x1,y1 (canvas coords). Returns updated four.
+local function accumBounds(op, x0, y0, x1, y1)
+    local function acc(x, y)
+        if not x0 or x < x0 then x0 = x end
+        if not y0 or y < y0 then y0 = y end
+        if not x1 or x > x1 then x1 = x end
+        if not y1 or y > y1 then y1 = y end
+    end
+    if op.pts then for i = 1, #op.pts, 2 do acc(op.pts[i], op.pts[i + 1]) end end
+    if op.runs then for i = 1, #op.runs, 3 do acc(op.runs[i], op.runs[i + 1]); acc(op.runs[i] + op.runs[i + 2], op.runs[i + 1]) end end
+    return x0, y0, x1, y1
+end
+
+-- Shift every coordinate of an op by (dx,dy) canvas pixels, in place.
+local function translateOp(op, dx, dy)
+    if op.pts then for i = 1, #op.pts, 2 do op.pts[i] = op.pts[i] + dx; op.pts[i + 1] = op.pts[i + 1] + dy end end
+    if op.runs then for i = 1, #op.runs, 3 do op.runs[i] = op.runs[i] + dx; op.runs[i + 1] = op.runs[i + 1] + dy end end
+end
+
 -- Fit a source BlitBuffer inside a W x H page keeping its aspect, centre it on a
 -- white RGB32 page, and free the source. Returns the new page BlitBuffer.
 local function fitIntoCanvasBB(img, W, H)
@@ -432,6 +481,7 @@ function InkAwayView:loadProjectData(data)
     if not data or not data.ops then return false end
     self.canvas:setOps(data.ops)
     self.selected, self.rotating = nil, nil
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self.dirty = false
     return true
 end
@@ -610,6 +660,7 @@ function InkAwayView:setTool(tool)
     self:flushPending()        -- commit any stroke still in progress first
     -- a curve waiting for its bend is committed straight; other half-drags drop
     if self.curve_stage == "bend" then self:commitCurve() else self:cancelShape() end
+    if self.selection or self.lassoing then self:clearSelection() end
     self.pan_last = nil
     self.tool = tool
     self:refreshToolLabels()
@@ -961,6 +1012,17 @@ function InkAwayView:openShapePicker()
             self:openFillSettings()
         end,
     }}
+    -- lasso: draw a loop around things to select them, then drag to move
+    buttons[#buttons + 1] = {{
+        text = "\u{2B21} " .. _("Lasso select (loop, then drag to move)"),
+        checked_func = function() return self.tool == "lasso" end,
+        callback = function()
+            self:setTool("lasso")
+            self:cancelShape()
+            self:refreshToolLabels()
+            UIManager:close(self._shape_dialog)
+        end,
+    }}
     buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
     buttons[#buttons + 1] = {{ text = _("Done"),
         callback = function() UIManager:close(self._shape_dialog) end }}
@@ -1050,35 +1112,39 @@ function InkAwayView:opColor(op)
     return displayColor(op.color, op.alpha or 255)
 end
 
--- Rebuild the 1:1 master bitmap from the committed ops. Cost is proportional to
--- the ink drawn, not the zoom, and it only runs on open, undo, clear, or resize.
-function InkAwayView:composeCanvas()
-    if not self.canvas_bb then return end
+-- Compose a page into `dst` (a canvas-sized bitmap): white paper, optional
+-- background picture, notebook ruling, then the ink ops. Shared by the live
+-- master bitmap and by the page-overview thumbnails, so a thumbnail always
+-- matches exactly what the page looks like.
+function InkAwayView:composeInto(dst, ops, bg_bb, template)
     local W, H = self.view.canvas_w, self.view.canvas_h
-    self.canvas_bb:paintRect(0, 0, W, H, WHITE)
-    if self.bg_bb then     -- the background picture sits under everything
-        self.canvas_bb:blitFrom(self.bg_bb, 0, 0, 0, 0, W, H)
-    end
-    -- notebook ruling under the ink (grey at the template's strength; the paper
-    -- tint is applied at export)
-    if self.notebook and self.notebook.template and self.notebook.template.style ~= "blank" then
-        local t = self.notebook.template
-        local lvl = strengthToLevel(t.strength)
-        local put = spanWriter(self.canvas_bb, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
-        Template.render(t.style, W, H, t.size or 40, put)
+    dst:paintRect(0, 0, W, H, WHITE)
+    if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
+    if template and template.style and template.style ~= "blank" then
+        local lvl = strengthToLevel(template.strength)
+        local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
+        Template.render(template.style, W, H, template.size or 40, put)
     end
     local refx, refy = Symmetry.canvasRefs(W, H)
-    for _, op in ipairs(self.canvas.ops) do
+    for _, op in ipairs(ops) do
         if not op.hidden then      -- a shape being rotated is drawn as a preview
             local put
-            if op.kind == "erase" and not op.ebg and self.bg_bb then
-                put = bgSpanWriter(self.canvas_bb, self.bg_bb, W, H, nil)  -- reveal the background
+            if op.kind == "erase" and not op.ebg and bg_bb then
+                put = bgSpanWriter(dst, bg_bb, W, H, nil)   -- reveal the background
             else
-                put = spanWriter(self.canvas_bb, W, H, self:opColor(op), nil)
+                put = spanWriter(dst, W, H, self:opColor(op), nil)
             end
             Export.paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy))
         end
     end
+end
+
+-- Rebuild the 1:1 master bitmap from the committed ops. Cost is proportional to
+-- the ink drawn, not the zoom, and it only runs on open, undo, clear, or resize.
+function InkAwayView:composeCanvas()
+    if not self.canvas_bb then return end
+    self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb,
+        self.notebook and self.notebook.template or nil)
 end
 
 -- Rebuild what is on screen from the master bitmap: take the visible crop of
@@ -1898,11 +1964,11 @@ end
 -- Render one PDF page to a canvas-sized page BlitBuffer, on demand. Mirrors the
 -- call KOReader uses for cover thumbnails, so it is as fast as KOReader itself
 -- (and the result is cached by KOReader's DocCache). Returns a BlitBuffer or nil.
-function InkAwayView:renderPdfPage(doc, pageno)
+function InkAwayView:renderPdfPage(doc, pageno, tw, th)
     if not doc then return nil end
     local Document = require("document/document")
     local Geom = require("ui/geometry")
-    local W, H = self.view.canvas_w, self.view.canvas_h
+    local W, H = tw or self.view.canvas_w, th or self.view.canvas_h
     local img
     pcall(function()
         local native = Document.getNativePageDimensions(doc, pageno)
@@ -1924,7 +1990,8 @@ end
 function InkAwayView:openPaperStyle()
     local ButtonDialog = require("ui/widget/buttondialog")
     local dlg
-    local opts = { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") }, { "blank", _("Blank") } }
+    local opts = { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
+        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
     local buttons = {}
     for _, o in ipairs(opts) do
         buttons[#buttons + 1] = {{
@@ -2052,7 +2119,8 @@ end
 local SYM_LABEL = { off = "off", vert = "vertical", horiz = "horizontal", quad = "four way" }
 
 -- Friendly names for the notebook paper (ruling) styles.
-local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"), blank = _("blank") }
+local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"),
+    margin = _("margin"), cornell = _("Cornell"), blank = _("blank") }
 
 -- The gear menu. Kept deliberately uncluttered: the everyday actions sit up top,
 -- and the fiddlier toggles (snapping, stabilizer) live one tap away under
@@ -2102,10 +2170,6 @@ function InkAwayView:openSettings()
         },
         {{ text = _("Open PDF as notebook"), callback = function() UIManager:close(dlg); self:openPdfAsNotebook() end }},
     }
-    if self.notebook then
-        buttons[#buttons + 1] = {{ text = _("Delete page"),
-            callback = function() UIManager:close(dlg); self:nbDeletePage() end }}
-    end
     buttons[#buttons + 1] = {{ text = string.format(_("Symmetry: %s"), _(SYM_LABEL[self.symmetry] or "off")),
            callback = function() UIManager:close(dlg); self:openSymmetry() end }}
     buttons[#buttons + 1] = paper_row
@@ -2162,6 +2226,7 @@ function InkAwayView:newDrawing()
         self:exitNotebook()
         self.canvas:setOps({})
         self.selected, self.rotating = nil, nil
+        self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
         self.dirty = false
         os.remove(self:sessionPath())   -- so reopening does not restore the old drawing
         self:composeCanvas(); self:renderView()
@@ -2327,6 +2392,7 @@ function InkAwayView:deleteSelected(sel)
     self.canvas:pushHistory()
     self.canvas:removeOp(sel.idx)
     self.selected = nil
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self.dirty = true
     self:composeCanvas()
     self:renderView()
@@ -2488,6 +2554,7 @@ function InkAwayView:onIaTouch(_, ges)
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     if self.selecting_crop then return self:cropTouch(pos) end
     if self.rotating then return self:rotateTouch(pos) end
+    if self.tool == "lasso" then return self:lassoTouch(pos) end
     if self.tool == "fill" then self:doFill(pos); return true end
     if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
@@ -2516,6 +2583,7 @@ function InkAwayView:onIaPan(_, ges)
     local pos = ges.pos
     if self.selecting_crop then return self:cropMove(pos) end
     if self.rotating then return self:rotateMove(pos) end
+    if self.tool == "lasso" then return self:lassoPan(pos) end
     if self.tool == "fill" then return true end   -- fill is a tap, ignore drags
     if self.tool == "shape" then return self:shapeMove(pos) end
     if self.tool == "pan" then
@@ -2539,6 +2607,7 @@ InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 function InkAwayView:onIaPanRelease(_, ges)
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
+    if self.tool == "lasso" then return self:lassoRelease(ges and ges.pos) end
     if self.tool == "fill" then return true end
     if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
     if self.tool == "pan" then
@@ -2556,6 +2625,7 @@ InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 function InkAwayView:onIaSwipe(_, ges)
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.rotating then return self:rotateEnd() end
+    if self.tool == "lasso" then return self:lassoRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "fill" then return true end
     -- For a shape, only trust the swipe's END position; its start position would
     -- collapse the shape to a dot and cancel it. With no end_pos, keep the last
@@ -2582,12 +2652,14 @@ function InkAwayView:onIaTap(_, ges)
         if hit(self._nb_plus) then self:nbAddPage(); return true end
         if hit(self._nb_prev) then self:nbGo(-1); return true end
         if hit(self._nb_next) then self:nbGo(1); return true end
+        if hit(self._nb_count) then self:openPageMenu(); return true end
         -- swallow taps anywhere on the strip so they never fall through to drawing
         local v = self.view
         if p.y >= v.area_y + v.area_h then return true end
     end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
+    if self.tool == "lasso" then return self:lassoTap(ges and ges.pos) end
     if self.tool == "fill" then return true end   -- fill already happened on touch
     if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
     -- A tap inside the area finishes the dot started by the preceding touch.
@@ -2651,6 +2723,7 @@ function InkAwayView:undo()
         return
     end
     self.selected = nil
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self.dirty = true
     self:composeCanvas()   -- rebuild the master from the restored ops
     self:renderView()
@@ -2664,6 +2737,7 @@ function InkAwayView:redo()
         return
     end
     self.selected = nil
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self.dirty = true
     self:composeCanvas()
     self:renderView()
@@ -2682,6 +2756,205 @@ function InkAwayView:promptExit()
         ok_text = _("Leave"),
         ok_callback = function() UIManager:close(self) end,
     })
+end
+
+------------------------------------------------------------------------------
+-- Lasso select: loop around ink/shapes/fills to pick them, then drag the whole
+-- group freely, or duplicate / delete them. Works the same on a plain canvas
+-- and on a notebook page (both are just ops lists).
+------------------------------------------------------------------------------
+
+function InkAwayView:clearSelection()
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+-- Recompute the selection's bounding box (canvas coords) from its ops.
+function InkAwayView:recomputeSelectionBBox()
+    if not self.selection then return end
+    local x0, y0, x1, y1
+    for _, idx in ipairs(self.selection.idxs) do
+        local op = self.canvas.ops[idx]
+        if op then x0, y0, x1, y1 = accumBounds(op, x0, y0, x1, y1) end
+    end
+    self.selection.bbox = x0 and { x0 = x0, y0 = y0, x1 = x1, y1 = y1 } or nil
+end
+
+-- Is a screen point inside the selection box (with a little slack for the finger)?
+function InkAwayView:inSelBBoxScreen(sx, sy)
+    local b = self.selection and self.selection.bbox
+    if not b then return false end
+    local x0, y0 = InkGeom.toScreen(self.view, b.x0, b.y0)
+    local x1, y1 = InkGeom.toScreen(self.view, b.x1, b.y1)
+    local pad = 24
+    return sx >= x0 - pad and sx <= x1 + pad and sy >= y0 - pad and sy <= y1 + pad
+end
+
+-- Pick every op whose centroid lies inside the lasso polygon (canvas coords).
+function InkAwayView:computeSelection(poly)
+    local idxs = {}
+    for i, op in ipairs(self.canvas.ops) do
+        if op.kind ~= "erase" then
+            local cx, cy = opCentroid(op)
+            if cx and pointInPoly(cx, cy, poly) then idxs[#idxs + 1] = i end
+        end
+    end
+    if #idxs == 0 then self.selection = nil; return false end
+    self.selection = { idxs = idxs }
+    self:recomputeSelectionBBox()
+    return true
+end
+
+-- Close the lasso loop, select what it encircled, and show the box.
+function InkAwayView:lassoFinish()
+    self.lassoing = false
+    local scr = self.lasso_scr
+    self.lasso_scr = nil
+    if not scr or #scr < 6 then    -- need at least 3 points for an area
+        self:renderView(); UIManager:setDirty(self, "ui", self:areaScreenRect())
+        return
+    end
+    local poly = {}
+    for i = 1, #scr, 2 do
+        local cx, cy = InkGeom.toCanvas(self.view, scr[i], scr[i + 1])
+        poly[#poly + 1] = cx; poly[#poly + 1] = cy
+    end
+    local got = self:computeSelection(poly)
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    if got then
+        UIManager:show(InfoMessage:new{
+            text = _("Selected. Drag inside the box to move it, or tap it for options."), timeout = 2 })
+    else
+        UIManager:show(InfoMessage:new{ text = _("Nothing inside the loop."), timeout = 2 })
+    end
+end
+
+-- Commit a move of the selected ops by a screen delta.
+function InkAwayView:selMoveCommit(sdx, sdy)
+    if not self.selection then return end
+    local dx = sdx / self.view.zoom
+    local dy = sdy / self.view.zoom
+    if math.abs(dx) < 0.5 and math.abs(dy) < 0.5 then
+        self:renderView(); UIManager:setDirty(self, "ui", self:areaScreenRect()); return
+    end
+    self.canvas:pushHistory()
+    for _, idx in ipairs(self.selection.idxs) do
+        local op = self.canvas.ops[idx]
+        if op then translateOp(op, dx, dy) end
+    end
+    self.dirty = true
+    self:recomputeSelectionBBox()
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+-- Duplicate / delete the current selection, from its tap-menu.
+function InkAwayView:selDuplicate()
+    if not self.selection then return end
+    self.canvas:pushHistory()
+    local off = math.floor(24 / self.view.zoom + 0.5)
+    local new_idxs = {}
+    for _, idx in ipairs(self.selection.idxs) do
+        local op = self.canvas.ops[idx]
+        if op then
+            local c = self.canvas:cloneOp(op)
+            translateOp(c, off, off)
+            self.canvas.ops[#self.canvas.ops + 1] = c
+            new_idxs[#new_idxs + 1] = #self.canvas.ops
+        end
+    end
+    self.selection = { idxs = new_idxs }   -- the copies become the selection
+    self:recomputeSelectionBBox()
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+function InkAwayView:selDelete()
+    if not self.selection then return end
+    self.canvas:pushHistory()
+    table.sort(self.selection.idxs, function(a, b) return a > b end)  -- remove high-to-low
+    for _, idx in ipairs(self.selection.idxs) do self.canvas:removeOp(idx) end
+    self.selection = nil
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "full")
+end
+
+function InkAwayView:openSelectionMenu()
+    if not self.selection then return end
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local n = #self.selection.idxs
+    local buttons = {
+        {{ text = string.format(_("%d item(s) selected"), n), enabled = false }},
+        {{ text = _("Duplicate"), callback = function() UIManager:close(dlg); self:selDuplicate() end }},
+        {{ text = _("Delete"), callback = function() UIManager:close(dlg); self:selDelete() end }},
+        {{ text = _("Deselect"), callback = function() UIManager:close(dlg); self:clearSelection() end }},
+        {{ text = _("Keep selection"), callback = function() UIManager:close(dlg) end }},
+    }
+    dlg = ButtonDialog:new{ title = _("Selection"), title_align = "center", buttons = buttons }
+    self._shape_menu = dlg
+    UIManager:show(dlg)
+end
+
+-- Gesture entry points for the lasso tool, dispatched from the main handlers.
+function InkAwayView:lassoTouch(pos)
+    if self.selection and self:inSelBBoxScreen(pos.x, pos.y) then
+        self.sel_press = { x = pos.x, y = pos.y, dx = 0, dy = 0, moved = false }
+        return true
+    end
+    self:clearSelection()
+    self.lassoing = true
+    self.lasso_scr = { pos.x, pos.y }
+    return true
+end
+
+function InkAwayView:lassoPan(pos)
+    if self.sel_press then
+        self.sel_press.moved = true
+        self.sel_press.dx = pos.x - self.sel_press.x
+        self.sel_press.dy = pos.y - self.sel_press.y
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        return true
+    end
+    if self.lassoing and self.lasso_scr then
+        self.lasso_scr[#self.lasso_scr + 1] = pos.x
+        self.lasso_scr[#self.lasso_scr + 1] = pos.y
+        -- refresh only a small region around the new dot; the loop trail left by
+        -- earlier dots stays on the panel, so the whole path shows as it is drawn
+        UIManager:setDirty(self, "fast", GeomUI:new{ x = pos.x - 6, y = pos.y - 6, w = 12, h = 12 })
+        return true
+    end
+    return true
+end
+
+function InkAwayView:lassoRelease(pos)
+    if self.sel_press then
+        local moved = self.sel_press.moved
+        local dx, dy = self.sel_press.dx, self.sel_press.dy
+        self.sel_press = nil
+        if moved then self:selMoveCommit(dx, dy) end
+        return true
+    end
+    if self.lassoing then
+        if pos then self.lasso_scr[#self.lasso_scr + 1] = pos.x; self.lasso_scr[#self.lasso_scr + 1] = pos.y end
+        self:lassoFinish()
+        return true
+    end
+    return true
+end
+
+function InkAwayView:lassoTap(pos)
+    self.sel_press = nil
+    if self.lassoing then self:lassoFinish(); return true end
+    if self.selection then
+        if pos and self:inSelBBoxScreen(pos.x, pos.y) then self:openSelectionMenu()
+        else self:clearSelection() end
+    end
+    return true
 end
 
 ------------------------------------------------------------------------------
@@ -2765,6 +3038,38 @@ function InkAwayView:paintTo(bb, x, y)
         bb:paintRect(cx1 - 2, cy0, 2, cy1 - cy0, BLACKC)
     end
 
+    -- lasso overlay: the loop being drawn, and the box around a live selection
+    if self.lassoing or (self.selection and self.selection.bbox) then
+        local BLACKC = Blitbuffer.COLOR_BLACK
+        local ax0, ay0 = x + v.area_x, y + v.area_y
+        local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
+        if self.lassoing and self.lasso_scr then
+            for i = 1, #self.lasso_scr, 2 do
+                local px, py = self.lasso_scr[i], self.lasso_scr[i + 1]
+                if px >= ax0 and px < ax1 - 2 and py >= ay0 and py < ay1 - 2 then
+                    bb:paintRect(px, py, 3, 3, BLACKC)
+                end
+            end
+        end
+        if self.selection and self.selection.bbox then
+            local b = self.selection.bbox
+            local odx = (self.sel_press and self.sel_press.dx) or 0
+            local ody = (self.sel_press and self.sel_press.dy) or 0
+            local s0x, s0y = InkGeom.toScreen(v, b.x0, b.y0)
+            local s1x, s1y = InkGeom.toScreen(v, b.x1, b.y1)
+            local bx0 = math.max(ax0, math.min(ax1, x + s0x + odx))
+            local by0 = math.max(ay0, math.min(ay1, y + s0y + ody))
+            local bx1 = math.max(ax0, math.min(ax1, x + s1x + odx))
+            local by1 = math.max(ay0, math.min(ay1, y + s1y + ody))
+            if bx1 > bx0 and by1 > by0 then
+                bb:paintRect(bx0, by0, bx1 - bx0, 2, BLACKC)
+                bb:paintRect(bx0, by1 - 2, bx1 - bx0, 2, BLACKC)
+                bb:paintRect(bx0, by0, 2, by1 - by0, BLACKC)
+                bb:paintRect(bx1 - 2, by0, 2, by1 - by0, BLACKC)
+            end
+        end
+    end
+
     -- notebook page-nav strip along the bottom (only in notebook mode)
     if self.notebook and self.nb_bar_h > 0 then
         local Font = require("ui/font")
@@ -2793,6 +3098,10 @@ function InkAwayView:paintTo(bb, x, y)
         local pw = math.max(44, math.min(h - 16, math.floor(w * 0.085)))
         local plus_cx = math.floor(x + w * 0.62)   -- midway between centre and Next
         self._nb_plus = { x = math.floor(plus_cx - pw / 2), y = sy0 + 8, w = pw, h = h - 16 }
+        -- the counter is its own tap target (opens the page menu), spanning the
+        -- clear gap between the Prev zone and the + button so nothing overlaps
+        self._nb_count = { x = x + side, y = sy0,
+            w = math.max(1, self._nb_plus.x - (x + side)), h = h }
         label("\u{2039} Prev", x + side / 2)
         label(string.format("%d / %d", nb.index, nb:count()), x + w / 2)
         label("Next \u{203A}", x + w - side / 2)
@@ -2864,15 +3173,18 @@ end
 -- .inkaway files. Returns the drawings path (the image default), or a fallback.
 -- Also tidies away the old flat "ink away drawings" folder from earlier
 -- versions, but only if it is empty, so nothing you saved there is ever removed.
+-- Four clearly separated folders under "ink away/": drawings (PNG/JPEG images),
+-- drawing projects (editable .inkaway canvases), notebooks (exported PDFs), and
+-- notebook projects (editable .inkaway notebooks). Returns the images path.
 function InkAwayView:ensureDefaultDir()
     local ok, DataStorage = pcall(require, "datastorage")
     local base = (ok and DataStorage and DataStorage:getDataDir()) or "/"
-    local parent   = base .. "/ink away"
-    local drawings = parent .. "/drawings"
-    local projects = parent .. "/projects"
+    local parent    = base .. "/ink away"
+    local drawings  = parent .. "/drawings"
+    local dproj     = parent .. "/drawing projects"
     local notebooks = parent .. "/notebooks"
-    self.projects_dir = base
-    self.notebooks_dir = base
+    local nproj     = parent .. "/notebook projects"
+    self.dproj_dir, self.nproj_dir, self.notebooks_dir = base, base, base
     local lok, lfs = pcall(require, "libs/libkoreader-lfs")
     if lok and lfs then
         local function mk(d)
@@ -2880,16 +3192,71 @@ function InkAwayView:ensureDefaultDir()
             return lfs.attributes(d, "mode") == "directory"
         end
         mk(parent); mk(drawings)
-        if mk(projects) then self.projects_dir = projects end
+        if mk(dproj) then self.dproj_dir = dproj end
+        if mk(nproj) then self.nproj_dir = nproj end
         if mk(notebooks) then self.notebooks_dir = notebooks end
-        -- remove the old flat folder if it is now empty (never if it holds files)
-        local old = base .. "/ink away drawings"
-        if lfs.attributes(old, "mode") == "directory" then pcall(lfs.rmdir, old) end
-        -- forget any remembered pointer into that old folder so pickers start fresh
-        if self:getSetting("inkaway_last_dir") == old then self:setSetting("inkaway_last_dir", drawings) end
+        -- remove the very old flat folder if it is now empty (never if it holds files)
+        local oldflat = base .. "/ink away drawings"
+        if lfs.attributes(oldflat, "mode") == "directory" then pcall(lfs.rmdir, oldflat) end
+        if self:getSetting("inkaway_last_dir") == oldflat then self:setSetting("inkaway_last_dir", drawings) end
+        -- One-time: sort the old mixed "projects/" folder into the two new ones.
+        -- Deferred to the next tick so opening the plugin is never blocked by it.
+        if not self:getSetting("inkaway_folders_v2") then
+            UIManager:nextTick(function() self:migrateProjectFolders(parent) end)
+        end
         if lfs.attributes(drawings, "mode") == "directory" then return drawings end
     end
     return base
+end
+
+-- Move each .inkaway in the old "projects/" folder into "drawing projects/" or
+-- "notebook projects/" by type. Non-destructive: os.rename (atomic on the same
+-- drive, never deletes), everything pcall-guarded, unreadable files left alone,
+-- and it runs off the open path so there is no startup slowdown. Runs once.
+function InkAwayView:migrateProjectFolders(parent)
+    if self:getSetting("inkaway_folders_v2") then return end
+    self:setSetting("inkaway_folders_v2", true)   -- set first, so a fault never re-runs it
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not (lok and lfs) then return end
+    local old = parent .. "/projects"
+    if lfs.attributes(old, "mode") ~= "directory" then return end
+    local dproj, nproj = parent .. "/drawing projects", parent .. "/notebook projects"
+    local moved = 0
+    pcall(function()
+        for entry in lfs.dir(old) do
+            if entry ~= "." and entry ~= ".." and entry:lower():match("%.inkaway$") then
+                local src = old .. "/" .. entry
+                if lfs.attributes(src, "mode") == "file" then
+                    -- classify cheaply: a notebook (v2) carries a "pages" key; a
+                    -- drawing (v1) does not. Read a bounded head so a huge file
+                    -- can never stall this. Default to drawing (v1.4 had only those).
+                    local dest_dir = dproj
+                    local f = io.open(src, "rb")
+                    if f then
+                        local head = f:read(256 * 1024) or ""
+                        f:close()
+                        if head:find('"pages"', 1, true) then dest_dir = nproj end
+                    end
+                    local dest = dest_dir .. "/" .. entry
+                    if lfs.attributes(dest, "mode") then    -- never clobber a same-named file
+                        local stem = entry:gsub("%.[^.]+$", "")
+                        local i = 1
+                        repeat
+                            dest = dest_dir .. "/" .. stem .. "-" .. i .. "." .. Project.EXT
+                            i = i + 1
+                        until not lfs.attributes(dest, "mode")
+                    end
+                    if os.rename(src, dest) then moved = moved + 1 end
+                end
+            end
+        end
+    end)
+    pcall(function() lfs.rmdir(old) end)   -- succeeds only if it is now empty
+    if moved > 0 then
+        UIManager:show(InfoMessage:new{ timeout = 5, text = string.format(
+            _("Ink Away tidied your saved work:\n%d project(s) sorted into 'drawing projects' and 'notebook projects'."),
+            moved) })
+    end
 end
 
 -- Return `p` if it is an existing directory, else nil.
@@ -2905,11 +3272,16 @@ function InkAwayView:defaultDir()
     return existingDir(self:getSetting("inkaway_last_dir")) or self.default_dir or "/"
 end
 
--- Where the project open/save dialogs start: last project folder used, else
--- the projects folder (kept separate from the image folder on purpose).
+-- Where the project open/save dialogs start: the folder for the current kind of
+-- project (drawing vs notebook), last-used location remembered separately for
+-- each so the two never get mixed up again.
+function InkAwayView:projectDirKey()
+    return self.notebook and "inkaway_last_nproj_dir" or "inkaway_last_dproj_dir"
+end
+
 function InkAwayView:projectDir()
-    return existingDir(self:getSetting("inkaway_last_project_dir"))
-        or self.projects_dir or self.default_dir or "/"
+    local def = self.notebook and self.nproj_dir or self.dproj_dir
+    return existingDir(self:getSetting(self:projectDirKey())) or def or self.default_dir or "/"
 end
 
 -- Remember the last image folder used, for next time.
@@ -2918,9 +3290,9 @@ function InkAwayView:rememberDir(dir)
     self:setSetting("inkaway_last_dir", dir)
 end
 
--- Remember the last project folder used, for next time.
+-- Remember the last project folder used (per project kind), for next time.
 function InkAwayView:rememberProjectDir(dir)
-    self:setSetting("inkaway_last_project_dir", dir)
+    self:setSetting(self:projectDirKey(), dir)
 end
 
 ------------------------------------------------------------------------------
@@ -2960,6 +3332,7 @@ function InkAwayView:nbLoad()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
     self.selected, self.rotating = nil, nil
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "full")
 end
@@ -2990,7 +3363,8 @@ function InkAwayView:loadNotebookPageBackground()
     local t = nb and nb.template
     if not (t and t.pdf_path) then return end
     self:ensureNotebookPDF()
-    local img = self:renderPdfPage(self._nb_pdf_doc, nb.index)
+    local src = nb:currentSrc()      -- which source page this notebook page shows
+    local img = src and self:renderPdfPage(self._nb_pdf_doc, src) or nil
     if self.bg_bb then self.bg_bb:free() end
     self.bg_bb = img            -- canvas-sized already; nil if the render failed
     self.bg_rgba = nil          -- built on demand at export, never per page turn
@@ -3008,6 +3382,123 @@ function InkAwayView:nbGo(delta)
     nb:gotoPage(target)
     self:nbLoad()
     self.dirty = true
+end
+
+-- Jump to an absolute page number (1-based).
+function InkAwayView:nbGoTo(target)
+    if not self.notebook or type(target) ~= "number" then return end
+    target = math.floor(target)
+    local nb = self.notebook
+    if target < 1 or target > nb:count() or target == nb.index then return end
+    self:nbSyncOut()
+    nb:gotoPage(target)
+    self:nbLoad()
+    self.dirty = true
+end
+
+-- Ask for a page number and jump there.
+function InkAwayView:nbJumpPrompt()
+    local nb = self.notebook
+    if not nb then return end
+    local InputDialog = require("ui/widget/inputdialog")
+    local d
+    d = InputDialog:new{
+        title = string.format(_("Go to page (1\u{2013}%d)"), nb:count()),
+        input = tostring(nb.index),
+        input_type = "number",
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+            { text = _("Go"), is_enter_default = true, callback = function()
+                local n = tonumber(d:getInputText())
+                UIManager:close(d)
+                if n then self:nbGoTo(n) end
+            end },
+        }},
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
+end
+
+-- Duplicate / reorder the current page.
+function InkAwayView:nbDuplicatePage()
+    if not self.notebook then return end
+    self:nbSyncOut()
+    self.notebook:duplicatePage()
+    self:nbLoad()
+    self.dirty = true
+end
+
+function InkAwayView:nbMovePage(dir)
+    if not self.notebook then return end
+    self:nbSyncOut()
+    self.notebook:movePage(dir)
+    self:nbLoad()
+    self.dirty = true
+end
+
+-- The page menu, opened by tapping the page counter in the nav strip: jump,
+-- overview, duplicate, reorder, delete -- everything about pages in one place.
+function InkAwayView:openPageMenu()
+    local nb = self.notebook
+    if not nb then return end
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local buttons = {
+        {{ text = string.format(_("Page %d of %d"), nb.index, nb:count()), enabled = false }},
+        {{ text = _("Go to page\u{2026}"), callback = function() UIManager:close(dlg); self:nbJumpPrompt() end }},
+        {{ text = _("Page overview\u{2026}"), callback = function() UIManager:close(dlg); self:openPageGrid() end }},
+        {{ text = _("Duplicate page"), callback = function() UIManager:close(dlg); self:nbDuplicatePage() end }},
+        {
+            { text = _("\u{2039} Move earlier"), callback = function() UIManager:close(dlg); self:nbMovePage(-1) end },
+            { text = _("Move later \u{203A}"), callback = function() UIManager:close(dlg); self:nbMovePage(1) end },
+        },
+        {{ text = _("Delete page"), callback = function() UIManager:close(dlg); self:nbDeletePage() end }},
+        {{ text = _("Close"), callback = function() UIManager:close(dlg) end }},
+    }
+    dlg = ButtonDialog:new{ title = _("Page"), title_align = "center", buttons = buttons }
+    self._settings_dialog = dlg
+    UIManager:show(dlg)
+end
+
+-- Render one notebook page to a small thumbnail bitmap fitting maxw x maxh,
+-- through the shared compositor so it matches the page exactly. A full-size
+-- scratch is composed then scaled down and freed, so memory stays flat.
+function InkAwayView:renderPageThumb(index, maxw, maxh)
+    local nb = self.notebook
+    if not nb or not nb.pages[index] then return nil end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local bbtype = self.canvas_bb and self.canvas_bb:getType() or Screen.bb:getType()
+    local scratch = Blitbuffer.new(W, H, bbtype)
+    local page = nb.pages[index]
+    local bg
+    if nb.template.pdf_path and page.src then
+        self:ensureNotebookPDF()
+        bg = self:renderPdfPage(self._nb_pdf_doc, page.src)
+    end
+    self:composeInto(scratch, page.ops, bg, nb.template)
+    if bg then bg:free() end
+    local scale = math.min(maxw / W, maxh / H)
+    local tw = math.max(1, math.floor(W * scale))
+    local th = math.max(1, math.floor(H * scale))
+    local thumb = RenderImage:scaleBlitBuffer(scratch, tw, th, false)
+    scratch:free()
+    return thumb
+end
+
+-- The page overview grid: tap a thumbnail to jump to that page.
+function InkAwayView:openPageGrid()
+    local nb = self.notebook
+    if not nb then return end
+    self:nbSyncOut()      -- so the current page's latest ink is in its thumbnail
+    local PageGrid = require("ink/pagegrid")
+    local grid = PageGrid:new{
+        count = nb:count(),
+        current = nb.index,
+        render = function(i, w, h) return self:renderPageThumb(i, w, h) end,
+        on_pick = function(i) self:nbGoTo(i) end,
+    }
+    self._settings_dialog = grid
+    UIManager:show(grid)
 end
 
 -- Insert a blank page after the current one and move to it.
@@ -3065,6 +3556,13 @@ function InkAwayView:openNotebookData(data)
     self:recomputeArea()
     self:nbLoad()
     self.dirty = false
+    -- warn clearly if this was a PDF-backed notebook but the source PDF is gone
+    -- (the ink is safe; only the page images are missing until it is restored)
+    if self.notebook.template.pdf_path and not self._nb_pdf_doc then
+        UIManager:show(InfoMessage:new{ text = string.format(
+            _("The source PDF could not be opened:\n%s\n\nYour notes are intact, but the page images will be blank until the PDF is back in that location."),
+            self.notebook.template.pdf_path) })
+    end
 end
 
 -- Leave notebook mode and return to the single-canvas layout.
@@ -3095,7 +3593,7 @@ function InkAwayView:startPdfNotebook(path)
         style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
     })
     local list = {}
-    for _ = 1, pages do list[#list + 1] = {} end   -- one empty ink layer per page
+    for i = 1, pages do list[i] = { ops = {}, src = i } end   -- one ink layer per PDF page
     self.notebook.pages = list
     self.notebook.index = 1
     self.nb_bar_h = self:nbBarHeight()
@@ -3165,6 +3663,8 @@ function InkAwayView:newNotebook()
             row("lines", _("Lined")),
             row("grid",  _("Grid")),
             row("dots",  _("Dotted")),
+            row("margin", _("Margin ruled")),
+            row("cornell", _("Cornell")),
             row("blank", _("Blank")),
             {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }},
         },
@@ -3173,35 +3673,98 @@ function InkAwayView:newNotebook()
     UIManager:show(dlg)
 end
 
--- Export the notebook to a single PDF (one fixed-size page per notebook page),
--- with a paper-colour choice, then offer to open it in the reader.
+-- The notebook page indices chosen by the current export scope: all pages,
+-- only pages that have ink, or a page range.
+function InkAwayView:selectedNotebookPages()
+    local nb = self.notebook
+    local sel = {}
+    if self.nb_scope == "ink" then
+        for i = 1, nb:count() do
+            if nb.pages[i].ops and #nb.pages[i].ops > 0 then sel[#sel + 1] = i end
+        end
+    elseif self.nb_scope == "range" and self.nb_range then
+        local a = math.max(1, math.min(nb:count(), self.nb_range.from or 1))
+        local b = math.max(a, math.min(nb:count(), self.nb_range.to or nb:count()))
+        for i = a, b do sel[#sel + 1] = i end
+    else
+        for i = 1, nb:count() do sel[#sel + 1] = i end
+    end
+    return sel
+end
+
+-- Export the notebook to a single PDF, with paper colour, page-scope, page
+-- numbers and (for imported PDFs) a sharp-text option, then offer to open it.
 function InkAwayView:exportNotebookPDF()
     self:nbSyncOut()
     local nb = self.notebook
+    local is_pdf = nb.template and nb.template.pdf_path
     self.nb_paper = self.nb_paper or "white"
+    self.nb_scope = self.nb_scope or "all"
     local dlg
+    local SCOPE_LABEL = { all = _("All pages"), ink = _("Pages with ink"), range = _("Range") }
     local function paperBtn(k, label)
         return { text = (self.nb_paper == k and "\u{25CF} " or "") .. label,
                  callback = function() self.nb_paper = k; UIManager:close(dlg); self:exportNotebookPDF() end }
     end
+    local function reopen() UIManager:close(dlg); self:exportNotebookPDF() end
     local buttons = {
         {{ text = _("Paper colour"), enabled = false }},
         { paperBtn("white", _("White")), paperBtn("sand", _("Sandpaper")) },
     }
-    -- a PDF-backed notebook always prints its PDF pages, so no toggle there;
-    -- a manually loaded picture can be included or left out
-    if self.bg_bb and not (nb.template and nb.template.pdf_path) then
+    if self.bg_bb and not is_pdf then   -- an imported PDF always prints its pages
         buttons[#buttons + 1] = {{
             text = self.export_bg and _("Background: included") or _("Background: drawing only"),
-            callback = function() self.export_bg = not self.export_bg; UIManager:close(dlg); self:exportNotebookPDF() end,
+            callback = function() self.export_bg = not self.export_bg; reopen() end,
         }}
     end
-    buttons[#buttons + 1] = {{ text = string.format(_("Export %d page(s) to PDF"), nb:count()),
+    -- page scope: cycle All -> Pages with ink -> Range
+    buttons[#buttons + 1] = {{ text = _("Pages: ") .. (SCOPE_LABEL[self.nb_scope] or SCOPE_LABEL.all),
+        callback = function()
+            self.nb_scope = (self.nb_scope == "all" and "ink") or (self.nb_scope == "ink" and "range") or "all"
+            if self.nb_scope == "range" and not self.nb_range then
+                self.nb_range = { from = 1, to = nb:count() }
+            end
+            reopen()
+        end }}
+    if self.nb_scope == "range" then
+        buttons[#buttons + 1] = {{ text = string.format(_("Range: %d\u{2013}%d (tap to set)"),
+            self.nb_range.from or 1, self.nb_range.to or nb:count()),
+            callback = function() UIManager:close(dlg); self:promptExportRange() end }}
+    end
+    buttons[#buttons + 1] = {{ text = _("Page numbers: ") .. (self.nb_numbers and _("on") or _("off")),
+        callback = function() self.nb_numbers = not self.nb_numbers; reopen() end }}
+    local n = #self:selectedNotebookPages()
+    buttons[#buttons + 1] = {{ text = string.format(_("Export %d page(s) to PDF"), n),
+           enabled = n > 0,
            callback = function() UIManager:close(dlg); self:chooseNotebookDestination() end }}
     buttons[#buttons + 1] = {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }}
     dlg = ButtonDialog:new{ title = _("Export notebook"), title_align = "center", buttons = buttons }
     self._save_dialog = dlg
     UIManager:show(dlg)
+end
+
+-- Ask for the first and last page of the export range.
+function InkAwayView:promptExportRange()
+    local nb = self.notebook
+    local InputDialog = require("ui/widget/inputdialog")
+    local d
+    d = InputDialog:new{
+        title = string.format(_("Page range (1\u{2013}%d), e.g. 3-8"), nb:count()),
+        input = string.format("%d-%d", self.nb_range.from or 1, self.nb_range.to or nb:count()),
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d); self:exportNotebookPDF() end },
+            { text = _("Set"), is_enter_default = true, callback = function()
+                local s = d:getInputText() or ""
+                local a, b = s:match("(%d+)%s*[%-\u{2013}to,%s]+(%d+)")
+                if not a then a = s:match("(%d+)"); b = a end
+                if a then self.nb_range = { from = tonumber(a), to = tonumber(b) } end
+                UIManager:close(d)
+                self:exportNotebookPDF()
+            end },
+        }},
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
 end
 
 function InkAwayView:chooseNotebookDestination()
@@ -3253,17 +3816,32 @@ function InkAwayView:doNotebookExport(path)
     local ok, DataStorage = pcall(require, "datastorage")
     local tmp_dir = (ok and DataStorage and DataStorage:getSettingsDir()) or "/tmp"
 
-    -- background per page: a PDF-backed notebook renders each source page on
-    -- the fly (one at a time, so memory stays flat); otherwise a single loaded
-    -- picture is shared by every page when the reader asked to include it.
+    -- resolve the export scope to a concrete list of notebook pages
+    local sel = self:selectedNotebookPages()
+    if #sel == 0 then
+        UIManager:show(InfoMessage:new{ text = _("No pages match the chosen range."), timeout = 3 })
+        return
+    end
+    local pages_ops = {}
+    for j = 1, #sel do pages_ops[j] = nb.pages[sel[j]].ops end
+
+    local is_pdf = template.pdf_path
+    local scale = 1
+    local quality = is_pdf and 90 or 85
+
+    -- background per selected page: a PDF-backed notebook renders each source
+    -- page on the fly at the export resolution (one at a time, so memory stays
+    -- flat); otherwise a single loaded picture is shared by every page.
     local bg
-    if template.pdf_path then
+    if is_pdf then
         self:ensureNotebookPDF()
         local doc = self._nb_pdf_doc
-        bg = function(i)
-            local img = self:renderPdfPage(doc, i)
+        bg = function(j, s)
+            s = s or 1
+            local src = nb.pages[sel[j]] and nb.pages[sel[j]].src
+            local img = src and self:renderPdfPage(doc, src, nb.w * s, nb.h * s) or nil
             if not img then return nil end
-            local rgba = bbToRGBA(img, nb.w, nb.h)
+            local rgba = bbToRGBA(img, nb.w * s, nb.h * s)
             img:free()
             return rgba
         end
@@ -3273,10 +3851,11 @@ function InkAwayView:doNotebookExport(path)
 
     -- Rendering every page to JPEG is synchronous and can take a moment on a
     -- long notebook, so show a wait message and let it paint before we block.
-    local wait = InfoMessage:new{ text = string.format(_("Exporting %d page(s)\u{2026}"), nb:count()) }
+    local wait = InfoMessage:new{ text = string.format(_("Exporting %d page(s)\u{2026}"), #sel) }
     UIManager:show(wait)
     UIManager:nextTick(function()
-        local eok, err = Export.notebookToPDF(nb.pages, nb.w, nb.h, template, path, 85, tmp_dir, bg)
+        local eok, err = Export.notebookToPDF(pages_ops, nb.w, nb.h, template, path, quality, tmp_dir, bg,
+            { footer = self.nb_numbers and true or nil, scale = scale })
         UIManager:close(wait)
         if not eok then
             UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(err) })
@@ -3299,12 +3878,12 @@ function InkAwayView:doNotebookExport(path)
     end)
 end
 
--- Save the current notebook as an editable .inkaway project alongside the PDF,
--- in the projects folder, using the PDF's base name. Returns the path or nil.
+-- Save the current notebook as an editable .inkaway project in the notebook
+-- projects folder, using the PDF's base name. Returns the path or nil.
 function InkAwayView:autoSaveNotebookProject(pdf_path)
     if not self.notebook then return nil end
     local base = pdf_path:match("([^/\\]+)%.[Pp][Dd][Ff]$") or pdf_path:match("([^/\\]+)$") or "notebook"
-    local dir = self.projects_dir or self.default_dir
+    local dir = self.nproj_dir or self.default_dir
     if not dir then return nil end
     local sep = (dir:sub(-1) == "/") and "" or "/"
     local proj = dir .. sep .. base .. "." .. Project.EXT
@@ -3408,9 +3987,12 @@ function InkAwayView:writeFile(fmt, dir, name, ext)
     local ow = self.save_area and self.save_area.w or self.canvas.w
     local oh = self.save_area and self.save_area.h or self.canvas.h
     if ok then
-        UIManager:show(InfoMessage:new{
-            text = string.format(_("Saved %d × %d image:\n%s"), ow, oh, path),
-        })
+        -- also keep an editable project of the same name, so people who never
+        -- find the "Save project" button can still come back to this drawing
+        local proj = self:autoSaveDrawingProject(name)
+        local msg = string.format(_("Saved %d × %d image:\n%s"), ow, oh, path)
+        if proj then msg = msg .. string.format(_("\n\nEditable copy kept in:\n%s"), proj) end
+        UIManager:show(InfoMessage:new{ text = msg })
     else
         logger.warn("InkAway: save failed:", err)
         UIManager:show(InfoMessage:new{
@@ -3418,6 +4000,21 @@ function InkAwayView:writeFile(fmt, dir, name, ext)
             icon = "notice-warning",
         })
     end
+end
+
+-- Save the current canvas as an editable .inkaway project in the drawing
+-- projects folder, using the image's base name. Returns the path or nil (and
+-- skips a blank canvas, since there is nothing to come back to).
+function InkAwayView:autoSaveDrawingProject(image_name)
+    if self.canvas:isEmpty() then return nil end
+    local base = image_name:gsub("%.[^.]+$", "")
+    if base == "" then base = "ink" end
+    local dir = self.dproj_dir or self.default_dir
+    if not dir then return nil end
+    local sep = (dir:sub(-1) == "/") and "" or "/"
+    local proj = dir .. sep .. base .. "." .. Project.EXT
+    local ok = Project.save(self.canvas, proj)
+    return ok and proj or nil
 end
 
 return InkAwayView

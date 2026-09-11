@@ -24,9 +24,11 @@ function Pdf.new()
     return setmetatable({ pages = {} }, Pdf)
 end
 
--- Add a page from JPEG bytes (a Lua string) at pixel size w x h.
-function Pdf:addJPEGPage(jpeg, w, h)
-    self.pages[#self.pages + 1] = { jpeg = jpeg, w = w, h = h }
+-- Add a page. `w`,`h` are the page box in points; `pxw`,`pxh` are the JPEG's
+-- pixel dimensions (default to w,h). Keeping them separate lets a higher-
+-- resolution image sit inside a page-sized box, so text stays crisp.
+function Pdf:addJPEGPage(jpeg, w, h, pxw, pxh)
+    self.pages[#self.pages + 1] = { jpeg = jpeg, w = w, h = h, pxw = pxw or w, pxh = pxh or h }
 end
 
 function Pdf:pageCount()
@@ -64,7 +66,7 @@ function Pdf:build()
         -- image XObject: the JPEG, embedded as-is
         startobj(img_n)
         put(img_n .. " 0 obj\n<< /Type /XObject /Subtype /Image /Width " ..
-            p.w .. " /Height " .. p.h ..
+            p.pxw .. " /Height " .. p.pxh ..
             " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " ..
             #p.jpeg .. " >>\nstream\n")
         put(p.jpeg)

@@ -44,6 +44,25 @@ function Template.render(style, w, h, size, put)
             end
             cy = cy + size
         end
+    elseif style == "margin" then
+        -- ruled lines with a single vertical margin rule down the left, like a
+        -- legal pad: write in the wide area, keep notes/dates in the margin
+        local mx = math.floor(w * 0.12)
+        local cy = size
+        while cy < h do put(0, cy, w); cy = cy + size end
+        for y = 0, h - 1 do put(mx, y, 1) end
+    elseif style == "cornell" then
+        -- Cornell notes: a left cue column, a bottom summary band, and ruled
+        -- lines only in the notes area between them
+        local cue = math.floor(w * 0.28)
+        local summary_y = math.floor(h * 0.80)
+        local cy = size
+        while cy < summary_y do
+            if cy > 0 then put(cue, cy, w - cue) end
+            cy = cy + size
+        end
+        for y = 0, summary_y - 1 do put(cue, y, 1) end      -- cue divider
+        put(0, summary_y, w)                                -- summary divider
     end
 end
 

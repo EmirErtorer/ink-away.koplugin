@@ -33,7 +33,7 @@ end
 function InkAway:addToMainMenu(menu_items)
     menu_items.inkaway = {
         text = _("Ink Away (drawing canvas)"),
-        sorting_hint = "more_tools",
+        sorting_hint = "tools",   -- top level of the Tools tab, not buried in "More tools"
         keep_menu_open = false,
         callback = function() self:openCanvas() end,
     }
