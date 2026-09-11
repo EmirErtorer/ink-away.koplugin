@@ -4,13 +4,11 @@ A small finger drawing canvas for KOReader, made for e-ink readers like the Kind
 
 Open a blank page, draw with your finger, and save the result as a PNG with a real transparent background, or as a JPEG on white, at the exact pixel size of your screen. The transparent PNG is the whole point: it lets you draw your own sleep screen covers and overlays that sit cleanly on top of anything.
 
-![A hand-drawn "Hello World" exported as a transparent PNG and set as the Kindle sleep screen](assets/screenshots/sleep-screen.png)
+Here is a quick look:
+
+<video src="https://github.com/user-attachments/assets/e6b5eeba-c5c7-4495-b273-91da3c10720d" controls muted></video>
 
 Ink Away is meant to stay simple and focused. You get a pen with adjustable size, opacity, and shade or colour; brushes you can make yourself; shapes and arrows; a paint bucket; an eraser; undo and redo; zoom and pan; a symmetry mode; an optional background picture to draw over; and save, whole page or a chosen area. There are no layers, no text, and no networking.
-
-Turn on symmetry and one stroke becomes four:
-
-![Four way symmetry: a single spiral mirrored into all four quarters of the page](assets/screenshots/symmetry.png)
 
 ## Features
 
