@@ -116,18 +116,44 @@ end
 -- `erase_put_for(op)` is a factory returning the span writer for an erase op, so
 -- a "hard" erase (one that also removes the background) can behave differently
 -- from an ordinary one.
-local function replay(canvas, ink_put, erase_put_for)
+local function replay(canvas, ink_put, erase_put_for, text_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
-        local put
-        if op.kind == "erase" then
-            put = erase_put_for(op)
+        if op.kind == "text" then
+            -- text has no vector geometry; it is composited from a rasteriser the
+            -- view injects (Export.text_raster). Done here so it keeps its z-order
+            -- among the ink.
+            if text_put and not op.hidden then text_put(op) end
         else
-            local r, g, b = opRGB(op)
-            put = ink_put(r, g, b, op.alpha or 255)
+            local put
+            if op.kind == "erase" then
+                put = erase_put_for(op)
+            else
+                local r, g, b = opRGB(op)
+                put = ink_put(r, g, b, op.alpha or 255)
+            end
+            paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy))
         end
-        paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy))
+    end
+end
+
+-- Walk the glyph pixels of a text op. The view sets Export.text_raster to a
+-- function(op) -> (uint8 level buffer, w, h) where 255 is untouched (white) and
+-- lower values are ink/highlight shades on white. `cb(x, y, level)` gets each
+-- non-white pixel in canvas coordinates. A no-op when no rasteriser is set (so
+-- the headless export tests, which have no fonts, simply skip text).
+function Export.eachTextPixel(op, cb)
+    if not Export.text_raster then return end
+    local raster, w, h = Export.text_raster(op)
+    if not raster then return end
+    local ox, oy = math.floor(op.x + 0.5), math.floor(op.y + 0.5)
+    for py = 0, h - 1 do
+        local row = py * w
+        for px = 0, w - 1 do
+            local L = raster[row + px]
+            if L < 255 then cb(ox + px, oy + py, L) end
+        end
     end
 end
 
@@ -197,7 +223,15 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
         end
     end
     local soft_erase, hard_erase = make_erase(false), make_erase(true)
-    replay(canvas, ink_put, function(op) return op.ebg and hard_erase or soft_erase end)
+    local function text_put(op)
+        Export.eachTextPixel(op, function(x, y, L)
+            local cx, cy = clamp_run(x, y, 1)
+            if not cx then return end
+            local o = (cy * ow + cx) * 4
+            buf[o] = L; buf[o + 1] = L; buf[o + 2] = L; buf[o + 3] = 255
+        end)
+    end
+    replay(canvas, ink_put, function(op) return op.ebg and hard_erase or soft_erase end, text_put)
     return buf, n, ow, oh
 end
 
@@ -267,7 +301,15 @@ function Export.buildRGB(canvas, rect, template)
         end
         Template.render(template.style, canvas.w, canvas.h, template.size or 40, tput)
     end
-    replay(canvas, ink_put, function() return erase_put end)
+    local function text_put(op)
+        Export.eachTextPixel(op, function(x, y, L)
+            local cx, cy = clamp_run(x, y, 1)
+            if not cx then return end
+            local o = (cy * ow + cx) * 3
+            buf[o] = L; buf[o + 1] = L; buf[o + 2] = L
+        end)
+    end
+    replay(canvas, ink_put, function() return erase_put end, text_put)
     return buf, n, ow, oh
 end
 
