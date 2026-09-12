@@ -708,8 +708,7 @@ end
 function InkAwayView:setTool(tool)
     if self.tool == tool then return end
     self:flushPending()        -- commit any stroke still in progress first
-    -- a curve waiting for its bend is committed straight; other half-drags drop
-    if self.curve_stage == "bend" then self:commitCurve() else self:cancelShape() end
+    self:flushShape()          -- and place any finished-but-pending shape/curve
     if self.selection or self.lassoing then self:clearSelection() end
     self.pan_last = nil
     self.tool = tool
@@ -1004,6 +1003,11 @@ end
 -- and colour.
 function InkAwayView:openShapePicker()
     local ButtonDialog = require("ui/widget/buttondialog")
+    -- Place any shape still pending before the picker can change the type under
+    -- it (setTool("shape") early-returns when already in shape mode, so it does
+    -- not flush -- do it here). This is what stops a drawn square from being
+    -- re-committed as, say, an arrow after you pick a new shape.
+    self:flushShape()
     if self._shape_dialog then UIManager:close(self._shape_dialog) end
 
     -- each entry: { label, shape, fill, arrow }  (arrow: nil | "end" | "both")
@@ -1034,6 +1038,7 @@ function InkAwayView:openShapePicker()
                        and (self.shape_arrow or false) == (arrow or false)
                 end,
                 callback = function()
+                    self:flushShape()   -- place any pending shape as its old type first
                     self.shape, self.shape_fill, self.shape_arrow = shape, fill, arrow
                     self:refreshToolLabels()
                     self:openShapePicker()   -- reopen to move the checkmark
@@ -1052,8 +1057,8 @@ function InkAwayView:openShapePicker()
         text = "\u{25A8} " .. _("Fill area (hold to set colour)"),
         checked_func = function() return self.tool == "fill" end,
         callback = function()
+            self:flushShape()   -- place a finished-but-pending shape, don't drop it
             self.tool = "fill"
-            self:cancelShape()
             self:refreshToolLabels()
             UIManager:close(self._shape_dialog)
         end,
@@ -1068,20 +1073,17 @@ function InkAwayView:openShapePicker()
         checked_func = function() return self.tool == "lasso" end,
         callback = function()
             self:flushPending()
-            self:cancelShape()
+            self:flushShape()   -- place a finished-but-pending shape, don't drop it
             if self.selection or self.lassoing then self:clearSelection() end
             self.tool = "lasso"
             self:refreshToolLabels()
             UIManager:close(self._shape_dialog)
-            -- Redraw the canvas so a committed shape is not left cleared on e-ink
-            -- when the menu closes. The tool switch alone only refreshes the
-            -- toolbar, and setDirty(self, ...) proved unreliable on real panels
-            -- (same as the brush maker) -- repaint every widget on the next tick,
-            -- once the dialog is truly gone, with a full flash.
+            -- Rebuild the visible buffers straight from the ops and do one
+            -- synchronous full flash of every widget, so the canvas is repainted
+            -- cleanly when the menu closes rather than racing the dialog teardown.
+            self:composeCanvas()
             self:renderView()
-            UIManager:nextTick(function()
-                UIManager:setDirty("all", "full")
-            end)
+            UIManager:setDirty("all", "full")
         end,
     }}
     buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
@@ -1645,7 +1647,12 @@ function InkAwayView:shapeTouch(pos)
         if self.shape == "curve" then self:cancelShape() else self:commitShape() end
     end
     local x0, y0 = self:snapScreen(pos.x, pos.y)
-    self.shape_drag = { x0 = x0, y0 = y0, x1 = x0, y1 = y0 }
+    -- Snapshot the settings this shape is being drawn with, so a deferred commit
+    -- (a missed lift, or a tool change) still places the shape it started as.
+    self.shape_drag = { x0 = x0, y0 = y0, x1 = x0, y1 = y0,
+        shape = self.shape, fill = self.shape_fill, arrow = self.shape_arrow,
+        head = self.arrow_head, sym = self.symmetry,
+        width = self.pen_width, alpha = self.pen_alpha, color = self.pen_color }
     self.shape_preview = screenShapeOp(self, self.shape, self.shape_fill, x0, y0, x0, y0)
     self:refreshPreview()
     return true
@@ -1699,11 +1706,14 @@ function InkAwayView:shapeRelease(pos)
         self:cancelShape()
         return true
     end
-    if self.shape == "curve" then
-        -- keep the straight segment on screen and wait for a bend drag
+    if (d.shape or self.shape) == "curve" then
+        -- keep the straight segment on screen and wait for a bend drag; carry
+        -- the draw-time settings over to the eventual commit
         self.curve_p0 = { x = d.x0, y = d.y0 }
         self.curve_p1 = { x = d.x1, y = d.y1 }
         self.curve_ctrl = { x = (d.x0 + d.x1) / 2, y = (d.y0 + d.y1) / 2 }
+        self.curve_snap = { arrow = d.arrow, head = d.head, sym = d.sym,
+            width = d.width, alpha = d.alpha, color = d.color }
         self.curve_stage = "bend"
         self.shape_drag = nil
         return true
@@ -1725,12 +1735,18 @@ function InkAwayView:stampOpIntoCanvas(op)
 end
 
 -- Give a freshly placed shape op its symmetry mode and, for a line or curve,
--- any arrowheads, before it is stamped in.
-function InkAwayView:decorateShapeOp(op)
-    if self.symmetry ~= "off" then op.sym = self.symmetry end
-    if (op.shape == "line" or op.shape == "curve") and self.shape_arrow then
-        op.arrow = self.shape_arrow
-        op.head = self.arrow_head
+-- any arrowheads, before it is stamped in. `snap` is the settings captured when
+-- the shape was started (see shapeTouch); it is used in preference to the live
+-- settings so a shape always commits as it was drawn, even if the tool changed
+-- between the draw and a deferred commit.
+function InkAwayView:decorateShapeOp(op, snap)
+    local sym = (snap and snap.sym) or self.symmetry
+    if sym ~= "off" then op.sym = sym end
+    local arrow = snap and snap.arrow
+    if arrow == nil and not snap then arrow = self.shape_arrow end
+    if (op.shape == "line" or op.shape == "curve") and arrow then
+        op.arrow = arrow
+        op.head = (snap and snap.head) or self.arrow_head
     end
 end
 
@@ -1738,9 +1754,15 @@ function InkAwayView:commitShape()
     local d = self.shape_drag
     local c0x, c0y = self:toCanvasClamped(d.x0, d.y0)
     local c1x, c1y = self:toCanvasClamped(d.x1, d.y1)
-    local op = self.canvas:addShape(self.shape, self.shape_fill,
-        { c0x, c0y, c1x, c1y }, self.pen_width, self.pen_alpha, self.pen_color)
-    self:decorateShapeOp(op)
+    -- Use the settings snapshotted when the drag began, not the live ones: a
+    -- finished shape whose lift was missed can be committed later, after the
+    -- tool or shape type has changed, and it must still commit as what it was.
+    local shape = d.shape or self.shape
+    local fill = d.fill; if fill == nil then fill = self.shape_fill end
+    local op = self.canvas:addShape(shape, fill,
+        { c0x, c0y, c1x, c1y }, d.width or self.pen_width,
+        d.alpha or self.pen_alpha, d.color or self.pen_color)
+    self:decorateShapeOp(op, d)
     self:stampOpIntoCanvas(op)
     self.dirty = true
     self.shape_drag = nil
@@ -1755,12 +1777,15 @@ function InkAwayView:commitCurve()
     local c0x, c0y = self:toCanvasClamped(self.curve_p0.x, self.curve_p0.y)
     local c1x, c1y = self:toCanvasClamped(self.curve_p1.x, self.curve_p1.y)
     local ccx, ccy = self:toCanvasClamped(self.curve_ctrl.x, self.curve_ctrl.y)
+    local snap = self.curve_snap
     local op = self.canvas:addShape("curve", false,
-        { c0x, c0y, c1x, c1y, ccx, ccy }, self.pen_width, self.pen_alpha, self.pen_color)
-    self:decorateShapeOp(op)
+        { c0x, c0y, c1x, c1y, ccx, ccy }, (snap and snap.width) or self.pen_width,
+        (snap and snap.alpha) or self.pen_alpha, (snap and snap.color) or self.pen_color)
+    self:decorateShapeOp(op, snap)
     self:stampOpIntoCanvas(op)
     self.dirty = true
     self.curve_stage = nil
+    self.curve_snap = nil
     self.curve_p0, self.curve_p1, self.curve_ctrl = nil, nil, nil
     self.shape_preview = nil
     self._preview_rect = nil
@@ -1822,9 +1847,26 @@ function InkAwayView:cancelShape()
     if not (self.shape_drag or self.curve_stage or self.shape_preview) then return end
     self.shape_drag = nil
     self.curve_stage = nil
+    self.curve_snap = nil
     self.curve_p0, self.curve_p1, self.curve_ctrl = nil, nil, nil
     self.shape_preview = nil
     self:refreshPreview()   -- clears the old preview region from the base
+end
+
+-- Place a shape that is finished but still pending -- typically because its lift
+-- event was missed on the touch panel -- before the tool or shape type changes
+-- under it. A curve waiting for its bend is placed straight; a pending drag too
+-- small to be a shape is dropped. Call this at every transition (tool switch,
+-- opening the shape picker, changing the shape type) so a drawn shape is never
+-- left as a stray preview to be dropped, nor re-typed into a different shape.
+function InkAwayView:flushShape()
+    if self.curve_stage == "bend" then
+        self:commitCurve()
+    elseif self.shape_drag then
+        local d = self.shape_drag
+        local dx, dy = d.x1 - d.x0, d.y1 - d.y0
+        if dx * dx + dy * dy < 9 then self:cancelShape() else self:commitShape() end
+    end
 end
 
 ------------------------------------------------------------------------------
