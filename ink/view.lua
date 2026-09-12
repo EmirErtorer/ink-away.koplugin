@@ -439,6 +439,11 @@ function InkAwayView:init()
     self.shape_arrow = nil                                             -- nil|"end"|"both"
     self.arrow_head  = self:getSetting("inkaway_arrow_head", math.max(16, math.floor(W / 32)))
 
+    -- Text notes: default font (nil = the reader's content font) and size.
+    local tf = self:getSetting("inkaway_text_font", "")
+    self.text_font = (tf ~= "" ) and tf or nil
+    self.text_size = self:getSetting("inkaway_text_size", nil)
+
     -- Optional background image (a picture your drawing sits on top of).
     self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
     self.export_bg = true          -- include the background in a save, by default
@@ -624,7 +629,7 @@ function InkAwayView:onCloseWidget()
     Export.text_raster = nil   -- drop the closure over this view
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_settings_dialog", "_save_dialog", "_text_fmt" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -1197,6 +1202,83 @@ end
 
 function InkAwayView:textFontName()
     return self.text_font or "cfont"
+end
+
+-- Friendly display name for the current note font.
+function InkAwayView:textFontDisplay()
+    if not self.text_font then return _("Default") end
+    return (self.text_font:gsub(".*/", ""):gsub("%.%w+$", ""))
+end
+
+-- Text settings submenu: font family and default size.
+function InkAwayView:openTextSettings()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dlg
+    local size = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
+    local buttons = {
+        {{ text = _("Font: ") .. self:textFontDisplay(),
+           callback = function() UIManager:close(dlg); self:openTextFont() end }},
+        {{ text = string.format(_("Default size: %d px"), size),
+           callback = function() UIManager:close(dlg); self:openTextSize() end }},
+        {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
+    }
+    dlg = ButtonDialog:new{ title = _("Text"), title_align = "center", buttons = buttons }
+    self._text_settings = dlg
+    UIManager:show(dlg)
+end
+
+-- Apply a font change: rebuild the face cache, update the box being edited (or
+-- recompose so committed boxes on the default font pick it up), and persist.
+function InkAwayView:afterFontChange()
+    self._face_cache = nil
+    self:invalidateLayout()
+    self:setSetting("inkaway_text_font", self.text_font or "")
+    if self.editing_text then
+        self.editing_text.font = self.text_font
+        self:refreshTextBox("flashui")
+    else
+        self:composeCanvas(); self:renderView(); UIManager:setDirty(self, "full")
+    end
+end
+
+-- Scrollable chooser over the device's installed fonts.
+function InkAwayView:openTextFont()
+    local Menu = require("ui/widget/menu")
+    local FontList = require("fontlist")
+    local items = {
+        { text = (self.text_font == nil and "\u{2713} " or "") .. _("Default"),
+          callback = function() self.text_font = nil; self:afterFontChange() end },
+    }
+    for _, path in ipairs(FontList:getFontList()) do
+        local name = (path:gsub(".*/", ""):gsub("%.%w+$", ""))
+        items[#items + 1] = { text = (self.text_font == path and "\u{2713} " or "") .. name,
+            callback = function() self.text_font = path; self:afterFontChange() end }
+    end
+    local menu
+    menu = Menu:new{
+        title = _("Note font"),
+        item_table = items,
+        is_popout = true,
+        width = Screen:getWidth() - Screen:scaleBySize(40),
+        height = Screen:getHeight() - Screen:scaleBySize(80),
+        close_callback = function() UIManager:close(menu) end,
+    }
+    UIManager:show(menu)
+end
+
+function InkAwayView:openTextSize()
+    local SpinWidget = require("ui/widget/spinwidget")
+    local cur = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
+    UIManager:show(SpinWidget:new{
+        title_text = _("Default text size"),
+        info_text = _("Size of new text boxes, in pixels."),
+        value = cur, value_min = 10, value_max = 96, value_step = 2, value_hold_step = 10,
+        unit = _("px"),
+        callback = function(spin)
+            self.text_size = math.floor(spin.value)
+            self:setSetting("inkaway_text_size", self.text_size)
+        end,
+    })
 end
 
 -- A cached font face at a REAL pixel size. Font:getFace applies Screen DPI
@@ -2452,6 +2534,8 @@ function InkAwayView:openSettings()
     buttons[#buttons + 1] = {{ text = string.format(_("Symmetry: %s"), _(SYM_LABEL[self.symmetry] or "off")),
            callback = function() UIManager:close(dlg); self:openSymmetry() end }}
     buttons[#buttons + 1] = paper_row
+    buttons[#buttons + 1] = {{ text = _("Text (font & size)\u{2026}"),
+        callback = function() UIManager:close(dlg); self:openTextSettings() end }}
     for _, row in ipairs({
         {{ text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end }},
         {
@@ -3000,6 +3084,7 @@ end
 ------------------------------------------------------------------------------
 
 function InkAwayView:undo()
+    if self.editing_text then return self:textUndo() end   -- undo within the box
     self:flushPending()
     if self.rotating then self:rotateEnd() end
     if not self.canvas:undo() then
@@ -3015,6 +3100,7 @@ function InkAwayView:undo()
 end
 
 function InkAwayView:redo()
+    if self.editing_text then return self:textRedo() end   -- redo within the box
     self:flushPending()
     if not self.canvas:redo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to redo."), timeout = 1 })
@@ -3311,13 +3397,27 @@ local TEXT_HANDLE = 40   -- touch target for the move / resize handles (screen p
 -- Lay the editing op out at the current zoom (so the overlay is crisp) and grow
 -- an auto-height box to fit. Returns layout, ctx and the width-scaled proxy the
 -- engine measured against.
+-- Bump to invalidate the cached layout (call after any edit that changes the
+-- text, the wrap width or the font/size).
+function InkAwayView:invalidateLayout() self._lay_ver = (self._lay_ver or 0) + 1 end
+
+-- Lay the editing op out at the current zoom, caching the result: the layout is
+-- otherwise recomputed several times per keystroke (scroll-into-view, then the
+-- paint, then the caret) which is O(text) each time. The cache is keyed on a
+-- version bumped by edits, plus the op and zoom.
 function InkAwayView:editTextLayout()
     local op = self.editing_text
     local zoom = self.view.zoom
+    local ver = self._lay_ver or 0
+    local c = self._lay_cache
+    if c and c.op == op and c.ver == ver and c.zoom == zoom then
+        return c.lay, c.ctx, c.proxy
+    end
     local ctx = self:textCtx(op, zoom)
     local proxy = setmetatable({ w = op.w * zoom }, { __index = op })
     local lay = Text.layout(proxy, ctx)
     if op.auto_h then op.h = math.max(1, lay.height / zoom) end
+    self._lay_cache = { op = op, ver = ver, zoom = zoom, lay = lay, ctx = ctx, proxy = proxy }
     return lay, ctx, proxy
 end
 
@@ -3395,6 +3495,7 @@ end
 
 -- Every few edits, clear the fast-refresh ghosting the box leaves behind.
 function InkAwayView:afterTextEdit()
+    self:invalidateLayout()   -- the text just changed
     self:ensureCaretVisible()
     self._text_edits = (self._text_edits or 0) + 1
     if self._text_edits >= 24 then
@@ -3444,7 +3545,8 @@ end
 function InkAwayView:newTextAt(pos)
     local v = self.view
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
-    local margin = math.floor(v.canvas_w * 0.06)
+    -- span the full page (the grid runs edge to edge) with only a small margin
+    local margin = math.max(6, math.floor(v.canvas_w * 0.02))
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
     -- snap the box origin to the ruling if the user asked for grid alignment
     if self.text_grid_snap and self.notebook and self.notebook.template then
@@ -3514,6 +3616,7 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx)
     self.text_cur = cur or { p = 1, o = 0 }
     self.text_sel = nil
     self._text_edits = 0
+    self._text_undo, self._text_redo, self._text_coalesce = {}, {}, nil
     self._text_pan0 = self.view.pan_y   -- restore the scroll when done
     self:showTextKeyboard()
     self:ensureCaretVisible()           -- bring the box above the keyboard
@@ -3549,6 +3652,7 @@ function InkAwayView:finishTextEdit(commit)
     self.editing_idx, self.editing_is_new = nil, nil
     self.text_cur, self.text_sel = nil, nil
     self._text_pending_style = nil
+    self._lay_cache = nil
     if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
     if self._text_pan0 then self.view.pan_y = self._text_pan0; self._text_pan0 = nil end
     self.dirty = true
@@ -3557,6 +3661,53 @@ function InkAwayView:finishTextEdit(commit)
     self:renderView()
     UIManager:setDirty("all", "full")
 end
+
+-- ---- per-box undo / redo -------------------------------------------------
+-- A text-local history so Undo/Redo work inside the box without recomposing the
+-- whole page per keystroke. Snapshots coalesce: a run of typed letters is one
+-- word, a run of deletions is one step, and each format change is its own step.
+-- `kind` groups consecutive same-kind edits; a boundary (space/newline, a cursor
+-- move, or a different kind) starts a new undo step.
+function InkAwayView:pushTextHistory()
+    if not self.editing_text then return end
+    self._text_undo = self._text_undo or {}
+    self._text_undo[#self._text_undo + 1] = {
+        paras = Notebook.deepcopy(self.editing_text.paras),
+        cur = { p = self.text_cur.p, o = self.text_cur.o },
+    }
+    if #self._text_undo > 80 then table.remove(self._text_undo, 1) end
+    self._text_redo = {}
+end
+
+-- Call before a mutating edit. Pushes a snapshot only when a new undo step
+-- should begin, so typing a word is a single step.
+function InkAwayView:textMark(kind)
+    if self._text_coalesce ~= kind then self:pushTextHistory() end
+    self._text_coalesce = kind
+end
+
+function InkAwayView:textBreakCoalesce() self._text_coalesce = nil end
+
+function InkAwayView:textRestore(stack, other)
+    if not (self.editing_text and stack and #stack > 0) then return end
+    other[#other + 1] = {
+        paras = Notebook.deepcopy(self.editing_text.paras),
+        cur = { p = self.text_cur.p, o = self.text_cur.o },
+    }
+    local snap = table.remove(stack)
+    self.editing_text.paras = snap.paras
+    local np = #self.editing_text.paras
+    local cp = math.max(1, math.min(np, snap.cur.p))
+    self.text_cur = { p = cp, o = math.min(snap.cur.o, Text.paraLen(self.editing_text.paras[cp])) }
+    self.text_sel = nil
+    self._text_coalesce = nil
+    self:invalidateLayout()
+    self:ensureCaretVisible()
+    self:refreshTextBox("ui")
+end
+
+function InkAwayView:textUndo() self:textRestore(self._text_undo, self._text_redo) end
+function InkAwayView:textRedo() self:textRestore(self._text_redo, self._text_undo) end
 
 -- ---- text mutation (driven by the keyboard) ------------------------------
 function InkAwayView:textDeleteSelIfAny()
@@ -3571,6 +3722,9 @@ end
 
 function InkAwayView:textAddChars(s)
     if not self.editing_text then return end
+    -- a space / newline closes the current word so the next one is its own step
+    self:textMark("type")
+    if s == " " or s == "\n" then self._text_coalesce = nil end
     self:textDeleteSelIfAny()
     local style = self._text_pending_style or nil
     self.text_cur = Text.insert(self.editing_text, self.text_cur, s, style)
@@ -3580,6 +3734,7 @@ end
 
 function InkAwayView:textDelChar()
     if not self.editing_text then return end
+    self:textMark("delete")
     if not self:textDeleteSelIfAny() then
         self.text_cur = Text.deleteBack(self.editing_text, self.text_cur)
     end
@@ -3588,6 +3743,7 @@ end
 
 function InkAwayView:textDelToBOL()
     if not self.editing_text then return end
+    self:textMark("delete")
     self.text_cur = Text.deleteRange(self.editing_text,
         { a = { p = self.text_cur.p, o = 0 }, b = self.text_cur })
     self.text_sel = nil
@@ -3616,6 +3772,7 @@ function InkAwayView:textMove(dx, dy)
         cur = Text.hit(op, lay, c.x, ny, self:textCtx(op, self.view.zoom))
     end
     self.text_cur = cur
+    self:textBreakCoalesce()
     self:ensureCaretVisible()
     self:refreshTextBox("ui")
 end
@@ -3669,6 +3826,7 @@ end
 
 function InkAwayView:textToggleStyle(key)
     local op = self.editing_text
+    self:pushTextHistory(); self:textBreakCoalesce(); self:invalidateLayout()
     local sel = self:textEffectiveSel()
     if sel then
         local on = not Text.styleCovers(op, sel, key)
@@ -3682,6 +3840,7 @@ end
 
 function InkAwayView:textStepSize(dir)
     local op = self.editing_text
+    self:pushTextHistory(); self:textBreakCoalesce(); self:invalidateLayout()
     local function stepped(st)
         return math.max(0.5, math.min(4, (st.sz or 1) * (dir > 0 and 1.2 or 1 / 1.2)))
     end
@@ -3700,6 +3859,7 @@ end
 
 function InkAwayView:textToggleBullet(kind)
     local op = self.editing_text
+    self:pushTextHistory(); self:textBreakCoalesce(); self:invalidateLayout()
     local sel = self.text_sel or { a = self.text_cur, b = self.text_cur }
     local a = Text.orderSel(sel)
     Text.setBullet(op, sel, op.paras[a.p].bullet == kind and nil or kind)
@@ -3792,6 +3952,7 @@ function InkAwayView:textToolTouch(pos)
             self.text_cur = cur
             self.text_sel = nil
             self._text_drag = { kind = "select", anchor = cur }
+            self:textBreakCoalesce()   -- typing at a new spot is a new undo step
             self:refreshTextBox("ui")
             return true
         else
@@ -3843,6 +4004,7 @@ function InkAwayView:textToolPan(pos)
         self.editing_text.w = math.max(40, d.w0 + dw)
         self.editing_text.h = math.max(20, (d.h0 or 20) + dh)
         self.editing_text.auto_h = false
+        self:invalidateLayout()   -- width changed -> re-wrap
         self:refreshTextBox("fast")
     elseif d.kind == "select" then
         local r = self:textBoxScreenRect()
@@ -3887,8 +4049,8 @@ function InkAwayView:paintTextOverlay(bb, x, y)
             local lo = (ln.para > a.p or (ln.para == a.p and ln.o_end >= a.o)) and true or false
             local hi = (ln.para < b.p or (ln.para == b.p and ln.o_start <= b.o)) and true or false
             if lo and hi and ln.para >= a.p and ln.para <= b.p then
-                local xa = (ln.para == a.p) and math.max(ln.text_x, self:caretXHelper(lay, ln, a)) or ln.text_x
-                local xb = (ln.para == b.p) and self:caretXHelper(lay, ln, b) or (ln.text_x + self:lineContentW(ln))
+                local xa = (ln.para == a.p) and math.max(ln.text_x, self:caretXHelper(ctx, ln, a)) or ln.text_x
+                local xb = (ln.para == b.p) and self:caretXHelper(ctx, ln, b) or (ln.text_x + self:lineContentW(ln))
                 if xb > xa then
                     bb:paintRect(math.floor(ox + xa), math.floor(oy + ln.top),
                         math.ceil(xb - xa), math.ceil(ln.height), Blitbuffer.COLOR_LIGHT_GRAY)
@@ -3926,9 +4088,9 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     drawBtn(btns.done)
 end
 
--- helpers used by the selection highlight above
-function InkAwayView:caretXHelper(lay, ln, cur)
-    local ctx = self:textCtx(self.editing_text, self.view.zoom)
+-- helpers used by the selection highlight above (ctx passed in to avoid
+-- rebuilding the measuring context once per selected line)
+function InkAwayView:caretXHelper(ctx, ln, cur)
     local x = ln.text_x
     for _, sg in ipairs(ln.segs) do
         local segEnd = sg.o0 + Text.ulen(sg.t)
