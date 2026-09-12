@@ -175,9 +175,21 @@ local function opInPoly(op, poly)
         end
     end
     if total == 0 then return false end
-    if inside / total >= 0.5 then return true end
+    if inside / total >= 0.3 then return true end             -- a good chunk is inside
     local cx, cy = opCentroid(op)
-    return (cx and pointInPoly(cx, cy, poly)) or false
+    if cx and pointInPoly(cx, cy, poly) then return true end   -- centre of mass is inside
+    -- bounding-box centre is inside (stable for long strokes)
+    local x0, y0, x1, y1
+    local function ext(x, y)
+        if not x0 or x < x0 then x0 = x end
+        if not y0 or y < y0 then y0 = y end
+        if not x1 or x > x1 then x1 = x end
+        if not y1 or y > y1 then y1 = y end
+    end
+    if op.pts then for i = 1, #op.pts, 2 do ext(op.pts[i], op.pts[i + 1]) end
+    elseif op.runs then for i = 1, #op.runs, 3 do ext(op.runs[i], op.runs[i + 1]) end end
+    if x0 then return pointInPoly((x0 + x1) / 2, (y0 + y1) / 2, poly) end
+    return false
 end
 
 -- Accumulate an op's bounds into x0,y0,x1,y1 (canvas coords). Returns updated four.
@@ -1055,10 +1067,21 @@ function InkAwayView:openShapePicker()
         text = "\u{2B21} " .. _("Lasso select (loop, then drag to move)"),
         checked_func = function() return self.tool == "lasso" end,
         callback = function()
-            self:setTool("lasso")
+            self:flushPending()
             self:cancelShape()
+            if self.selection or self.lassoing then self:clearSelection() end
+            self.tool = "lasso"
             self:refreshToolLabels()
             UIManager:close(self._shape_dialog)
+            -- Redraw the canvas so a committed shape is not left cleared on e-ink
+            -- when the menu closes. The tool switch alone only refreshes the
+            -- toolbar, and setDirty(self, ...) proved unreliable on real panels
+            -- (same as the brush maker) -- repaint every widget on the next tick,
+            -- once the dialog is truly gone, with a full flash.
+            self:renderView()
+            UIManager:nextTick(function()
+                UIManager:setDirty("all", "full")
+            end)
         end,
     }}
     buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
@@ -2859,10 +2882,7 @@ function InkAwayView:lassoFinish()
     local got = self:computeSelection(poly)
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
-    if got then
-        UIManager:show(InfoMessage:new{
-            text = _("Selected. Drag inside the box to move it, or tap it for options."), timeout = 2 })
-    else
+    if not got then
         UIManager:show(InfoMessage:new{ text = _("Nothing inside the loop."), timeout = 2 })
     end
 end
@@ -2972,14 +2992,16 @@ function InkAwayView:selRefreshNow()
     local x1 = math.min(v.area_x + v.area_w, r.x + r.w)
     local y1 = math.min(v.area_y + v.area_h, r.y + r.h)
     if x1 > x0 and y1 > y0 then
-        UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+        -- "ui" (not the A2 "fast" waveform) keeps the moving box clean with no
+        -- smear trail; the region is small (just the box), so it never floods
+        UIManager:setDirty(self, "ui", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
     end
 end
 
 function InkAwayView:scheduleSelRefresh()
     if self._sel_refresh_pending then return end
     self._sel_refresh_pending = true
-    UIManager:scheduleIn(0.08, self._sel_refresh_tick)   -- at most ~12 refreshes/sec
+    UIManager:scheduleIn(0.15, self._sel_refresh_tick)   -- at most ~6 refreshes/sec
 end
 
 function InkAwayView:stopSelRefresh()
@@ -3010,14 +3032,12 @@ function InkAwayView:lassoPan(pos)
         return true
     end
     if self.lassoing and self.lasso_scr then
-        local px, py = self.lasso_scr[#self.lasso_scr - 1], self.lasso_scr[#self.lasso_scr]
         self.lasso_scr[#self.lasso_scr + 1] = pos.x
         self.lasso_scr[#self.lasso_scr + 1] = pos.y
-        -- refresh the box spanning the new segment; the trail of earlier segments
-        -- stays on the panel, so the whole loop shows as it is drawn
-        local x0, y0 = math.min(px, pos.x) - 3, math.min(py, pos.y) - 3
-        local x1, y1 = math.max(px, pos.x) + 3, math.max(py, pos.y) + 3
-        UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+        -- refresh only a small fixed box around the new point (never a whole
+        -- segment, which on a fast stroke is huge and floods the e-ink queue);
+        -- the trail from earlier points stays on the panel
+        UIManager:setDirty(self, "fast", GeomUI:new{ x = pos.x - 14, y = pos.y - 14, w = 28, h = 28 })
         return true
     end
     return true
