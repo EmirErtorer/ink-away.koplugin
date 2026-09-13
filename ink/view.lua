@@ -707,9 +707,9 @@ function InkAwayView:buildToolbar()
     local btn_w = math.floor(Screen:getWidth() / n)
     -- a compact bar: the icons carry the meaning, so the buttons are short
     local bar_h = math.max(Screen:scaleBySize(30), math.min(Screen:scaleBySize(44), math.floor(btn_w * 0.7)))
-    -- icons a bit larger than half the button so they read clearly, but with
-    -- enough margin that the (square) icon never reaches the rounded corners
-    local isz = math.max(16, math.floor(bar_h * 0.62))
+    -- large icons that read clearly, but with enough margin that the (square)
+    -- icon never reaches the rounded corners of the button
+    local isz = math.max(16, math.floor(bar_h * 0.82))
     self.tool_buttons = {}
     self._toolbar_icons = {}
     local row = {}
@@ -1478,13 +1478,26 @@ end
 
 -- Snap a text box's top edge onto the notebook ruling so its lines line up with
 -- the printed lines (a no-op off a ruled page).
-function InkAwayView:snapTextBoxToGrid(op)
-    if not (op and self.notebook and self.notebook.template
-            and self.notebook.template.style and self.notebook.template.style ~= "blank") then
-        return
+-- The ruling step (canvas px) that grid-snapped text lines up with, or nil when
+-- there is nothing to snap to. A notebook uses its printed ruling; a plain
+-- drawing uses the on-screen grid, but only the styles that have horizontal rows
+-- (square, ruled lines, dots) -- isometric and rule-of-thirds have no rows.
+function InkAwayView:textRulingStep()
+    if self.notebook then
+        local t = self.notebook.template
+        if t and t.style and t.style ~= "blank" then return t.size or 40 end
+        return nil
     end
-    local step = self.notebook.template.size or 40
-    if step > 0 then op.y = math.floor(op.y / step + 0.5) * step end
+    if self.grid_on and self.grid_size and self.grid_size > 0 then
+        local s = self.grid_style or "square"
+        if s == "square" or s == "lines" or s == "dots" then return self.grid_size end
+    end
+    return nil
+end
+
+function InkAwayView:snapTextBoxToGrid(op)
+    local step = self:textRulingStep()
+    if op and step and step > 0 then op.y = math.floor(op.y / step + 0.5) * step end
 end
 
 -- The font size (canvas px) to use for grid-snapped text, so one line fills one
@@ -1530,15 +1543,13 @@ function InkAwayView:textCtx(op, scale)
     local RenderText = require("ui/rendertext")
     scale = scale or 1
     local name = op.font or self:textFontName()
-    -- Grid-line snap: when the box asks for it and the page is ruled, the ruling
-    -- step drives both the line snapping AND the font size, so one line fills one
-    -- ruling row (0.72 * step leaves headroom and never spills to two rows, so the
-    -- text can never skip a line however fine the ruling is set).
-    local ruled = op.grid_snap and self.notebook and self.notebook.template
-        and self.notebook.template.style and self.notebook.template.style ~= "blank"
-    local rawStep = ruled and (self.notebook.template.size or 40) or nil
-    local gridStep = ruled and rawStep * scale or nil
-    local base = ruled and self:gridBaseSize(name, rawStep) or (op.size or 32)
+    -- Grid-line snap: when the box asks for it and the page (notebook ruling or
+    -- the drawing-mode grid) has rows, the ruling step drives both the line
+    -- snapping AND the font size, so one line fills one row and text never skips a
+    -- line however fine the ruling is set.
+    local rawStep = op.grid_snap and self:textRulingStep() or nil
+    local gridStep = rawStep and rawStep * scale or nil
+    local base = rawStep and self:gridBaseSize(name, rawStep) or (op.size or 32)
     local function pxOf(style) return base * ((style and style.sz) or 1) * scale end
     local function faceOf(style) return self:faceAt(name, pxOf(style)) end
     local meta = {}
