@@ -422,6 +422,35 @@ local function tokenize(p)
     return toks, off
 end
 
+-- Break any non-space token wider than the line into character-sized pieces that
+-- each fit, so a single very long word wraps instead of overflowing the box. Each
+-- piece keeps the token's style and its own char offset, so the cursor and hit
+-- testing still line up. A single char wider than the line is emitted on its own.
+local function breakLongTokens(toks, avail, ctx)
+    local out = {}
+    for _, tk in ipairs(toks) do
+        if tk.sp or ctx.measure(tk.t, tk.style) <= avail then
+            out[#out + 1] = tk
+        else
+            local cs = chars(tk.t)
+            local buf, buf_w, buf_o = {}, 0, tk.o0
+            for k, c in ipairs(cs) do
+                local cw = ctx.measure(c, tk.style)
+                if #buf > 0 and buf_w + cw > avail then
+                    out[#out + 1] = { t = table.concat(buf), style = tk.style, sp = false, o0 = buf_o }
+                    buf, buf_w, buf_o = {}, 0, tk.o0 + (k - 1)
+                end
+                buf[#buf + 1] = c
+                buf_w = buf_w + cw
+            end
+            if #buf > 0 then
+                out[#out + 1] = { t = table.concat(buf), style = tk.style, sp = false, o0 = buf_o }
+            end
+        end
+    end
+    return out
+end
+
 -- Merge a run of tokens into style segments with x offsets, from a start x.
 local function segmentsFromTokens(toks, i0, i1, x0, ctx)
     local segs, x = {}, x0
@@ -451,7 +480,7 @@ function Text.layout(op, ctx)
             indent = ctx.measure(bulletLabel, bulletStyle)
         end
         local avail = math.max(1, op.w - indent)
-        local toks = tokenize(p)
+        local toks = breakLongTokens(tokenize(p), avail, ctx)
 
         -- greedy wrap into runs of token indices [start..last]
         local function flush(i0, i1, is_first)
@@ -473,15 +502,31 @@ function Text.layout(op, ctx)
             end
             local o_start = (i0 <= i1) and toks[i0].o0 or (lines[#lines] and lines[#lines].o_end or 0)
             local o_end = (i0 <= i1) and (toks[i1].o0 + ulen(toks[i1].t)) or o_start
+            -- Grid-line snapping: when a ruling step is supplied, each line
+            -- occupies a whole number of ruling rows and its baseline rests on
+            -- the ruling at the row's bottom, so text lands on the printed lines
+            -- whatever its size (the box origin is snapped to the ruling, so the
+            -- op-local rulings fall at multiples of the step from y = 0).
+            local top, adv, baseline = y, lh, y + asc
+            if ctx.gridStep and ctx.gridStep > 0 then
+                local step = ctx.gridStep
+                -- Rows are counted from the ASCENT (baseline to top of the tall
+                -- letters), not the full line box: that box carries leading and
+                -- descender space that would otherwise force big-but-still-one-row
+                -- text onto two rows. The font is sized so the ascent nearly fills
+                -- a row, so the letters reach up toward the line above.
+                adv = math.max(1, math.ceil((asc - 0.5) / step)) * step
+                baseline = y + adv           -- sit on the ruling at the row bottom
+            end
             local line = {
-                para = pi, first = is_first, top = y, height = lh, baseline = y + asc,
+                para = pi, first = is_first, top = top, height = adv, baseline = baseline,
                 text_x = text_x, o_start = o_start, o_end = o_end, segs = segs,
             }
             if is_first and bulletLabel then
                 line.bullet = { text = bulletLabel, style = bulletStyle, x = 0 }
             end
             lines[#lines + 1] = line
-            y = y + lh
+            y = y + adv
         end
 
         if #toks == 0 then

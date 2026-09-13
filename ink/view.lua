@@ -425,6 +425,10 @@ function InkAwayView:init()
     self.grid_style  = self:getSetting("inkaway_grid_style", "square")  -- square|dots|lines|iso|thirds
     self.grid_size   = self:getSetting("inkaway_grid_size", math.max(24, math.floor(W / 16)))
     self.grid_strength = self:getSetting("inkaway_grid_strength", 45)   -- 1..100, 100 = ink black
+    -- Notebook ruling: remembered across notebooks so a new one starts like the last.
+    self.nb_style    = self:getSetting("inkaway_nb_style", "lines")
+    self.nb_size     = self:getSetting("inkaway_nb_size", nil)          -- nil = fall back to grid_size
+    self.nb_strength = self:getSetting("inkaway_nb_strength", nil)      -- nil = fall back to grid_strength
     self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off|vert|horiz|quad
@@ -443,6 +447,15 @@ function InkAwayView:init()
     local tf = self:getSetting("inkaway_text_font", "")
     self.text_font = (tf ~= "" ) and tf or nil
     self.text_size = self:getSetting("inkaway_text_size", nil)
+    -- Snap each typed line onto the notebook ruling (only affects ruled pages).
+    self.text_grid_snap = self:getSetting("inkaway_text_grid_snap", false) and true or false
+    -- Whether the eraser is allowed to rub out typed text. Off by default: text is
+    -- drawn on top of the ink and the eraser leaves it untouched.
+    self.text_erase_protect = self:getSetting("inkaway_text_erase_protect", true) and true or false
+    -- Per-box edit history kept alive after a text box is committed, keyed by the
+    -- op itself (weak, so it is dropped when the op is gone). It lets Undo peel a
+    -- committed text box back word by word instead of deleting the whole block.
+    self._text_hist = setmetatable({}, { __mode = "k" })
 
     -- Optional background image (a picture your drawing sits on top of).
     self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
@@ -584,6 +597,11 @@ function InkAwayView:free()
     if self.canvas_bb then self.canvas_bb:free(); self.canvas_bb = nil end
     if self.bg_bb then self.bg_bb:free(); self.bg_bb = nil end
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
+    if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
+    if self._nav_img then
+        for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
+        self._nav_img = nil
+    end
     self.bg_rgba = nil
 end
 
@@ -675,30 +693,47 @@ function InkAwayView:buildToolbar()
         { id = "zoomout", label = "\u{2212}", cb = function() self:zoomStep(-1) end },  -- minus
         { id = "zoomin",  label = "+",        cb = function() self:zoomStep(1) end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
+        { id = "redo",  label = _("Redo"),  cb = function() self:redo() end },
         { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
         { id = "save",  label = _("Save"),  cb = function() self:onSave() end },
         { id = "exit",  label = _("Exit"),  cb = function() self:promptExit() end },
     }
+    -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
+    local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",
+        pan = "pan", zoomout = "zoomout", zoomin = "zoomin", undo = "undo", redo = "redo",
+        menu = "menu", save = "save", exit = "exit" }
+    self:ensureUserIcons()   -- so the Buttons can render the icons by name
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
-    -- shrink the font a little on narrow screens so the labels never truncate
-    local font_size = math.max(11, math.min(16, math.floor(btn_w / 6)))
+    -- a compact bar: the icons carry the meaning, so the buttons are short
+    local bar_h = math.max(Screen:scaleBySize(30), math.min(Screen:scaleBySize(44), math.floor(btn_w * 0.7)))
+    -- icons a bit larger than half the button so they read clearly, but with
+    -- enough margin that the (square) icon never reaches the rounded corners
+    local isz = math.max(16, math.floor(bar_h * 0.62))
     self.tool_buttons = {}
+    self._toolbar_icons = {}
     local row = {}
     for i, s in ipairs(specs) do
         local w = (i == n) and (Screen:getWidth() - btn_w * (n - 1)) or btn_w
+        -- The icon belongs to the Button (via KOReader's user-icon dir), so the
+        -- Button paints and repaints it itself -- including its tap feedback, which
+        -- for an icon (text-less) Button just inverts and restores the region. That
+        -- is why the icon no longer vanishes on press (an overdrawn overlay would).
         local b = Button:new{
-            text = s.label,
+            icon = "inkaway." .. ICON[s.id],
+            icon_width = isz,
+            icon_height = isz,
             callback = s.cb,
             width = w,
+            height = bar_h,
             bordersize = Size.border.default,   -- a real border so it reads as a button
             radius = Screen:scaleBySize(5),
             margin = Size.margin.small,
-            padding = Size.padding.small,
-            text_font_size = font_size,
+            padding = 0,
             show_parent = self,
         }
-        if s.tool then self.tool_buttons[s.id] = { button = b, label = s.label } end
+        if s.tool then self.tool_buttons[s.id] = { button = b } end
+        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true }
         row[i] = b
     end
     self.toolbar = FrameContainer:new{
@@ -708,18 +743,66 @@ function InkAwayView:buildToolbar()
         margin = 0,
         HorizontalGroup:new(row),
     }
-    self:refreshToolLabels()
 end
 
--- Mark the active tool with a leading bullet.
+-- The active tool is shown by a short underline drawn in paintTo, so a tool
+-- change only needs the toolbar area repainted.
 function InkAwayView:refreshToolLabels()
-    -- U+25CF BLACK CIRCLE, written as explicit UTF-8 bytes for portability
-    local BULLET = "\226\151\143 "
-    -- the fill tool lives under the Shapes button, so mark Shapes for it too
+    UIManager:setDirty(self, "ui", self.toolbar and self.toolbar.dimen or nil)
+end
+
+-- Absolute path to the plugin's own directory (this file lives in ink/).
+function InkAwayView:pluginDir()
+    if self._plugin_dir then return self._plugin_dir end
+    local src = debug.getinfo(1, "S").source
+    self._plugin_dir = (src:match("^@(.*/)ink/[^/]*$")) or "./"
+    return self._plugin_dir
+end
+
+-- Copy the plugin's tool icons into KOReader's user-icon dir (once, refreshed
+-- when the plugin ships newer ones), so a toolbar Button can render them by the
+-- name "inkaway.<id>" -- IconWidget searches that dir first. Owning the icon in
+-- the Button (rather than overdrawing it) is what keeps it from vanishing on tap.
+function InkAwayView:ensureUserIcons()
+    local ok = pcall(function()
+        local lfs = require("libs/libkoreader-lfs")
+        local DataStorage = require("datastorage")
+        local dst_dir = DataStorage:getDataDir() .. "/icons"
+        if lfs.attributes(dst_dir, "mode") ~= "directory" then lfs.mkdir(dst_dir) end
+        local src_dir = self:pluginDir() .. "ink/icons/"
+        for _, name in ipairs({ "pen", "eraser", "shape", "text", "pan", "zoomin",
+                                "zoomout", "undo", "redo", "menu", "save", "exit" }) do
+            local src = src_dir .. name .. ".svg"
+            local dst = dst_dir .. "/inkaway." .. name .. ".svg"
+            local sa, da = lfs.attributes(src), lfs.attributes(dst)
+            if sa and (not da or (sa.modification or 0) > (da.modification or 0)) then
+                local fin = io.open(src, "rb")
+                if fin then
+                    local data = fin:read("*a"); fin:close()
+                    local fout = io.open(dst, "wb")
+                    if fout then fout:write(data); fout:close() end
+                end
+            end
+        end
+    end)
+    return ok
+end
+
+-- Draw the active-tool underline on top of the toolbar buttons, using each
+-- button's painted rect so it stays aligned at any size. (The icons themselves
+-- are painted by the Buttons.)
+function InkAwayView:drawToolbarIcons(bb)
+    if not self._toolbar_icons then return end
     local active = (self.tool == "fill") and "shape" or self.tool
-    for id, entry in pairs(self.tool_buttons) do
-        local mark = (active == id) and BULLET or ""
-        entry.button:setText(mark .. entry.label, entry.button.width)
+    local BLACKC = Blitbuffer.COLOR_BLACK
+    for _, e in ipairs(self._toolbar_icons) do
+        local d = e.button.dimen
+        if d and e.tool and e.id == active then
+            local uw = math.floor(d.w * 0.44)
+            local uh = math.max(2, math.floor(d.h * 0.07))
+            bb:paintRect(math.floor(d.x + (d.w - uw) / 2),
+                math.floor(d.y + d.h - uh - math.floor(d.h * 0.10)), uw, uh, BLACKC)
+        end
     end
 end
 
@@ -1215,11 +1298,20 @@ function InkAwayView:openTextSettings()
     local ButtonDialog = require("ui/widget/buttondialog")
     local dlg
     local size = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
+    local snap = self.text_grid_snap
     local buttons = {
+        -- Font and its size sit on one row; size is disabled while snap is on,
+        -- because snap sets the size from the ruling (see the note below).
         {{ text = _("Font: ") .. self:textFontDisplay(),
-           callback = function() UIManager:close(dlg); self:openTextFont() end }},
-        {{ text = string.format(_("Default size: %d px"), size),
+           callback = function() UIManager:close(dlg); self:openTextFont() end },
+         { text = string.format(_("Font size: %d px"), size), enabled = not snap,
            callback = function() UIManager:close(dlg); self:openTextSize() end }},
+        {{ text = (snap and "\u{2713} " or "") .. _("Snap lines to ruling"),
+           callback = function() UIManager:close(dlg); self:toggleTextGridSnap() end }},
+        {{ text = _("Snap sets the size to match the ruling \u{2014} turn it off to set the size yourself."),
+           enabled = false }},
+        {{ text = (self.text_erase_protect and "\u{2713} " or "") .. _("Protect text from eraser"),
+           callback = function() UIManager:close(dlg); self:toggleTextEraseProtect() end }},
         {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
     }
     dlg = ButtonDialog:new{ title = _("Text"), title_align = "center", buttons = buttons }
@@ -1241,26 +1333,105 @@ function InkAwayView:afterFontChange()
     end
 end
 
--- Scrollable chooser over the device's installed fonts.
-function InkAwayView:openTextFont()
+-- A Menu that renders each row's label in that row's own font, so the font
+-- chooser is a live preview instead of one uniform typeface. The standalone Menu
+-- widget uses a single face for every item, so we replace its item rows with
+-- borderless left-aligned Buttons whose face is the font itself (Button passes
+-- text_font_face straight to Font:getFace, which accepts a font file path).
+function InkAwayView:fontMenuClass()
+    if InkAwayView._FontMenu then return InkAwayView._FontMenu end
     local Menu = require("ui/widget/menu")
+    local Button = require("ui/widget/button")
+    local UIManager_ = require("ui/uimanager")
+    local InputContainer = require("ui/widget/container/inputcontainer")
+    local FontMenu = Menu:extend{}
+    -- The base Menu paints its popup at the top-left: InputContainer:paintTo
+    -- overwrites self.dimen.x/y with the paint origin (0,0), so setting them in
+    -- init alone is discarded. Instead we paint at a centred offset inside
+    -- `center_rect` (the drawing area, so the popup clears the toolbar and the
+    -- page-nav strip). Painting there sets self.dimen to match, so the refresh
+    -- region and the button hit-boxes both follow.
+    function FontMenu:init()
+        Menu.init(self)
+        local cr = self.center_rect
+            or { x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+        self._ox = cr.x + math.floor((cr.w - self.dimen.w) / 2)
+        self._oy = cr.y + math.floor((cr.h - self.dimen.h) / 2)
+        self.dimen.x, self.dimen.y = self._ox, self._oy
+    end
+    function FontMenu:paintTo(bb, x, y)
+        InputContainer.paintTo(self, bb, x + (self._ox or 0), y + (self._oy or 0))
+    end
+    function FontMenu:updateItems(select_number, no_recalculate_dimen)
+        self.layout = {}
+        self.item_group:clear()
+        self.page_info:resetLayout()
+        self.return_button:resetLayout()
+        self.content_group:resetLayout()
+        self:_recalculateDimen(no_recalculate_dimen)
+        local idx0 = (self.page - 1) * self.perpage
+        for i = 1, self.perpage do
+            local item = self.item_table[idx0 + i]
+            if not item then break end
+            local btn = Button:new{
+                text = item.text,
+                text_font_face = item.preview_font or "smallinfofont",
+                text_font_size = self.font_size,
+                text_font_bold = false,
+                align = "left",
+                width = self.inner_dimen.w,
+                max_width = self.inner_dimen.w,
+                height = self.item_dimen.h,   -- fixed row height so a page never
+                                              -- overflows onto the page buttons
+                bordersize = 0,
+                margin = 0,
+                radius = 0,
+                padding_v = 0,
+                padding_h = Screen:scaleBySize(16),   -- a little breathing room at the left
+                callback = item.callback,
+                show_parent = self.show_parent,
+            }
+            table.insert(self.item_group, btn)
+            table.insert(self.layout, { btn })
+        end
+        self:updatePageInfo(select_number)
+        if self.mergeTitleBarIntoLayout then self:mergeTitleBarIntoLayout() end
+        UIManager_:setDirty(self.show_parent, function()
+            return "ui", self.dimen
+        end)
+    end
+    InkAwayView._FontMenu = FontMenu
+    return FontMenu
+end
+
+-- Scrollable chooser over the device's installed fonts, each shown in its own font.
+function InkAwayView:openTextFont()
     local FontList = require("fontlist")
     local items = {
-        { text = (self.text_font == nil and "\u{2713} " or "") .. _("Default"),
+        { text = (self.text_font == nil and "\u{2713} " or "") .. _("Default (content font)"),
+          preview_font = "cfont",
           callback = function() self.text_font = nil; self:afterFontChange() end },
     }
     for _, path in ipairs(FontList:getFontList()) do
         local name = (path:gsub(".*/", ""):gsub("%.%w+$", ""))
         items[#items + 1] = { text = (self.text_font == path and "\u{2713} " or "") .. name,
+            preview_font = path,
             callback = function() self.text_font = path; self:afterFontChange() end }
     end
+    -- Fit the popup inside the drawing area with a comfortable margin on all four
+    -- sides, so it clears the toolbar and the page-nav strip and never gets clipped.
+    local v = self.view
+    local m = Screen:scaleBySize(28)
+    local area = { x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
+    local FontMenu = self:fontMenuClass()
     local menu
-    menu = Menu:new{
+    menu = FontMenu:new{
         title = _("Note font"),
         item_table = items,
         is_popout = true,
-        width = Screen:getWidth() - Screen:scaleBySize(40),
-        height = Screen:getHeight() - Screen:scaleBySize(80),
+        width = math.max(200, area.w - 2 * m),
+        height = math.max(200, area.h - 2 * m),
+        center_rect = area,
         close_callback = function() UIManager:close(menu) end,
     }
     UIManager:show(menu)
@@ -1270,7 +1441,7 @@ function InkAwayView:openTextSize()
     local SpinWidget = require("ui/widget/spinwidget")
     local cur = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
     UIManager:show(SpinWidget:new{
-        title_text = _("Default text size"),
+        title_text = _("Font size"),
         info_text = _("Size of new text boxes, in pixels."),
         value = cur, value_min = 10, value_max = 96, value_step = 2, value_hold_step = 10,
         unit = _("px"),
@@ -1279,6 +1450,57 @@ function InkAwayView:openTextSize()
             self:setSetting("inkaway_text_size", self.text_size)
         end,
     })
+end
+
+-- Toggle grid-line snapping for new boxes (and the one being edited). It only has
+-- a visible effect on a ruled notebook page.
+function InkAwayView:toggleTextGridSnap()
+    self.text_grid_snap = not self.text_grid_snap
+    self:setSetting("inkaway_text_grid_snap", self.text_grid_snap)
+    if self.editing_text then
+        self.editing_text.grid_snap = self.text_grid_snap
+        if self.text_grid_snap then self:snapTextBoxToGrid(self.editing_text) end
+        self:invalidateLayout()
+        self:refreshTextBox("flashui")
+    else
+        self:openTextSettings()   -- reopen so the checkmark reflects the change
+    end
+end
+
+-- Toggle whether the eraser may rub out typed text. Recompose so the change is
+-- visible immediately on committed boxes.
+function InkAwayView:toggleTextEraseProtect()
+    self.text_erase_protect = not self.text_erase_protect
+    self:setSetting("inkaway_text_erase_protect", self.text_erase_protect)
+    self:composeCanvas(); self:renderView(); UIManager:setDirty(self, "ui")
+    if not self.editing_text then self:openTextSettings() end   -- reopen to show the tick
+end
+
+-- Snap a text box's top edge onto the notebook ruling so its lines line up with
+-- the printed lines (a no-op off a ruled page).
+function InkAwayView:snapTextBoxToGrid(op)
+    if not (op and self.notebook and self.notebook.template
+            and self.notebook.template.style and self.notebook.template.style ~= "blank") then
+        return
+    end
+    local step = self.notebook.template.size or 40
+    if step > 0 then op.y = math.floor(op.y / step + 0.5) * step end
+end
+
+-- The font size (canvas px) to use for grid-snapped text, so one line fills one
+-- ruling row and the tall letters reach up toward the line above. We aim the
+-- font's ascent at ~0.90 of the ruling step, measuring the face's own ascent
+-- ratio (it varies a lot between fonts) so the fill is consistent whatever font
+-- and however fine the ruling.
+function InkAwayView:gridBaseSize(name, rawStep)
+    local probe = 100
+    local face = self:faceAt(name, probe)
+    local ratio = 1.0
+    if face and face.ftsize then
+        local _, asc = face.ftsize:getHeightAndAscender()
+        if asc and asc > 0 then ratio = asc / probe end
+    end
+    return math.max(6, math.floor(0.90 * rawStep / ratio + 0.5))
 end
 
 -- A cached font face at a REAL pixel size. Font:getFace applies Screen DPI
@@ -1308,7 +1530,15 @@ function InkAwayView:textCtx(op, scale)
     local RenderText = require("ui/rendertext")
     scale = scale or 1
     local name = op.font or self:textFontName()
-    local base = op.size or 32
+    -- Grid-line snap: when the box asks for it and the page is ruled, the ruling
+    -- step drives both the line snapping AND the font size, so one line fills one
+    -- ruling row (0.72 * step leaves headroom and never spills to two rows, so the
+    -- text can never skip a line however fine the ruling is set).
+    local ruled = op.grid_snap and self.notebook and self.notebook.template
+        and self.notebook.template.style and self.notebook.template.style ~= "blank"
+    local rawStep = ruled and (self.notebook.template.size or 40) or nil
+    local gridStep = ruled and rawStep * scale or nil
+    local base = ruled and self:gridBaseSize(name, rawStep) or (op.size or 32)
     local function pxOf(style) return base * ((style and style.sz) or 1) * scale end
     local function faceOf(style) return self:faceAt(name, pxOf(style)) end
     local meta = {}
@@ -1325,6 +1555,7 @@ function InkAwayView:textCtx(op, scale)
         return m
     end
     return {
+        gridStep = gridStep,
         measure = function(text, style)
             if not text or text == "" then return 0 end
             return RenderText:sizeUtf8Text(0, nil, faceOf(style), text, true,
@@ -1387,7 +1618,7 @@ end
 -- background picture, notebook ruling, then the ink ops. Shared by the live
 -- master bitmap and by the page-overview thumbnails, so a thumbnail always
 -- matches exactly what the page looks like.
-function InkAwayView:composeInto(dst, ops, bg_bb, template)
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
     local W, H = self.view.canvas_w, self.view.canvas_h
     dst:paintRect(0, 0, W, H, WHITE)
     if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
@@ -1396,15 +1627,41 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template)
         local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
         Template.render(template.style, W, H, template.size or 40, put)
     end
+    -- A text-protecting erase op (op.spare_text) reveals a copy of the page that
+    -- INCLUDES the text (built once here if the caller didn't pass it), so it rubs
+    -- out ink but leaves text; a normal erase reveals the plain page and removes
+    -- both. Whether an erase spares text is baked into the op at draw time, so the
+    -- setting is never retroactive. dst currently holds the plain base (paper /
+    -- background / ruling), so a copy of it now is exactly the plain reveal.
+    local owns_rt = false
+    if not reveal_text then
+        local has_text, has_spare = false, false
+        for _, op in ipairs(ops) do
+            if not op.hidden then
+                if op.kind == "text" then has_text = true
+                elseif op.kind == "erase" and op.spare_text then has_spare = true end
+            end
+        end
+        if has_text and has_spare then
+            reveal_text = Blitbuffer.new(W, H, dst:getType())
+            reveal_text:blitFrom(dst, 0, 0, 0, 0, W, H)
+            for _, op in ipairs(ops) do
+                if not op.hidden and op.kind == "text" then self:stampTextInto(reveal_text, op) end
+            end
+            owns_rt = true
+        end
+    end
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(ops) do
         if not op.hidden then      -- a shape being rotated is drawn as a preview
             if op.kind == "text" then
-                self:stampTextInto(dst, op)   -- glyphs, drawn straight into dst
+                self:stampTextInto(dst, op)   -- glyphs, drawn straight into dst (z-order)
             else
                 local put
-                if op.kind == "erase" and not op.ebg and bg_bb then
-                    put = bgSpanWriter(dst, bg_bb, W, H, nil)   -- reveal the background
+                if op.kind == "erase" and op.spare_text and reveal_text then
+                    put = bgSpanWriter(dst, reveal_text, W, H, nil)  -- reveal page + text
+                elseif op.kind == "erase" and not op.ebg and bg_bb then
+                    put = bgSpanWriter(dst, bg_bb, W, H, nil)         -- reveal the plain page
                 else
                     put = spanWriter(dst, W, H, self:opColor(op), nil)
                 end
@@ -1412,6 +1669,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template)
             end
         end
     end
+    if owns_rt then reveal_text:free() end
 end
 
 -- The buffer the eraser reveals under the ink: in a notebook that is the paper
@@ -1419,8 +1677,42 @@ end
 -- ruling -- just like the drawing-mode grid, which the eraser also can't touch.
 -- In plain drawing mode it is the optional background image (or nil = white).
 function InkAwayView:eraseRevealBB()
+    -- while protection is on, a live erase stroke spares text, so it reveals the
+    -- page-with-text buffer; otherwise it reveals the plain page
+    if self.text_erase_protect and self._reveal_text_bb then return self._reveal_text_bb end
     if self.notebook then return self._paper_bb end
     return self.bg_bb
+end
+
+-- Keep `_reveal_text_bb` (the plain page with the committed text stamped on top)
+-- for the eraser to reveal when it must spare text -- for the live stroke and for
+-- protecting erase ops. Built only when some erase spares text (or protection is
+-- on, so the next stroke will) and text exists; freed otherwise.
+function InkAwayView:buildRevealText(base_bb)
+    if not self.canvas_bb then return end
+    local has_text, has_spare = false, false
+    for _, op in ipairs(self.canvas.ops) do
+        if not op.hidden then
+            if op.kind == "text" then has_text = true
+            elseif op.kind == "erase" and op.spare_text then has_spare = true end
+        end
+    end
+    if not (has_text and (self.text_erase_protect or has_spare)) then
+        if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
+        return
+    end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    if self._reveal_text_bb and (self._reveal_text_bb:getWidth() ~= W or self._reveal_text_bb:getHeight() ~= H) then
+        self._reveal_text_bb:free(); self._reveal_text_bb = nil
+    end
+    if not self._reveal_text_bb then
+        self._reveal_text_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
+    end
+    local rt = self._reveal_text_bb
+    if base_bb then rt:blitFrom(base_bb, 0, 0, 0, 0, W, H) else rt:paintRect(0, 0, W, H, WHITE) end
+    for _, op in ipairs(self.canvas.ops) do
+        if not op.hidden and op.kind == "text" then self:stampTextInto(rt, op) end
+    end
 end
 
 -- Build (once per compose) the notebook paper: paper colour or PDF page, then the
@@ -1461,9 +1753,11 @@ function InkAwayView:composeCanvas()
         -- paper (with ruling) is the base AND the erase-reveal source, so ruling
         -- lives under the ink and the eraser restores it instead of whitening it
         self:buildNotebookPaper()
-        self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil)
+        self:buildRevealText(self._paper_bb)
+        self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil, self._reveal_text_bb)
     else
-        self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil)
+        self:buildRevealText(self.bg_bb)
+        self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil, self._reveal_text_bb)
     end
 end
 
@@ -1795,7 +2089,13 @@ function InkAwayView:finalizeStroke()
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     local was_erase = self.tool == "erase"
-    self.canvas:finishStroke()
+    local committed = self.canvas:finishStroke()
+    -- Record whether text was protected when THIS stroke was made, so later
+    -- toggling the setting never retroactively erases (or un-erases) text that a
+    -- past stroke passed over. Compose then honours each erase op's own flag.
+    if committed and committed.kind == "erase" then
+        committed.spare_text = self.text_erase_protect or nil
+    end
     self.dirty = true
     -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
     -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
@@ -2359,6 +2659,8 @@ function InkAwayView:openPaperStyle()
             text = (self.notebook.template.style == o[1] and "\u{25CF} " or "") .. o[2],
             callback = function()
                 self.notebook.template.style = o[1]
+                self.nb_style = o[1]
+                self:setSetting("inkaway_nb_style", o[1])   -- remember for the next notebook
                 self.dirty = true
                 UIManager:close(dlg)
                 self:composeCanvas(); self:renderView(); self:refreshArea()
@@ -2408,6 +2710,8 @@ function InkAwayView:openGridSize()
             unit = _("px"),
             callback = function(spin)
                 t.size = math.max(8, math.floor(spin.value))
+                self.nb_size = t.size
+                self:setSetting("inkaway_nb_size", t.size)   -- remember for the next notebook
                 self.dirty = true
                 self:composeCanvas(); self:renderView(); self:refreshArea()
                 self:openSettings()
@@ -2439,6 +2743,8 @@ function InkAwayView:openGridStrength()
             unit = "%",
             callback = function(spin)
                 t.strength = math.max(1, math.min(100, math.floor(spin.value)))
+                self.nb_strength = t.strength
+                self:setSetting("inkaway_nb_strength", t.strength)   -- remember for the next notebook
                 self.dirty = true
                 self:composeCanvas(); self:renderView(); self:refreshArea()
                 self:openSettings()
@@ -2520,10 +2826,6 @@ function InkAwayView:openSettings()
         {
             { text = _("New drawing"),  callback = function() UIManager:close(dlg); self:newDrawing() end },
             { text = _("New notebook"), callback = function() UIManager:close(dlg); self:newNotebook() end },
-        },
-        {
-            { text = _("Undo"), callback = function() UIManager:close(dlg); self:undo() end },
-            { text = _("Redo"), callback = function() UIManager:close(dlg); self:redo() end },
         },
         {
             { text = _("Open project"), callback = function() UIManager:close(dlg); self:openProject() end },
@@ -2915,6 +3217,7 @@ end
 function InkAwayView:onIaTouch(_, ges)
     local pos = ges.pos
     if not pos or not self:inArea(pos.x, pos.y) then return false end
+    self._peel_op = nil   -- a new interaction ends any committed-text undo peel
     if self.selecting_crop then return self:cropTouch(pos) end
     if self.rotating then return self:rotateTouch(pos) end
     if self.tool == "lasso" then return self:lassoTouch(pos) end
@@ -3083,8 +3386,51 @@ end
 -- Undo / exit
 ------------------------------------------------------------------------------
 
+-- Apply one stored word-level step to a COMMITTED text box (the op at ops[idx]),
+-- without re-opening it or bringing up the keyboard. `from` is the stack to pop,
+-- `to` the stack to push the current state onto (undo <-> redo). Uses clone +
+-- replace, like a placed-shape edit, so canvas snapshots that still reference the
+-- old op are never mutated. Returns true if a step was applied.
+function InkAwayView:commitTextStep(idx, from, to)
+    local ops = self.canvas.ops
+    local op = ops[idx]
+    local h = op and self._text_hist[op]
+    if not (h and from and #from > 0) then return false end
+    local snap = table.remove(from)
+    to[#to + 1] = { paras = Notebook.deepcopy(op.paras), cur = { p = 1, o = 0 } }
+    local nop = self.canvas:cloneOp(op)   -- shallow copy; shares nothing we mutate
+    nop.paras = snap.paras                -- a fresh, deep-copied paragraph list
+    ops[idx] = nop
+    self._text_hist[nop] = h              -- carry the history onto the new identity
+    self._text_hist[op] = nil
+    self._peel_op = nop                   -- we are actively peeling this box
+    self.dirty = true
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    return true
+end
+
+-- Is the most recent op a committed text box that still has word-level history to
+-- peel back (or, for redo, to replay)? Returns idx, hist or nil.
+function InkAwayView:topTextHist()
+    local ops = self.canvas.ops
+    local top = ops[#ops]
+    local h = top and top.kind == "text" and self._text_hist[top]
+    if h then return #ops, h end
+end
+
 function InkAwayView:undo()
     if self.editing_text then return self:textUndo() end   -- undo within the box
+    -- A committed text box peels back a word at a time, so one Undo never wipes a
+    -- whole block. When its history is spent, fall through to the normal ops undo
+    -- (which finally removes a new box / restores an edited box's previous text).
+    local idx, h = self:topTextHist()
+    if idx and #h.undo > 0 then
+        self:commitTextStep(idx, h.undo, h.redo)
+        return
+    end
+    self._peel_op = nil   -- leaving any text-peel sequence
     self:flushPending()
     if self.rotating then self:rotateEnd() end
     if not self.canvas:undo() then
@@ -3101,6 +3447,15 @@ end
 
 function InkAwayView:redo()
     if self.editing_text then return self:textRedo() end   -- redo within the box
+    -- Replay a peeled-back committed text box word by word (mirror of undo()), but
+    -- only while we are actively peeling THAT box -- otherwise redo means "restore
+    -- the op the last plain Undo removed", which is the normal ops redo below.
+    local idx, h = self:topTextHist()
+    if idx and h.redo and #h.redo > 0 and self.canvas.ops[idx] == self._peel_op then
+        self:commitTextStep(idx, h.redo, h.undo)
+        return
+    end
+    self._peel_op = nil
     self:flushPending()
     if not self.canvas:redo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to redo."), timeout = 1 })
@@ -3421,11 +3776,14 @@ function InkAwayView:editTextLayout()
     return lay, ctx, proxy
 end
 
--- The editing box rectangle on screen (clamped later by callers).
+-- The editing box rectangle on screen (clamped later by callers). InkGeom.toScreen
+-- already includes the area origin, so we must NOT add area_x/area_y again -- doing
+-- so shifted the editing overlay down by one toolbar height versus the committed
+-- box (the "box jumps down a notch when reopened" bug).
 function InkAwayView:textBoxScreenRect()
     local op, v = self.editing_text, self.view
     local sx, sy = InkGeom.toScreen(v, op.x, op.y)
-    return { x = v.area_x + sx, y = v.area_y + sy, w = op.w * v.zoom, h = op.h * v.zoom }
+    return { x = sx, y = sy, w = op.w * v.zoom, h = op.h * v.zoom }
 end
 
 -- The Format and Done pills (top-right of the drawing area), always visible
@@ -3439,12 +3797,22 @@ function InkAwayView:labelWidget(text)
 end
 
 -- Lay out the two edit buttons: [ Format ][ ✓ Done ] pinned to the top-right.
+-- The label sizes depend only on the (constant) labels and DPI, so measure them
+-- once and cache: this method runs on every overlay paint and every touch, and
+-- building throwaway TextWidgets each time was needless work on e-ink.
 function InkAwayView:textEditButtons()
     local v = self.view
-    local dw_ = self:labelWidget("\u{2713} " .. _("Done"))
-    local ds = dw_:getSize(); dw_:free()
-    local fw_ = self:labelWidget(_("Format"))
-    local fs = fw_:getSize(); fw_:free()
+    local m = self._text_btn_metrics
+    if not m then
+        local dlabel = "\u{2713} " .. _("Done")
+        local dw_ = self:labelWidget(dlabel)
+        local ds = dw_:getSize(); dw_:free()
+        local fw_ = self:labelWidget(_("Format"))
+        local fs = fw_:getSize(); fw_:free()
+        m = { ds = { w = ds.w, h = ds.h }, fs = { w = fs.w, h = fs.h }, dlabel = dlabel }
+        self._text_btn_metrics = m
+    end
+    local ds, fs = m.ds, m.fs
     local pad = math.floor(ds.h * 0.5)
     local h = ds.h + 2 * math.floor(ds.h * 0.35)
     local dwid = ds.w + 2 * pad
@@ -3453,7 +3821,7 @@ function InkAwayView:textEditButtons()
     local dx = v.area_x + v.area_w - dwid - 8
     local fx = dx - fwid - 10
     return {
-        done   = { x = dx, y = y, w = dwid, h = h, label = "\u{2713} " .. _("Done") },
+        done   = { x = dx, y = y, w = dwid, h = h, label = m.dlabel },
         format = { x = fx, y = y, w = fwid, h = h, label = _("Format") },
     }
 end
@@ -3548,13 +3916,10 @@ function InkAwayView:newTextAt(pos)
     -- span the full page (the grid runs edge to edge) with only a small margin
     local margin = math.max(6, math.floor(v.canvas_w * 0.02))
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
-    -- snap the box origin to the ruling if the user asked for grid alignment
-    if self.text_grid_snap and self.notebook and self.notebook.template then
-        local step = self.notebook.template.size or 40
-        cy = math.floor(cy / step + 0.5) * step
-    end
     local op = Text.new{ x = margin, y = cy, w = v.canvas_w - 2 * margin, size = size,
         font = self.text_font, align = "left", grid_snap = self.text_grid_snap }
+    -- snap the box origin to the ruling if the user asked for grid alignment
+    if self.text_grid_snap then self:snapTextBoxToGrid(op) end
     self:startTextEdit(op, { p = 1, o = 0 }, true, nil)
 end
 
@@ -3597,7 +3962,7 @@ end
 
 -- Enter edit mode on `op`. For an existing op we edit a deep copy and hide the
 -- original, so an Undo after editing restores the text as it was.
-function InkAwayView:startTextEdit(op, cur, is_new, idx)
+function InkAwayView:startTextEdit(op, cur, is_new, idx, hit_pos)
     self:flushPending(); self:flushShape()
     if self.selection or self.lassoing then self:clearSelection() end
     if is_new then
@@ -3617,9 +3982,18 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx)
     self.text_sel = nil
     self._text_edits = 0
     self._text_undo, self._text_redo, self._text_coalesce = {}, {}, nil
-    self._text_pan0 = self.view.pan_y   -- restore the scroll when done
     self:showTextKeyboard()
-    self:ensureCaretVisible()           -- bring the box above the keyboard
+    -- Place the caret at the tapped point BEFORE the one scroll-into-view pass, so
+    -- opening a box never pans (the tap is above the keyboard by construction) and
+    -- there is no visible jump. We do not save/restore pan_y: leaving the scroll
+    -- where the caret needs it means closing the keyboard never snaps back either.
+    if hit_pos then
+        local r = self:textBoxScreenRect()
+        local lay = self:editTextLayout()
+        self.text_cur = Text.hit(self.editing_text, lay, hit_pos.x - r.x, hit_pos.y - r.y,
+            self:textCtx(self.editing_text, self.view.zoom))
+    end
+    self:ensureCaretVisible()           -- only pans if the caret is actually hidden
     self:renderView()
     UIManager:setDirty(self, "full")
 end
@@ -3629,10 +4003,12 @@ function InkAwayView:finishTextEdit(commit)
     if not self.editing_text then return end
     if commit == nil then commit = true end
     local op = self.editing_text
+    local committed_op   -- the op that ended up on the ops list (for undo history)
     if self.editing_is_new then
         if commit and not Text.isEmpty(op) then
             self.canvas:pushHistory()
             self.canvas.ops[#self.canvas.ops + 1] = op
+            committed_op = op
         end
     else
         local orig = self._text_orig
@@ -3645,16 +4021,22 @@ function InkAwayView:finishTextEdit(commit)
                 op.hidden = nil   -- make sure the committed box is drawn
                 self.canvas:pushHistory()
                 self.canvas.ops[self.editing_idx] = op
+                committed_op = op
             end
         end
     end
+    -- Keep this box's word-level history alive so a later Undo peels it back a
+    -- word at a time (see undo()), rather than deleting the whole block at once.
+    if committed_op and self._text_undo and #self._text_undo > 0 then
+        self._text_hist[committed_op] = { undo = self._text_undo, redo = self._text_redo or {} }
+    end
+    self._peel_op = nil
     self.editing_text, self._text_orig = nil, nil
     self.editing_idx, self.editing_is_new = nil, nil
     self.text_cur, self.text_sel = nil, nil
     self._text_pending_style = nil
     self._lay_cache = nil
     if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
-    if self._text_pan0 then self.view.pan_y = self._text_pan0; self._text_pan0 = nil end
     self.dirty = true
     self:hideTextKeyboard()
     self:composeCanvas()
@@ -3933,7 +4315,13 @@ function InkAwayView:textToolTouch(pos)
             and pos.y >= rr.y and pos.y <= rr.y + rr.h end
         local btns = self:textEditButtons()
         if inRect(btns.done) then self:finishTextEdit(true); return true end
-        if inRect(btns.format) then self:openTextFormatMenu(); return true end
+        if inRect(btns.format) then
+            -- defer to release: opening on the final tap event (as the drag-select
+            -- path already does) stops the same tap from immediately closing the
+            -- menu as an outside-tap, which made the button flaky
+            self._text_drag = { kind = "format" }
+            return true
+        end
         local zone = self:textZone(pos.x, pos.y)
         if zone == "resize" then
             self._text_drag = { kind = "resize", sx = pos.x, sy = pos.y,
@@ -3964,13 +4352,8 @@ function InkAwayView:textToolTouch(pos)
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     local op, idx = self:textOpAt(cx, cy)
     if op then
-        self:startTextEdit(op, { p = 1, o = 0 }, false, idx)
-        -- place caret at the tapped point
-        local r = self:textBoxScreenRect()
-        local lay = self:editTextLayout()
-        self.text_cur = Text.hit(self.editing_text, lay, pos.x - r.x, pos.y - r.y,
-            self:textCtx(self.editing_text, self.view.zoom))
-        self:refreshTextBox("ui")
+        -- pass the tap so the caret lands there before the first scroll pass
+        self:startTextEdit(op, { p = 1, o = 0 }, false, idx, pos)
     else
         self:newTextAt(pos)
     end
@@ -4000,12 +4383,24 @@ function InkAwayView:textToolPan(pos)
         end
     elseif d.kind == "resize" then
         local dw = (pos.x - d.sx) / self.view.zoom
-        local dh = (pos.y - d.sy) / self.view.zoom
+        local old = self:textBoxScreenRect()
+        -- only the width is dragged; height stays automatic so the box always
+        -- grows to fit its (re-wrapped) text and the text can never overflow it
         self.editing_text.w = math.max(40, d.w0 + dw)
-        self.editing_text.h = math.max(20, (d.h0 or 20) + dh)
-        self.editing_text.auto_h = false
-        self:invalidateLayout()   -- width changed -> re-wrap
-        self:refreshTextBox("fast")
+        self:invalidateLayout()   -- width changed -> re-wrap (and auto-grow height)
+        self:editTextLayout()     -- recompute now so op.h reflects the new wrap
+        -- refresh the union of the old and new box (shrinking would otherwise
+        -- leave the old, larger outline and text behind as ghost pixels)
+        local new = self:textBoxScreenRect()
+        local v = self.view
+        local pad = TEXT_HANDLE + 4
+        local x0 = math.max(v.area_x, math.min(old.x, new.x) - pad)
+        local y0 = math.max(v.area_y, math.min(old.y, new.y) - pad)
+        local x1 = math.min(v.area_x + v.area_w, math.max(old.x + old.w, new.x + new.w) + pad)
+        local y1 = math.min(v.area_y + v.area_h, math.max(old.y + old.h, new.y + new.h) + pad)
+        if x1 > x0 and y1 > y0 then
+            UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+        end
     elseif d.kind == "select" then
         local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()
@@ -4023,8 +4418,20 @@ function InkAwayView:textToolRelease(pos)
     local d = self._text_drag
     self._text_drag = nil
     if not d then return true end
-    if d.kind == "move" or d.kind == "resize" then
-        self:refreshTextBox("ui")
+    if d.kind == "format" then
+        -- open the format menu on release (not on touch) so the same tap can't be
+        -- seen as an outside-tap on the just-shown menu, which would close it again
+        self:openTextFormatMenu()
+    elseif d.kind == "move" or d.kind == "resize" then
+        -- re-align to the ruling once the drag ends (grid-snap boxes only); the
+        -- small settle can leave A2 residue, so clear it with a flashing refresh
+        if d.kind == "move" and self.editing_text and self.editing_text.grid_snap then
+            self:snapTextBoxToGrid(self.editing_text)
+            self:invalidateLayout()
+            self:refreshTextBox("flashui")
+        else
+            self:refreshTextBox("ui")
+        end
     elseif d.kind == "select" then
         if self.text_sel and Text.selEmpty(self.text_sel) then
             self.text_sel = nil
@@ -4111,8 +4518,9 @@ function InkAwayView:paintTo(bb, x, y)
     local v = self.view
     -- white background across the whole screen
     bb:paintRect(x, y, self.screen_w, self.screen_h, WHITE)
-    -- toolbar
+    -- toolbar (buttons) then the tool icons overdrawn on them
     self.toolbar:paintTo(bb, x, y)
+    self:drawToolbarIcons(bb)
     -- drawing area (the committed strokes, at the current zoom/pan)
     bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
     -- grid guides on top, straight onto the screen buffer so they never mix into
@@ -4240,32 +4648,102 @@ function InkAwayView:paintTo(bb, x, y)
         bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
         local face = Font:getFace("cfont", math.max(14, math.floor(h / 3)))
         local cy = sy0 + math.floor(h / 2)
+        local BLACKC = Blitbuffer.COLOR_BLACK
         local function label(text, cx)
-            local t = TextWidget:new{ text = text, face = face, fgcolor = Blitbuffer.COLOR_BLACK }
+            local t = TextWidget:new{ text = text, face = face, fgcolor = BLACKC }
             local sz = t:getSize()
             t:paintTo(bb, math.floor(cx - sz.w / 2), cy - math.floor(sz.h / 2))
             t:free()
         end
-        -- Layout: [ ‹ Prev ]  ...  i / n  [+]  ...  [ Next › ]
-        -- Prev/Next are wide tap zones at the two edges; the page counter sits
-        -- dead centre; the add-page button is a compact box in the clear gap
-        -- between the counter and the Next zone, so nothing ever overlaps.
+        -- a thick straight segment (Bresenham, stamping a small block per step)
+        local function seg(x0, y0, x1, y1, tk)
+            x0, y0, x1, y1 = math.floor(x0 + 0.5), math.floor(y0 + 0.5), math.floor(x1 + 0.5), math.floor(y1 + 0.5)
+            local dx, dy = math.abs(x1 - x0), -math.abs(y1 - y0)
+            local sx, sy = x0 < x1 and 1 or -1, y0 < y1 and 1 or -1
+            local err, hb = dx + dy, math.floor(tk / 2)
+            while true do
+                bb:paintRect(x0 - hb, y0 - hb, tk, tk, BLACKC)
+                if x0 == x1 and y0 == y1 then break end
+                local e2 = 2 * err
+                if e2 >= dy then err = err + dy; x0 = x0 + sx end
+                if e2 <= dx then err = err + dx; y0 = y0 + sy end
+            end
+        end
+        -- a chevron arrow centred at (cx, cy); dir -1 = "‹", +1 = "›"
+        local function chevron(cx, cy2, half_w, half_h, dir, tk)
+            seg(cx - dir * half_w, cy2 - half_h, cx + dir * half_w, cy2, tk)
+            seg(cx + dir * half_w, cy2, cx - dir * half_w, cy2 + half_h, tk)
+        end
+        -- Layout: [ ‹ ]  ...  i / n  [+]  ...  [ › ]
+        -- Prev/Next are wide tap zones at the two edges showing just an arrow; the
+        -- page counter sits dead centre; the add-page button is a square box in the
+        -- clear gap between the counter and the Next zone, so nothing overlaps.
         local side = math.floor(w * 0.26)          -- prev / next tap zones
         self._nb_prev = { x = x, y = sy0, w = side, h = h }
         self._nb_next = { x = x + w - side, y = sy0, w = side, h = h }
-        local pw = math.max(44, math.min(h - 16, math.floor(w * 0.085)))
-        local plus_cx = math.floor(x + w * 0.62)   -- midway between centre and Next
-        self._nb_plus = { x = math.floor(plus_cx - pw / 2), y = sy0 + 8, w = pw, h = h - 16 }
+        -- Prev / Next arrows (chevrons), sized to the strip
+        local ah = math.floor(h * 0.24)
+        local atk = math.max(3, math.floor(h * 0.06))
+        chevron(x + side / 2, cy, math.floor(ah * 0.6), ah, -1, atk)
+        chevron(x + w - side / 2, cy, math.floor(ah * 0.6), ah, 1, atk)
+        -- page counter, dead centre
+        local ctext = string.format("%d / %d", nb.index, nb:count())
+        local ct = TextWidget:new{ text = ctext, face = face, fgcolor = BLACKC }
+        local counter_w = ct:getSize().w; ct:free()
+        label(ctext, x + w / 2)
+        -- add-page icon (a page with a plus): sized to most of the strip height but
+        -- with clear padding above and below (never touching the divider or bottom),
+        -- and placed just to the right of the counter's ACTUAL right edge (a small
+        -- margin) so it follows the page number's width -- e.g. "1 / 3295" pushes it
+        -- right without ever overlapping the digits. Clamped so it never runs into
+        -- the Next arrow.
+        local isz = math.max(16, math.floor(h * 0.72))
+        local icon = self:navImage("newpage", isz)
+        local iw = icon and icon:getWidth() or isz
+        local ih = icon and icon:getHeight() or isz
+        local margin = math.floor(h * 0.30)
+        local icx = math.floor(x + w / 2 + counter_w / 2 + margin + iw / 2)  -- just right of counter
+        local arrow_left = (x + w - side / 2) - math.floor(ah * 0.6)
+        local max_icx = arrow_left - margin - math.floor(iw / 2)            -- keep clear of Next
+        if icx > max_icx then icx = max_icx end
+        local tap = math.floor(h * 0.24)                     -- roomy tap target around it
+        self._nb_plus = { x = math.floor(icx - iw / 2 - tap), y = math.floor(cy - ih / 2 - tap),
+                          w = iw + 2 * tap, h = ih + 2 * tap }
+        if icon then
+            bb:blitFrom(icon, math.floor(icx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
+        end
         -- the counter is its own tap target (opens the page menu), spanning the
-        -- clear gap between the Prev zone and the + button so nothing overlaps
+        -- clear gap between the Prev zone and the add-page icon so nothing overlaps
         self._nb_count = { x = x + side, y = sy0,
             w = math.max(1, self._nb_plus.x - (x + side)), h = h }
-        label("\u{2039} Prev", x + side / 2)
-        label(string.format("%d / %d", nb.index, nb:count()), x + w / 2)
-        label("Next \u{203A}", x + w - side / 2)
-        bb:paintBorder(self._nb_plus.x, self._nb_plus.y, self._nb_plus.w, self._nb_plus.h, 2, FRAME)
-        label("+", self._nb_plus.x + self._nb_plus.w / 2)
     end
+end
+
+-- A nav-strip icon rendered from ink/icons onto an opaque white tile (the strip
+-- is white), cached by name+size, freed in free(). Returns nil if unavailable.
+function InkAwayView:navImage(name, sz)
+    self._nav_img = self._nav_img or {}
+    local key = name .. "@" .. sz
+    local c = self._nav_img[key]
+    if c == nil then
+        local ok, raw, straight = pcall(function()
+            local RenderImage = require("ui/renderimage")
+            return RenderImage:renderSVGImageFile(self:pluginDir() .. "ink/icons/" .. name .. ".svg", sz, sz)
+        end)
+        if ok and raw then
+            local w, h = raw:getWidth(), raw:getHeight()
+            local tile = Blitbuffer.new(w, h, Blitbuffer.TYPE_BBRGB32)
+            tile:fill(Blitbuffer.COLOR_WHITE)
+            if straight then tile:alphablitFrom(raw, 0, 0, 0, 0, w, h)
+            else tile:pmulalphablitFrom(raw, 0, 0, 0, 0, w, h) end
+            raw:free()
+            c = tile
+        else
+            c = false
+        end
+        self._nav_img[key] = c
+    end
+    return c or nil
 end
 
 ------------------------------------------------------------------------------
@@ -4797,9 +5275,13 @@ end
 function InkAwayView:newNotebook()
     local function begin(style)
         self.notebook_template_style = style
-        -- seed the paper with the reader's current grid spacing/strength so the
-        -- Size and Strength controls feel consistent between the two modes
-        self:startNotebook({ style = style, size = self.grid_size or 40, strength = self.grid_strength or 45 })
+        self.nb_style = style
+        self:setSetting("inkaway_nb_style", style)
+        -- start from the ruling the user last set on a notebook (falling back to
+        -- the drawing-grid spacing/strength), so a new notebook matches the last one
+        self:startNotebook({ style = style,
+            size = self.nb_size or self.grid_size or 40,
+            strength = self.nb_strength or self.grid_strength or 45 })
     end
     local function go(style)
         if self.notebook or not self.canvas:isEmpty() then

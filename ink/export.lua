@@ -122,8 +122,9 @@ local function replay(canvas, ink_put, erase_put_for, text_put)
     for _, op in ipairs(canvas.ops) do
         if op.kind == "text" then
             -- text has no vector geometry; it is composited from a rasteriser the
-            -- view injects (Export.text_raster). Done here so it keeps its z-order
-            -- among the ink.
+            -- view injects (Export.text_raster). Drawn here in z-order; a text-
+            -- sparing erase (op.spare_text) reveals a text-bearing buffer, so what
+            -- reaches the file matches the screen without a separate pass.
             if text_put and not op.hidden then text_put(op) end
         else
             local put
@@ -207,22 +208,6 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             end
         end
     end
-    local function make_erase(hard)
-        return function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
-            if not cx then return end
-            local base = (cy * ow + cx) * 4
-            for i = 0, clen - 1 do
-                local o = base + i * 4
-                buf[o] = 0; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = 0
-            end
-            if hard and clear_mask then
-                local mb = cy * ow + cx
-                for i = 0, clen - 1 do clear_mask[mb + i] = 1 end
-            end
-        end
-    end
-    local soft_erase, hard_erase = make_erase(false), make_erase(true)
     local function text_put(op)
         Export.eachTextPixel(op, function(x, y, L)
             local cx, cy = clamp_run(x, y, 1)
@@ -231,7 +216,64 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             buf[o] = L; buf[o + 1] = L; buf[o + 2] = L; buf[o + 3] = 255
         end)
     end
-    replay(canvas, ink_put, function(op) return op.ebg and hard_erase or soft_erase end, text_put)
+    -- A hard erase (op.ebg) clears to fully transparent and marks the background
+    -- to be dropped too. A soft erase reveals the page-so-far (the ruling stays,
+    -- everything else transparent) -- and, when it spares text, the ruling+text --
+    -- so on-screen and exported erasing match. Snapshots built only when needed
+    -- and left to the GC (plain Lua cdata) after the replay.
+    local has_erase, has_spare, has_text = false, false, false
+    for _, op in ipairs(canvas.ops) do
+        if not op.hidden then
+            if op.kind == "erase" then has_erase = true; if op.spare_text then has_spare = true end
+            elseif op.kind == "text" then has_text = true end
+        end
+    end
+    local base_buf, text_buf
+    if has_erase then
+        base_buf = ffi.new("uint8_t[?]", n); ffi.copy(base_buf, buf, n)
+        if has_spare and has_text then
+            text_buf = ffi.new("uint8_t[?]", n); ffi.copy(text_buf, base_buf, n)
+            for _, op in ipairs(canvas.ops) do
+                if not op.hidden and op.kind == "text" then
+                    Export.eachTextPixel(op, function(x, y, L)
+                        local cx, cy = clamp_run(x, y, 1)
+                        if not cx then return end
+                        local o = (cy * ow + cx) * 4
+                        text_buf[o] = L; text_buf[o + 1] = L; text_buf[o + 2] = L; text_buf[o + 3] = 255
+                    end)
+                end
+            end
+        end
+    end
+    local function soft_erase_from(src)
+        return function(x, y, len)
+            local cx, cy, clen = clamp_run(x, y, len)
+            if not cx then return end
+            -- clamp_run keeps the run inside both n-byte buffers
+            local o = (cy * ow + cx) * 4
+            ffi.copy(buf + o, src + o, clen * 4)
+        end
+    end
+    local function hard_erase(x, y, len)
+        local cx, cy, clen = clamp_run(x, y, len)
+        if not cx then return end
+        local base = (cy * ow + cx) * 4
+        for i = 0, clen - 1 do
+            local o = base + i * 4
+            buf[o] = 0; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = 0
+        end
+        if clear_mask then
+            local mb = cy * ow + cx
+            for i = 0, clen - 1 do clear_mask[mb + i] = 1 end
+        end
+    end
+    local plain_erase = base_buf and soft_erase_from(base_buf)
+    local spare_erase = text_buf and soft_erase_from(text_buf) or plain_erase
+    replay(canvas, ink_put, function(op)
+        if op.ebg then return hard_erase end
+        if op.spare_text and spare_erase then return spare_erase end
+        return plain_erase or hard_erase
+    end, text_put)
     return buf, n, ow, oh
 end
 
@@ -277,14 +319,13 @@ function Export.buildRGB(canvas, rect, template)
             end
         end
     end
-    local function erase_put(x, y, len)
-        local cx, cy, clen = clamp_run(x, y, len)
-        if not cx then return end
-        local base = (cy * ow + cx) * 3
-        for i = 0, clen - 1 do
-            local o = base + i * 3
-            buf[o] = pr; buf[o + 1] = pg; buf[o + 2] = pb
-        end
+    local function text_put(op)
+        Export.eachTextPixel(op, function(x, y, L)
+            local cx, cy = clamp_run(x, y, 1)
+            if not cx then return end
+            local o = (cy * ow + cx) * 3
+            buf[o] = L; buf[o + 1] = L; buf[o + 2] = L
+        end)
     end
     -- notebook ruling first, so ink and erase sit on top of the paper
     if template and template.style and template.style ~= "blank" then
@@ -301,15 +342,56 @@ function Export.buildRGB(canvas, rect, template)
         end
         Template.render(template.style, canvas.w, canvas.h, template.size or 40, tput)
     end
-    local function text_put(op)
-        Export.eachTextPixel(op, function(x, y, L)
-            local cx, cy = clamp_run(x, y, 1)
-            if not cx then return end
-            local o = (cy * ow + cx) * 3
-            buf[o] = L; buf[o + 1] = L; buf[o + 2] = L
-        end)
+    -- The eraser reveals the paper AND the ruling (exactly like on screen), so a
+    -- snapshot of the page-so-far (paper + ruling) is the plain reveal source; a
+    -- text-sparing erase reveals paper + ruling + text. Build them only if there
+    -- is anything to erase / spare, and free the copies after the replay.
+    local has_erase, has_spare, has_text = false, false, false
+    for _, op in ipairs(canvas.ops) do
+        if not op.hidden then
+            if op.kind == "erase" then has_erase = true; if op.spare_text then has_spare = true end
+            elseif op.kind == "text" then has_text = true end
+        end
     end
-    replay(canvas, ink_put, function() return erase_put end, text_put)
+    local base_buf, text_buf
+    if has_erase then
+        base_buf = ffi.new("uint8_t[?]", n); ffi.copy(base_buf, buf, n)
+        if has_spare and has_text then
+            text_buf = ffi.new("uint8_t[?]", n); ffi.copy(text_buf, base_buf, n)
+            for _, op in ipairs(canvas.ops) do
+                if not op.hidden and op.kind == "text" then
+                    Export.eachTextPixel(op, function(x, y, L)
+                        local cx, cy = clamp_run(x, y, 1)
+                        if not cx then return end
+                        local o = (cy * ow + cx) * 3
+                        text_buf[o] = L; text_buf[o + 1] = L; text_buf[o + 2] = L
+                    end)
+                end
+            end
+        end
+    end
+    local function erase_from(src)
+        return function(x, y, len)
+            local cx, cy, clen = clamp_run(x, y, len)
+            if not cx then return end
+            -- clamp_run guarantees 0<=cx, cx+clen<=ow and cy<oh, so this run stays
+            -- inside both buffers (both are exactly n = ow*oh*3 bytes)
+            local o = (cy * ow + cx) * 3
+            ffi.copy(buf + o, src + o, clen * 3)
+        end
+    end
+    local plain_erase = base_buf and erase_from(base_buf)
+    local spare_erase = text_buf and erase_from(text_buf) or plain_erase
+    local function fallback_erase(x, y, len)   -- no snapshot (no erase ops): paper
+        local cx, cy, clen = clamp_run(x, y, len)
+        if not cx then return end
+        local base = (cy * ow + cx) * 3
+        for i = 0, clen - 1 do local o = base + i * 3; buf[o] = pr; buf[o + 1] = pg; buf[o + 2] = pb end
+    end
+    replay(canvas, ink_put, function(op)
+        if op.spare_text and spare_erase then return spare_erase end
+        return plain_erase or fallback_erase
+    end, text_put)
     return buf, n, ow, oh
 end
 
