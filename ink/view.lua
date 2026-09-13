@@ -22,6 +22,7 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local IconWidget = require("ui/widget/iconwidget")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local InputDialog = require("ui/widget/inputdialog")
@@ -732,6 +733,24 @@ function InkAwayView:buildToolbar()
             padding = 0,
             show_parent = self,
         }
+        -- Point the icon at the plugin's own SVG by absolute path, bypassing
+        -- IconWidget's name lookup. That lookup builds its search-directory list
+        -- and a name->path cache once, when the iconwidget module is first loaded
+        -- during KOReader startup, and it only searches the user-icon dir when
+        -- that dir already existed at that moment. On a first run our
+        -- ensureUserIcons() creates that dir only later (when the canvas opens),
+        -- so "inkaway.<id>" resolves to the not-found triangle for the rest of the
+        -- session -- which is exactly why some users saw triangles until they
+        -- restarted (or reinstalled). A file-based IconWidget takes the file
+        -- directly and always renders, on every device and on the very first run.
+        local icon_path = self:pluginDir() .. "ink/icons/" .. ICON[s.id] .. ".svg"
+        local ok_icon, file_icon = pcall(function()
+            return IconWidget:new{ file = icon_path, width = isz, height = isz }
+        end)
+        if ok_icon and file_icon and b.label_container then
+            b.label_widget = file_icon
+            b.label_container[1] = file_icon
+        end
         if s.tool then self.tool_buttons[s.id] = { button = b } end
         self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true }
         row[i] = b
