@@ -63,6 +63,7 @@ local Brushes = require("ink/brushes")
 local Notebook = require("ink/notebook")
 local Template = require("ink/template")
 local Text = require("ink/text")
+local Recognize = require("ink/recognize")
 -- ui/font and ui/rendertext are required lazily (only when a text box is used)
 -- so the pure-Lua headless tests can still load this module.
 
@@ -432,6 +433,10 @@ function InkAwayView:init()
     self.nb_strength = self:getSetting("inkaway_nb_strength", nil)      -- nil = fall back to grid_strength
     self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
+    -- Shape assist (beautify): a finished pen stroke that clearly reads as a
+    -- line/rectangle/ellipse/triangle (or an L, for x/y axes) is replaced with a
+    -- clean shape. Unrecognised strokes are left exactly as drawn.
+    self.shape_assist = self:getSetting("inkaway_shape_assist", false)
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off|vert|horiz|quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- 0 = off, else stroke count
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- eraser also removes the background?
@@ -2111,6 +2116,30 @@ end
 
 -- Commit the live stroke as one op. Called by the coalesce timer, or eagerly
 -- via flushPending() before any action that must see a consistent model.
+-- Shape assist: try to replace a just-committed freehand ink op with a clean
+-- shape recognised from its raw path `raw`. `committed` is the ink op (already
+-- at the end of the ops list). Returns true if it swapped one in. The swap
+-- reuses the single history entry finishStroke pushed, so it is one undo step,
+-- and the master is recomposed so the freehand ink is replaced by the shape.
+function InkAwayView:beautifyStroke(raw, committed)
+    -- Threshold in canvas px, scaled by zoom so "~20 screen px of travel" is the
+    -- floor whether zoomed in or out (canvas px shrink as you zoom in).
+    local zoom = (self.view and self.view.zoom) or 1
+    local min_size = Screen:scaleBySize(20) / (zoom > 0 and zoom or 1)
+    local pts = Recognize.detect(raw, { min_size = min_size })
+    if not pts then return false end
+    -- Keep the SAME ink op and only swap its points: it stays kind "ink" with the
+    -- user's brush style, seed, width, colour, opacity and symmetry, so the clean
+    -- shape is drawn with the very pen they were using (a shape op would render as
+    -- plain ink and drop the brush). One op, so still one undo step.
+    committed.pts = pts
+    self.dirty = true
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    return true
+end
+
 function InkAwayView:finalizeStroke()
     if not self.capturing then return end
     UIManager:unschedule(self._finalize)
@@ -2119,12 +2148,26 @@ function InkAwayView:finalizeStroke()
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     local was_erase = self.tool == "erase"
+    -- Grab the raw points before finishStroke simplifies them, so shape assist
+    -- recognises the shape from the full path rather than an RDP skeleton.
+    local raw
+    if self.shape_assist and self.tool == "pen" and self.canvas.live then
+        local lp = self.canvas.live.pts
+        raw = {}
+        for i = 1, #lp do raw[i] = lp[i] end
+    end
     local committed = self.canvas:finishStroke()
     -- Record whether text was protected when THIS stroke was made, so later
     -- toggling the setting never retroactively erases (or un-erases) text that a
     -- past stroke passed over. Compose then honours each erase op's own flag.
     if committed and committed.kind == "erase" then
         committed.spare_text = self.text_erase_protect or nil
+    end
+    -- Shape assist: if the finished pen stroke reads as a clean shape, swap it in.
+    if raw and committed and committed.kind == "ink" and self:beautifyStroke(raw, committed) then
+        self._stroke_rect = nil
+        self:afterCommit()
+        return
     end
     self.dirty = true
     -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
@@ -2903,6 +2946,8 @@ function InkAwayView:openGuides()
            callback = function() tog("inkaway_snap_grid", "snap_grid") end }},
         {{ text = _("Snap to 45\u{00B0}: ") .. onoff(self.snap_angle),
            callback = function() tog("inkaway_snap_angle", "snap_angle") end }},
+        {{ text = _("Shape assist: ") .. onoff(self.shape_assist),
+           callback = function() tog("inkaway_shape_assist", "shape_assist") end }},
         {{ text = string.format(_("Stabilizer: %d"), self.stabilizer),
            callback = function() UIManager:close(dlg); self:openStabilizer() end }},
         {{ text = _("Back"), callback = function() UIManager:close(dlg); self:openSettings() end }},
