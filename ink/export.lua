@@ -116,7 +116,7 @@ end
 -- `erase_put_for(op)` is a factory returning the span writer for an erase op, so
 -- a "hard" erase (one that also removes the background) can behave differently
 -- from an ordinary one.
-local function replay(canvas, ink_put, erase_put_for, text_put)
+local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
@@ -126,6 +126,10 @@ local function replay(canvas, ink_put, erase_put_for, text_put)
             -- sparing erase (op.spare_text) reveals a text-bearing buffer, so what
             -- reaches the file matches the screen without a separate pass.
             if text_put and not op.hidden then text_put(op) end
+        elseif op.kind == "image" then
+            -- a placed picture: composited in z-order from a scaled RGBA buffer the
+            -- view injects (Export.image_raster), same idea as text.
+            if image_put and not op.hidden then image_put(op) end
         else
             local put
             if op.kind == "erase" then
@@ -154,6 +158,26 @@ function Export.eachTextPixel(op, cb)
         for px = 0, w - 1 do
             local L = raster[row + px]
             if L < 255 then cb(ox + px, oy + py, L) end
+        end
+    end
+end
+
+-- Walk the pixels of an image op. The view sets Export.image_raster to a
+-- function(op) -> (rgba_uint8_buffer, w, h) holding the picture already scaled to
+-- the op's on-page size (w*h*4 bytes, r,g,b,alpha). `cb(x, y, r, g, b, a)` gets
+-- each pixel (in canvas coordinates) whose alpha is non-zero. A no-op when no
+-- rasteriser is set (headless export tests have no image decoder).
+function Export.eachImagePixel(op, cb)
+    if not Export.image_raster then return end
+    local buf, w, h = Export.image_raster(op)
+    if not buf then return end
+    local ox, oy = math.floor(op.x + 0.5), math.floor(op.y + 0.5)
+    for py = 0, h - 1 do
+        local row = py * w * 4
+        for px = 0, w - 1 do
+            local o = row + px * 4
+            local a = buf[o + 3]
+            if a > 0 then cb(ox + px, oy + py, buf[o], buf[o + 1], buf[o + 2], a) end
         end
     end
 end
@@ -216,6 +240,31 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             buf[o] = L; buf[o + 1] = L; buf[o + 2] = L; buf[o + 3] = 255
         end)
     end
+    -- A placed image, source-over onto whatever is already there (so a transparent
+    -- PNG shows the ink beneath it and the page stays transparent where it is).
+    local function image_put(op)
+        Export.eachImagePixel(op, function(x, y, r, g, b, a)
+            local cx, cy = clamp_run(x, y, 1)
+            if not cx then return end
+            local o = (cy * ow + cx) * 4
+            if a >= 255 then
+                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b; buf[o + 3] = 255
+                return
+            end
+            local sa = a / 255
+            local da = buf[o + 3] / 255
+            local outa = sa + da * (1 - sa)
+            if outa <= 0 then
+                buf[o] = 0; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = 0
+                return
+            end
+            local function ov(sc, dc) return math.floor((sc * sa + dc * da * (1 - sa)) / outa + 0.5) end
+            buf[o]     = ov(r, buf[o])
+            buf[o + 1] = ov(g, buf[o + 1])
+            buf[o + 2] = ov(b, buf[o + 2])
+            buf[o + 3] = math.floor(outa * 255 + 0.5)
+        end)
+    end
     -- A hard erase (op.ebg) clears to fully transparent and marks the background
     -- to be dropped too. A soft erase reveals the page-so-far (the ruling stays,
     -- everything else transparent) -- and, when it spares text, the ruling+text --
@@ -273,7 +322,7 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
         if op.ebg then return hard_erase end
         if op.spare_text and spare_erase then return spare_erase end
         return plain_erase or hard_erase
-    end, text_put)
+    end, text_put, image_put)
     return buf, n, ow, oh
 end
 
@@ -325,6 +374,22 @@ function Export.buildRGB(canvas, rect, template)
             if not cx then return end
             local o = (cy * ow + cx) * 3
             buf[o] = L; buf[o + 1] = L; buf[o + 2] = L
+        end)
+    end
+    -- a placed image over the (opaque) buffer, blended by its alpha
+    local function image_put(op)
+        Export.eachImagePixel(op, function(x, y, r, g, b, a)
+            local cx, cy = clamp_run(x, y, 1)
+            if not cx then return end
+            local o = (cy * ow + cx) * 3
+            if a >= 255 then
+                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b
+                return
+            end
+            local sa = a / 255
+            buf[o]     = math.floor(r * sa + buf[o] * (1 - sa) + 0.5)
+            buf[o + 1] = math.floor(g * sa + buf[o + 1] * (1 - sa) + 0.5)
+            buf[o + 2] = math.floor(b * sa + buf[o + 2] * (1 - sa) + 0.5)
         end)
     end
     -- notebook ruling first, so ink and erase sit on top of the paper
@@ -391,7 +456,7 @@ function Export.buildRGB(canvas, rect, template)
     replay(canvas, ink_put, function(op)
         if op.spare_text and spare_erase then return spare_erase end
         return plain_erase or fallback_erase
-    end, text_put)
+    end, text_put, image_put)
     return buf, n, ow, oh
 end
 
