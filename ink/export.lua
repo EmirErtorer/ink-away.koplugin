@@ -163,15 +163,18 @@ function Export.eachTextPixel(op, cb)
 end
 
 -- Walk the pixels of an image op. The view sets Export.image_raster to a
--- function(op) -> (rgba_uint8_buffer, w, h) holding the picture already scaled to
--- the op's on-page size (w*h*4 bytes, r,g,b,alpha). `cb(x, y, r, g, b, a)` gets
--- each pixel (in canvas coordinates) whose alpha is non-zero. A no-op when no
--- rasteriser is set (headless export tests have no image decoder).
+-- function(op) -> (rgba_uint8_buffer, w, h, ox, oy) holding the picture already
+-- oriented (flipped / rotated) and scaled to the op's on-page size (w*h*4 bytes,
+-- r,g,b,alpha), with (ox,oy) its top-left in canvas coordinates -- which differs
+-- from op.x/op.y once the picture is rotated (its bounding box grows). `cb(x, y,
+-- r, g, b, a)` gets each pixel (in canvas coordinates) whose alpha is non-zero. A
+-- no-op when no rasteriser is set (headless export tests have no image decoder).
 function Export.eachImagePixel(op, cb)
     if not Export.image_raster then return end
-    local buf, w, h = Export.image_raster(op)
+    local buf, w, h, rx, ry = Export.image_raster(op)
     if not buf then return end
-    local ox, oy = math.floor(op.x + 0.5), math.floor(op.y + 0.5)
+    local ox = math.floor((rx or op.x) + 0.5)
+    local oy = math.floor((ry or op.y) + 0.5)
     for py = 0, h - 1 do
         local row = py * w * 4
         for px = 0, w - 1 do
@@ -242,44 +245,53 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
     end
     -- A placed image, source-over onto whatever is already there (so a transparent
     -- PNG shows the ink beneath it and the page stays transparent where it is).
-    local function image_put(op)
+    local function put_image_into(dst, op)
         Export.eachImagePixel(op, function(x, y, r, g, b, a)
             local cx, cy = clamp_run(x, y, 1)
             if not cx then return end
             local o = (cy * ow + cx) * 4
             if a >= 255 then
-                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b; buf[o + 3] = 255
+                dst[o] = r; dst[o + 1] = g; dst[o + 2] = b; dst[o + 3] = 255
                 return
             end
             local sa = a / 255
-            local da = buf[o + 3] / 255
+            local da = dst[o + 3] / 255
             local outa = sa + da * (1 - sa)
             if outa <= 0 then
-                buf[o] = 0; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = 0
+                dst[o] = 0; dst[o + 1] = 0; dst[o + 2] = 0; dst[o + 3] = 0
                 return
             end
             local function ov(sc, dc) return math.floor((sc * sa + dc * da * (1 - sa)) / outa + 0.5) end
-            buf[o]     = ov(r, buf[o])
-            buf[o + 1] = ov(g, buf[o + 1])
-            buf[o + 2] = ov(b, buf[o + 2])
-            buf[o + 3] = math.floor(outa * 255 + 0.5)
+            dst[o]     = ov(r, dst[o])
+            dst[o + 1] = ov(g, dst[o + 1])
+            dst[o + 2] = ov(b, dst[o + 2])
+            dst[o + 3] = math.floor(outa * 255 + 0.5)
         end)
     end
+    local function image_put(op) put_image_into(buf, op) end
     -- A hard erase (op.ebg) clears to fully transparent and marks the background
     -- to be dropped too. A soft erase reveals the page-so-far (the ruling stays,
     -- everything else transparent) -- and, when it spares text, the ruling+text --
     -- so on-screen and exported erasing match. Snapshots built only when needed
     -- and left to the GC (plain Lua cdata) after the replay.
-    local has_erase, has_spare, has_text = false, false, false
+    local has_erase, has_spare, has_text, has_image = false, false, false, false
     for _, op in ipairs(canvas.ops) do
         if not op.hidden then
             if op.kind == "erase" then has_erase = true; if op.spare_text then has_spare = true end
-            elseif op.kind == "text" then has_text = true end
+            elseif op.kind == "text" then has_text = true
+            elseif op.kind == "image" then has_image = true end
         end
     end
     local base_buf, text_buf
     if has_erase then
         base_buf = ffi.new("uint8_t[?]", n); ffi.copy(base_buf, buf, n)
+        -- a soft erase keeps placed images (unless op.ebg), so the plain reveal is
+        -- the page WITH the images composited on it
+        if has_image then
+            for _, op in ipairs(canvas.ops) do
+                if not op.hidden and op.kind == "image" then put_image_into(base_buf, op) end
+            end
+        end
         if has_spare and has_text then
             text_buf = ffi.new("uint8_t[?]", n); ffi.copy(text_buf, base_buf, n)
             for _, op in ipairs(canvas.ops) do
@@ -377,21 +389,22 @@ function Export.buildRGB(canvas, rect, template)
         end)
     end
     -- a placed image over the (opaque) buffer, blended by its alpha
-    local function image_put(op)
+    local function put_image_into(dst, op)
         Export.eachImagePixel(op, function(x, y, r, g, b, a)
             local cx, cy = clamp_run(x, y, 1)
             if not cx then return end
             local o = (cy * ow + cx) * 3
             if a >= 255 then
-                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b
+                dst[o] = r; dst[o + 1] = g; dst[o + 2] = b
                 return
             end
             local sa = a / 255
-            buf[o]     = math.floor(r * sa + buf[o] * (1 - sa) + 0.5)
-            buf[o + 1] = math.floor(g * sa + buf[o + 1] * (1 - sa) + 0.5)
-            buf[o + 2] = math.floor(b * sa + buf[o + 2] * (1 - sa) + 0.5)
+            dst[o]     = math.floor(r * sa + dst[o] * (1 - sa) + 0.5)
+            dst[o + 1] = math.floor(g * sa + dst[o + 1] * (1 - sa) + 0.5)
+            dst[o + 2] = math.floor(b * sa + dst[o + 2] * (1 - sa) + 0.5)
         end)
     end
+    local function image_put(op) put_image_into(buf, op) end
     -- notebook ruling first, so ink and erase sit on top of the paper
     if template and template.style and template.style ~= "blank" then
         local Template = require("ink/template")
@@ -411,16 +424,22 @@ function Export.buildRGB(canvas, rect, template)
     -- snapshot of the page-so-far (paper + ruling) is the plain reveal source; a
     -- text-sparing erase reveals paper + ruling + text. Build them only if there
     -- is anything to erase / spare, and free the copies after the replay.
-    local has_erase, has_spare, has_text = false, false, false
+    local has_erase, has_spare, has_text, has_image = false, false, false, false
     for _, op in ipairs(canvas.ops) do
         if not op.hidden then
             if op.kind == "erase" then has_erase = true; if op.spare_text then has_spare = true end
-            elseif op.kind == "text" then has_text = true end
+            elseif op.kind == "text" then has_text = true
+            elseif op.kind == "image" then has_image = true end
         end
     end
     local base_buf, text_buf
     if has_erase then
         base_buf = ffi.new("uint8_t[?]", n); ffi.copy(base_buf, buf, n)
+        if has_image then   -- a soft erase reveals the page WITH images (keeps them)
+            for _, op in ipairs(canvas.ops) do
+                if not op.hidden and op.kind == "image" then put_image_into(base_buf, op) end
+            end
+        end
         if has_spare and has_text then
             text_buf = ffi.new("uint8_t[?]", n); ffi.copy(text_buf, base_buf, n)
             for _, op in ipairs(canvas.ops) do

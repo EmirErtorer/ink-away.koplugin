@@ -580,17 +580,13 @@ function InkAwayView:restoreSession()
 end
 
 function InkAwayView:saveSession()
-    -- A selected image is hidden from the master while it is edited; unhide it just
-    -- for the write so the saved session keeps it visible (without deselecting it).
-    local hid = self.active_image and self.active_image.op
-    if hid then hid.hidden = nil end
     if self.notebook then
         self:nbSyncOut()
         Project.saveNotebook(self.notebook, self:sessionPath())
-    elseif not self.canvas:isEmpty() then
-        Project.save(self.canvas, self:sessionPath())
+        return
     end
-    if hid then hid.hidden = true end
+    if self.canvas:isEmpty() then return end
+    Project.save(self.canvas, self:sessionPath())
 end
 
 function InkAwayView:scheduleAutosave()
@@ -612,6 +608,7 @@ function InkAwayView:free()
     if self.bg_bb then self.bg_bb:free(); self.bg_bb = nil end
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
+    if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
     if self._nav_img then
         for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
         self._nav_img = nil
@@ -659,12 +656,14 @@ function InkAwayView:onCloseWidget()
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
     if self.active_image then self:finishImageEdit() end       -- bake a selected image
+    self.selected, self.shape_move = nil, nil
+    self:setSelectionActive(false)
     self:hideTextKeyboard()
     Export.text_raster = nil   -- drop the closure over this view
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -847,6 +846,7 @@ function InkAwayView:setTool(tool)
     self:flushShape()          -- and place any finished-but-pending shape/curve
     if self.editing_text then self:finishTextEdit(true) end   -- bake any open text box
     if self.active_image then self:finishImageEdit() end       -- settle a selected image
+    if self.selected then self:deselectShape() end             -- drop a picked shape
     if self.selection or self.lassoing then self:clearSelection() end
     self.pan_last = nil
     self.tool = tool
@@ -1091,13 +1091,13 @@ function InkAwayView:openEraserSettings()
     local buttons = {
         {{ text = string.format(_("Size: %d px"), self.eraser_width),
            callback = function() UIManager:close(dlg); self:openEraserSize() end }},
-        {{ text = _("Erase background: ") .. (self.erase_bg and _("on") or _("off")),
+        {{ text = _("Erase pictures: ") .. (self.erase_bg and _("on") or _("off")),
            callback = function()
                self.erase_bg = not self.erase_bg
                self:setSetting("inkaway_erase_bg", self.erase_bg)
                UIManager:close(dlg); self:openEraserSettings()
            end }},
-        {{ text = _("When off, the eraser removes your ink but leaves the background picture untouched."), enabled = false }},
+        {{ text = _("When off, the eraser removes your ink but leaves the background and any placed images untouched. When on, it erases those too."), enabled = false }},
         {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
     }
     dlg = ButtonDialog:new{ title = _("Eraser"), title_align = "center", buttons = buttons }
@@ -1665,7 +1665,7 @@ end
 -- background picture, notebook ruling, then the ink ops. Shared by the live
 -- master bitmap and by the page-overview thumbnails, so a thumbnail always
 -- matches exactly what the page looks like.
-function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic)
     local W, H = self.view.canvas_w, self.view.canvas_h
     dst:paintRect(0, 0, W, H, WHITE)
     if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
@@ -1673,6 +1673,28 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
         local lvl = strengthToLevel(template.strength)
         local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
         Template.render(template.style, W, H, template.size or 40, put)
+    end
+    -- reveal_pic = the plain page with placed images stamped on it, so a soft erase
+    -- keeps the images (like it keeps the background). Built here from these ops
+    -- when the caller did not pass one (e.g. page thumbnails), so it is always
+    -- correct for whatever is being composed. dst currently holds the plain base.
+    local owns_rp = false
+    if not reveal_pic then
+        local has_img, has_soft = false, false
+        for _, op in ipairs(ops) do
+            if not op.hidden then
+                if op.kind == "image" then has_img = true
+                elseif op.kind == "erase" and not op.ebg then has_soft = true end
+            end
+        end
+        if has_img and has_soft then
+            reveal_pic = Blitbuffer.new(W, H, dst:getType())
+            reveal_pic:blitFrom(dst, 0, 0, 0, 0, W, H)
+            for _, op in ipairs(ops) do
+                if not op.hidden and op.kind == "image" then self:blitImageInto(reveal_pic, op) end
+            end
+            owns_rp = true
+        end
     end
     -- A text-protecting erase op (op.spare_text) reveals a copy of the page that
     -- INCLUDES the text (built once here if the caller didn't pass it), so it rubs
@@ -1691,7 +1713,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
         end
         if has_text and has_spare then
             reveal_text = Blitbuffer.new(W, H, dst:getType())
-            reveal_text:blitFrom(dst, 0, 0, 0, 0, W, H)
+            reveal_text:blitFrom(reveal_pic or dst, 0, 0, 0, 0, W, H)   -- keep images under it too
             for _, op in ipairs(ops) do
                 if not op.hidden and op.kind == "text" then self:stampTextInto(reveal_text, op) end
             end
@@ -1699,8 +1721,14 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
         end
     end
     local refx, refy = Symmetry.canvasRefs(W, H)
+    -- Only skip the selected image from the master while it is actively being
+    -- dragged or rotated (then it is drawn live as the overlay). A merely selected,
+    -- still image stays in the master so it renders through the exact same path as
+    -- everything else -- no sub-pixel jump when it is picked or dropped.
+    local dragging = (self._img_drag and self._img_drag.began) or self.image_rotating
+    local skip = dragging and self.active_image and self.active_image.op or nil
     for _, op in ipairs(ops) do
-        if not op.hidden then      -- a shape being rotated is drawn as a preview
+        if not op.hidden and op ~= skip then   -- a shape being rotated is a preview
             if op.kind == "text" then
                 self:stampTextInto(dst, op)   -- glyphs, drawn straight into dst (z-order)
             elseif op.kind == "image" then
@@ -1708,9 +1736,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
             else
                 local put
                 if op.kind == "erase" and op.spare_text and reveal_text then
-                    put = bgSpanWriter(dst, reveal_text, W, H, nil)  -- reveal page + text
-                elseif op.kind == "erase" and not op.ebg and bg_bb then
-                    put = bgSpanWriter(dst, bg_bb, W, H, nil)         -- reveal the plain page
+                    put = bgSpanWriter(dst, reveal_text, W, H, nil)  -- reveal page + text (+ images)
+                elseif op.kind == "erase" and not op.ebg and (reveal_pic or bg_bb) then
+                    put = bgSpanWriter(dst, reveal_pic or bg_bb, W, H, nil)  -- reveal page (+ images)
                 else
                     put = spanWriter(dst, W, H, self:opColor(op), nil)
                 end
@@ -1719,6 +1747,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text)
         end
     end
     if owns_rt then reveal_text:free() end
+    if owns_rp then reveal_pic:free() end
 end
 
 -- The buffer the eraser reveals under the ink: in a notebook that is the paper
@@ -1729,6 +1758,7 @@ function InkAwayView:eraseRevealBB()
     -- while protection is on, a live erase stroke spares text, so it reveals the
     -- page-with-text buffer; otherwise it reveals the plain page
     if self.text_erase_protect and self._reveal_text_bb then return self._reveal_text_bb end
+    if self._reveal_pic_bb then return self._reveal_pic_bb end   -- keep placed images under a soft erase
     if self.notebook then return self._paper_bb end
     return self.bg_bb
 end
@@ -1761,6 +1791,34 @@ function InkAwayView:buildRevealText(base_bb)
     if base_bb then rt:blitFrom(base_bb, 0, 0, 0, 0, W, H) else rt:paintRect(0, 0, W, H, WHITE) end
     for _, op in ipairs(self.canvas.ops) do
         if not op.hidden and op.kind == "text" then self:stampTextInto(rt, op) end
+    end
+end
+
+-- Keep `_reveal_pic_bb` = the plain page (background / paper) with the placed
+-- images stamped on it, so a soft eraser (the "Erase pictures" toggle off) rubs
+-- out ink but reveals the images beneath instead of whitening them. Built only
+-- when an image exists; freed otherwise.
+function InkAwayView:buildRevealPic(base_bb)
+    if not self.canvas_bb then return end
+    local has_img = false
+    for _, op in ipairs(self.canvas.ops) do
+        if not op.hidden and op.kind == "image" then has_img = true; break end
+    end
+    if not has_img then
+        if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
+        return
+    end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    if self._reveal_pic_bb and (self._reveal_pic_bb:getWidth() ~= W or self._reveal_pic_bb:getHeight() ~= H) then
+        self._reveal_pic_bb:free(); self._reveal_pic_bb = nil
+    end
+    if not self._reveal_pic_bb then
+        self._reveal_pic_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
+    end
+    local rp = self._reveal_pic_bb
+    if base_bb then rp:blitFrom(base_bb, 0, 0, 0, 0, W, H) else rp:paintRect(0, 0, W, H, WHITE) end
+    for _, op in ipairs(self.canvas.ops) do
+        if not op.hidden and op.kind == "image" then self:blitImageInto(rp, op) end
     end
 end
 
@@ -1802,11 +1860,15 @@ function InkAwayView:composeCanvas()
         -- paper (with ruling) is the base AND the erase-reveal source, so ruling
         -- lives under the ink and the eraser restores it instead of whitening it
         self:buildNotebookPaper()
-        self:buildRevealText(self._paper_bb)
-        self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil, self._reveal_text_bb)
+        self:buildRevealPic(self._paper_bb)
+        self:buildRevealText(self._reveal_pic_bb or self._paper_bb)   -- text reveal keeps images too
+        self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil,
+            self._reveal_text_bb, self._reveal_pic_bb)
     else
-        self:buildRevealText(self.bg_bb)
-        self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil, self._reveal_text_bb)
+        self:buildRevealPic(self.bg_bb)
+        self:buildRevealText(self._reveal_pic_bb or self.bg_bb)
+        self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil,
+            self._reveal_text_bb, self._reveal_pic_bb)
     end
 end
 
@@ -2926,13 +2988,14 @@ function InkAwayView:openSettings()
     buttons[#buttons + 1] = paper_row
     buttons[#buttons + 1] = {{ text = _("Text (font & size)\u{2026}"),
         callback = function() UIManager:close(dlg); self:openTextSettings() end }}
-    buttons[#buttons + 1] = {{ text = _("Insert image\u{2026}"),
-        callback = function() UIManager:close(dlg); self:chooseImage() end }}
     for _, row in ipairs({
-        {{ text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end }},
+        {
+            { text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end },
+            { text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end },
+        },
         {
             { text = _("Background image\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
-            { text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end },
+            { text = _("Insert image\u{2026}"), callback = function() UIManager:close(dlg); self:chooseImage() end },
         },
         {
             { text = mark("off") .. _("No autosave"),  callback = function() self:setAutosave("off"); reopen() end },
@@ -3095,16 +3158,30 @@ function InkAwayView:screenShapeFromOp(op, angle)
     }
 end
 
+-- Deselect the shape: close the menu, stop the canvas grabbing extra gestures,
+-- and clear the selection. Called on a tap outside the menu (and by Done).
+function InkAwayView:deselectShape()
+    if self._shape_menu then
+        local m = self._shape_menu; self._shape_menu = nil
+        pcall(function() UIManager:close(m) end)
+    end
+    self:setSelectionActive(false)
+    self.selected = nil
+    self.shape_move = nil
+end
+
 function InkAwayView:openShapeMenu(sel)
     local ButtonDialog = require("ui/widget/buttondialog")
-    if self._shape_menu then UIManager:close(self._shape_menu) end
+    if self._shape_menu then UIManager:close(self._shape_menu); self._shape_menu = nil end
+    self:setSelectionActive(true)   -- keep the shape draggable while the menu is up
     local op = sel.op
     local dlg
     local function close() if dlg then UIManager:close(dlg) end end
     dlg = ButtonDialog:new{
         shrink_unneeded_width = true,
+        tap_close_callback = function() self:deselectShape() end,
         anchor = function()
-            local x0, y0, x1, y1 = Shapes.bounds(op)
+            local x0, y0, x1, y1 = Shapes.bounds(sel.op)
             local sx0, sy0 = InkGeom.toScreen(self.view, x0, y0)
             local sx1, sy1 = InkGeom.toScreen(self.view, x1, y1)
             return GeomUI:new{ x = math.floor(sx0), y = math.floor(sy0),
@@ -3112,9 +3189,9 @@ function InkAwayView:openShapeMenu(sel)
         end,
         buttons = {
             {
-                { text = "\u{21BB} " .. _("Rotate"),    callback = function() close(); self:beginRotate(sel) end },
+                { text = "\u{27F3} " .. _("Rotate"),  callback = function() close(); self:beginRotate(sel) end },
+                { text = "\u{21BB} " .. _("90\u{00B0}"), callback = function() close(); self:rotateShape90(sel) end },
                 { text = "\u{29C9} " .. _("Duplicate"), callback = function() close(); self:duplicateSelected(sel) end },
-                { text = "\u{2715} " .. _("Delete"),    callback = function() close(); self:deleteSelected(sel) end },
             },
             {
                 { text = "\u{25D1} " .. _("Colour"),  callback = function() close(); self:editSelectedColour(sel) end },
@@ -3122,16 +3199,75 @@ function InkAwayView:openShapeMenu(sel)
                 { text = "\u{25CF} " .. _("Size"),    callback = function() close(); self:editSelectedSize(sel) end },
             },
             {
-                { text = "\u{2190}", callback = function() close(); self:nudgeSelected(sel, -1, 0) end },
-                { text = "\u{2191}", callback = function() close(); self:nudgeSelected(sel, 0, -1) end },
-                { text = "\u{2193}", callback = function() close(); self:nudgeSelected(sel, 0, 1) end },
-                { text = "\u{2192}", callback = function() close(); self:nudgeSelected(sel, 1, 0) end },
+                { text = "\u{2715} " .. _("Delete"), callback = function() close(); self:deleteSelected(sel) end },
+                { text = _("Done"), callback = function() close(); self:deselectShape() end },
             },
-            {{ text = _("Done"), callback = close }},
         },
     }
     self._shape_menu = dlg
     UIManager:show(dlg)
+end
+
+-- Rotate the selected shape a quarter turn about its centre (a handy preset next
+-- to the free-rotate drag). Shapes carry op.angle in radians.
+function InkAwayView:rotateShape90(sel)
+    self:applyEdit(sel, function(o) o.angle = ((o.angle or 0) + math.pi / 2) end)
+    self:openShapeMenu(sel)
+end
+
+-- Is a screen point on the given shape op (for picking it up to drag)?
+function InkAwayView:pointOnShape(op, sx, sy)
+    if not (op and op.kind == "shape") then return false end
+    local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
+    local tol = (op.width or 6) / 2 + 12 / self.view.zoom
+    return Shapes.hit(op, cx, cy, tol)
+end
+
+-- Drag a selected shape freely, like an image. The move is copy-on-write (a clone
+-- is edited from the first movement) so undo restores the original position.
+function InkAwayView:shapeMoveTouch(pos)
+    self.shape_move = { sx = pos.x, sy = pos.y, began = false }
+    return true
+end
+
+function InkAwayView:shapeMovePan(pos)
+    local d = self.shape_move
+    if not d then return true end
+    local sel = self.selected
+    if not sel then self.shape_move = nil; return true end
+    if not d.began then
+        self.canvas:pushHistory()
+        local clone = self.canvas:cloneOp(sel.op)
+        self.canvas:replaceOp(sel.idx, clone)
+        sel.op = clone
+        d.began = true
+        d.lastx, d.lasty = d.sx, d.sy
+    end
+    local v = self.view
+    local function scr(op)
+        local x0, y0, x1, y1 = Shapes.bounds(op)
+        local a, b = InkGeom.toScreen(v, x0, y0)
+        local c, e = InkGeom.toScreen(v, x1, y1)
+        return { x = a, y = b, w = c - a, h = e - b }
+    end
+    local old = scr(sel.op)
+    local dx = (pos.x - d.lastx) / v.zoom
+    local dy = (pos.y - d.lasty) / v.zoom
+    d.lastx, d.lasty = pos.x, pos.y
+    translateOp(sel.op, dx, dy)
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    self:refreshImageUnion(old, scr(sel.op), "fast")   -- tight union, not the whole area
+    return true
+end
+
+function InkAwayView:shapeMoveRelease()
+    if self.shape_move then
+        self.shape_move = nil
+        if self._shape_menu then self:openShapeMenu(self.selected) end   -- re-anchor the menu
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+    end
+    return true
 end
 
 -- Apply an edit to the selected op through copy-on-write, so undo/redo work.
@@ -3151,6 +3287,8 @@ function InkAwayView:deleteSelected(sel)
     self.canvas:pushHistory()
     self.canvas:removeOp(sel.idx)
     self.selected = nil
+    self.shape_move = nil
+    self:setSelectionActive(false)
     self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self.dirty = true
     self:composeCanvas()
@@ -3231,6 +3369,8 @@ end
 -- spin it freely about its centre. Cheap per frame (only the preview redraws).
 function InkAwayView:beginRotate(sel)
     local op = sel.op
+    self:setSelectionActive(false)   -- the menu is gone; rotate routes at the top
+    self.shape_move = nil
     op.hidden = true
     self.rotating = { op = op, idx = sel.idx, base = op.angle or 0, cur = op.angle or 0 }
     self:composeCanvas(); self:renderView()
@@ -3288,35 +3428,47 @@ function InkAwayView:rotateEnd()
 end
 
 ------------------------------------------------------------------------------
--- Images: place a PNG/JPEG on the page and move/resize it with corner handles.
--- An image is an op { kind="image", x, y, w, h (canvas px), path, natw, nath }.
+-- Images: place a PNG/JPEG on the page, move/resize it with corner handles, and
+-- rotate/flip/reorder it from a hold menu (mirrors the placed-shape menu). An
+-- image is an op:
+--   { kind="image", x, y, w, h (canvas px), path, natw, nath,
+--     angle = 0|90|180|270, flip_h, flip_v }
 -- The decoded pixels are cached by path and NEVER serialised, so a project file
--- stores just the path and re-decodes on load. Images compose into the master
--- and export exactly like other ops, so every save includes them. While one is
--- selected it is hidden from the master and drawn as a live overlay, so moving
--- and resizing are smooth (no full recompose per drag frame).
+-- stores just the path (+ box + orientation) and re-decodes on load. Images
+-- compose into the master and export exactly like other ops, so every save
+-- includes them. The selected image is skipped from the master by identity (not
+-- a stored flag, so undo/redo snapshots stay clean) and drawn as a live overlay,
+-- so moving and resizing never recompose the whole page.
 ------------------------------------------------------------------------------
 
 local IMG_HANDLE = 44   -- touch target for the move / resize handles (screen px)
 local IMG_MIN    = 24   -- smallest image side, in canvas px
 
--- Free every decoded / scaled image buffer and drop the caches. A scaled copy may
--- BE the source buffer (when the on-page size equals the natural size), so free the
--- scaled copies that differ first, then the sources, to avoid a double free.
+-- Free every decoded / scaled / oriented / display image buffer and drop the
+-- caches. Buffers can be shared (a scaled copy may BE its source when sizes
+-- match), so a `seen` set frees each underlying buffer exactly once.
 function InkAwayView:freeImageCache()
-    if self._img_scaled then
-        for path, e in pairs(self._img_scaled) do
-            local src = self._img_bb and self._img_bb[path]
-            if e.bb and e.bb ~= src and e.bb.free then pcall(function() e.bb:free() end) end
-        end
-        self._img_scaled = nil
+    local seen = {}
+    local function drop(bb)
+        if bb and bb.free and not seen[bb] then seen[bb] = true; pcall(function() bb:free() end) end
     end
-    if self._img_bb then
-        for _, bb in pairs(self._img_bb) do
-            if bb and bb.free then pcall(function() bb:free() end) end
-        end
-        self._img_bb = nil
-    end
+    if self._img_disp then drop(self._img_disp.bb); self._img_disp = nil end
+    if self._img_render then for _, e in pairs(self._img_render) do drop(e.bb) end; self._img_render = nil end
+    if self._img_scaled then for _, e in pairs(self._img_scaled) do drop(e.bb) end; self._img_scaled = nil end
+    if self._img_bb then for _, bb in pairs(self._img_bb) do drop(bb) end; self._img_bb = nil end
+end
+
+-- Free just the one screen-scaled display buffer (rebuilt on the next paint).
+function InkAwayView:freeImageDisplay()
+    local d = self._img_disp
+    if d and d.bb and d.bb.free then pcall(function() d.bb:free() end) end
+    self._img_disp = nil
+end
+
+-- A short signature of an op's orientation, used as a cache key so a rotate/flip
+-- invalidates the oriented and scaled buffers.
+local function orientSig(op)
+    return ((op.angle or 0) % 360) .. "/" .. (op.flip_h and 1 or 0) .. "/" .. (op.flip_v and 1 or 0)
 end
 
 -- Decode (once, cached by path) the source picture for an op as a BBRGB32 that
@@ -3356,9 +3508,82 @@ function InkAwayView:imageSrc(op)
     return norm or nil
 end
 
--- The picture scaled to the op's current on-page size. One scaled copy is kept
--- per path (freed and rebuilt when the size changes), so a resize drag never
--- piles up buffers and a move drag (size unchanged) reuses the cached scale.
+-- Build a copy of `src` with the flips and a quarter-turn rotation baked in, by an
+-- exact pixel permutation (no interpolation, no gaps). A quarter turn swaps the
+-- dimensions. Returns the new buffer, or nil if the pixels could not be read.
+-- The axis-aligned bounding box (canvas coords) of an image op at its angle,
+-- computed analytically (no buffer): op.w/op.h are the unrotated size, the box
+-- grows as it turns. Returns x, y, w, h.
+local function imageBBox(op)
+    local a = math.rad((op.angle or 0) % 360)
+    local c, s = math.abs(math.cos(a)), math.abs(math.sin(a))
+    local bw = op.w * c + op.h * s
+    local bh = op.w * s + op.h * c
+    local cx, cy = op.x + op.w / 2, op.y + op.h / 2
+    return cx - bw / 2, cy - bh / 2, bw, bh
+end
+
+-- Build a copy of `src` with the flips and an arbitrary rotation baked in. A
+-- quarter turn is an exact pixel permutation (lossless, swaps the dimensions);
+-- any other angle is a nearest-neighbour resample into the rotated bounding box
+-- (transparent corners). Returns the new buffer, or nil if pixels can't be read.
+local function resampleOriented(src, angleDeg, fh, fv)
+    local sw, sh = src:getWidth(), src:getHeight()
+    local a = angleDeg % 360
+    if a == 0 or a == 90 or a == 180 or a == 270 then
+        local quarter = (a == 90 or a == 270)
+        local dw = quarter and sh or sw
+        local dh = quarter and sw or sh
+        local dst = Blitbuffer.new(dw, dh, Blitbuffer.TYPE_BBRGB32)
+        pcall(function() ffi.fill(dst.data, dst.stride * dst:getHeight(), 0) end)   -- true transparent (colour fill sets alpha opaque)
+        local ok = pcall(function()
+            for sy = 0, sh - 1 do
+                local yy = fv and (sh - 1 - sy) or sy
+                for sx = 0, sw - 1 do
+                    local xx = fh and (sw - 1 - sx) or sx
+                    local dx, dy
+                    if a == 90 then dx, dy = sh - 1 - yy, xx
+                    elseif a == 180 then dx, dy = sw - 1 - xx, sh - 1 - yy
+                    elseif a == 270 then dx, dy = yy, sw - 1 - xx
+                    else dx, dy = xx, yy end
+                    dst:setPixel(dx, dy, src:getPixel(sx, sy))
+                end
+            end
+        end)
+        if not ok then if dst.free then dst:free() end; return nil end
+        return dst
+    end
+    local ar = math.rad(a)
+    local cosA, sinA = math.cos(ar), math.sin(ar)
+    local bw = math.max(1, math.ceil(math.abs(sw * cosA) + math.abs(sh * sinA)))
+    local bh = math.max(1, math.ceil(math.abs(sw * sinA) + math.abs(sh * cosA)))
+    local dst = Blitbuffer.new(bw, bh, Blitbuffer.TYPE_BBRGB32)
+    pcall(function() ffi.fill(dst.data, dst.stride * dst:getHeight(), 0) end)   -- true transparent (colour fill sets alpha opaque)
+    local cxs, cys, cxd, cyd = sw / 2, sh / 2, bw / 2, bh / 2
+    local ok = pcall(function()
+        for dy = 0, bh - 1 do
+            local ry = dy + 0.5 - cyd
+            for dx = 0, bw - 1 do
+                local rx = dx + 0.5 - cxd
+                local ux = rx * cosA + ry * sinA + cxs   -- inverse rotate to source
+                local uy = -rx * sinA + ry * cosA + cys
+                if fh then ux = sw - ux end
+                if fv then uy = sh - uy end
+                local sxi = math.floor(ux)
+                local syi = math.floor(uy)
+                if sxi >= 0 and sxi < sw and syi >= 0 and syi < sh then
+                    dst:setPixel(dx, dy, src:getPixel(sxi, syi))
+                end
+            end
+        end
+    end)
+    if not ok then if dst.free then dst:free() end; return nil end
+    return dst
+end
+
+-- The picture scaled to the op's on-page size (canvas px), UNROTATED. One copy is
+-- kept per path, rebuilt only on a size change, so a resize drag never piles up
+-- buffers and a move drag reuses the cached scale.
 function InkAwayView:imageScaled(op)
     local src = self:imageSrc(op)
     if not src then return nil end
@@ -3367,7 +3592,7 @@ function InkAwayView:imageScaled(op)
     self._img_scaled = self._img_scaled or {}
     local e = self._img_scaled[op.path]
     if e and e.w == w and e.h == h then return e.bb or nil end
-    if e and e.bb and e.bb ~= src and e.bb.free then e.bb:free() end
+    if e and e.bb and e.bb ~= src and e.bb.free then pcall(function() e.bb:free() end) end
     local scaled
     if w == src:getWidth() and h == src:getHeight() then
         scaled = src
@@ -3379,24 +3604,69 @@ function InkAwayView:imageScaled(op)
     return scaled or nil
 end
 
--- RGBA byte buffer for export: the picture scaled to its on-page size. Returns
--- buf, w, h (or nil). Injected into Export as Export.image_raster.
-function InkAwayView:exportImageRaster(op)
+-- The fully oriented (flipped + rotated) bitmap at on-page size, plus its top-left
+-- in CANVAS coords -- which shifts away from op.x/op.y once the picture is rotated,
+-- since the bounding box grows. Cached per path; rebuilt only when the size or
+-- orientation changes (never per drag frame). With no orientation it returns the
+-- plain scaled buffer at op.x/op.y, so the common case allocates nothing extra.
+function InkAwayView:imageRendered(op)
     local scaled = self:imageScaled(op)
     if not scaled then return nil end
-    local w, h = scaled:getWidth(), scaled:getHeight()
-    local buf = bbToRGBA(scaled, w, h)
-    if not buf then return nil end
-    return buf, w, h
+    local cx, cy = op.x + op.w / 2, op.y + op.h / 2
+    if orientSig(op) == "0/0/0" then return scaled, op.x, op.y end
+    local sig = orientSig(op)
+    local w, h = math.max(1, math.floor(op.w + 0.5)), math.max(1, math.floor(op.h + 0.5))
+    self._img_render = self._img_render or {}
+    local e = self._img_render[op.path]
+    if not (e and e.sig == sig and e.w == w and e.h == h and e.bb) then
+        if e and e.bb and e.bb ~= scaled and e.bb.free then pcall(function() e.bb:free() end) end
+        local bb = resampleOriented(scaled, (op.angle or 0) % 360, op.flip_h, op.flip_v)
+        e = { sig = sig, w = w, h = h, bb = bb or false }
+        self._img_render[op.path] = e
+    end
+    if not e.bb then return nil end
+    return e.bb, cx - e.bb:getWidth() / 2, cy - e.bb:getHeight() / 2
 end
 
--- Blit an image op into the canvas-space master `dst`, clipped to the canvas.
+-- The rendered picture scaled to on-SCREEN size and its screen top-left, for the
+-- live overlay, so the selected image is exactly the size and place it will occupy
+-- once committed (no jump on Done). Returns bb, sx, sy (area-relative).
+function InkAwayView:imageDisplayScaled(op)
+    local bb, ox, oy = self:imageRendered(op)
+    if not bb then return nil end
+    local v = self.view
+    local sx, sy = InkGeom.toScreen(v, ox, oy)
+    local dw = math.max(1, math.floor(bb:getWidth() * v.zoom + 0.5))
+    local dh = math.max(1, math.floor(bb:getHeight() * v.zoom + 0.5))
+    if bb:getWidth() == dw and bb:getHeight() == dh then return bb, sx, sy end
+    local sig = orientSig(op) .. ":" .. dw .. "x" .. dh
+    local e = self._img_disp
+    if e and e.path == op.path and e.sig == sig and e.bb then return e.bb, sx, sy end
+    if e and e.bb and e.bb.free then pcall(function() e.bb:free() end) end
+    local ok, s = pcall(function() return RenderImage:scaleBlitBuffer(bb, dw, dh, false) end)
+    self._img_disp = { path = op.path, sig = sig, bb = (ok and s) or false }
+    return (ok and s) or nil, sx, sy
+end
+
+-- RGBA byte buffer for export: the oriented picture at on-page size. Returns
+-- buf, w, h, ox, oy (canvas top-left). Injected into Export as Export.image_raster.
+function InkAwayView:exportImageRaster(op)
+    local bb, ox, oy = self:imageRendered(op)
+    if not bb then return nil end
+    local w, h = bb:getWidth(), bb:getHeight()
+    local buf = bbToRGBA(bb, w, h)
+    if not buf then return nil end
+    return buf, w, h, ox, oy
+end
+
+-- Blit an image op into the canvas-space master `dst`, at its (rotated) top-left,
+-- clipped to the canvas.
 function InkAwayView:blitImageInto(dst, op)
-    local scaled = self:imageScaled(op)
-    if not scaled then return end
+    local bb, ox, oy = self:imageRendered(op)
+    if not bb then return end
     local W, H = self.view.canvas_w, self.view.canvas_h
-    local sw, sh = scaled:getWidth(), scaled:getHeight()
-    local dx, dy = math.floor(op.x + 0.5), math.floor(op.y + 0.5)
+    local sw, sh = bb:getWidth(), bb:getHeight()
+    local dx, dy = math.floor(ox + 0.5), math.floor(oy + 0.5)
     local sx0 = dx < 0 and -dx or 0
     local sy0 = dy < 0 and -dy or 0
     local cx0 = math.max(0, dx)
@@ -3404,15 +3674,19 @@ function InkAwayView:blitImageInto(dst, op)
     local cw = math.min(sw - sx0, W - cx0)
     local ch = math.min(sh - sy0, H - cy0)
     if cw > 0 and ch > 0 then
-        pcall(function() dst:alphablitFrom(scaled, cx0, cy0, sx0, sy0, cw, ch) end)
+        pcall(function() dst:alphablitFrom(bb, cx0, cy0, sx0, sy0, cw, ch) end)
     end
 end
 
--- The selected image's rectangle on screen (area-relative, like textBoxScreenRect).
+-- The selected image's on-screen rectangle: the (rotated) bounding box, so the
+-- frame and handles wrap the whole picture whatever its angle.
 function InkAwayView:imageScreenRect()
     local op, v = self.active_image.op, self.view
-    local sx, sy = InkGeom.toScreen(v, op.x, op.y)
-    return { x = sx, y = sy, w = op.w * v.zoom, h = op.h * v.zoom }
+    local bb, ox, oy = self:imageRendered(op)
+    local bw = (bb and bb:getWidth() or op.w) * v.zoom
+    local bh = (bb and bb:getHeight() or op.h) * v.zoom
+    local sx, sy = InkGeom.toScreen(v, ox or op.x, oy or op.y)
+    return { x = sx, y = sy, w = bw, h = bh }
 end
 
 -- Which part of the selected image a screen point falls on: a corner ("nw"/"ne"/
@@ -3431,30 +3705,6 @@ function InkAwayView:imageZone(sx, sy)
     return "outside"
 end
 
--- The Delete and Done pills, pinned top-right of the drawing area (like the text
--- editor's), always reachable while an image is selected.
-function InkAwayView:imageButtons()
-    local v = self.view
-    local m = self._img_btn_metrics
-    if not m then
-        local dn = self:labelWidget("\u{2713} " .. _("Done")); local ds = dn:getSize(); dn:free()
-        local dl = self:labelWidget(_("Delete")); local dls = dl:getSize(); dl:free()
-        m = { ds = { w = ds.w, h = ds.h }, dls = { w = dls.w, h = dls.h } }
-        self._img_btn_metrics = m
-    end
-    local h = m.ds.h + 2 * math.floor(m.ds.h * 0.35)
-    local pad = math.floor(m.ds.h * 0.5)
-    local dwid = m.ds.w + 2 * pad
-    local delw = m.dls.w + 2 * pad
-    local y = v.area_y + 8
-    local dx = v.area_x + v.area_w - dwid - 8
-    local delx = dx - delw - 10
-    return {
-        done   = { x = dx, y = y, w = dwid, h = h, label = "\u{2713} " .. _("Done") },
-        delete = { x = delx, y = y, w = delw, h = h, label = _("Delete") },
-    }
-end
-
 -- Refresh the union of two area-relative rects (plus handle margin), clamped to
 -- the drawing area, with the given refresh mode.
 function InkAwayView:refreshImageUnion(a, b, mode)
@@ -3469,37 +3719,60 @@ function InkAwayView:refreshImageUnion(a, b, mode)
     end
 end
 
--- Pick the image under a canvas point (topmost first), for re-selecting one.
+-- Pick the image under a canvas point (topmost first). Uses the rotated bounding
+-- box so a turned picture is still grabbable over its whole visible area.
 function InkAwayView:hitTestImage(sx, sy)
     local cx, cy = self:toCanvasClamped(sx, sy)
     local ops = self.canvas.ops
     for i = #ops, 1, -1 do
         local op = ops[i]
-        if op.kind == "image" and not op.hidden
-           and cx >= op.x and cx <= op.x + op.w and cy >= op.y and cy <= op.y + op.h then
-            return { op = op, idx = i }
+        if op.kind == "image" then
+            local bx, by, bw, bh = imageBBox(op)
+            if cx >= bx and cx <= bx + bw and cy >= by and cy <= by + bh then
+                return { op = op, idx = i }
+            end
         end
     end
     return nil
 end
 
--- Select an image: hide it from the master (drawn as an overlay while active) and
--- recompose once so the master no longer shows it at the old spot.
+-- Keep the canvas receiving gestures while a popup is on top (KOReader only
+-- delivers events to a lower widget that is is_always_active), so the picture can
+-- be dragged with its menu open. The previous value is restored on close.
+function InkAwayView:setSelectionActive(on)
+    if on then
+        if self._sel_prev_active == nil then self._sel_prev_active = self.is_always_active or false end
+        self.is_always_active = true
+    elseif self._sel_prev_active ~= nil then
+        self.is_always_active = self._sel_prev_active
+        self._sel_prev_active = nil
+    end
+end
+
+-- Select an image. It stays in the ops list; composeInto just skips it by
+-- identity (drawn as the overlay instead), so no `hidden` flag ever lands in an
+-- undo snapshot. Recompose once so the master no longer shows it at rest.
 function InkAwayView:selectImage(sel)
-    if self.active_image then self:finishImageEdit() end
+    if self.active_image and self.active_image.op ~= sel.op then self:finishImageEdit() end
     self.active_image = sel
-    sel.op.hidden = true
+    self._img_drag = nil
+    self:freeImageDisplay()
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 
--- Finish editing: unhide the image, bake it back into the master, recompose.
+-- Finish editing: close the menu, drop the selection, and recompose so the image
+-- is baked back into the master at its final spot. Safe to call more than once
+-- (e.g. the menu's tap-outside close and a Done both route here).
 function InkAwayView:finishImageEdit()
-    local sel = self.active_image
-    if not sel then return end
-    sel.op.hidden = nil
+    if not (self.active_image or self.image_rotating or self._image_menu) then return end
+    local menu = self._image_menu; self._image_menu = nil
+    if menu then pcall(function() UIManager:close(menu) end) end
+    self:setSelectionActive(false)
     self.active_image = nil
     self._img_drag = nil
+    self.image_rotating = nil
+    self:freeImageDisplay()
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
@@ -3508,33 +3781,180 @@ InkAwayView.flushImage = InkAwayView.finishImageEdit
 function InkAwayView:deleteActiveImage()
     local sel = self.active_image
     if not sel then return end
+    local menu = self._image_menu; self._image_menu = nil
+    if menu then pcall(function() UIManager:close(menu) end) end
+    self:setSelectionActive(false)
     self.active_image = nil
     self._img_drag = nil
+    self.image_rotating = nil
+    self:freeImageDisplay()
     self.canvas:pushHistory()
     self.canvas:removeOp(sel.idx)
+    self.dirty = true
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 
+-- Copy-on-write before mutating the selected image, so the pre-drag / pre-edit
+-- state stays in the undo snapshot (older snapshots keep the original op). Call
+-- once at the start of a change; returns the editable clone.
+function InkAwayView:beginImageEdit()
+    self.canvas:pushHistory()
+    local sel = self.active_image
+    local clone = self.canvas:cloneOp(sel.op)
+    self.canvas:replaceOp(sel.idx, clone)
+    sel.op = clone
+    self.dirty = true
+    return clone
+end
+
+-- Apply one discrete edit (rotate / flip / etc.) to the selected image through
+-- copy-on-write, then recompose. Undo/redo restore the previous op.
+function InkAwayView:applyImageEdit(sel, mutate)
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(sel.op)
+    mutate(clone)
+    self.canvas:replaceOp(sel.idx, clone)
+    sel.op = clone
+    self.dirty = true
+    self:freeImageDisplay()   -- size / orientation may have changed
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+-- Rotate a quarter turn clockwise about the image centre. op.w/op.h are the
+-- UNROTATED size, so a quarter turn only bumps op.angle; the bounding box (and
+-- the frame) follow from the angle.
+function InkAwayView:rotateImage90(sel)
+    self:applyImageEdit(sel, function(o) o.angle = ((o.angle or 0) + 90) % 360 end)
+    self:openImageMenu(sel)   -- keep the menu up for repeated turns
+end
+
+function InkAwayView:flipImage(sel, axis)
+    self:applyImageEdit(sel, function(o)
+        if axis == "h" then o.flip_h = not o.flip_h else o.flip_v = not o.flip_v end
+    end)
+    self:openImageMenu(sel)
+end
+
+-- Move the image to the top of the stack, so later strokes/images no longer cover
+-- it. Reordering the array is safe against snapshots (the op itself is untouched).
+function InkAwayView:imageToFront(sel)
+    local ops = self.canvas.ops
+    if sel.idx >= #ops then self:openImageMenu(sel); return end
+    self.canvas:pushHistory()
+    local op = table.remove(ops, sel.idx)
+    ops[#ops + 1] = op
+    sel.idx = #ops
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:openImageMenu(sel)
+end
+
+-- Free rotation: like the shape rotate, drag anywhere to spin the picture to any
+-- angle; a live preview follows the finger, and the angle is committed on lift.
+function InkAwayView:beginImageRotate(sel)
+    self.image_rotating = { base = sel.op.angle or 0, cur = sel.op.angle or 0 }
+    self:composeCanvas(); self:renderView()   -- drop it from the master; preview draws it
+    UIManager:show(InfoMessage:new{
+        text = _("Drag to rotate the image; lift to finish."), timeout = 2 })
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+function InkAwayView:imageRotateTouch(pos)
+    local op, v = self.active_image.op, self.view
+    local cx, cy = InkGeom.toScreen(v, op.x + op.w / 2, op.y + op.h / 2)
+    local r = self.image_rotating
+    r.cx, r.cy = cx, cy
+    r.grab = math.deg(math.atan2(pos.y - cy, pos.x - cx))
+    return true
+end
+
+function InkAwayView:imageRotateMove(pos)
+    local r = self.image_rotating
+    if not r.grab then return self:imageRotateTouch(pos) end
+    local a = math.deg(math.atan2(pos.y - r.cy, pos.x - r.cx))
+    r.cur = r.base + (a - r.grab)
+    UIManager:setDirty(self, "fast", self:areaScreenRect())   -- preview redraws
+    return true
+end
+
+function InkAwayView:imageRotateEnd()
+    local r = self.image_rotating
+    if not r then return true end
+    self.image_rotating = nil
+    local sel = self.active_image
+    if sel then
+        self:applyImageEdit(sel, function(o) o.angle = (r.cur % 360 + 360) % 360 end)
+        self:openImageMenu(sel)
+    end
+    return true
+end
+
+-- The hold/tap menu for a placed image, anchored beside it -- same ButtonDialog
+-- look as the shape edit menu (free rotate, a 90-degree preset, flips, to front,
+-- and the same delete glyph). The image stays draggable underneath (see
+-- setSelectionActive); a tap outside the menu deselects and bakes it in.
+function InkAwayView:openImageMenu(sel)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if self._image_menu then UIManager:close(self._image_menu); self._image_menu = nil end
+    self:setSelectionActive(true)
+    local dlg
+    local function close() if dlg then UIManager:close(dlg) end end
+    dlg = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        tap_close_callback = function() self:finishImageEdit() end,
+        anchor = function()
+            local r = self:imageScreenRect()
+            return GeomUI:new{ x = math.floor(r.x), y = math.floor(r.y),
+                               w = math.ceil(r.w), h = math.ceil(r.h) }
+        end,
+        buttons = {
+            {
+                { text = "\u{27F3} " .. _("Rotate"),  callback = function() close(); self:beginImageRotate(sel) end },
+                { text = "\u{21BB} " .. _("90\u{00B0}"), callback = function() close(); self:rotateImage90(sel) end },
+            },
+            {
+                { text = "\u{2194} " .. _("Flip H"),  callback = function() close(); self:flipImage(sel, "h") end },
+                { text = "\u{2195} " .. _("Flip V"),  callback = function() close(); self:flipImage(sel, "v") end },
+            },
+            {
+                { text = "\u{25B2} " .. _("To front"), callback = function() close(); self:imageToFront(sel) end },
+                { text = "\u{2715} " .. _("Delete"),   callback = function() close(); self:deleteActiveImage() end },
+            },
+        },
+    }
+    self._image_menu = dlg
+    UIManager:show(dlg)
+end
+
 function InkAwayView:imageTouch(pos)
-    local function inRect(rr) return pos.x >= rr.x and pos.x <= rr.x + rr.w
-        and pos.y >= rr.y and pos.y <= rr.y + rr.h end
-    local btns = self:imageButtons()
-    if inRect(btns.done) then self:finishImageEdit(); return true end
-    if inRect(btns.delete) then self:deleteActiveImage(); return true end
     local op = self.active_image.op
     local zone = self:imageZone(pos.x, pos.y)
     if zone == "move" then
         self._img_drag = { kind = "move", sx = pos.x, sy = pos.y, x0 = op.x, y0 = op.y }
         return true
     elseif zone ~= "outside" then
-        -- resize from a corner, keeping the OPPOSITE corner fixed and aspect locked
-        local ax = (zone == "nw" or zone == "sw") and (op.x + op.w) or op.x
-        local ay = (zone == "nw" or zone == "ne") and (op.y + op.h) or op.y
-        self._img_drag = { kind = "resize", corner = zone, ax = ax, ay = ay, w0 = op.w, h0 = op.h }
+        if ((op.angle or 0) % 360) ~= 0 then
+            -- rotated: resize by scaling uniformly about the centre
+            local cxC, cyC = op.x + op.w / 2, op.y + op.h / 2
+            local ccx, ccy = self:toCanvasClamped(pos.x, pos.y)
+            local d0 = math.max(1, math.sqrt((ccx - cxC) ^ 2 + (ccy - cyC) ^ 2))
+            self._img_drag = { kind = "resize", rotated = true, cxC = cxC, cyC = cyC,
+                               d0 = d0, w0 = op.w, h0 = op.h }
+        else
+            -- upright: keep the OPPOSITE corner fixed, aspect locked
+            local ax = (zone == "nw" or zone == "sw") and (op.x + op.w) or op.x
+            local ay = (zone == "nw" or zone == "ne") and (op.y + op.h) or op.y
+            self._img_drag = { kind = "resize", corner = zone, ax = ax, ay = ay, w0 = op.w, h0 = op.h }
+        end
         return true
     else
-        self:finishImageEdit()   -- tapped away: bake and leave
+        -- Touched outside the picture. If the menu is open, leave it: this touch is
+        -- almost certainly on a menu button, and the dialog's own tap-outside close
+        -- handles a genuine tap away. Only deselect here when no menu is up.
+        if not self._image_menu then self:finishImageEdit() end
         return true
     end
 end
@@ -3542,11 +3962,24 @@ end
 function InkAwayView:imagePan(pos)
     local d = self._img_drag
     if not d then return true end
+    -- Take the undo snapshot on the FIRST real movement (a plain tap that never
+    -- moves records no history), then edit a clone from here on. Recompose once so
+    -- the master drops the image (now it is the live overlay) for a smooth drag.
+    if not d.began then
+        self:beginImageEdit(); d.began = true
+        self:composeCanvas(); self:renderView()
+    end
     local op, v = self.active_image.op, self.view
     local old = self:imageScreenRect()
     if d.kind == "move" then
         op.x = d.x0 + (pos.x - d.sx) / v.zoom
         op.y = d.y0 + (pos.y - d.sy) / v.zoom
+    elseif d.kind == "resize" and d.rotated then
+        local ccx, ccy = self:toCanvasClamped(pos.x, pos.y)
+        local dn = math.sqrt((ccx - d.cxC) ^ 2 + (ccy - d.cyC) ^ 2)
+        local scale = math.max(dn / d.d0, IMG_MIN / math.min(d.w0, d.h0))
+        op.w, op.h = d.w0 * scale, d.h0 * scale
+        op.x, op.y = d.cxC - op.w / 2, d.cyC - op.h / 2
     elseif d.kind == "resize" then
         local cx, cy = self:toCanvasClamped(pos.x, pos.y)
         local wp = math.abs(cx - d.ax)
@@ -3562,32 +3995,70 @@ function InkAwayView:imagePan(pos)
 end
 
 function InkAwayView:imageRelease()
-    -- keep the image selected so it can be adjusted again; just settle the view
+    -- keep the image selected so it can be adjusted again; settle the view and,
+    -- if a menu is open, re-anchor it to the picture's new spot (like shapes do)
     if self._img_drag then
+        local moved = self._img_drag.began
         self._img_drag = nil
+        if moved then self:composeCanvas(); self:renderView() end   -- bake it back in
         self:refreshImageUnion(self:imageScreenRect(), self:imageScreenRect(), "ui")
+        if moved and self._image_menu then self:openImageMenu(self.active_image) end
     end
     return true
 end
 
--- Draw the selected image as a live overlay (it is hidden from the master while
--- selected), plus its frame, corner handles and the Delete / Done pills.
+-- Draw the selected image as a live overlay (it is skipped from the master while
+-- selected), at its true on-screen size, plus its frame and corner handles. While
+-- free-rotating, a rotated preview follows the finger instead.
 function InkAwayView:paintImageOverlay(bb, x, y)
     local op, v = self.active_image.op, self.view
-    local r = self:imageScreenRect()
-    local ox, oy = math.floor(r.x + x), math.floor(r.y + y)
     local ax0, ay0 = x + v.area_x, y + v.area_y
     local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
-    local scaled = self:imageScaled(op)
-    if scaled then
-        local sw, sh = scaled:getWidth(), scaled:getHeight()
-        local dx0 = math.max(ox, ax0); local dy0 = math.max(oy, ay0)
-        local dx1 = math.min(ox + sw, ax1); local dy1 = math.min(oy + sh, ay1)
-        if dx1 > dx0 and dy1 > dy0 then
-            pcall(function() bb:alphablitFrom(scaled, dx0, dy0, dx0 - ox, dy0 - oy, dx1 - dx0, dy1 - dy0) end)
+    local BLACKC = Blitbuffer.COLOR_BLACK
+
+    if self.image_rotating then
+        -- live rotation preview: rotate a screen-scaled copy to the current angle
+        local scaled = self:imageScaled(op)
+        if scaled then
+            local dw = math.max(1, math.floor(op.w * v.zoom + 0.5))
+            local dh = math.max(1, math.floor(op.h * v.zoom + 0.5))
+            pcall(function()
+                local su = RenderImage:scaleBlitBuffer(scaled, dw, dh, false)
+                local prev = resampleOriented(su, self.image_rotating.cur, op.flip_h, op.flip_v)
+                if su ~= scaled and su.free then su:free() end
+                if prev then
+                    local ccx, ccy = InkGeom.toScreen(v, op.x + op.w / 2, op.y + op.h / 2)
+                    local pw, ph = prev:getWidth(), prev:getHeight()
+                    local ox = math.floor(ccx + x - pw / 2)
+                    local oy = math.floor(ccy + y - ph / 2)
+                    local dx0 = math.max(ox, ax0); local dy0 = math.max(oy, ay0)
+                    local dx1 = math.min(ox + pw, ax1); local dy1 = math.min(oy + ph, ay1)
+                    if dx1 > dx0 and dy1 > dy0 then
+                        bb:alphablitFrom(prev, dx0, dy0, dx0 - ox, dy0 - oy, dx1 - dx0, dy1 - dy0)
+                    end
+                    if prev.free then prev:free() end
+                end
+            end)
+        end
+        return
+    end
+
+    local r = self:imageScreenRect()
+    local ox, oy = math.floor(r.x + x), math.floor(r.y + y)
+    -- The image is only drawn here while it is being dragged (then the master has
+    -- dropped it). A still, selected image stays in the master, so we draw only the
+    -- frame and handles over it -- picking or dropping never nudges it.
+    if self._img_drag and self._img_drag.began then
+        local scaled = self:imageDisplayScaled(op)
+        if scaled then
+            local sw, sh = scaled:getWidth(), scaled:getHeight()
+            local dx0 = math.max(ox, ax0); local dy0 = math.max(oy, ay0)
+            local dx1 = math.min(ox + sw, ax1); local dy1 = math.min(oy + sh, ay1)
+            if dx1 > dx0 and dy1 > dy0 then
+                pcall(function() bb:alphablitFrom(scaled, dx0, dy0, dx0 - ox, dy0 - oy, dx1 - dx0, dy1 - dy0) end)
+            end
         end
     end
-    local BLACKC = Blitbuffer.COLOR_BLACK
     local fx, fy = math.floor(math.max(ox, ax0)), math.floor(math.max(oy, ay0))
     local fw = math.floor(math.min(ox + r.w, ax1)) - fx
     local fh = math.floor(math.min(oy + r.h, ay1)) - fy
@@ -3603,17 +4074,6 @@ function InkAwayView:paintImageOverlay(bb, x, y)
         bb:paintRect(px, py, hs, hs, BLACKC)
     end
     handle(ox, oy); handle(ox + r.w, oy); handle(ox, oy + r.h); handle(ox + r.w, oy + r.h)
-    -- Delete / Done pills
-    local btns = self:imageButtons()
-    local function drawBtn(rr)
-        local bx, by = rr.x + x, rr.y + y
-        bb:paintRect(bx, by, rr.w, rr.h, Blitbuffer.COLOR_WHITE)
-        bb:paintRect(bx, by, rr.w, 2, BLACKC); bb:paintRect(bx, by + rr.h - 2, rr.w, 2, BLACKC)
-        bb:paintRect(bx, by, 2, rr.h, BLACKC); bb:paintRect(bx + rr.w - 2, by, 2, rr.h, BLACKC)
-        local w = self:labelWidget(rr.label); local sz = w:getSize()
-        w:paintTo(bb, math.floor(bx + (rr.w - sz.w) / 2), math.floor(by + (rr.h - sz.h) / 2)); w:free()
-    end
-    drawBtn(btns.delete); drawBtn(btns.done)
 end
 
 -- Insert a new image from a file: fit it to ~60% of the visible area (so its
@@ -3687,12 +4147,25 @@ function InkAwayView:onIaTouch(_, ges)
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
     if self.selecting_crop then return self:cropTouch(pos) end
     if self.rotating then return self:rotateTouch(pos) end
+    if self.image_rotating then return self:imageRotateTouch(pos) end
     if self.active_image then return self:imageTouch(pos) end
     if self.tool == "lasso" then return self:lassoTouch(pos) end
     if self.tool == "text" then return self:textToolTouch(pos) end
     if self.tool == "fill" then self:doFill(pos); return true end
     if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
+        -- tap/hold a placed image to select it; the menu opens on the tap/hold
+        -- gesture (onIaTap/onIaHold), NOT here -- opening on touch-down lets the
+        -- gesture's own completion close the just-shown dialog. The picture is
+        -- draggable from this same touch.
+        local hit = self:hitTestImage(pos.x, pos.y)
+        if hit then self:selectImage(hit); return self:imageTouch(pos) end
+        -- a selected shape can be dragged; a fresh touch on a shape selects it
+        if self.selected and self:pointOnShape(self.selected.op, pos.x, pos.y) then
+            return self:shapeMoveTouch(pos)
+        end
+        local shp = self:hitTestShape(pos.x, pos.y)
+        if shp then self.selected = shp; return self:shapeMoveTouch(pos) end
         self.pan_last = { x = pos.x, y = pos.y }
         return true
     end
@@ -3718,7 +4191,9 @@ function InkAwayView:onIaPan(_, ges)
     local pos = ges.pos
     if self.selecting_crop then return self:cropMove(pos) end
     if self.rotating then return self:rotateMove(pos) end
+    if self.image_rotating then return self:imageRotateMove(pos) end
     if self.active_image then return self:imagePan(pos) end
+    if self.shape_move then return self:shapeMovePan(pos) end
     if self.tool == "text" then return self:textToolPan(pos) end
     if self.tool == "lasso" then return self:lassoPan(pos) end
     if self.tool == "fill" then return true end   -- fill is a tap, ignore drags
@@ -3744,7 +4219,9 @@ InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 function InkAwayView:onIaPanRelease(_, ges)
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
+    if self.image_rotating then return self:imageRotateEnd() end
     if self.active_image then return self:imageRelease() end
+    if self.shape_move then return self:shapeMoveRelease() end
     if self.tool == "text" then return self:textToolRelease(ges and ges.pos) end
     if self.tool == "lasso" then return self:lassoRelease(ges and ges.pos) end
     if self.tool == "fill" then return true end
@@ -3764,7 +4241,9 @@ InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 function InkAwayView:onIaSwipe(_, ges)
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.rotating then return self:rotateEnd() end
+    if self.image_rotating then return self:imageRotateEnd() end
     if self.active_image then return self:imageRelease() end
+    if self.shape_move then return self:shapeMoveRelease() end
     if self.tool == "lasso" then return self:lassoRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "fill" then return true end
     -- For a shape, only trust the swipe's END position; its start position would
@@ -3800,6 +4279,16 @@ function InkAwayView:onIaTap(_, ges)
     end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
+    -- Open the edit menu on the TAP (a touch just selected + armed a drag); doing
+    -- it here, on the completed gesture, avoids the tap closing the fresh dialog.
+    if p and self.tool == "pan" then
+        if self.active_image and self:imageZone(p.x, p.y) ~= "outside" then
+            self:openImageMenu(self.active_image); return true
+        end
+        if self.selected and self:pointOnShape(self.selected.op, p.x, p.y) then
+            self:openShapeMenu(self.selected); return true
+        end
+    end
     if self.tool == "text" then return self:textToolRelease(ges and ges.pos) end
     if self.tool == "lasso" then return self:lassoTap(ges and ges.pos) end
     if self.tool == "fill" then return true end   -- fill already happened on touch
@@ -3815,21 +4304,27 @@ function InkAwayView:onIaTap(_, ges)
 end
 
 function InkAwayView:onIaHold(_, ges)
-    -- A hold on a placed shape picks it and opens its little edit menu. Otherwise
-    -- soak up holds inside the area so they don't become a long press menu.
-    if self.capturing or self.shape_drag or self.curve_stage or self.rotating then return true end
+    -- A hold on a placed image or shape picks it and opens its edit menu (a tap
+    -- does the same via onIaTouch; hold is here for when the touch missed). We
+    -- soak up other holds inside the area so they don't become a long press menu.
+    if self.capturing or self.shape_drag or self.curve_stage
+       or self.rotating or self.image_rotating then return true end
     local pos = ges and ges.pos
     if not (pos and self:inArea(pos.x, pos.y)) then return false end
-    -- selecting a placed shape only happens in Pan mode, so a hold never fights
-    -- with drawing in the pen or shape tools
+    -- selecting only happens in Pan mode, so a hold never fights with drawing
     if self.tool == "pan" then
-        local isel = self:hitTestImage(pos.x, pos.y)   -- a placed image is picked up first
-        if isel then self:selectImage(isel); return true end
-        local sel = self:hitTestShape(pos.x, pos.y)
-        if sel then
-            self.selected = sel
-            self:openShapeMenu(sel)
+        if self.active_image then
+            if self:imageZone(pos.x, pos.y) ~= "outside" then
+                self._img_drag = nil     -- a hold cancels a pending move
+                self:openImageMenu(self.active_image)
+            end
+            return true
         end
+        local isel = self:hitTestImage(pos.x, pos.y)
+        if isel then self:selectImage(isel); self:openImageMenu(self.active_image); return true end
+        if self.selected then self.shape_move = nil; self:openShapeMenu(self.selected); return true end
+        local sel = self:hitTestShape(pos.x, pos.y)
+        if sel then self.selected = sel; self:openShapeMenu(sel) end
     end
     return true
 end
