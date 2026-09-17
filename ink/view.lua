@@ -64,6 +64,7 @@ local Notebook = require("ink/notebook")
 local Template = require("ink/template")
 local Text = require("ink/text")
 local Recognize = require("ink/recognize")
+local Stylus = require("ink/stylus")
 -- ui/font and ui/rendertext are required lazily (only when a text box is used)
 -- so the pure-Lua headless tests can still load this module.
 
@@ -239,6 +240,10 @@ end
 -- of a line, and this is what keeps one lift as one undo step, keeps exported
 -- strokes whole, and fills the gap a dropped contact would otherwise leave.
 local COALESCE_SEC = 0.15
+-- After the pen lifts, keep ignoring finger touches this long: a resting palm
+-- usually lifts a fraction of a second after the pen, so this stops it landing a
+-- stray mark or tap in the gap.
+local PEN_LIFT_DEBOUNCE = 0.35
 local ZOOM_RATIO = 1.5    -- one zoom press multiplies by this, for even steps
 local ZOOM_MAX = 8.0
 
@@ -437,6 +442,13 @@ function InkAwayView:init()
     -- line/rectangle/ellipse/triangle (or an L, for x/y axes) is replaced with a
     -- clean shape. Unrecognised strokes are left exactly as drawn.
     self.shape_assist = self:getSetting("inkaway_shape_assist", false)
+    -- Palm rejection: on a device with a pen, take the pen over (draw from its raw
+    -- events) and ignore finger touches while the pen is down, so a resting palm
+    -- never marks the page. Off by default and a no-op on finger-only devices.
+    self.palm_reject = self:getSetting("inkaway_palm_reject", false) and true or false
+    self._pen_state  = Stylus.new()
+    self._reject_finger = false   -- true while the pen is down (plus a short lift debounce)
+    self._pen_clear  = function() self._reject_finger = false end
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off|vert|horiz|quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- 0 = off, else stroke count
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- eraser also removes the background?
@@ -543,6 +555,7 @@ function InkAwayView:init()
     self:composeCanvas()
     self:renderView()
     self:scheduleAutosave()
+    self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
 end
 
 ------------------------------------------------------------------------------
@@ -651,6 +664,11 @@ end
 
 function InkAwayView:onCloseWidget()
     self.closing = true
+    if self._stylus_cb then
+        pcall(function() Device.input:unregisterStylusCallback() end)
+        self._stylus_cb = nil
+    end
+    UIManager:unschedule(self._pen_clear)
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
@@ -3081,6 +3099,13 @@ function InkAwayView:openGuides()
            callback = function() tog("inkaway_snap_angle", "snap_angle") end }},
         {{ text = _("Shape assist: ") .. onoff(self.shape_assist),
            callback = function() tog("inkaway_shape_assist", "shape_assist") end }},
+        {{ text = _("Palm rejection (pen): ") .. onoff(self.palm_reject),
+           callback = function()
+               self.palm_reject = not self.palm_reject
+               self:setSetting("inkaway_palm_reject", self.palm_reject)
+               self:applyPalmReject()
+               UIManager:close(dlg); self:openGuides()
+           end }},
         {{ text = string.format(_("Stabilizer: %d"), self.stabilizer),
            callback = function() UIManager:close(dlg); self:openStabilizer() end }},
         {{ text = _("Back"), callback = function() UIManager:close(dlg); self:openSettings() end }},
@@ -4285,12 +4310,153 @@ function InkAwayView:panByScreen(dx, dy)
 end
 
 ------------------------------------------------------------------------------
+-- Palm rejection: on a device with a pen, KOReader can hand us the raw stylus
+-- stream before it becomes a gesture. We "dominate" (swallow) the pen and drive
+-- our own drawing from it, and while the pen is down we ignore finger gestures,
+-- so a resting palm never draws. See ink/stylus.lua for the pure pieces.
+------------------------------------------------------------------------------
+
+-- Is this build/device able to deliver raw stylus events? (Older KOReader, or a
+-- finger-only reader, simply never fire the callback -- so turning the setting on
+-- is harmless there, but we only bother registering when the hook exists.)
+function InkAwayView:penCapable()
+    return Device.input and type(Device.input.registerStylusCallback) == "function"
+end
+
+-- Register or drop the stylus callback to match self.palm_reject. Called at
+-- startup and whenever the setting is toggled.
+function InkAwayView:applyPalmReject()
+    if not self:penCapable() then return end
+    if self.palm_reject then
+        if not self._stylus_cb then
+            self._stylus_cb = function(inp, slot) return self:onStylusSlot(inp, slot) end
+            Device.input:registerStylusCallback(self._stylus_cb)
+        end
+    elseif self._stylus_cb then
+        pcall(function() Device.input:unregisterStylusCallback() end)
+        self._stylus_cb = nil
+        self._reject_finger = false
+    end
+end
+
+-- True while finger input must be ignored (the pen is down, or lifted so recently
+-- that a lingering palm should still be suppressed). Pen-fed events set
+-- _pen_feeding so they pass through their own handlers.
+function InkAwayView:fingerRejected()
+    return self._reject_finger and not self._pen_feeding
+end
+
+-- Translate a raw stylus slot position into the same screen coordinates a finger
+-- gesture would carry (raw slot pos, then the screen-rotation transform).
+function InkAwayView:penScreenXY(slot)
+    local S = Screen
+    local mode = 0
+    if S.getTouchRotation then
+        local rot = S:getTouchRotation()
+        if rot == S.DEVICE_ROTATED_CLOCKWISE then mode = 1
+        elseif rot == S.DEVICE_ROTATED_UPSIDE_DOWN then mode = 2
+        elseif rot == S.DEVICE_ROTATED_COUNTER_CLOCKWISE then mode = 3 end
+    end
+    return Stylus.rotate(slot.x, slot.y, mode, S:getWidth(), S:getHeight())
+end
+
+-- The stylus callback (registered on KOReader's Input). Runs before gesture
+-- detection; returning true removes the pen from gesture detection so it never
+-- also arrives as a finger-style gesture. We turn the id transitions into our own
+-- touch / pan / release on the drawing.
+function InkAwayView:onStylusSlot(_, slot)
+    if not self.palm_reject or self.closing then return false end
+    local action = Stylus.step(self._pen_state, slot.id)
+    if action == "down" then
+        self:penDown(slot)
+    elseif action == "move" then
+        self:penMove(slot)
+    elseif action == "up" then
+        self:penUp()
+    end
+    return true   -- always swallow the pen; we handle it ourselves
+end
+
+-- Feed one synthetic touch/pan/release into our normal handlers, marked so the
+-- finger-rejection guard lets it through. This reuses ALL the existing tool
+-- routing (pen, eraser, shapes, text, pan, moving images/shapes), so the pen
+-- does exactly what a finger would, just without the palm.
+function InkAwayView:feedPen(kind, x, y)
+    self._pen_feeding = true
+    local ges = { pos = { x = x, y = y } }
+    if kind == "down" then self:onIaTouch(nil, ges)
+    elseif kind == "move" then self:onIaPan(nil, ges)
+    elseif kind == "up" then self:onIaPanRelease(nil, ges) end
+    self._pen_feeding = false
+end
+
+-- Discard anything a palm/finger began in the instant before the pen touched
+-- down, so resting your hand first and then writing doesn't leave a stray mark.
+function InkAwayView:penDropFingerOps()
+    if self.capturing then
+        UIManager:unschedule(self._finalize)
+        self.pending_lift = nil
+        self.capturing = false
+        self.canvas:cancelStroke()
+        self.last_cx, self.last_cy = nil, nil
+        self:composeCanvas(); self:renderView()
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+    end
+    self:cancelShape()      -- drop a half-drawn shape
+    self.pan_last = nil
+    self.lassoing, self.lasso_scr, self.sel_press = false, nil, nil
+end
+
+function InkAwayView:penDown(slot)
+    -- restore a tool we may have swapped for an eraser tip if the last up was lost
+    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self._reject_finger = true
+    self._pen_started = false      -- the stroke opens on the first point with coordinates
+    UIManager:unschedule(self._pen_clear)
+    self:penDropFingerOps()
+    -- the eraser end of the pen erases; the tip (or a highlighter) uses the
+    -- current tool. Swap in the eraser just for this stroke and restore on lift.
+    if slot.tool == Stylus.TOOL_ERASER and self.tool ~= "erase" then
+        self._pen_prev_tool = self.tool
+        self.tool = "erase"
+    end
+    self:penMove(slot)             -- if this frame already carries coordinates, open here
+end
+
+function InkAwayView:penMove(slot)
+    if not (slot.x and slot.y) then return end   -- a coordinate-less down/hover frame
+    local x, y = self:penScreenXY(slot)
+    self._pen_last_x, self._pen_last_y = x, y
+    -- Some pen protocols announce the contact one frame before the first
+    -- coordinates, so the stroke is opened by whichever frame first has a point.
+    if not self._pen_started then
+        self._pen_started = true
+        self:feedPen("down", x, y)
+    else
+        self:feedPen("move", x, y)
+    end
+end
+
+function InkAwayView:penUp()
+    if self._pen_started then
+        self:feedPen("up", self._pen_last_x or 0, self._pen_last_y or 0)
+        self:flushPending()      -- the pen lift is clean; commit now, no coalesce wait
+        self._pen_started = false
+    end
+    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    -- keep ignoring fingers briefly: a palm often lifts a moment after the pen
+    UIManager:unschedule(self._pen_clear)
+    UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+end
+
+------------------------------------------------------------------------------
 -- Drawing / pan gesture handlers
 ------------------------------------------------------------------------------
 
 -- Touch down: begin a stroke or a pan, or carry on a stroke that just lifted if
 -- the panel dropped the finger and picked it up again.
 function InkAwayView:onIaTouch(_, ges)
+    if self:fingerRejected() then return true end   -- palm rejection: pen is drawing
     local pos = ges.pos
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
@@ -4337,6 +4503,7 @@ function InkAwayView:onIaTouch(_, ges)
 end
 
 function InkAwayView:onIaPan(_, ges)
+    if self:fingerRejected() then return true end
     local pos = ges.pos
     if self.selecting_crop then return self:cropMove(pos) end
     if self.rotating then return self:rotateMove(pos) end
@@ -4366,6 +4533,7 @@ end
 InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
+    if self:fingerRejected() then return true end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
     if self.image_rotating then return self:imageRotateEnd() end
@@ -4388,6 +4556,7 @@ end
 InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
+    if self:fingerRejected() then return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.rotating then return self:rotateEnd() end
     if self.image_rotating then return self:imageRotateEnd() end
@@ -4413,6 +4582,7 @@ function InkAwayView:onIaSwipe(_, ges)
 end
 
 function InkAwayView:onIaTap(_, ges)
+    if self:fingerRejected() then return true end
     -- Toolbar taps are consumed by the buttons before this runs.
     -- Page-nav strip taps (notebook mode), below the drawing area.
     local p = ges and ges.pos
@@ -4453,6 +4623,7 @@ function InkAwayView:onIaTap(_, ges)
 end
 
 function InkAwayView:onIaHold(_, ges)
+    if self:fingerRejected() then return true end
     -- A hold on a placed image or shape picks it and opens its edit menu (a tap
     -- does the same via onIaTouch; hold is here for when the touch missed). We
     -- soak up other holds inside the area so they don't become a long press menu.
@@ -4482,6 +4653,7 @@ end
 -- first so no ink is lost, then pan by how far the midpoint between the two
 -- fingers moved since the last step.
 function InkAwayView:onIaTwoPan(_, ges)
+    if self:fingerRejected() then return true end   -- palm splayed under the pen
     self:flushPending()
     self:cancelShape()   -- a two-finger pan drops any half-placed shape
     local pos = ges.pos
