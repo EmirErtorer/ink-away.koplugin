@@ -64,13 +64,29 @@ local function boundary(op)
             poly[#poly + 1] = cx + rx * cos(a)
             poly[#poly + 1] = cy + ry * sin(a)
         end
+    elseif s == "poly" then
+        -- an explicit point path (a beautified freehand shape, e.g. a snapped
+        -- triangle or polygon). Drawn exactly as its points, closed on demand.
+        for i = 1, #p do poly[i] = p[i] end
+        closed = op.closed and true or false
     end
 
-    -- rotate about the centre of the defining box / endpoints
+    -- rotate about the centre of the defining box / endpoints (for a poly, the
+    -- centre of the bounding box of all its points)
     local ang = op.angle
     if ang and ang ~= 0 then
-        local cx = (x0 + x1) / 2
-        local cy = (y0 + y1) / 2
+        local cx, cy
+        if s == "poly" then
+            local minx, miny, maxx, maxy = poly[1], poly[2], poly[1], poly[2]
+            for i = 1, #poly, 2 do
+                if poly[i] < minx then minx = poly[i] elseif poly[i] > maxx then maxx = poly[i] end
+                if poly[i + 1] < miny then miny = poly[i + 1] elseif poly[i + 1] > maxy then maxy = poly[i + 1] end
+            end
+            cx, cy = (minx + maxx) / 2, (miny + maxy) / 2
+        else
+            cx = (x0 + x1) / 2
+            cy = (y0 + y1) / 2
+        end
         local ca, sa = cos(ang), sin(ang)
         for i = 1, #poly, 2 do
             local dx, dy = poly[i] - cx, poly[i + 1] - cy
@@ -173,13 +189,15 @@ function Shapes.bounds(op)
     return x0, y0, x1, y1
 end
 
--- Is point (px,py) on or inside the shape? Used to pick a shape by touch. For
--- filled/area shapes this is inside-the-polygon; for line/curve/outlines it is
--- within `tol` of the boundary polyline.
+-- Is point (px,py) on or inside the shape? Used to pick a shape by touch. Any
+-- closed shape (rectangle, ellipse, triangle, polygon) is grabbable anywhere
+-- inside it, filled or not -- an unfilled outline is otherwise a thread-thin
+-- target that is almost impossible to tap. Open shapes (line/curve/arrow) have no
+-- interior, so they are picked within `tol` of the boundary polyline.
 function Shapes.hit(op, px, py, tol)
     local poly, closed = boundary(op)
     local n = floor(#poly / 2)
-    if op.fill and closed then
+    if closed then
         -- point in polygon (even-odd), plus a tolerance band on the edges
         local inside = false
         local jx, jy = poly[2 * n - 1], poly[2 * n]

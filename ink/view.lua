@@ -2202,13 +2202,27 @@ function InkAwayView:beautifyStroke(raw, committed)
     -- floor whether zoomed in or out (canvas px shrink as you zoom in).
     local zoom = (self.view and self.view.zoom) or 1
     local min_size = Screen:scaleBySize(20) / (zoom > 0 and zoom or 1)
-    local pts = Recognize.detect(raw, { min_size = min_size })
+    local pts, shape = Recognize.detect(raw, { min_size = min_size })
     if not pts then return false end
-    -- Keep the SAME ink op and only swap its points: it stays kind "ink" with the
-    -- user's brush style, seed, width, colour, opacity and symmetry, so the clean
-    -- shape is drawn with the very pen they were using (a shape op would render as
-    -- plain ink and drop the brush). One op, so still one undo step.
-    committed.pts = pts
+    if shape then
+        -- The stroke reads as a toolbar primitive (line / rectangle / ellipse /
+        -- triangle): turn the ink op INTO a real shape op, in place, so tapping or
+        -- holding it later brings up the very same edit menu as a shape drawn from
+        -- the toolbar. It keeps the pen's width, colour, opacity and symmetry.
+        -- Still one op, so it remains a single undo step.
+        committed.kind = "shape"
+        committed.shape = shape.shape
+        committed.pts = shape.pts
+        committed.closed = shape.closed
+        committed.fill = false
+        committed.angle = 0
+        committed.style, committed.seed = nil, nil   -- ink-only fields; a shape ignores them
+    else
+        -- A straightened but non-primitive path (an L bend, a general polygon):
+        -- keep the SAME ink op and only swap its points, so the clean path is drawn
+        -- with the very brush the user was using.
+        committed.pts = pts
+    end
     self.dirty = true
     self:composeCanvas()
     self:renderView()
@@ -3153,7 +3167,9 @@ function InkAwayView:screenShapeFromOp(op, angle)
     end
     return {
         kind = "shape", shape = op.shape, fill = op.fill, angle = angle,
+        closed = op.closed,
         width = math.max(1, (op.width or 2) * v.zoom),
+        arrow = op.arrow, head = op.head and op.head * v.zoom or nil,
         color = op.color, alpha = op.alpha, pts = sp,
     }
 end
@@ -3164,6 +3180,12 @@ function InkAwayView:deselectShape()
     if self._shape_menu then
         local m = self._shape_menu; self._shape_menu = nil
         pcall(function() UIManager:close(m) end)
+    end
+    -- if a drag was somehow cut short, never leave the shape hidden from the master
+    if self.selected and self.selected.op and self.selected.op.hidden then
+        self.selected.op.hidden = nil
+        self.shape_preview = nil; self._preview_rect = nil
+        self:composeCanvas(); self:renderView()
     end
     self:setSelectionActive(false)
     self.selected = nil
@@ -3236,34 +3258,42 @@ function InkAwayView:shapeMovePan(pos)
     local sel = self.selected
     if not sel then self.shape_move = nil; return true end
     if not d.began then
+        -- First real movement: snapshot for undo, edit a clone, and drop it from the
+        -- master ONCE. From here the drag is a cheap screen-space preview (a single
+        -- Shapes.render into the changed rect), so recomposing every ops in the
+        -- canvas per frame -- the old, frozen path -- never happens.
         self.canvas:pushHistory()
         local clone = self.canvas:cloneOp(sel.op)
         self.canvas:replaceOp(sel.idx, clone)
         sel.op = clone
+        clone.hidden = true
         d.began = true
         d.lastx, d.lasty = d.sx, d.sy
+        self.dirty = true
+        self:composeCanvas(); self:renderView()   -- once: the master, minus the shape
+        self._preview_rect = nil
     end
     local v = self.view
-    local function scr(op)
-        local x0, y0, x1, y1 = Shapes.bounds(op)
-        local a, b = InkGeom.toScreen(v, x0, y0)
-        local c, e = InkGeom.toScreen(v, x1, y1)
-        return { x = a, y = b, w = c - a, h = e - b }
-    end
-    local old = scr(sel.op)
     local dx = (pos.x - d.lastx) / v.zoom
     local dy = (pos.y - d.lasty) / v.zoom
     d.lastx, d.lasty = pos.x, pos.y
     translateOp(sel.op, dx, dy)
-    self.dirty = true
-    self:composeCanvas(); self:renderView()
-    self:refreshImageUnion(old, scr(sel.op), "fast")   -- tight union, not the whole area
+    self.shape_preview = self:screenShapeFromOp(sel.op, sel.op.angle or 0)
+    self:refreshPreview()   -- only the old+new preview rects repaint
     return true
 end
 
 function InkAwayView:shapeMoveRelease()
     if self.shape_move then
+        local moved = self.shape_move.began
         self.shape_move = nil
+        if moved then
+            local sel = self.selected
+            if sel and sel.op then sel.op.hidden = nil end   -- bake it back into the master
+            self.shape_preview = nil
+            self._preview_rect = nil
+            self:composeCanvas(); self:renderView()
+        end
         if self._shape_menu then self:openShapeMenu(self.selected) end   -- re-anchor the menu
         UIManager:setDirty(self, "ui", self:areaScreenRect())
     end
@@ -3383,6 +3413,15 @@ function InkAwayView:beginRotate(sel)
 end
 
 function InkAwayView:rotateCentreScreen(op)
+    if op.shape == "poly" then
+        local p = op.pts
+        local minx, miny, maxx, maxy = p[1], p[2], p[1], p[2]
+        for i = 1, #p, 2 do
+            if p[i] < minx then minx = p[i] elseif p[i] > maxx then maxx = p[i] end
+            if p[i + 1] < miny then miny = p[i + 1] elseif p[i + 1] > maxy then maxy = p[i + 1] end
+        end
+        return InkGeom.toScreen(self.view, (minx + maxx) / 2, (miny + maxy) / 2)
+    end
     local x0, y0, x1, y1 = op.pts[1], op.pts[2], op.pts[3], op.pts[4]
     return InkGeom.toScreen(self.view, (x0 + x1) / 2, (y0 + y1) / 2)
 end
@@ -3749,16 +3788,24 @@ function InkAwayView:setSelectionActive(on)
     end
 end
 
--- Select an image. It stays in the ops list; composeInto just skips it by
--- identity (drawn as the overlay instead), so no `hidden` flag ever lands in an
--- undo snapshot. Recompose once so the master no longer shows it at rest.
-function InkAwayView:selectImage(sel)
+-- Select an image. It stays in the ops list and in the master (composeInto only
+-- skips it while it is actively dragged), so picking it up changes NO pixels of
+-- the drawing -- only a frame and corner handles are drawn over its own rectangle.
+-- We therefore refresh just that rectangle, never the whole area: a full-area
+-- flashing refresh on every pick was the black flash when moving in pan mode.
+-- `fresh` = a just-inserted image that is not in the master yet, so bake it in
+-- once (that single insert refresh is expected).
+function InkAwayView:selectImage(sel, fresh)
     if self.active_image and self.active_image.op ~= sel.op then self:finishImageEdit() end
     self.active_image = sel
     self._img_drag = nil
     self:freeImageDisplay()
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    if fresh then
+        self:composeCanvas(); self:renderView()
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+    else
+        self:refreshImageUnion(self:imageScreenRect(), self:imageScreenRect(), "ui")
+    end
 end
 
 -- Finish editing: close the menu, drop the selection, and recompose so the image
@@ -4100,7 +4147,7 @@ function InkAwayView:insertImage(path)
     self.canvas:pushHistory()
     self.canvas.ops[#self.canvas.ops + 1] = op
     self.dirty = true
-    self:selectImage({ op = op, idx = #self.canvas.ops })
+    self:selectImage({ op = op, idx = #self.canvas.ops }, true)   -- fresh: bake it in once
 end
 
 function InkAwayView:chooseImage()

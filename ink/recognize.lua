@@ -7,11 +7,14 @@ coordinates) and returns a NEW flat point path to draw in its place, or nil when
 the stroke is not confidently a straight/piecewise-straight/round shape (a smooth
 curve, a scribble, or handwriting is left exactly as drawn).
 
-Crucially it returns a POINT PATH, not a shape object, so the caller keeps the
-original ink op -- same brush style, width, colour, opacity and symmetry -- and
-only swaps its points. That is what preserves the pen/brush the user drew with
-(shape objects render as plain ink) and lets an arbitrary many-segment stroke be
-straightened as one connected path.
+It returns a POINT PATH so an arbitrary many-segment stroke can be straightened as
+one connected path. When the stroke reads as one of the toolbar primitives (a
+straight line, rectangle, ellipse or triangle) it ALSO returns a second value: a
+compact shape descriptor { shape = "line"|"rect"|"ellipse"|"poly", pts = {..},
+closed = .. }. The caller turns those into a real shape op so they can be tapped,
+moved and edited exactly like a shape drawn from the toolbar; the straightened
+non-primitive paths (an L bend, a general polygon) have no descriptor and stay ink
+ops, keeping the pen/brush the user drew with.
 
 What it produces:
   * a nearly straight stroke                -> one straight line (snapped to
@@ -300,7 +303,8 @@ function Recognize.detect(pts, opts)
 
     -- 1) STRAIGHT LINE
     if gap >= 0.80 * L and maxPerp(pts, fx, fy, lx, ly) <= max(2, 0.08 * gap) then
-        return { snapLine(fx, fy, lx, ly) }
+        local a, b, c, d = snapLine(fx, fy, lx, ly)
+        return { a, b, c, d }, { shape = "line", pts = { a, b, c, d } }
     end
 
     -- 2) CLOSED SHAPES: returns near its start and encloses area.
@@ -308,7 +312,8 @@ function Recognize.detect(pts, opts)
         local cv = closedVertices(pts, max(2, 0.07 * diag))
         local V = #cv / 2
         if V == 4 and nearBoxCorners(cv, x0b, y0b, x1b, y1b, 0.24 * diag) then
-            return { x0b, y0b, x1b, y0b, x1b, y1b, x0b, y1b, x0b, y0b }  -- crisp rectangle
+            return { x0b, y0b, x1b, y0b, x1b, y1b, x0b, y1b, x0b, y0b },  -- crisp rectangle
+                   { shape = "rect", pts = { x0b, y0b, x1b, y1b } }
         end
         local cx, cy = (x0b + x1b) / 2, (y0b + y1b) / 2
         if ellipseError(pts, cx, cy, w / 2, h / 2) <= 0.16 then          -- clean ellipse
@@ -320,10 +325,16 @@ function Recognize.detect(pts, opts)
                 out[#out + 1] = cx + rx * math.cos(a)
                 out[#out + 1] = cy + ry * math.sin(a)
             end
-            return out
+            return out, { shape = "ellipse", pts = { x0b, y0b, x1b, y1b } }
         end
         local tri = triangleSnap(pts, diag)                              -- crisp triangle
-        if tri then return tri end
+        if tri then
+            -- an arbitrary (possibly scalene) triangle: carry its 3 real corners as
+            -- a closed poly shape, so it is not distorted into the toolbar's
+            -- isosceles bounding-box triangle.
+            return tri, { shape = "poly", closed = true,
+                          pts = { tri[1], tri[2], tri[3], tri[4], tri[5], tri[6] } }
+        end
         return cornerPath(pts, diag, true)                               -- general polygon
     end
 
