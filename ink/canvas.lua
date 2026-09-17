@@ -69,6 +69,7 @@ function Canvas:cloneOp(op)
         local p = {}; for i = 1, #op.pts do p[i] = op.pts[i] end; c.pts = p
     end
     if op.color then c.color = { op.color[1], op.color[2], op.color[3] } end
+    if op.fill_color then c.fill_color = { op.fill_color[1], op.fill_color[2], op.fill_color[3] } end
     if op.runs then
         local r = {}; for i = 1, #op.runs do r[i] = op.runs[i] end; c.runs = r
     end

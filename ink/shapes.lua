@@ -174,6 +174,34 @@ function Shapes.render(op, put)
     end
 end
 
+-- Fill just the (closed) interior of a shape with the given span writer, whatever
+-- op.fill says. Used to paint a bucket-filled interior UNDERNEATH the outline, so
+-- a shape can keep its outline colour and carry a separate interior colour.
+function Shapes.fill(op, put)
+    local poly, closed = boundary(op)
+    if closed then fillPolygon(poly, put) end
+end
+
+-- Is point (px,py) strictly inside a CLOSED shape's interior? (Open shapes -- a
+-- line or curve -- have no interior, so always false.) Used to decide whether a
+-- paint-bucket tap lands inside a shape, so the fill can join that shape.
+function Shapes.contains(op, px, py)
+    local poly, closed = boundary(op)
+    if not closed then return false end
+    local n = floor(#poly / 2)
+    local inside = false
+    local jx, jy = poly[2 * n - 1], poly[2 * n]
+    for i = 1, n do
+        local ix, iy = poly[2 * i - 1], poly[2 * i]
+        if ((iy > py) ~= (jy > py)) and
+           (px < (jx - ix) * (py - iy) / (jy - iy) + ix) then
+            inside = not inside
+        end
+        jx, jy = ix, iy
+    end
+    return inside
+end
+
 -- Bounding box {x0,y0,x1,y1} of the shape as actually drawn (rotation and any
 -- arrowheads included).
 function Shapes.bounds(op)

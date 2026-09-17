@@ -1734,7 +1734,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
             elseif op.kind == "image" then
                 self:blitImageInto(dst, op)   -- placed picture, alpha-blended (z-order)
             else
-                local put
+                local put, fill_put
                 if op.kind == "erase" and op.spare_text and reveal_text then
                     put = bgSpanWriter(dst, reveal_text, W, H, nil)  -- reveal page + text (+ images)
                 elseif op.kind == "erase" and not op.ebg and (reveal_pic or bg_bb) then
@@ -1742,7 +1742,12 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                 else
                     put = spanWriter(dst, W, H, self:opColor(op), nil)
                 end
-                Export.paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy))
+                if op.kind == "shape" and op.fill_color and not op.fill then
+                    fill_put = Symmetry.wrap(
+                        spanWriter(dst, W, H, displayColor(op.fill_color, op.fill_alpha or 255), nil),
+                        op.sym, refx, refy)
+                end
+                Export.paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy), fill_put)
             end
         end
     end
@@ -2448,11 +2453,17 @@ function InkAwayView:stampOpIntoCanvas(op)
     if op.kind == "text" then self:stampTextInto(self.canvas_bb, op); return end
     local put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
         self:opColor(op), nil)
+    local fill_put
+    if op.kind == "shape" and op.fill_color and not op.fill then
+        fill_put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
+            displayColor(op.fill_color, op.fill_alpha or 255), nil)
+    end
     if op.sym and op.sym ~= "off" then
         local refx, refy = Symmetry.canvasRefs(self.view.canvas_w, self.view.canvas_h)
         put = Symmetry.wrap(put, op.sym, refx, refy)
+        if fill_put then fill_put = Symmetry.wrap(fill_put, op.sym, refx, refy) end
     end
-    Export.paintGeom(op, put)
+    Export.paintGeom(op, put, fill_put)
 end
 
 -- Give a freshly placed shape op its symmetry mode and, for a line or curve,
@@ -2629,9 +2640,37 @@ function InkAwayView:openFillSettings()
     UIManager:show(dlg)
 end
 
+-- The top-most CLOSED shape whose interior contains a canvas point, or nil.
+function InkAwayView:shapeUnderPoint(cx, cy)
+    for i = #self.canvas.ops, 1, -1 do
+        local op = self.canvas.ops[i]
+        if op.kind == "shape" and Shapes.contains(op, cx, cy) then
+            return { op = op, idx = i }
+        end
+    end
+    return nil
+end
+
 function InkAwayView:doFill(pos)
     self:flushPending()
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
+    -- Tapping inside a shape paints THAT shape's interior: the colour is stored on
+    -- the shape itself (under its outline), so it moves, rotates, duplicates and
+    -- deletes with the shape instead of being left behind. Copy-on-write, so a
+    -- single Undo right after lifts just the fill and restores the empty shape.
+    local shp = self:shapeUnderPoint(cx, cy)
+    if shp then
+        self.canvas:pushHistory()
+        local clone = self.canvas:cloneOp(shp.op)
+        clone.fill_color = { self.fill_color[1], self.fill_color[2], self.fill_color[3] }
+        clone.fill_alpha = self.fill_alpha
+        self.canvas:replaceOp(shp.idx, clone)
+        self.dirty = true
+        self:composeCanvas(); self:renderView()
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:afterCommit()
+        return
+    end
     local gray = Export.buildGray(self.canvas)
     local runs = Fill.compute(gray, self.view.canvas_w, self.view.canvas_h,
         math.floor(cx), math.floor(cy), 40)
@@ -3170,7 +3209,8 @@ function InkAwayView:screenShapeFromOp(op, angle)
         closed = op.closed,
         width = math.max(1, (op.width or 2) * v.zoom),
         arrow = op.arrow, head = op.head and op.head * v.zoom or nil,
-        color = op.color, alpha = op.alpha, pts = sp,
+        color = op.color, alpha = op.alpha,
+        fill_color = op.fill_color, fill_alpha = op.fill_alpha, pts = sp,
     }
 end
 
@@ -3213,6 +3253,13 @@ function InkAwayView:openShapeMenu(sel)
             {
                 { text = "\u{27F3} " .. _("Rotate"),  callback = function() close(); self:beginRotate(sel) end },
                 { text = "\u{21BB} " .. _("90\u{00B0}"), callback = function() close(); self:rotateShape90(sel) end },
+            },
+            {
+                { text = "\u{2194} " .. _("Flip H"),  callback = function() close(); self:flipShape(sel, "h") end },
+                { text = "\u{2195} " .. _("Flip V"),  callback = function() close(); self:flipShape(sel, "v") end },
+            },
+            {
+                { text = "\u{25B2} " .. _("To front"),  callback = function() close(); self:shapeToFront(sel) end },
                 { text = "\u{29C9} " .. _("Duplicate"), callback = function() close(); self:duplicateSelected(sel) end },
             },
             {
@@ -3338,6 +3385,39 @@ function InkAwayView:duplicateSelected(sel)
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
     self:openShapeMenu(self.selected)
+end
+
+-- Flip the selected shape across the middle of its own bounding box (mirrors the
+-- image Flip H / Flip V). Reflecting the defining points and negating the rotation
+-- angle mirrors the shape exactly, whatever its rotation.
+function InkAwayView:flipShape(sel, axis)
+    self:applyEdit(sel, function(o)
+        local p = o.pts
+        local start = axis == "h" and 1 or 2   -- x's are odd indices, y's even
+        local lo, hi = p[start], p[start]
+        for i = start, #p, 2 do
+            if p[i] < lo then lo = p[i] elseif p[i] > hi then hi = p[i] end
+        end
+        local s = lo + hi
+        for i = start, #p, 2 do p[i] = s - p[i] end
+        o.angle = -(o.angle or 0)
+    end)
+    self:openShapeMenu(sel)
+end
+
+-- Move the selected shape to the top of the stack, so later marks no longer cover
+-- it (mirrors the image To front). Reordering the array is snapshot-safe.
+function InkAwayView:shapeToFront(sel)
+    local ops = self.canvas.ops
+    if sel.idx >= #ops then self:openShapeMenu(sel); return end
+    self.canvas:pushHistory()
+    local op = table.remove(ops, sel.idx)
+    ops[#ops + 1] = op
+    sel.idx = #ops
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:openShapeMenu(sel)
 end
 
 -- Nudge the selected shape by (dx,dy) canvas px (a grid step, or a few px).
@@ -3899,6 +3979,24 @@ function InkAwayView:imageToFront(sel)
     self:openImageMenu(sel)
 end
 
+-- Duplicate the selected image, offset a little, and select the copy (mirrors the
+-- shape Duplicate). The pixels are shared by path -- only the box is copied -- so a
+-- duplicate costs no extra image memory.
+function InkAwayView:duplicateImage(sel)
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(sel.op)
+    local d = self.grid_on and self.grid_size or 14
+    clone.x = clone.x + d; clone.y = clone.y + d
+    self.canvas.ops[#self.canvas.ops + 1] = clone
+    self.active_image = { op = clone, idx = #self.canvas.ops }
+    self._img_drag = nil
+    self:freeImageDisplay()
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:openImageMenu(self.active_image)
+end
+
 -- Free rotation: like the shape rotate, drag anywhere to spin the picture to any
 -- angle; a live preview follows the finger, and the angle is committed on lift.
 function InkAwayView:beginImageRotate(sel)
@@ -3967,8 +4065,12 @@ function InkAwayView:openImageMenu(sel)
                 { text = "\u{2195} " .. _("Flip V"),  callback = function() close(); self:flipImage(sel, "v") end },
             },
             {
-                { text = "\u{25B2} " .. _("To front"), callback = function() close(); self:imageToFront(sel) end },
-                { text = "\u{2715} " .. _("Delete"),   callback = function() close(); self:deleteActiveImage() end },
+                { text = "\u{25B2} " .. _("To front"),  callback = function() close(); self:imageToFront(sel) end },
+                { text = "\u{29C9} " .. _("Duplicate"), callback = function() close(); self:duplicateImage(sel) end },
+            },
+            {
+                { text = "\u{2715} " .. _("Delete"), callback = function() close(); self:deleteActiveImage() end },
+                { text = _("Done"), callback = function() close(); self:finishImageEdit() end },
             },
         },
     }
@@ -5571,26 +5673,36 @@ function InkAwayView:paintTo(bb, x, y)
     -- live shape preview drawn on top of the (untouched) drawing, clipped to
     -- the area so it never spills onto the toolbar
     if self.shape_preview then
-        local color = displayColor(self.shape_preview.color, self.shape_preview.alpha)
         local sw = self.screen_w
         local cy0, cy1 = y + v.area_y, y + v.area_y + v.area_h
-        local put = function(px, py, len)
-            py = py + y
-            if py < cy0 or py >= cy1 then return end
-            px = px + x
-            if px < x then len = len + (px - x); px = x end
-            if px + len > x + sw then len = x + sw - px end
-            if len > 0 then bb:paintRect(px, py, len, 1, color) end
+        local mirror = self.symmetry ~= "off"
+        local axsx, axsy
+        if mirror then
+            axsx = v.area_x + (v.canvas_w / 2 - v.pan_x) * v.zoom
+            axsy = v.area_y + (v.canvas_h / 2 - v.pan_y) * v.zoom
         end
-        -- mirror the preview too, so a symmetric shape shows before it is placed
-        if self.symmetry ~= "off" then
-            local axsx = v.area_x + (v.canvas_w / 2 - v.pan_x) * v.zoom
-            local axsy = v.area_y + (v.canvas_h / 2 - v.pan_y) * v.zoom
-            put = Symmetry.wrap(put, self.symmetry,
-                function(px, len) return 2 * axsx - px - len end,
-                function(py) return 2 * axsy - py end)
+        local function makePut(color)
+            local put = function(px, py, len)
+                py = py + y
+                if py < cy0 or py >= cy1 then return end
+                px = px + x
+                if px < x then len = len + (px - x); px = x end
+                if px + len > x + sw then len = x + sw - px end
+                if len > 0 then bb:paintRect(px, py, len, 1, color) end
+            end
+            -- mirror the preview too, so a symmetric shape shows before it is placed
+            if mirror then
+                put = Symmetry.wrap(put, self.symmetry,
+                    function(px, len) return 2 * axsx - px - len end,
+                    function(py) return 2 * axsy - py end)
+            end
+            return put
         end
-        Shapes.render(self.shape_preview, put)
+        local sp = self.shape_preview
+        if sp.fill_color and not sp.fill then
+            Shapes.fill(sp, makePut(displayColor(sp.fill_color, sp.fill_alpha)))
+        end
+        Shapes.render(sp, makePut(displayColor(sp.color, sp.alpha)))
     end
 
     -- export-area selection: dim the page and draw the chosen rectangle

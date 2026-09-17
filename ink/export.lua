@@ -84,8 +84,10 @@ function Export.drawFooter(buf, ow, oh, text, lvl)
 end
 
 -- Draw an op's geometry through `put` (shapes, fills and strokes all share this).
-local function paintGeom(op, put)
+local function paintGeom(op, put, fill_put)
     if op.kind == "shape" then
+        -- a bucket-filled interior (its own colour), painted under the outline
+        if fill_put and op.fill_color and not op.fill then Shapes.fill(op, fill_put) end
         Shapes.render(op, put)
     elseif op.kind == "fill" then
         Fill.render(op, put)
@@ -131,14 +133,20 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
             -- view injects (Export.image_raster), same idea as text.
             if image_put and not op.hidden then image_put(op) end
         else
-            local put
+            local put, fill_put
             if op.kind == "erase" then
                 put = erase_put_for(op)
             else
                 local r, g, b = opRGB(op)
                 put = ink_put(r, g, b, op.alpha or 255)
+                if op.kind == "shape" and op.fill_color and not op.fill then
+                    local fc = op.fill_color
+                    fill_put = Symmetry.wrap(
+                        ink_put(fc[1] or 0, fc[2] or 0, fc[3] or 0, op.fill_alpha or 255),
+                        op.sym, refx, refy)
+                end
             end
-            paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy))
+            paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy), fill_put)
         end
     end
 end
