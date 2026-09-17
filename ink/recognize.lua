@@ -246,6 +246,39 @@ local function cornerPath(pts, diag, closed)
     return toFlat(v, closed)
 end
 
+-- Twice the (unsigned) area of triangle a-b-c.
+local function triArea2(a, b, c)
+    return abs((b[1] - a[1]) * (c[2] - a[2]) - (c[1] - a[1]) * (b[2] - a[2]))
+end
+
+-- Snap a closed stroke to a clean triangle by keeping the 3 corners that enclose
+-- the most area (which are the real corners even when a wobbly or overshooting
+-- corner adds stray vertices), then verifying those 3 straight edges still hug the
+-- whole stroke. Returns a closed 3-corner path, or nil when it is not a triangle.
+local function triangleSnap(pts, diag)
+    local v = toVerts(closedVertices(pts, max(2, 0.03 * diag)))
+    local n = #v
+    if n < 3 then return nil end
+    -- the 3 corners forming the largest-area triangle, kept in loop order (i<j<k)
+    local bi, bj, bk, barea = nil, nil, nil, -1
+    for i = 1, n - 2 do
+        for j = i + 1, n - 1 do
+            for k = j + 1, n do
+                local a = triArea2(v[i], v[j], v[k])
+                if a > barea then barea, bi, bj, bk = a, i, j, k end
+            end
+        end
+    end
+    if not bi then return nil end
+    local tv = { v[bi], v[bj], v[bk] }
+    -- a real triangle, not a near-straight degenerate one (a line handles that)...
+    if barea < 0.05 * diag * diag then return nil end
+    -- ...and its 3 edges must still capture the whole stroke (else it is a quad,
+    -- pentagon, curve, etc., where a 4th corner would stick out).
+    if polyFaithful(pts, tv, true) > 0.075 * diag then return nil end
+    return toFlat(tv, true)
+end
+
 -- pts: flat {x,y,...} canvas coordinates of a finished stroke.
 -- opts.min_size: ignore strokes smaller than this (canvas px). Defaults to 28.
 function Recognize.detect(pts, opts)
@@ -289,6 +322,8 @@ function Recognize.detect(pts, opts)
             end
             return out
         end
+        local tri = triangleSnap(pts, diag)                              -- crisp triangle
+        if tri then return tri end
         return cornerPath(pts, diag, true)                               -- general polygon
     end
 
