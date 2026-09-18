@@ -446,6 +446,10 @@ function InkAwayView:init()
     -- events) and ignore finger touches while the pen is down, so a resting palm
     -- never marks the page. Off by default and a no-op on finger-only devices.
     self.palm_reject = self:getSetting("inkaway_palm_reject", false) and true or false
+    -- TEMP diagnostic for the palm-rejection prerelease (shows an on-screen note
+    -- when the pen is first detected). Remove/flip default to false once palm
+    -- rejection is confirmed working on real pen hardware.
+    self.pen_debug   = self:getSetting("inkaway_pen_debug", true) and true or false
     self._pen_state  = Stylus.new()
     self._reject_finger = false   -- true while the pen is down (plus a short lift debounce)
     self._pen_clear  = function() self._reject_finger = false end
@@ -3099,11 +3103,23 @@ function InkAwayView:openGuides()
            callback = function() tog("inkaway_snap_angle", "snap_angle") end }},
         {{ text = _("Shape assist: ") .. onoff(self.shape_assist),
            callback = function() tog("inkaway_shape_assist", "shape_assist") end }},
-        {{ text = _("Palm rejection (pen): ") .. onoff(self.palm_reject),
+        {{ text = _("Palm rejection (pen): ") .. onoff(self.palm_reject)
+                  .. (self:penCapable() and "" or _(" (needs newer KOReader)")),
            callback = function()
                self.palm_reject = not self.palm_reject
                self:setSetting("inkaway_palm_reject", self.palm_reject)
                self:applyPalmReject()
+               -- Needs the stylus input support KOReader added in 2026.07; older
+               -- builds have no way to see the pen, so say so instead of silently
+               -- doing nothing.
+               if self.palm_reject and not self:penCapable() then
+                   UIManager:show(InfoMessage:new{ text = _(
+                       "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+               elseif self.palm_reject and self.pen_debug then
+                   -- TEMP diagnostic: confirm the pen hook registered on this device
+                   UIManager:show(InfoMessage:new{ text = _(
+                       "Palm rejection on. The pen hook is registered. Draw with the pen: you should see a one-time 'pen detected' note. If the pen still acts like a finger and no note appears, the pen is not reaching the plugin.") })
+               end
                UIManager:close(dlg); self:openGuides()
            end }},
         {{ text = string.format(_("Stabilizer: %d"), self.stabilizer),
@@ -4366,6 +4382,16 @@ end
 -- touch / pan / release on the drawing.
 function InkAwayView:onStylusSlot(_, slot)
     if not self.palm_reject or self.closing then return false end
+    -- DIAGNOSTIC (prerelease): prove, on-device, that the pen actually reaches this
+    -- callback. Shows once per session on the first stylus event. If a tester turns
+    -- palm rejection on, draws with the pen, and never sees this, the pen is not
+    -- being routed to the plugin at all (a device/KOReader issue, not our logic).
+    if self.pen_debug and not self._pen_seen then
+        self._pen_seen = true
+        UIManager:show(InfoMessage:new{ text = string.format(
+            "Ink Away pen detected: tool=%s id=%s x=%s y=%s",
+            tostring(slot.tool), tostring(slot.id), tostring(slot.x), tostring(slot.y)) })
+    end
     local action = Stylus.step(self._pen_state, slot.id)
     if action == "down" then
         self:penDown(slot)
