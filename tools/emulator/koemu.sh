@@ -35,6 +35,7 @@ device_spec() {
         paperwhite5)       echo "1236 1648 300 1" ;;  # PW 6.8in
         oasis)             echo "1264 1680 300 1" ;;
         scribe)            echo "1860 2480 300 1" ;;  # 10.2in, pen
+        fit)               echo "680 920 227 1" ;;    # Paperwhite-shaped, fits a laptop screen whole
         colorsoft)         echo "1264 1680 300 0" ;;  # Kindle Colorsoft (Kaleido)
         kobo-clara)        echo "1072 1448 300 1" ;;
         clara-colour)      echo "1072 1448 300 0" ;;  # Kobo Clara Colour
@@ -49,7 +50,7 @@ device_spec() {
     esac
 }
 
-DEVICES="kindle-basic paperwhite paperwhite5 oasis scribe colorsoft \
+DEVICES="kindle-basic paperwhite paperwhite5 oasis scribe fit colorsoft \
 kobo-clara clara-colour kobo-libra libra-colour kobo-sage kobo-elipsa \
 kobo-forma kobo-aura-one hidpi"
 
@@ -141,7 +142,22 @@ cmd_run() {
     [ -e "$sandbox/Welcome.txt" ] || printf 'Ink Away emulator sandbox.\n\nThe file browser opens here so the emulator never shows your real files.\nExported drawings save under the KOReader folder (ink away/drawings).\n' > "$sandbox/Welcome.txt"
     local mono_env=""
     [ "$mono" = 1 ] && mono_env="INKAWAY_FORCE_MONO=1"
-    ( cd "$KO_DIR" && env XDG_DOCUMENTS_DIR="$sandbox" $mono_env ./kodev run -W "$w" -H "$h" -D "$dpi" "$sandbox" )
+    # Place the window on-screen. KOReader repositions its SDL window from
+    # KOREADER_WINDOW_POS_X/Y (the SDL_* vars are ignored). Centre it horizontally
+    # on the main display and pin it near the top so the most of a tall device
+    # shows. Override with KOEMU_WIN_X / KOEMU_WIN_Y.
+    local desk_w; desk_w="$(osascript -e 'tell application "Finder" to get item 3 of (get bounds of window of desktop)' 2>/dev/null)"
+    [ -n "$desk_w" ] || desk_w=1440
+    local pos_x="${KOEMU_WIN_X:-$(( (desk_w - w) / 2 ))}"
+    [ "$pos_x" -lt 0 ] 2>/dev/null && pos_x=0
+    local pos_y="${KOEMU_WIN_Y:-28}"
+    if [ "$h" -gt 900 ]; then
+        warn "This device is ${h}px tall; your screen can't show it whole -- the bottom will be clipped. Use '$0 run fit' to see the full layout."
+    fi
+    ( cd "$KO_DIR" && env XDG_DOCUMENTS_DIR="$sandbox" \
+        KOREADER_WINDOW_POS_X="$pos_x" KOREADER_WINDOW_POS_Y="$pos_y" \
+        INKAWAY_AUTOOPEN=1 INKAWAY_AUTOSHEET="${INKAWAY_AUTOSHEET:-}" \
+        $mono_env ./kodev run -W "$w" -H "$h" -D "$dpi" "$sandbox" )
 }
 
 # --- dispatch ---------------------------------------------------------------

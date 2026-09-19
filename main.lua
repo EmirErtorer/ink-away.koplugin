@@ -28,6 +28,13 @@ end
 function InkAway:init()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
+    -- Dev hook: with INKAWAY_AUTOOPEN set (the emulator launcher does this) drop
+    -- straight into the canvas so UI work needs no menu navigation. A no-op on a
+    -- real device, where the env var is never set. Guarded so it fires once.
+    if os.getenv("INKAWAY_AUTOOPEN") and not InkAway._autoopened then
+        InkAway._autoopened = true
+        UIManager:scheduleIn(1.2, function() self:openCanvas() end)
+    end
 end
 
 function InkAway:addToMainMenu(menu_items)

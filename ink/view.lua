@@ -65,6 +65,7 @@ local Template = require("ink/template")
 local Text = require("ink/text")
 local Recognize = require("ink/recognize")
 local Stylus = require("ink/stylus")
+local InkSheet = require("ink/sheet")
 -- ui/font and ui/rendertext are required lazily (only when a text box is used)
 -- so the pure-Lua headless tests can still load this module.
 
@@ -97,6 +98,17 @@ end
 
 local WHITE = Blitbuffer.COLOR_WHITE
 local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
+-- Flagship UI greys (e-ink grayscale): a soft selection pill and a hairline.
+local PILL_GREY = Blitbuffer.ColorRGB32(0xD6, 0xD6, 0xD6, 0xFF)
+local HAIRLINE  = Blitbuffer.ColorRGB32(0xCC, 0xCC, 0xCC, 0xFF)
+-- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
+-- (it paints opaque), so instead of a see-through charcoal box we use a light,
+-- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
+-- floating control rather than a heavy solid button, and its auto-hide (melting
+-- away as the pen draws near) is what actually keeps the canvas reachable.
+local FAB_FILL   = Blitbuffer.ColorRGB32(0xF0, 0xF0, 0xF0, 0xFF)
+local FAB_BORDER = Blitbuffer.ColorRGB32(0xB4, 0xB4, 0xB4, 0xFF)
+local FAB_GLYPH  = Blitbuffer.ColorRGB32(0x33, 0x34, 0x36, 0xFF)
 
 -- Map a grid/ruling strength (1..100) to a grey level: faint at low values,
 -- solid black at 100, so a guide can be a whisper or as dark as drawn ink.
@@ -503,6 +515,19 @@ function InkAwayView:init()
     -- into at most one small refresh per interval, so the e-ink panel is never
     -- flooded (which on device froze it mid-refresh).
     self._sel_refresh_tick = function() self:selRefreshNow() end
+    -- Bring the floating controls back once drawing near them has stopped.
+    self._show_zoom_fab = function()
+        if self._zoom_hidden then
+            self._zoom_hidden = false
+            self:refreshFabRegion(self:fabRect("zoom"))
+        end
+    end
+    self._show_bar_toggle = function()
+        if self._bar_toggle_hidden then
+            self._bar_toggle_hidden = false
+            self:refreshFabRegion(self:fabRect("bar"))
+        end
+    end
     -- Let the exporter render text ops (it has no fonts of its own).
     Export.text_raster = function(op) return self:exportTextRaster(op) end
     -- ...and placed images (it has no image decoder either).
@@ -516,7 +541,11 @@ function InkAwayView:init()
         zoom = 1, pan_x = 0, pan_y = 0,
     }
     self.zoom_min = InkGeom.fitZoom(self.view)
-    self.view.zoom = self.zoom_min              -- start fitted to the page
+    -- Start filling the full width of the drawing area (no side letterbox), so the
+    -- whole screen is paintable. The page is as wide as the screen, so this is 1:1;
+    -- any part taller than the visible area is reachable by panning or by hiding the
+    -- toolbar. zoom_min (fit-to-page) stays the lower bound for pinch-zooming out.
+    self.view.zoom = math.max(self.zoom_min, self.view.area_w / self.view.canvas_w)
     InkGeom.clampPan(self.view)
 
     -- self[1] lets gesture events propagate to the toolbar buttons; the actual
@@ -538,6 +567,8 @@ function InkAwayView:init()
             IaHold       = { GestureRange:new{ ges = "hold",         range = full } },
             IaTwoPan     = { GestureRange:new{ ges = "two_finger_pan", range = full } },
             IaTwoPanRel  = { GestureRange:new{ ges = "two_finger_pan_release", range = full } },
+            IaPinch      = { GestureRange:new{ ges = "pinch",  range = full } },
+            IaSpread     = { GestureRange:new{ ges = "spread", range = full } },
         }
     end
     if Device:hasKeys() then
@@ -560,6 +591,15 @@ function InkAwayView:init()
     self:renderView()
     self:scheduleAutosave()
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
+    -- Dev hook (emulator only): auto-open a named options sheet so UI work can be
+    -- screenshotted without driving the mouse. No-op on device.
+    local autosheet = os.getenv("INKAWAY_AUTOSHEET")
+    if autosheet then
+        UIManager:scheduleIn(0.7, function()
+            if autosheet == "pen" then self:openPenSettings()
+            elseif autosheet == "eraser" then self:openEraserSettings() end
+        end)
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -676,6 +716,8 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
+    if self._show_zoom_fab then UIManager:unschedule(self._show_zoom_fab) end
+    if self._show_bar_toggle then UIManager:unschedule(self._show_bar_toggle) end
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
     if self.active_image then self:finishImageEdit() end       -- bake a selected image
     self.selected, self.shape_move = nil, nil
@@ -685,7 +727,7 @@ function InkAwayView:onCloseWidget()
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_pen_sheet", "_shape_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -713,7 +755,10 @@ end
 
 function InkAwayView:buildToolbar()
     local specs = {
-        -- tapping a tool when it is already active opens its settings
+        -- First tap selects the tool (so you can draw/type right away with the
+        -- current settings); tapping it again, while already active, opens its
+        -- options. The options use KOReader's standard ButtonDialog, which renders
+        -- and takes taps identically on every device.
         { id = "pen",   label = _("Pen"),   tool = true, cb = function()
             if self.tool == "pen" then self:openPenSettings() else self:setTool("pen") end
         end },
@@ -724,12 +769,15 @@ function InkAwayView:buildToolbar()
             self:setTool("shape"); self:openShapePicker()
         end },
         { id = "text",  label = _("Text"),  tool = true, cb = function()
-            -- tapping Text while a box is open finishes it (and closes the keyboard)
-            if self.editing_text then self:finishTextEdit(true) else self:setTool("text") end
+            -- tapping Text while a box is open finishes it (and closes the keyboard);
+            -- once the tool is active, a second tap opens the font & size options
+            if self.editing_text then self:finishTextEdit(true)
+            elseif self.tool == "text" then self:openTextSettings()
+            else self:setTool("text") end
         end },
+        -- quick access to placing an image, instead of digging into Settings
+        { id = "image", label = _("Image"), cb = function() self:chooseImage() end },
         { id = "pan",   label = _("Pan"),   tool = true, cb = function() self:setTool("pan") end },
-        { id = "zoomout", label = "\u{2212}", cb = function() self:zoomStep(-1) end },  -- minus
-        { id = "zoomin",  label = "+",        cb = function() self:zoomStep(1) end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
         { id = "redo",  label = _("Redo"),  cb = function() self:redo() end },
         { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
@@ -738,13 +786,16 @@ function InkAwayView:buildToolbar()
     }
     -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
     local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",
-        pan = "pan", zoomout = "zoomout", zoomin = "zoomin", undo = "undo", redo = "redo",
-        menu = "menu", save = "save", exit = "exit" }
+        image = "image", pan = "pan",
+        undo = "undo", redo = "redo", menu = "menu", save = "save", exit = "exit" }
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
     -- a compact bar: the icons carry the meaning, so the buttons are short
     local bar_h = math.max(Screen:scaleBySize(30), math.min(Screen:scaleBySize(44), math.floor(btn_w * 0.7)))
+    self._btn_w, self._bar_h = btn_w, bar_h   -- for the active-tool pill in paintTo
+    -- centre of the last (Exit) button, so the collapse chevron lines up under it
+    self._last_btn_center = math.floor(btn_w * (n - 1) + (Screen:getWidth() - btn_w * (n - 1)) / 2)
     -- large icons that read clearly, but with enough margin that the (square)
     -- icon never reaches the rounded corners of the button
     local isz = math.max(16, math.floor(bar_h * 0.82))
@@ -757,16 +808,34 @@ function InkAwayView:buildToolbar()
         -- Button paints and repaints it itself -- including its tap feedback, which
         -- for an icon (text-less) Button just inverts and restores the region. That
         -- is why the icon no longer vanishes on press (an overdrawn overlay would).
+        -- Guard every tool action: if a callback ever errors, catch it so the
+        -- Button's tap feedback still un-inverts (no dead black button) and the
+        -- reader sees what went wrong instead of a menu that silently won't open.
+        local raw_cb = s.cb
+        local guarded_cb = function()
+            local ok, err = xpcall(raw_cb, debug.traceback)
+            if not ok then
+                logger.warn("Ink Away toolbar '" .. s.id .. "' failed: " .. tostring(err))
+                UIManager:show(InfoMessage:new{
+                    text = _("Something went wrong opening that tool. Please report this.") ..
+                        "\n\n" .. tostring(err):match("[^\n]*") })
+            end
+        end
         local b = Button:new{
             icon = "inkaway." .. ICON[s.id],
             icon_width = isz,
             icon_height = isz,
-            callback = s.cb,
+            callback = guarded_cb,
             width = w,
             height = bar_h,
-            bordersize = Size.border.default,   -- a real border so it reads as a button
-            radius = Screen:scaleBySize(5),
-            margin = Size.margin.small,
+            -- Borderless icons on a clean bar: no per-button boxes. The active tool
+            -- is shown by a filled rounded pill = that button's own grey background
+            -- (set in updateToolbarActive), inset by the margin so it reads as a
+            -- pill rather than a full-cell block.
+            bordersize = 0,
+            radius = Screen:scaleBySize(9),
+            background = nil,
+            margin = Screen:scaleBySize(4),
             padding = 0,
             show_parent = self,
         }
@@ -793,17 +862,31 @@ function InkAwayView:buildToolbar()
         row[i] = b
     end
     self.toolbar = FrameContainer:new{
-        background = WHITE,
+        background = nil,   -- transparent bar; the screen's white shows through
         bordersize = 0,
         padding = 0,
         margin = 0,
         HorizontalGroup:new(row),
     }
+    self:updateToolbarActive()   -- give the current tool its pill
+end
+
+-- Show the active tool with a grey rounded pill: its button's own frame
+-- background. Inactive tool buttons and the plain actions stay transparent.
+function InkAwayView:updateToolbarActive()
+    if not self._toolbar_icons then return end
+    local active = (self.tool == "fill") and "shape" or self.tool
+    for _, e in ipairs(self._toolbar_icons) do
+        if e.tool and e.button and e.button.frame then
+            e.button.frame.background = (e.id == active) and PILL_GREY or nil
+        end
+    end
 end
 
 -- The active tool is shown by a short underline drawn in paintTo, so a tool
 -- change only needs the toolbar area repainted.
 function InkAwayView:refreshToolLabels()
+    self:updateToolbarActive()   -- move the pill to the current tool
     UIManager:setDirty(self, "ui", self.toolbar and self.toolbar.dimen or nil)
 end
 
@@ -826,8 +909,8 @@ function InkAwayView:ensureUserIcons()
         local dst_dir = DataStorage:getDataDir() .. "/icons"
         if lfs.attributes(dst_dir, "mode") ~= "directory" then lfs.mkdir(dst_dir) end
         local src_dir = self:pluginDir() .. "ink/icons/"
-        for _, name in ipairs({ "pen", "eraser", "shape", "text", "pan", "zoomin",
-                                "zoomout", "undo", "redo", "menu", "save", "exit" }) do
+        for _, name in ipairs({ "pen", "eraser", "shape", "text", "image", "pan",
+                                "undo", "redo", "menu", "save", "exit" }) do
             local src = src_dir .. name .. ".svg"
             local dst = dst_dir .. "/inkaway." .. name .. ".svg"
             local sa, da = lfs.attributes(src), lfs.attributes(dst)
@@ -844,22 +927,12 @@ function InkAwayView:ensureUserIcons()
     return ok
 end
 
--- Draw the active-tool underline on top of the toolbar buttons, using each
--- button's painted rect so it stays aligned at any size. (The icons themselves
--- are painted by the Buttons.)
+-- A hairline under the toolbar, painted on top after the icons, separating the
+-- bar from the canvas.
 function InkAwayView:drawToolbarIcons(bb)
-    if not self._toolbar_icons then return end
-    local active = (self.tool == "fill") and "shape" or self.tool
-    local BLACKC = Blitbuffer.COLOR_BLACK
-    for _, e in ipairs(self._toolbar_icons) do
-        local d = e.button.dimen
-        if d and e.tool and e.id == active then
-            local uw = math.floor(d.w * 0.44)
-            local uh = math.max(2, math.floor(d.h * 0.07))
-            bb:paintRect(math.floor(d.x + (d.w - uw) / 2),
-                math.floor(d.y + d.h - uh - math.floor(d.h * 0.10)), uw, uh, BLACKC)
-        end
-    end
+    if not self._bar_h then return end
+    local y = (self.dimen and self.dimen.y or 0) + self._bar_h - 1
+    bb:paintRect(0, y, self.screen_w, 1, HAIRLINE)
 end
 
 function InkAwayView:setTool(tool)
@@ -979,11 +1052,119 @@ end
 
 -- Pen settings popup: size and opacity together, plus shade and (on colour
 -- screens) colour swatches. Rebuilt and reshown whenever something changes.
+-- The Pen options as a premium bottom sheet (colour, width, style, opacity, and
+-- the stroke aids), replacing the stacked ButtonDialog.
+function InkAwayView:openPenSheet()
+    if self._pen_sheet then UIManager:close(self._pen_sheet); self._pen_sheet = nil end
+    local function CRGB(rgb) return Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF) end
+    local function same(a, b) return a and b and a[1] == b[1] and a[2] == b[2] and a[3] == b[3] end
+    local WMIN, WMAX = 1, 60
+    local sheet
+    local function build()
+        local c = {}
+        local sw = {}
+        for _, s in ipairs(SHADES) do sw[#sw + 1] = { c = CRGB(s.rgb), sel = same(self.pen_color, s.rgb) } end
+        c[#c + 1] = { kind = "swatches", items = sw, rgb = self:colorScreen(), on_pick = function(i)
+            if i == "rgb" then UIManager:close(sheet); self._pen_sheet = nil; self:openColorPicker(); return end
+            self.pen_color = { SHADES[i].rgb[1], SHADES[i].rgb[2], SHADES[i].rgb[3] }
+            sheet:rebuild(); sheet:refresh()
+        end }
+        c[#c + 1] = { kind = "sliders2",
+            left = { label = _("WIDTH"), right = string.format("%d px", self.pen_width),
+                val = (self.pen_width - WMIN) / (WMAX - WMIN), on_set = function(v)
+                    self.pen_width = math.floor(WMIN + v * (WMAX - WMIN) + 0.5); sheet:rebuild(); sheet:refresh()
+                end },
+            right = { label = _("OPACITY"), right = string.format("%d%%", math.floor(self.pen_alpha / 255 * 100 + 0.5)),
+                val = self.pen_alpha / 255, on_set = function(v)
+                    self.pen_alpha = math.max(1, math.min(255, math.floor(v * 255 + 0.5))); sheet:rebuild(); sheet:refresh()
+                end } }
+        local chips, menu = {}, Brushes.menu(function(k) return self:getSetting(k) end)
+        for _, s in ipairs(menu) do chips[#chips + 1] = { t = s.label, sel = (self.pen_style == s.key), key = s.key } end
+        c[#c + 1] = { kind = "chips", items = chips, on_pick = function(i)
+            self.pen_style = chips[i].key; self:setSetting("inkaway_pen_style", chips[i].key); sheet:rebuild(); sheet:refresh()
+        end }
+        c[#c + 1] = { kind = "divider" }
+        c[#c + 1] = { kind = "pilltoggles", items = {
+            { t = _("Shape assist"), on = self.shape_assist, cb = function()
+                self.shape_assist = not self.shape_assist; self:setSetting("inkaway_shape_assist", self.shape_assist); sheet:rebuild(); sheet:refresh()
+            end },
+            { t = _("Palm reject"), on = self.palm_reject, cb = function()
+                self.palm_reject = not self.palm_reject; self:setSetting("inkaway_palm_reject", self.palm_reject); self:applyPalmReject()
+                sheet:rebuild(); sheet:refresh()
+            end },
+        } }
+        c[#c + 1] = { kind = "slider", label = _("STABILIZER"), right = tostring(self.stabilizer),
+            val = self.stabilizer / 100, on_set = function(v)
+                self.stabilizer = math.floor(v * 100 + 0.5); self:setSetting("inkaway_stabilizer", self.stabilizer); sheet:rebuild(); sheet:refresh()
+            end }
+        if not self:penCapable() then
+            c[#c + 1] = { kind = "caption", text = _("Palm rejection needs KOReader 2026.07 or newer") }
+        end
+        return c
+    end
+    sheet = InkSheet:new{ title = _("Pen"), on_close = function() self._pen_sheet = nil end }
+    sheet.title_draw = function(bb, x, y, w, h)
+        -- a small wavy stroke preview, matching the flagship mock
+        local th = math.max(3, math.min(Screen:scaleBySize(9), math.floor(self.pen_width * 0.5)))
+        local r = math.floor(th / 2)
+        local cy = y + math.floor(h / 2)
+        local amp = math.floor(h / 2) - r - Screen:scaleBySize(1)
+        local col = CRGB(self.pen_color)
+        local prev
+        for i = 0, w do
+            local py = cy + math.floor(amp * math.sin(i / w * math.pi * 3))
+            -- stamp only when we move to a new pixel column/row to avoid redundant fills
+            if not prev or prev ~= py or i == w then
+                bb:paintRoundedRect(x + i - r, py - r, th, th, col, r)
+                prev = py
+            end
+        end
+    end
+    sheet.rebuild = function() sheet.controls = build(); sheet:layout() end
+    sheet:rebuild()
+    self._pen_sheet = sheet
+    UIManager:show(sheet)
+end
+
+-- The Eraser options as a bottom sheet: size + what it erases.
+function InkAwayView:openEraserSheet()
+    if self._pen_sheet then UIManager:close(self._pen_sheet); self._pen_sheet = nil end
+    local EMIN, EMAX = 4, 120
+    local sheet
+    local function build()
+        local c = {}
+        c[#c + 1] = { kind = "preview", draw = function(bb, x, y, w, h)
+            local r = math.max(Screen:scaleBySize(7), math.min(math.floor(h / 2) - Screen:scaleBySize(8), math.floor(self.eraser_width * 0.45)))
+            local cx, cy = x + math.floor(w / 2), y + math.floor(h / 2)
+            bb:paintBorder(cx - r, cy - r, 2 * r, 2 * r, math.max(1, Screen:scaleBySize(2)), Blitbuffer.ColorRGB32(0x8A, 0x8D, 0x91, 0xFF), r)
+        end }
+        c[#c + 1] = { kind = "slider", label = _("SIZE"), right = string.format("%d px", self.eraser_width),
+            val = (self.eraser_width - EMIN) / (EMAX - EMIN), on_set = function(v)
+                self.eraser_width = math.floor(EMIN + v * (EMAX - EMIN) + 0.5); sheet:rebuild(); sheet:refresh()
+            end }
+        c[#c + 1] = { kind = "toggles", items = {
+            { t = _("Erase pictures"), on = self.erase_bg, cb = function()
+                self.erase_bg = not self.erase_bg; self:setSetting("inkaway_erase_bg", self.erase_bg); sheet:rebuild(); sheet:refresh()
+            end } } }
+        c[#c + 1] = { kind = "toggles", items = {
+            { t = _("Protect text"), on = self.text_erase_protect, cb = function()
+                self.text_erase_protect = not self.text_erase_protect; self:setSetting("inkaway_text_erase_protect", self.text_erase_protect); sheet:rebuild(); sheet:refresh()
+            end } } }
+        return c
+    end
+    sheet = InkSheet:new{ title = _("Eraser"), on_close = function() self._pen_sheet = nil end }
+    sheet.rebuild = function() sheet.controls = build(); sheet:layout() end
+    sheet:rebuild()
+    self._pen_sheet = sheet
+    UIManager:show(sheet)
+end
+
 function InkAwayView:openPenSettings()
     local ButtonDialog = require("ui/widget/buttondialog")
     if self._pen_dialog then UIManager:close(self._pen_dialog) end
 
     local pct = math.floor(self.pen_alpha / 255 * 100 + 0.5)
+    local function onoff(b) return b and _("on") or _("off") end
     local buttons = {}
 
     -- size + opacity, opened together in a precise slider dialog
@@ -1037,6 +1218,38 @@ function InkAwayView:openPenSettings()
         buttons[#buttons + 1] = {{ text = _("Custom colour\u{2026} (wheel)"),
             callback = function() UIManager:close(self._pen_dialog); self:openColorPicker() end }}
     end
+
+    -- Assist: the stroke aids belong with the pen, where the hand is, not buried
+    -- in Settings. Shape assist beautifies a freehand stroke; the stabilizer
+    -- smooths wobble; palm rejection (a pen device) ignores a resting hand.
+    buttons[#buttons + 1] = {{ text = _("Assist"), enabled = false }}
+    buttons[#buttons + 1] = {
+        { text = _("Shape assist: ") .. onoff(self.shape_assist),
+          callback = function()
+              self.shape_assist = not self.shape_assist
+              self:setSetting("inkaway_shape_assist", self.shape_assist)
+              self:openPenSettings()
+          end },
+        { text = string.format(_("Stabilizer: %d"), self.stabilizer),
+          callback = function() UIManager:close(self._pen_dialog); self:openStabilizer() end },
+    }
+    buttons[#buttons + 1] = {{
+        text = _("Palm rejection (pen): ") .. onoff(self.palm_reject)
+               .. (self:penCapable() and "" or _(" (needs newer KOReader)")),
+        callback = function()
+            self.palm_reject = not self.palm_reject
+            self:setSetting("inkaway_palm_reject", self.palm_reject)
+            self:applyPalmReject()
+            if self.palm_reject and not self:penCapable() then
+                UIManager:show(InfoMessage:new{ text = _(
+                    "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+            elseif self.palm_reject and self.pen_debug then
+                UIManager:show(InfoMessage:new{ text = _(
+                    "Palm rejection on. The pen hook is registered. Draw with the pen: you should see a one-time 'pen detected' note. If the pen still acts like a finger and no note appears, the pen is not reaching the plugin.") })
+            end
+            self:openPenSettings()
+        end,
+    }}
 
     buttons[#buttons + 1] = {{ text = _("Done"),
         callback = function() UIManager:close(self._pen_dialog) end }}
@@ -1246,6 +1459,22 @@ function InkAwayView:openShapePicker()
             UIManager:setDirty("all", "full")
         end,
     }}
+    -- Snapping lives with the shapes it helps: grid snap and 45-degree snap.
+    local function onoff(b) return b and _("on") or _("off") end
+    buttons[#buttons + 1] = {
+        { text = _("Snap to grid: ") .. onoff(self.snap_grid),
+          callback = function()
+              self.snap_grid = not self.snap_grid
+              self:setSetting("inkaway_snap_grid", self.snap_grid)
+              self:openShapePicker()
+          end },
+        { text = _("Snap to 45\u{00B0}: ") .. onoff(self.snap_angle),
+          callback = function()
+              self.snap_angle = not self.snap_angle
+              self:setSetting("inkaway_snap_angle", self.snap_angle)
+              self:openShapePicker()
+          end },
+    }
     buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
     buttons[#buttons + 1] = {{ text = _("Done"),
         callback = function() UIManager:close(self._shape_dialog) end }}
@@ -1280,6 +1509,198 @@ function InkAwayView:zoomStep(dir)
     self:flushPending()
     local factor = (dir > 0) and ZOOM_RATIO or (1 / ZOOM_RATIO)
     self:setZoom(self.view.zoom * factor)
+end
+
+-- Pinch (dir<0, fingers together -> zoom out) and spread (dir>0, fingers apart
+-- -> zoom in) zoom the CANVAS, anchored at the gesture's midpoint, by an amount
+-- proportional to how far the fingers moved. On e-ink a single anchored jump per
+-- gesture (rather than a live continuous zoom) is what avoids ghosting.
+function InkAwayView:pinchZoom(ges, dir)
+    self:flushPending()
+    self:cancelShape()
+    local v = self.view
+    local dist = (ges and ges.distance) or 0
+    local ref = math.min(self.screen_w, self.screen_h) * 0.6
+    local factor = 1 + math.min(dist, ref) / ref            -- up to ~2x per gesture
+    local nz = (dir > 0) and (v.zoom * factor) or (v.zoom / factor)
+    local pos = ges and ges.pos
+    self:setZoom(nz, pos and pos.x, pos and pos.y)
+end
+
+function InkAwayView:onIaPinch(_, ges)
+    if self:fingerRejected() then return true end
+    self:pinchZoom(ges, -1)
+    return true
+end
+
+function InkAwayView:onIaSpread(_, ges)
+    if self:fingerRejected() then return true end
+    self:pinchZoom(ges, 1)
+    return true
+end
+
+------------------------------------------------------------------------------
+-- Floating immersive controls: a zoom pill at the bottom-right, and a toolbar
+-- collapse/expand arrow at the top-right. Both zoom/toggle on a tap and melt away
+-- while the pen draws near them (reappearing shortly after) so the canvas beneath
+-- stays reachable. Their geometry follows the drawing area, so they move when the
+-- toolbar hides and the paper grows.
+------------------------------------------------------------------------------
+
+-- Screen rect of a named control ("zoom" pill or "bar" toggle), or nil.
+function InkAwayView:fabRect(which)
+    if not self.view then return nil end
+    local v = self.view
+    local m = Screen:scaleBySize(16)
+    local w = Screen:scaleBySize(46)
+    if which == "zoom" then
+        local h = Screen:scaleBySize(92)
+        return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
+    else -- "bar": a small bare chevron centred under the toolbar's Exit button
+        local bw = Screen:scaleBySize(34)
+        local bh = Screen:scaleBySize(22)
+        local cx = self._last_btn_center or (v.area_x + v.area_w - Screen:scaleBySize(24))
+        return { x = math.floor(cx - bw / 2), y = v.area_y + Screen:scaleBySize(2), w = bw, h = bh }
+    end
+end
+
+function InkAwayView:fabHidden(which)
+    if which == "zoom" then return self._zoom_hidden else return self._bar_toggle_hidden end
+end
+
+-- Repaint just a control's footprint (plus a margin): hiding reveals the canvas,
+-- showing draws the control, both without a full redraw.
+function InkAwayView:refreshFabRegion(r)
+    if not r then return end
+    local m = Screen:scaleBySize(4)
+    UIManager:setDirty(self, "ui", GeomUI:new{
+        x = r.x - m, y = r.y - m, w = r.w + 2 * m, h = r.h + 2 * m })
+end
+
+-- What a point hits: "zoomin"/"zoomout" (halves of the pill), "bar" (the toggle),
+-- or nil. Hidden controls are not hittable, so a draw passes straight through.
+function InkAwayView:fabHit(px, py)
+    if not self._zoom_hidden then
+        local r = self:fabRect("zoom")
+        if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
+            return (py < r.y + r.h / 2) and "zoomin" or "zoomout"
+        end
+    end
+    if not self._bar_toggle_hidden then
+        local r = self:fabRect("bar")
+        if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
+            return "bar"
+        end
+    end
+    return nil
+end
+
+-- Act on a completed tap of a control.
+function InkAwayView:fabAction(kind)
+    if kind == "zoomin" then self:zoomStep(1)
+    elseif kind == "zoomout" then self:zoomStep(-1)
+    elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden) end
+end
+
+-- Called from the drawing handlers: if the active point comes near a control,
+-- fade it out and keep pushing back its return until drawing there stops.
+function InkAwayView:fabProximity(px, py)
+    local function near(r) local m = r.w
+        return px >= r.x - m and px <= r.x + r.w + m and py >= r.y - m and py <= r.y + r.h + m end
+    local rz = self:fabRect("zoom")
+    if rz and not self._zoom_hidden and near(rz) then
+        self._zoom_hidden = true; self:refreshFabRegion(rz)
+    end
+    if rz and self._zoom_hidden and near(rz) then
+        UIManager:unschedule(self._show_zoom_fab); UIManager:scheduleIn(0.6, self._show_zoom_fab)
+    end
+    local rb = self:fabRect("bar")
+    if rb and not self._bar_toggle_hidden and near(rb) then
+        self._bar_toggle_hidden = true; self:refreshFabRegion(rb)
+    end
+    if rb and self._bar_toggle_hidden and near(rb) then
+        UIManager:unschedule(self._show_bar_toggle); UIManager:scheduleIn(0.6, self._show_bar_toggle)
+    end
+end
+
+-- A small chevron centred at (cx, cy): up = -1 (collapse), down = 1 (expand).
+local function fabChevron(bb, cx, cy, half, dir, tk)
+    local function seg(x0, y0, x1, y1)
+        local dx, dy = math.abs(x1 - x0), -math.abs(y1 - y0)
+        local sx, sy = x0 < x1 and 1 or -1, y0 < y1 and 1 or -1
+        local err, hb = dx + dy, math.floor(tk / 2)
+        while true do
+            bb:paintRect(x0 - hb, y0 - hb, tk, tk, FAB_GLYPH)
+            if x0 == x1 and y0 == y1 then break end
+            local e2 = 2 * err
+            if e2 >= dy then err = err + dy; x0 = x0 + sx end
+            if e2 <= dx then err = err + dx; y0 = y0 + sy end
+        end
+    end
+    -- dir -1 = up chevron (^, collapse); dir +1 = down chevron (v, expand)
+    local yTip = cy + dir * math.floor(half * 0.6)
+    local yEnd = cy - dir * math.floor(half * 0.6)
+    seg(cx - half, yEnd, cx, yTip)
+    seg(cx, yTip, cx + half, yEnd)
+end
+
+-- Paint the floating controls onto the screen buffer (called last in paintTo so
+-- they float on top). A light, airy pill so it never reads as a solid box.
+function InkAwayView:drawFabs(bb, ox, oy)
+    if self.selecting_crop then return end
+    local S1 = math.max(1, Screen:scaleBySize(1))
+    -- zoom pill (+ over -)
+    if not self._zoom_hidden then
+        local r = self:fabRect("zoom")
+        if r then
+            local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
+            local rad = math.floor(w / 2)
+            bb:paintRoundedRect(x, y, w, h, FAB_FILL, rad)
+            bb:paintBorder(x, y, w, h, S1, FAB_BORDER, rad)
+            local midy = y + math.floor(h / 2)
+            bb:paintRect(x + Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
+            local gw = math.floor(w * 0.34)
+            local gt = math.max(2, Screen:scaleBySize(2))
+            local cx = x + math.floor(w / 2)
+            local cyTop, cyBot = y + math.floor(h / 4), y + math.floor(3 * h / 4)
+            bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+            bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
+            bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+        end
+    end
+    -- toolbar toggle: a bare chevron (no pill) -- up to collapse, down to expand
+    if not self._bar_toggle_hidden then
+        local r = self:fabRect("bar")
+        if r then
+            local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
+            local dir = self._toolbar_hidden and 1 or -1   -- down = expand, up = collapse
+            fabChevron(bb, x + math.floor(w / 2), y + math.floor(h / 2),
+                math.floor(w * 0.28), dir, math.max(2, Screen:scaleBySize(2)))
+        end
+    end
+end
+
+-- Hide or show the top toolbar, growing the paper to fill the freed space. The
+-- drawing-area buffer is reallocated and the view re-fitted, exactly as on a
+-- screen-rotation relayout.
+function InkAwayView:setToolbarHidden(hidden)
+    if (self._toolbar_hidden or false) == hidden then return end
+    self:flushPending()
+    self._toolbar_hidden = hidden
+    local v = self.view
+    local th = self.toolbar:getSize().h
+    v.area_y = hidden and 0 or th
+    v.area_h = (hidden and self.screen_h or (self.screen_h - th)) - self.nb_bar_h
+    -- when hidden, the toolbar buttons must not swallow taps in the freed strip
+    -- (plain if/else: `hidden and nil or self.toolbar` would never yield nil)
+    if hidden then self[1] = nil else self[1] = self.toolbar end
+    self.zoom_min = InkGeom.fitZoom(v)
+    v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
+    InkGeom.clampPan(v)
+    if self.area_bb then self.area_bb:free() end
+    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self:renderView()
+    UIManager:setDirty(self, "full")
 end
 
 ------------------------------------------------------------------------------
@@ -3001,7 +3422,7 @@ function InkAwayView:openStabilizer()
         callback = function(spin)
             self.stabilizer = math.floor(spin.value)
             self:setSetting("inkaway_stabilizer", self.stabilizer)
-            self:openSettings()
+            self:openPenSettings()   -- the stabilizer lives in the Pen menu now
         end,
     })
 end
@@ -3061,13 +3482,8 @@ function InkAwayView:openSettings()
     buttons[#buttons + 1] = {{ text = string.format(_("Symmetry: %s"), _(SYM_LABEL[self.symmetry] or "off")),
            callback = function() UIManager:close(dlg); self:openSymmetry() end }}
     buttons[#buttons + 1] = paper_row
-    buttons[#buttons + 1] = {{ text = _("Text (font & size)\u{2026}"),
-        callback = function() UIManager:close(dlg); self:openTextSettings() end }}
     for _, row in ipairs({
-        {
-            { text = _("Guides and aids\u{2026}"), callback = function() UIManager:close(dlg); self:openGuides() end },
-            { text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end },
-        },
+        {{ text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end }},
         {
             { text = _("Background image\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
             { text = _("Insert image\u{2026}"), callback = function() UIManager:close(dlg); self:chooseImage() end },
@@ -3082,51 +3498,6 @@ function InkAwayView:openSettings()
         buttons[#buttons + 1] = row
     end
     dlg = ButtonDialog:new{ title = _("Settings"), title_align = "center", buttons = buttons }
-    self._settings_dialog = dlg
-    UIManager:show(dlg)
-end
-
--- The less used toggles, one level down from the gear menu.
-function InkAwayView:openGuides()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local function onoff(b) return b and _("on") or _("off") end
-    local function tog(key, field)
-        self[field] = not self[field]
-        self:setSetting(key, self[field])
-        UIManager:close(dlg); self:openGuides()
-    end
-    local buttons = {
-        {{ text = _("Snap to grid: ") .. onoff(self.snap_grid),
-           callback = function() tog("inkaway_snap_grid", "snap_grid") end }},
-        {{ text = _("Snap to 45\u{00B0}: ") .. onoff(self.snap_angle),
-           callback = function() tog("inkaway_snap_angle", "snap_angle") end }},
-        {{ text = _("Shape assist: ") .. onoff(self.shape_assist),
-           callback = function() tog("inkaway_shape_assist", "shape_assist") end }},
-        {{ text = _("Palm rejection (pen): ") .. onoff(self.palm_reject)
-                  .. (self:penCapable() and "" or _(" (needs newer KOReader)")),
-           callback = function()
-               self.palm_reject = not self.palm_reject
-               self:setSetting("inkaway_palm_reject", self.palm_reject)
-               self:applyPalmReject()
-               -- Needs the stylus input support KOReader added in 2026.07; older
-               -- builds have no way to see the pen, so say so instead of silently
-               -- doing nothing.
-               if self.palm_reject and not self:penCapable() then
-                   UIManager:show(InfoMessage:new{ text = _(
-                       "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
-               elseif self.palm_reject and self.pen_debug then
-                   -- TEMP diagnostic: confirm the pen hook registered on this device
-                   UIManager:show(InfoMessage:new{ text = _(
-                       "Palm rejection on. The pen hook is registered. Draw with the pen: you should see a one-time 'pen detected' note. If the pen still acts like a finger and no note appears, the pen is not reaching the plugin.") })
-               end
-               UIManager:close(dlg); self:openGuides()
-           end }},
-        {{ text = string.format(_("Stabilizer: %d"), self.stabilizer),
-           callback = function() UIManager:close(dlg); self:openStabilizer() end }},
-        {{ text = _("Back"), callback = function() UIManager:close(dlg); self:openSettings() end }},
-    }
-    dlg = ButtonDialog:new{ title = _("Guides and aids"), title_align = "center", buttons = buttons }
     self._settings_dialog = dlg
     UIManager:show(dlg)
 end
@@ -4486,6 +4857,9 @@ function InkAwayView:onIaTouch(_, ges)
     local pos = ges.pos
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
+    -- floating controls: a tap on one acts; a drag off it (below) draws instead
+    local fab = self:fabHit(pos.x, pos.y)
+    if fab then self._fab_press = fab; return true end
     if self.selecting_crop then return self:cropTouch(pos) end
     if self.rotating then return self:rotateTouch(pos) end
     if self.image_rotating then return self:imageRotateTouch(pos) end
@@ -4531,6 +4905,12 @@ end
 function InkAwayView:onIaPan(_, ges)
     if self:fingerRejected() then return true end
     local pos = ges.pos
+    if self._fab_press then           -- a drag off a control is a draw, not a tap
+        self._fab_press = nil
+        if pos then self:fabProximity(pos.x, pos.y) end
+        return true
+    end
+    if pos then self:fabProximity(pos.x, pos.y) end   -- melt controls if drawing near them
     if self.selecting_crop then return self:cropMove(pos) end
     if self.rotating then return self:rotateMove(pos) end
     if self.image_rotating then return self:imageRotateMove(pos) end
@@ -4560,6 +4940,7 @@ InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
     if self:fingerRejected() then return true end
+    if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
     if self.image_rotating then return self:imageRotateEnd() end
@@ -4583,6 +4964,7 @@ InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
     if self:fingerRejected() then return true end
+    if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.rotating then return self:rotateEnd() end
     if self.image_rotating then return self:imageRotateEnd() end
@@ -4609,6 +4991,12 @@ end
 
 function InkAwayView:onIaTap(_, ges)
     if self:fingerRejected() then return true end
+    -- floating controls: complete a tap begun on one of them
+    if self._fab_press then
+        local kind = self._fab_press; self._fab_press = nil
+        self:fabAction(kind)
+        return true
+    end
     -- Toolbar taps are consumed by the buttons before this runs.
     -- Page-nav strip taps (notebook mode), below the drawing area.
     local p = ges and ges.pos
@@ -4650,6 +5038,7 @@ end
 
 function InkAwayView:onIaHold(_, ges)
     if self:fingerRejected() then return true end
+    if self._fab_press then self._fab_press = nil; return true end
     -- A hold on a placed image or shape picks it and opens its edit menu (a tap
     -- does the same via onIaTouch; hold is here for when the touch missed). We
     -- soak up other holds inside the area so they don't become a long press menu.
@@ -5835,9 +6224,13 @@ function InkAwayView:paintTo(bb, x, y)
     local v = self.view
     -- white background across the whole screen
     bb:paintRect(x, y, self.screen_w, self.screen_h, WHITE)
-    -- toolbar (buttons) then the tool icons overdrawn on them
-    self.toolbar:paintTo(bb, x, y)
-    self:drawToolbarIcons(bb)
+    -- toolbar (each button paints its icon; the active tool's button paints a grey
+    -- pill background), then the hairline under the bar -- unless collapsed for
+    -- immersive drawing, when the paper fills the freed space
+    if not self._toolbar_hidden then
+        self.toolbar:paintTo(bb, x, y)
+        self:drawToolbarIcons(bb)
+    end
     -- drawing area (the committed strokes, at the current zoom/pan)
     bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
     -- grid guides on top, straight onto the screen buffer so they never mix into
@@ -5845,28 +6238,24 @@ function InkAwayView:paintTo(bb, x, y)
     -- the canvas grid overlay is a canvas-mode guide; a notebook has its own
     -- printed ruling, so never draw both (they would overlap)
     if self.grid_on and not self.notebook then self:drawGrid(bb, x + v.area_x, y + v.area_y) end
-    -- the frame marking the page: where the full W x H export sits on screen
+    -- Page edge indicator: only for edges that fall STRICTLY inside the drawing
+    -- area (i.e. the reader has pinched out so the page is smaller than the
+    -- screen). At the default fill-width zoom the page edges sit on the screen's
+    -- own border, so nothing is drawn -- no frame, and the whole screen paints.
+    local ax0, ay0 = x + v.area_x, y + v.area_y
+    local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
     local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
     local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
     fx0, fy0 = math.floor(fx0 + x), math.floor(fy0 + y)
     fx1, fy1 = math.floor(fx1 + x), math.floor(fy1 + y)
-    -- clip the frame to the area so it never draws over the toolbar
-    local ay0 = y + v.area_y
-    local ay1 = y + v.area_y + v.area_h
     local top = math.max(fy0, ay0)
     local bot = math.min(fy1, ay1)
-    if fx0 >= x and fx0 < x + self.screen_w and bot > top then
-        bb:paintRect(fx0, top, 1, bot - top, FRAME)
-    end
-    if fx1 >= x and fx1 <= x + self.screen_w and bot > top then
-        bb:paintRect(math.min(fx1, x + self.screen_w - 1), top, 1, bot - top, FRAME)
-    end
-    if fy0 >= ay0 and fy0 < ay1 then
-        bb:paintRect(math.max(fx0, x), fy0, math.min(fx1, x + self.screen_w) - math.max(fx0, x), 1, FRAME)
-    end
-    if fy1 > ay0 and fy1 <= ay1 then
-        bb:paintRect(math.max(fx0, x), math.min(fy1, ay1 - 1), math.min(fx1, x + self.screen_w) - math.max(fx0, x), 1, FRAME)
-    end
+    if fx0 > ax0 and fx0 < ax1 and bot > top then bb:paintRect(fx0, top, 1, bot - top, FRAME) end
+    if fx1 < ax1 and fx1 > ax0 and bot > top then bb:paintRect(fx1, top, 1, bot - top, FRAME) end
+    local lft = math.max(fx0, ax0)
+    local rgt = math.min(fx1, ax1)
+    if fy0 > ay0 and fy0 < ay1 and rgt > lft then bb:paintRect(lft, fy0, rgt - lft, 1, FRAME) end
+    if fy1 < ay1 and fy1 > ay0 and rgt > lft then bb:paintRect(lft, fy1, rgt - lft, 1, FRAME) end
 
     -- live shape preview drawn on top of the (untouched) drawing, clipped to
     -- the area so it never spills onto the toolbar
@@ -6047,6 +6436,9 @@ function InkAwayView:paintTo(bb, x, y)
         self._nb_count = { x = x + side, y = sy0,
             w = math.max(1, self._nb_plus.x - (x + side)), h = h }
     end
+
+    -- the floating immersive controls (zoom pill + toolbar toggle), on top
+    self:drawFabs(bb, x, y)
 end
 
 -- A nav-strip icon rendered from ink/icons onto an opaque white tile (the strip
