@@ -791,14 +791,18 @@ function InkAwayView:buildToolbar()
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
-    -- a compact bar: the icons carry the meaning, so the buttons are short
-    local bar_h = math.max(Screen:scaleBySize(30), math.min(Screen:scaleBySize(44), math.floor(btn_w * 0.7)))
+    -- a compact bar: the icons carry the meaning, so the buttons are short. This is
+    -- the active pill's height; the toolbar is taller by twice the button margin,
+    -- so the pill floats clear of the top/bottom edges.
+    local bar_h = math.max(Screen:scaleBySize(28), math.min(Screen:scaleBySize(38), math.floor(btn_w * 0.58)))
     self._btn_w, self._bar_h = btn_w, bar_h   -- for the active-tool pill in paintTo
     -- centre of the last (Exit) button, so the collapse chevron lines up under it
     self._last_btn_center = math.floor(btn_w * (n - 1) + (Screen:getWidth() - btn_w * (n - 1)) / 2)
-    -- large icons that read clearly, but with enough margin that the (square)
-    -- icon never reaches the rounded corners of the button
-    local isz = math.max(16, math.floor(bar_h * 0.82))
+    -- The icon sits centred in a fixed-height cell (height = bar_h below), so every
+    -- tool's icon shares the same height and baseline and the active black pill is
+    -- identical for all of them. Keep the icon well inside the cell so the pill has
+    -- clear breathing room and never reaches the toolbar edges.
+    local isz = math.max(16, math.floor(bar_h * 0.56))
     self.tool_buttons = {}
     self._toolbar_icons = {}
     local row = {}
@@ -833,7 +837,7 @@ function InkAwayView:buildToolbar()
             -- (set in updateToolbarActive), inset by the margin so it reads as a
             -- pill rather than a full-cell block.
             bordersize = 0,
-            radius = Screen:scaleBySize(9),
+            radius = 0,
             background = nil,
             margin = Screen:scaleBySize(4),
             padding = 0,
@@ -857,6 +861,11 @@ function InkAwayView:buildToolbar()
             b.label_widget = file_icon
             b.label_container[1] = file_icon
         end
+        -- Make the button transparent: KOReader defaults a border-less button to a
+        -- white fill, which would cover the active pill we paint behind it. With no
+        -- fill, the white bar shows through and the active pill (drawn in paintTo)
+        -- reads correctly under the icon.
+        if b.frame then b.frame.background = nil end
         if s.tool then self.tool_buttons[s.id] = { button = b } end
         self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true }
         row[i] = b
@@ -868,19 +877,39 @@ function InkAwayView:buildToolbar()
         margin = 0,
         HorizontalGroup:new(row),
     }
+    -- the real bar height includes each button's margin, so the hairline and the
+    -- drawing area sit at the true bottom edge (not one margin too high)
+    self._bar_h = self.toolbar:getSize().h
     self:updateToolbarActive()   -- give the current tool its pill
 end
 
--- Show the active tool with a grey rounded pill: its button's own frame
--- background. Inactive tool buttons and the plain actions stay transparent.
+-- Mark the active tool: remember its button index (so paintTo can draw an inset
+-- black pill behind it) and invert its icon to white. Inverting works because the
+-- icon renders on an opaque white ground, so invert flips it to white-on-black,
+-- merging seamlessly into the black pill. Inactive tools stay transparent (their
+-- icon reads black on the white bar).
 function InkAwayView:updateToolbarActive()
     if not self._toolbar_icons then return end
     local active = (self.tool == "fill") and "shape" or self.tool
-    for _, e in ipairs(self._toolbar_icons) do
-        if e.tool and e.button and e.button.frame then
-            e.button.frame.background = (e.id == active) and PILL_GREY or nil
+    self._active_btn_idx = nil
+    for i, e in ipairs(self._toolbar_icons) do
+        if e.tool and e.button then
+            local on = (e.id == active)
+            if on then self._active_btn_idx = i end
+            if e.button.label_widget then e.button.label_widget.invert = on end
         end
     end
+end
+
+-- Paint the active tool's pill: a black rounded rect inset within its cell so it
+-- floats clear of every toolbar edge. Called from paintTo BEFORE the (transparent)
+-- toolbar paints, so the icon lands on top and its invert reads white-on-black.
+function InkAwayView:drawActiveToolPill(bb, ox, oy)
+    if self._toolbar_hidden or not self._active_btn_idx or not self._btn_w or not self._bar_h then return end
+    local m = Screen:scaleBySize(7)
+    local cx = ox + self._btn_w * (self._active_btn_idx - 1)
+    bb:paintRoundedRect(cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m,
+        Blitbuffer.COLOR_BLACK, Screen:scaleBySize(9))
 end
 
 -- The active tool is shown by a short underline drawn in paintTo, so a tool
@@ -3484,10 +3513,7 @@ function InkAwayView:openSettings()
     buttons[#buttons + 1] = paper_row
     for _, row in ipairs({
         {{ text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end }},
-        {
-            { text = _("Background image\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end },
-            { text = _("Insert image\u{2026}"), callback = function() UIManager:close(dlg); self:chooseImage() end },
-        },
+        {{ text = _("Background image\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end }},
         {
             { text = mark("off") .. _("No autosave"),  callback = function() self:setAutosave("off"); reopen() end },
             { text = mark("exit") .. _("On exit"), callback = function() self:setAutosave("exit"); reopen() end },
@@ -6228,6 +6254,7 @@ function InkAwayView:paintTo(bb, x, y)
     -- pill background), then the hairline under the bar -- unless collapsed for
     -- immersive drawing, when the paper fills the freed space
     if not self._toolbar_hidden then
+        self:drawActiveToolPill(bb, x, y)   -- black pill behind the active tool
         self.toolbar:paintTo(bb, x, y)
         self:drawToolbarIcons(bb)
     end
@@ -6676,7 +6703,9 @@ function InkAwayView:recomputeArea()
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
     self.zoom_min = InkGeom.fitZoom(v)
-    v.zoom = self.zoom_min
+    -- fill the full width (no side letterbox), exactly like a flat canvas; this is
+    -- what keeps notebooks as wide as the device instead of fit-to-page centred
+    v.zoom = math.max(self.zoom_min, v.area_w / v.canvas_w)
     InkGeom.clampPan(v)
 end
 
