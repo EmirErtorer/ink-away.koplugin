@@ -65,7 +65,6 @@ local Template = require("ink/template")
 local Text = require("ink/text")
 local Recognize = require("ink/recognize")
 local Stylus = require("ink/stylus")
-local InkSheet = require("ink/sheet")
 -- ui/font and ui/rendertext are required lazily (only when a text box is used)
 -- so the pure-Lua headless tests can still load this module.
 
@@ -597,7 +596,8 @@ function InkAwayView:init()
     if autosheet then
         UIManager:scheduleIn(0.7, function()
             if autosheet == "pen" then self:openPenSettings()
-            elseif autosheet == "eraser" then self:openEraserSettings() end
+            elseif autosheet == "eraser" then self:openEraserSettings()
+            elseif autosheet == "shape" then self:openShapePicker() end
         end)
     end
 end
@@ -727,7 +727,7 @@ function InkAwayView:onCloseWidget()
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_pen_sheet", "_shape_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -766,7 +766,7 @@ function InkAwayView:buildToolbar()
             if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
         end },
         { id = "shape", label = _("Shapes"), tool = true, cb = function()
-            self:setTool("shape"); self:openShapePicker()
+            if self.tool == "shape" then self:openShapePicker() else self:setTool("shape") end
         end },
         { id = "text",  label = _("Text"),  tool = true, cb = function()
             -- tapping Text while a box is open finishes it (and closes the keyboard);
@@ -1062,132 +1062,26 @@ function InkAwayView:customSwatchRow(entries)
 end
 
 -- Open the colour wheel to pick (and optionally save) an exact colour.
-function InkAwayView:openColorPicker()
+function InkAwayView:openColorPicker(target)
     local ok, ColorPicker = pcall(require, "ink/colorpicker")
     if not ok then return end
+    local isFill = target == "fill"
+    local function apply(rgb)
+        if isFill then self.fill_color = { rgb[1], rgb[2], rgb[3] }
+        else self.pen_color = { rgb[1], rgb[2], rgb[3] } end
+    end
+    local function reopen()
+        if isFill then self:openFillSettings() else self:openPenSettings() end
+    end
     UIManager:show(ColorPicker:new{
-        color = self.pen_color,
-        on_pick = function(rgb)
-            self.pen_color = { rgb[1], rgb[2], rgb[3] }
-            self:openPenSettings()
-        end,
-        on_save = function(rgb)
-            self.pen_color = { rgb[1], rgb[2], rgb[3] }
-            self:addCustomColor(rgb)
-            self:openPenSettings()
-        end,
+        color = isFill and self.fill_color or self.pen_color,
+        on_pick = function(rgb) apply(rgb); reopen() end,
+        on_save = function(rgb) apply(rgb); self:addCustomColor(rgb); reopen() end,
     })
 end
 
 -- Pen settings popup: size and opacity together, plus shade and (on colour
 -- screens) colour swatches. Rebuilt and reshown whenever something changes.
--- The Pen options as a premium bottom sheet (colour, width, style, opacity, and
--- the stroke aids), replacing the stacked ButtonDialog.
-function InkAwayView:openPenSheet()
-    if self._pen_sheet then UIManager:close(self._pen_sheet); self._pen_sheet = nil end
-    local function CRGB(rgb) return Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF) end
-    local function same(a, b) return a and b and a[1] == b[1] and a[2] == b[2] and a[3] == b[3] end
-    local WMIN, WMAX = 1, 60
-    local sheet
-    local function build()
-        local c = {}
-        local sw = {}
-        for _, s in ipairs(SHADES) do sw[#sw + 1] = { c = CRGB(s.rgb), sel = same(self.pen_color, s.rgb) } end
-        c[#c + 1] = { kind = "swatches", items = sw, rgb = self:colorScreen(), on_pick = function(i)
-            if i == "rgb" then UIManager:close(sheet); self._pen_sheet = nil; self:openColorPicker(); return end
-            self.pen_color = { SHADES[i].rgb[1], SHADES[i].rgb[2], SHADES[i].rgb[3] }
-            sheet:rebuild(); sheet:refresh()
-        end }
-        c[#c + 1] = { kind = "sliders2",
-            left = { label = _("WIDTH"), right = string.format("%d px", self.pen_width),
-                val = (self.pen_width - WMIN) / (WMAX - WMIN), on_set = function(v)
-                    self.pen_width = math.floor(WMIN + v * (WMAX - WMIN) + 0.5); sheet:rebuild(); sheet:refresh()
-                end },
-            right = { label = _("OPACITY"), right = string.format("%d%%", math.floor(self.pen_alpha / 255 * 100 + 0.5)),
-                val = self.pen_alpha / 255, on_set = function(v)
-                    self.pen_alpha = math.max(1, math.min(255, math.floor(v * 255 + 0.5))); sheet:rebuild(); sheet:refresh()
-                end } }
-        local chips, menu = {}, Brushes.menu(function(k) return self:getSetting(k) end)
-        for _, s in ipairs(menu) do chips[#chips + 1] = { t = s.label, sel = (self.pen_style == s.key), key = s.key } end
-        c[#c + 1] = { kind = "chips", items = chips, on_pick = function(i)
-            self.pen_style = chips[i].key; self:setSetting("inkaway_pen_style", chips[i].key); sheet:rebuild(); sheet:refresh()
-        end }
-        c[#c + 1] = { kind = "divider" }
-        c[#c + 1] = { kind = "pilltoggles", items = {
-            { t = _("Shape assist"), on = self.shape_assist, cb = function()
-                self.shape_assist = not self.shape_assist; self:setSetting("inkaway_shape_assist", self.shape_assist); sheet:rebuild(); sheet:refresh()
-            end },
-            { t = _("Palm reject"), on = self.palm_reject, cb = function()
-                self.palm_reject = not self.palm_reject; self:setSetting("inkaway_palm_reject", self.palm_reject); self:applyPalmReject()
-                sheet:rebuild(); sheet:refresh()
-            end },
-        } }
-        c[#c + 1] = { kind = "slider", label = _("STABILIZER"), right = tostring(self.stabilizer),
-            val = self.stabilizer / 100, on_set = function(v)
-                self.stabilizer = math.floor(v * 100 + 0.5); self:setSetting("inkaway_stabilizer", self.stabilizer); sheet:rebuild(); sheet:refresh()
-            end }
-        if not self:penCapable() then
-            c[#c + 1] = { kind = "caption", text = _("Palm rejection needs KOReader 2026.07 or newer") }
-        end
-        return c
-    end
-    sheet = InkSheet:new{ title = _("Pen"), on_close = function() self._pen_sheet = nil end }
-    sheet.title_draw = function(bb, x, y, w, h)
-        -- a small wavy stroke preview, matching the flagship mock
-        local th = math.max(3, math.min(Screen:scaleBySize(9), math.floor(self.pen_width * 0.5)))
-        local r = math.floor(th / 2)
-        local cy = y + math.floor(h / 2)
-        local amp = math.floor(h / 2) - r - Screen:scaleBySize(1)
-        local col = CRGB(self.pen_color)
-        local prev
-        for i = 0, w do
-            local py = cy + math.floor(amp * math.sin(i / w * math.pi * 3))
-            -- stamp only when we move to a new pixel column/row to avoid redundant fills
-            if not prev or prev ~= py or i == w then
-                bb:paintRoundedRect(x + i - r, py - r, th, th, col, r)
-                prev = py
-            end
-        end
-    end
-    sheet.rebuild = function() sheet.controls = build(); sheet:layout() end
-    sheet:rebuild()
-    self._pen_sheet = sheet
-    UIManager:show(sheet)
-end
-
--- The Eraser options as a bottom sheet: size + what it erases.
-function InkAwayView:openEraserSheet()
-    if self._pen_sheet then UIManager:close(self._pen_sheet); self._pen_sheet = nil end
-    local EMIN, EMAX = 4, 120
-    local sheet
-    local function build()
-        local c = {}
-        c[#c + 1] = { kind = "preview", draw = function(bb, x, y, w, h)
-            local r = math.max(Screen:scaleBySize(7), math.min(math.floor(h / 2) - Screen:scaleBySize(8), math.floor(self.eraser_width * 0.45)))
-            local cx, cy = x + math.floor(w / 2), y + math.floor(h / 2)
-            bb:paintBorder(cx - r, cy - r, 2 * r, 2 * r, math.max(1, Screen:scaleBySize(2)), Blitbuffer.ColorRGB32(0x8A, 0x8D, 0x91, 0xFF), r)
-        end }
-        c[#c + 1] = { kind = "slider", label = _("SIZE"), right = string.format("%d px", self.eraser_width),
-            val = (self.eraser_width - EMIN) / (EMAX - EMIN), on_set = function(v)
-                self.eraser_width = math.floor(EMIN + v * (EMAX - EMIN) + 0.5); sheet:rebuild(); sheet:refresh()
-            end }
-        c[#c + 1] = { kind = "toggles", items = {
-            { t = _("Erase pictures"), on = self.erase_bg, cb = function()
-                self.erase_bg = not self.erase_bg; self:setSetting("inkaway_erase_bg", self.erase_bg); sheet:rebuild(); sheet:refresh()
-            end } } }
-        c[#c + 1] = { kind = "toggles", items = {
-            { t = _("Protect text"), on = self.text_erase_protect, cb = function()
-                self.text_erase_protect = not self.text_erase_protect; self:setSetting("inkaway_text_erase_protect", self.text_erase_protect); sheet:rebuild(); sheet:refresh()
-            end } } }
-        return c
-    end
-    sheet = InkSheet:new{ title = _("Eraser"), on_close = function() self._pen_sheet = nil end }
-    sheet.rebuild = function() sheet.controls = build(); sheet:layout() end
-    sheet:rebuild()
-    self._pen_sheet = sheet
-    UIManager:show(sheet)
-end
-
 function InkAwayView:openPenSettings()
     local ButtonDialog = require("ui/widget/buttondialog")
     if self._pen_dialog then UIManager:close(self._pen_dialog) end
@@ -1412,105 +1306,101 @@ function InkAwayView:openShapePicker()
     self:flushShape()
     if self._shape_dialog then UIManager:close(self._shape_dialog) end
 
-    -- each entry: { label, shape, fill, arrow }  (arrow: nil | "end" | "both")
-    local items = {
-        { { "\u{2571} " .. _("Line"),   "line",     false, nil },
-          { "\u{2312} " .. _("Curve"),  "curve",    false, nil } },
-        { { "\u{25EF} " .. _("Ellipse"),        "ellipse", false, nil },
-          { "\u{25CF} " .. _("Ellipse filled"), "ellipse", true,  nil } },
-        { { "\u{25AD} " .. _("Rectangle"),        "rect", false, nil },
-          { "\u{25AC} " .. _("Rectangle filled"), "rect", true,  nil } },
-        { { "\u{25B3} " .. _("Triangle"),        "triangle", false, nil },
-          { "\u{25B2} " .. _("Triangle filled"), "triangle", true,  nil } },
-        { { "\u{2192} " .. _("Arrow"),        "line",  false, "end" },
-          { "\u{2933} " .. _("Curved arrow"), "curve", false, "end" } },
-        { { "\u{2194} " .. _("Double arrow"),        "line",  false, "both" },
-          { "\u{2933} " .. _("Curved double arrow"), "curve", false, "both" } },
-    }
-
-    local buttons = {}
-    for _, r in ipairs(items) do
-        local row = {}
-        for _, e in ipairs(r) do
-            local label, shape, fill, arrow = e[1], e[2], e[3], e[4]
-            row[#row + 1] = {
-                text = label,
-                checked_func = function()
-                    return self.shape == shape and self.shape_fill == fill
-                       and (self.shape_arrow or false) == (arrow or false)
-                end,
-                callback = function()
-                    self:flushShape()   -- place any pending shape as its old type first
-                    self.shape, self.shape_fill, self.shape_arrow = shape, fill, arrow
-                    self:refreshToolLabels()
-                    self:openShapePicker()   -- reopen to move the checkmark
-                end,
-            }
-        end
-        buttons[#buttons + 1] = row
+    -- One shape button. Fill is a separate toggle (below), so each closed shape
+    -- appears once here instead of as an outline/filled pair -- halving the list.
+    local function shapeBtn(glyph, label, shape, arrow)
+        return {
+            text = glyph .. "  " .. label,
+            checked_func = function()
+                return self.shape == shape and (self.shape_arrow or false) == (arrow or false)
+            end,
+            callback = function()
+                self:flushShape()   -- place any pending shape as its old type first
+                self.shape, self.shape_arrow = shape, arrow
+                self:refreshToolLabels()
+                self:openShapePicker()   -- reopen to move the checkmark
+            end,
+        }
     end
-    -- arrowhead size, handy for the arrow shapes
+
+    local buttons = {
+        { shapeBtn("\u{2571}", _("Line"),  "line",  nil),
+          shapeBtn("\u{2312}", _("Curve"), "curve", nil) },
+        { shapeBtn("\u{2192}", _("Arrow"),        "line",  "end"),
+          shapeBtn("\u{2933}", _("Curved arrow"), "curve", "end") },
+        { shapeBtn("\u{2194}", _("Double arrow"),        "line",  "both"),
+          shapeBtn("\u{21DD}", _("Curved double arrow"), "curve", "both") },
+        { shapeBtn("\u{25AD}", _("Rectangle"), "rect",     nil),
+          shapeBtn("\u{25EF}", _("Ellipse"),   "ellipse",  nil),
+          shapeBtn("\u{25B3}", _("Triangle"),  "triangle", nil) },
+    }
+    -- Fill toggle: turns the closed shapes (rectangle / ellipse / triangle) solid
+    buttons[#buttons + 1] = {{
+        text = _("Fill \u{2014} solid interior"),
+        checked_func = function() return self.shape_fill end,
+        callback = function()
+            self.shape_fill = not self.shape_fill
+            self:refreshToolLabels()
+            self:openShapePicker()
+        end,
+    }}
+    -- arrowhead size (small; only matters for the arrow shapes)
     buttons[#buttons + 1] = {{
         text = string.format(_("Arrowhead size: %d px"), self.arrow_head),
         callback = function() UIManager:close(self._shape_dialog); self:openArrowSize() end,
     }}
-    -- paint bucket: fill an enclosed area on tap, using the pen's colour/opacity
-    buttons[#buttons + 1] = {{
-        text = "\u{25A8} " .. _("Fill area (hold to set colour)"),
-        checked_func = function() return self.tool == "fill" end,
-        callback = function()
-            self:flushShape()   -- place a finished-but-pending shape, don't drop it
-            self.tool = "fill"
-            self:refreshToolLabels()
-            UIManager:close(self._shape_dialog)
-        end,
-        hold_callback = function()
-            UIManager:close(self._shape_dialog)
-            self:openFillSettings()
-        end,
-    }}
-    -- lasso: draw a loop around things to select them, then drag to move
-    buttons[#buttons + 1] = {{
-        text = "\u{2B21} " .. _("Lasso select (loop, then drag to move)"),
-        checked_func = function() return self.tool == "lasso" end,
-        callback = function()
-            self:flushPending()
-            self:flushShape()   -- place a finished-but-pending shape, don't drop it
-            if self.selection or self.lassoing then self:clearSelection() end
-            self.tool = "lasso"
-            self:refreshToolLabels()
-            UIManager:close(self._shape_dialog)
-            -- Rebuild the visible buffers straight from the ops and do one
-            -- synchronous full flash of every widget, so the canvas is repainted
-            -- cleanly when the menu closes rather than racing the dialog teardown.
-            self:composeCanvas()
-            self:renderView()
-            UIManager:setDirty("all", "full")
-        end,
-    }}
-    -- Snapping lives with the shapes it helps: grid snap and 45-degree snap.
-    local function onoff(b) return b and _("on") or _("off") end
+    -- bucket + lasso tools, each with its icon
     buttons[#buttons + 1] = {
-        { text = _("Snap to grid: ") .. onoff(self.snap_grid),
+        { text = "\u{25A8}  " .. _("Paint bucket"),
+          checked_func = function() return self.tool == "fill" end,
+          callback = function()
+              self:flushShape()
+              self.tool = "fill"
+              self:refreshToolLabels()
+              UIManager:close(self._shape_dialog)
+          end,
+          hold_callback = function()
+              UIManager:close(self._shape_dialog)
+              self:openFillSettings()
+          end },
+        { text = "\u{2B21}  " .. _("Lasso"),
+          checked_func = function() return self.tool == "lasso" end,
+          callback = function()
+              self:flushPending()
+              self:flushShape()
+              if self.selection or self.lassoing then self:clearSelection() end
+              self.tool = "lasso"
+              self:refreshToolLabels()
+              UIManager:close(self._shape_dialog)
+              self:composeCanvas()
+              self:renderView()
+              UIManager:setDirty("all", "full")
+          end },
+    }
+    -- snapping toggles (checkmark shows the state)
+    buttons[#buttons + 1] = {
+        { text = _("Snap to grid"),
+          checked_func = function() return self.snap_grid end,
           callback = function()
               self.snap_grid = not self.snap_grid
               self:setSetting("inkaway_snap_grid", self.snap_grid)
               self:openShapePicker()
           end },
-        { text = _("Snap to 45\u{00B0}: ") .. onoff(self.snap_angle),
+        { text = _("Snap 45\u{00B0}"),
+          checked_func = function() return self.snap_angle end,
           callback = function()
               self.snap_angle = not self.snap_angle
               self:setSetting("inkaway_snap_angle", self.snap_angle)
               self:openShapePicker()
           end },
     }
-    buttons[#buttons + 1] = {{ text = _("Drawn with the pen's size, opacity and colour."), enabled = false }}
     buttons[#buttons + 1] = {{ text = _("Done"),
         callback = function() UIManager:close(self._shape_dialog) end }}
 
     self._shape_dialog = ButtonDialog:new{ title = _("Shapes"), title_align = "center", buttons = buttons }
     UIManager:show(self._shape_dialog)
 end
+
 
 ------------------------------------------------------------------------------
 -- Zoom  (consistent multiplicative steps between fit and ZOOM_MAX)
