@@ -460,15 +460,32 @@ function InkAwayView:init()
     self.shape_assist = self:getSetting("inkaway_shape_assist", false)
     -- Palm rejection: on a device with a pen, take the pen over (draw from its raw
     -- events) and ignore finger touches while the pen is down, so a resting palm
-    -- never marks the page. Off by default and a no-op on finger-only devices.
-    self.palm_reject = self:getSetting("inkaway_palm_reject", false) and true or false
+    -- never marks the page. Defaults ON on pen devices (Kindle Scribe, reMarkable)
+    -- and OFF on finger-only readers (Paperwhite) and Kobo (which KOReader gives no
+    -- reliable "has a pen" flag for, so it opts in via the toggle). It is a no-op
+    -- until a real pen is present regardless. The one hard part is that KOReader
+    -- routes a resting palm to us wearing the stylus eraser's tool number
+    -- (MT_TOOL_PALM == TOOL_TYPE_ERASER == 2); we tell a real pen from a promoted
+    -- palm by slot with Stylus.classify (see onStylusSlot / ink/stylus.lua).
+    self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus()) and true or false
     -- TEMP diagnostic for the palm-rejection prerelease (shows an on-screen note
-    -- when the pen is first detected). Remove/flip default to false once palm
-    -- rejection is confirmed working on real pen hardware.
+    -- the first time the pen and the first time a palm are seen, with the slot
+    -- facts that drove the decision). Flip default to false once confirmed on real
+    -- pen hardware.
     self.pen_debug   = self:getSetting("inkaway_pen_debug", true) and true or false
     self._pen_state  = Stylus.new()
-    self._reject_finger = false   -- true while the pen is down (plus a short lift debounce)
-    self._pen_clear  = function() self._reject_finger = false end
+    self._pen_owner  = nil        -- slot number currently drawing the pen stroke
+    self._palm_slots = {}         -- slot number -> tracking id, for palms we swallow
+    self._palm_count = 0
+    self._reject_finger = false   -- true while a pen/palm is down (plus a short debounce)
+    -- After a debounce with no pen/palm activity, re-enable fingers and forget any
+    -- palm we never saw lift (a palm whose tool reverts to finger stops arriving at
+    -- the stylus callback, so the count is refreshed by activity, not trusted long).
+    self._pen_clear  = function()
+        self._reject_finger = false
+        self._palm_slots = {}
+        self._palm_count = 0
+    end
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off|vert|horiz|quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- 0 = off, else stroke count
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- eraser also removes the background?
@@ -5231,6 +5248,16 @@ function InkAwayView:penCapable()
     return Device.input and type(Device.input.registerStylusCallback) == "function"
 end
 
+-- Does this device physically have a stylus? Used only to pick the default state
+-- of the palm-rejection toggle (which the reader can always override). KOReader
+-- flags the Wacom pen devices -- Kindle Scribe, reMarkable -- with wacom_protocol;
+-- it exposes no reliable "has a pen" flag for Kobo styluses, so those (and every
+-- finger-only reader) default the toggle OFF and turn it on by hand if they draw
+-- with a pen. Being wrong here only changes a default, never whether the pen works.
+function InkAwayView:deviceHasStylus()
+    return Device.input and Device.input.wacom_protocol == true and true or false
+end
+
 -- Register or drop the stylus callback to match self.palm_reject. Called at
 -- startup and whenever the setting is toggled.
 function InkAwayView:applyPalmReject()
@@ -5243,15 +5270,35 @@ function InkAwayView:applyPalmReject()
     elseif self._stylus_cb then
         pcall(function() Device.input:unregisterStylusCallback() end)
         self._stylus_cb = nil
-        self._reject_finger = false
+        self:resetPenState()
     end
 end
 
--- True while finger input must be ignored (the pen is down, or lifted so recently
--- that a lingering palm should still be suppressed). Pen-fed events set
--- _pen_feeding so they pass through their own handlers.
+-- Drop all in-flight pen/palm state (called when palm rejection is turned off or
+-- the widget closes). Restores a tool we swapped for the eraser tip if a stroke
+-- was mid-flight, so toggling off during a rear-eraser stroke can't leave the tool
+-- stuck on "erase" or the state machine wedged half-down.
+function InkAwayView:resetPenState()
+    UIManager:unschedule(self._pen_clear)
+    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self._pen_state = Stylus.new()
+    self._pen_started = false
+    self._pen_feeding = false
+    self._pen_owner = nil
+    self._reject_finger = false
+    self._palm_slots = {}
+    self._palm_count = 0
+end
+
+-- True while finger input must be ignored. Latched on PHYSICAL presence -- the pen
+-- is actually down, or a palm is actually down -- not merely on the debounce timer,
+-- so a stray palm frame's short timer can never drop rejection mid-stroke (that was
+-- the "lines between palm and pen" leak). The timer (_reject_finger) only adds the
+-- brief grace after everything lifts. Pen-fed events set _pen_feeding so they pass
+-- through their own handlers.
 function InkAwayView:fingerRejected()
-    return self._reject_finger and not self._pen_feeding
+    if self._pen_feeding then return false end
+    return self._pen_state.down or self._palm_count > 0 or self._reject_finger
 end
 
 -- Translate a raw stylus slot position into the same screen coordinates a finger
@@ -5268,31 +5315,109 @@ function InkAwayView:penScreenXY(slot)
     return Stylus.rotate(slot.x, slot.y, mode, S:getWidth(), S:getHeight())
 end
 
--- The stylus callback (registered on KOReader's Input). Runs before gesture
--- detection; returning true removes the pen from gesture detection so it never
--- also arrives as a finger-style gesture. We turn the id transitions into our own
--- touch / pan / release on the drawing.
-function InkAwayView:onStylusSlot(_, slot)
-    if not self.palm_reject or self.closing then return false end
-    -- DIAGNOSTIC (prerelease): prove, on-device, that the pen actually reaches this
-    -- callback. Shows once per session on the first stylus event. If a tester turns
-    -- palm rejection on, draws with the pen, and never sees this, the pen is not
-    -- being routed to the plugin at all (a device/KOReader issue, not our logic).
-    if self.pen_debug and not self._pen_seen then
-        self._pen_seen = true
-        UIManager:show(InfoMessage:new{ text = string.format(
-            "Ink Away pen detected: tool=%s id=%s x=%s y=%s",
-            tostring(slot.tool), tostring(slot.id), tostring(slot.x), tostring(slot.y)) })
+-- The live Input facts Stylus.classify needs to tell a real pen from a promoted
+-- palm: the dedicated pen slot, whether this is a Wacom-protocol device, and the
+-- barrel-button latches KOReader keeps.
+function InkAwayView:stylusFacts(input)
+    input = input or Device.input
+    return {
+        pen_slot          = input and input.pen_slot,
+        wacom             = input and input.wacom_protocol == true,
+        eraser_latch      = input and input.stylus_eraser_active == true,
+        highlighter_latch = input and input.stylus_highlighter_active == true,
+    }
+end
+
+-- Hold finger rejection open for the lift debounce and (re)start the clear timer.
+-- Called on every pen and palm frame so that as long as either is physically
+-- present, fingers stay ignored; the timer self-heals when activity truly stops.
+function InkAwayView:holdReject()
+    self._reject_finger = true
+    UIManager:unschedule(self._pen_clear)
+    UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+end
+
+-- A palm KOReader promoted to a stylus tool number and routed to us. We never
+-- draw from it; we just remember it is down (so a lift can be reasoned about) and
+-- keep fingers rejected. A palm whose tool later reverts to an ordinary finger
+-- stops arriving here and reappears as a normal gesture -- the held rejection
+-- window (refreshed by onIaTouch/onIaPan) covers that until it truly lifts.
+function InkAwayView:penPalm(slot)
+    local key = slot.slot or 0
+    local id = tonumber(slot.id)
+    if id and id >= 0 then
+        if not self._palm_slots[key] then self._palm_count = self._palm_count + 1 end
+        self._palm_slots[key] = id
+    elseif id and id < 0 then
+        if self._palm_slots[key] then
+            self._palm_slots[key] = nil
+            self._palm_count = math.max(0, self._palm_count - 1)
+        end
     end
+    self:holdReject()
+end
+
+-- The stylus callback (registered on KOReader's Input). Runs before gesture
+-- detection; returning true removes the slot from gesture detection so it never
+-- also arrives as a finger-style gesture. A slot reaches us because its tool is
+-- PEN/ERASER/HIGHLIGHTER or it sits on the pen slot -- but that set includes a
+-- resting palm (MT_TOOL_PALM == ERASER == 2), so we classify by slot first and
+-- only drive the drawing from a genuinely trusted pen.
+function InkAwayView:onStylusSlot(inp, slot)
+    if not self.palm_reject or self.closing then return false end
+    local input = inp or Device.input
+    local role = Stylus.classify(slot, self:stylusFacts(input))
+    -- Single-slot ownership. While one slot is drawing the pen stroke, any OTHER
+    -- slot that also classifies as a stylus must NOT co-drive the same stroke --
+    -- feeding two slots into one pen state machine is what draws lines between
+    -- them. This matters off Wacom (Kobo), where a resting palm promoted to the
+    -- eraser/highlighter tool by a held barrel button classifies as a pen too;
+    -- here it is demoted back to a palm and discarded. (On Wacom only the single
+    -- pen slot is ever ROLE_PEN, so this never triggers there.)
+    local sn = slot.slot or 0
+    if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner then
+        role = Stylus.ROLE_PALM
+    end
+    -- DIAGNOSTIC (prerelease): show the first pen and the first palm we classify,
+    -- with the facts that decided it. If a tester turns palm rejection on and never
+    -- sees the pen note, the pen is not being routed here at all (a device/KOReader
+    -- issue). If palm marks still appear but no palm note shows, the palm is not
+    -- reaching this callback as a stylus tool -- a different leak.
+    if self.pen_debug then
+        if role == Stylus.ROLE_PEN and not self._seen_pen then
+            self._seen_pen = true
+            UIManager:show(InfoMessage:new{ text = string.format(
+                "Ink Away pen: tool=%s slot=%s pen_slot=%s wacom=%s",
+                tostring(slot.tool), tostring(slot.slot),
+                tostring(input and input.pen_slot), tostring(input and input.wacom_protocol)) })
+        elseif role == Stylus.ROLE_PALM and not self._seen_palm then
+            self._seen_palm = true
+            UIManager:show(InfoMessage:new{ text = string.format(
+                "Ink Away palm rejected: tool=%s slot=%s pen_slot=%s",
+                tostring(slot.tool), tostring(slot.slot),
+                tostring(input and input.pen_slot)) })
+        end
+    end
+    if role == Stylus.ROLE_PALM then
+        self:penPalm(slot)   -- remember it, keep fingers out; never draw
+        return true          -- dominate: keep it out of gesture detection
+    elseif role == Stylus.ROLE_TOUCH then
+        return false         -- a real finger that only reached us in passing
+    end
+    -- ROLE_PEN: a trusted stylus. Drive our own touch / pan / release from it.
+    -- (Palms are already filtered, so penDown's tool==ERASER test now only ever
+    -- sees the pen's genuine rear eraser or a held barrel button.)
     local action = Stylus.step(self._pen_state, slot.id)
     if action == "down" then
+        self._pen_owner = sn        -- this slot owns the stroke until it lifts
         self:penDown(slot)
     elseif action == "move" then
         self:penMove(slot)
     elseif action == "up" then
         self:penUp()
+        self._pen_owner = nil
     end
-    return true   -- always swallow the pen; we handle it ourselves
+    return true   -- swallow the pen; we handle it ourselves
 end
 
 -- Feed one synthetic touch/pan/release into our normal handlers, marked so the
@@ -5374,7 +5499,10 @@ end
 -- Touch down: begin a stroke or a pan, or carry on a stroke that just lifted if
 -- the panel dropped the finger and picked it up again.
 function InkAwayView:onIaTouch(_, ges)
-    if self:fingerRejected() then return true end   -- palm rejection: pen is drawing
+    -- palm rejection: pen/palm is present. Refresh the window so a palm that
+    -- reverted to a finger tool (and so reappears here as a gesture) stays out
+    -- until it truly lifts.
+    if self:fingerRejected() then self:holdReject(); return true end
     local pos = ges.pos
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
@@ -5424,7 +5552,7 @@ function InkAwayView:onIaTouch(_, ges)
 end
 
 function InkAwayView:onIaPan(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected() then self:holdReject(); return true end
     local pos = ges.pos
     if self._fab_press then           -- a drag off a control is a draw, not a tap
         self._fab_press = nil

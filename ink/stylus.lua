@@ -53,6 +53,59 @@ function Stylus.isPen(tool)
         or tool == Stylus.TOOL_HIGHLIGHTER
 end
 
+-- What a routed slot physically is. KOReader's Input:routeStylusEvents hands the
+-- stylus callback ANY slot whose tool is PEN/ERASER/HIGHLIGHTER, OR which sits on
+-- the dedicated pen slot -- so a slot arriving at the callback is not necessarily
+-- the pen. The trap: Linux reports a rejected touch as MT_TOOL_PALM, whose value
+-- (2) is the SAME number as TOOL_TYPE_ERASER, so a resting palm reaches the
+-- callback wearing the eraser's tool. Believing it is what draws/erases from a
+-- palm. The reliable signal is the slot: a Wacom digitizer owns one dedicated pen
+-- slot, and a stylus-valued tool on any other slot is a promoted palm.
+--
+-- `facts` carries what only the live Input object knows:
+--   pen_slot          the digitizer's dedicated slot number (or nil)
+--   wacom             true on a Wacom protocol device (Kindle Scribe, reMarkable)
+--   eraser_latch      Input.stylus_eraser_active (a held barrel button, off Wacom)
+--   highlighter_latch Input.stylus_highlighter_active
+-- Returns one of ROLE_PEN / ROLE_PALM / ROLE_TOUCH.
+Stylus.ROLE_PEN   = "pen"     -- a trusted stylus: draw or erase with it
+Stylus.ROLE_PALM  = "palm"    -- a palm promoted to a stylus tool number: discard
+Stylus.ROLE_TOUCH = "touch"   -- an ordinary finger that only reached us in passing
+function Stylus.classify(slot, facts)
+    if not slot then return Stylus.ROLE_TOUCH end
+    facts = facts or {}
+    local tool = slot.tool
+    local stylus_tool = Stylus.isPen(tool)
+    local pen_slot = facts.pen_slot
+
+    if facts.wacom then
+        -- Wacom (Kindle Scribe, reMarkable): the digitizer owns one pen slot, and
+        -- the pen and its rear eraser are ALWAYS on it. A stylus-valued tool on
+        -- any other slot is the palm collision above.
+        if pen_slot == nil then
+            -- The runtime never told us the pen slot: fail closed so nothing draws
+            -- from a guess.
+            return stylus_tool and Stylus.ROLE_PALM or Stylus.ROLE_TOUCH
+        end
+        if slot.slot == pen_slot then return Stylus.ROLE_PEN end
+        if stylus_tool then return Stylus.ROLE_PALM end
+        return Stylus.ROLE_TOUCH
+    end
+
+    -- Off Wacom (Kobo stylus, SDL) the tool number has several possible authors.
+    -- The dedicated pen slot decides first; then a real PEN tool (the one value
+    -- that means "pen" in every namespace); then KOReader's own barrel-button
+    -- latch, which rewrites PEN into ERASER/HIGHLIGHTER while the button is held
+    -- (live on a Kobo). A bare 2/3 with no latch is a panel MT_TOOL_PALM/DIAL --
+    -- a palm.
+    if pen_slot ~= nil and slot.slot == pen_slot then return Stylus.ROLE_PEN end
+    if tool == Stylus.TOOL_PEN then return Stylus.ROLE_PEN end
+    if tool == Stylus.TOOL_ERASER and facts.eraser_latch then return Stylus.ROLE_PEN end
+    if tool == Stylus.TOOL_HIGHLIGHTER and facts.highlighter_latch then return Stylus.ROLE_PEN end
+    if stylus_tool then return Stylus.ROLE_PALM end
+    return Stylus.ROLE_TOUCH
+end
+
 -- Fresh per-pen tracking state.
 function Stylus.new()
     return { down = false }
