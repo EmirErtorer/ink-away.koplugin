@@ -1092,7 +1092,7 @@ function InkAwayView:openPenSettings()
         local function add(w) table.insert(content, w) end
 
         add(self:sheetTitle(_("Pen"), content_w, _("Done"), closeSelf))
-        add(vspan(16))
+        add(vspan(12))
         add(SliderRow:new{ label = _("Size"), value = self.pen_width, min = 1, max = 60,
             width = content_w, parent = menu, format = pxfmt,
             on_set = function(v) self.pen_width = math.max(1, v) end })
@@ -1100,7 +1100,7 @@ function InkAwayView:openPenSettings()
         add(SliderRow:new{ label = _("Opacity"), value = math.floor(self.pen_alpha / 255 * 100 + 0.5),
             width = content_w, parent = menu,
             on_set = function(v) self.pen_alpha = math.max(1, math.floor(v / 100 * 255 + 0.5)) end })
-        add(vspan(16))
+        add(vspan(12))
 
         -- brush styles: wave tiles (four per row, wrapping), then a create (+) tile
         local styleMenu = Brushes.menu(function(k) return self:getSetting(k) end)
@@ -1108,7 +1108,7 @@ function InkAwayView:openPenSettings()
         for _, s in ipairs(styleMenu) do if s.custom then ncustom = ncustom + 1 end end
         local per = 4
         local swtile = math.floor((content_w - (per - 1) * gap) / per)
-        local wave_h = Screen:scaleBySize(50)
+        local wave_h = Screen:scaleBySize(46)
         local tiles = {}
         for _, s in ipairs(styleMenu) do
             local sel = (self.pen_style == s.key)
@@ -1131,40 +1131,18 @@ function InkAwayView:openPenSettings()
             add(row)
             if i + per <= #tiles then add(vspan(gap)) end
         end
-        add(vspan(16))
+        add(vspan(12))
 
-        -- colour swatches: shades, then (colour screens) colours + saved customs
-        local sw = math.floor((content_w - 5 * gap) / 6)
-        local function swatchRow(entries, custom)
-            local row = HorizontalGroup:new{ align = "center" }
-            for i, e in ipairs(entries) do
-                local rgb = custom and e or e.rgb
-                if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
-                table.insert(row, self:swatchTile(rgb, sameColor(self.pen_color, rgb), sw,
-                    function() self.pen_color = { rgb[1], rgb[2], rgb[3] }; self:openPenSettings() end,
-                    custom and function() self:removeCustomColor(rgb); self:openPenSettings() end or nil))
-            end
-            return row
-        end
-        add(swatchRow(SHADES))
-        if self:colorScreen() then
-            add(vspan(gap)); add(swatchRow(COLORS))
-            local customs = self:getCustomColors()
-            for i = 1, #customs, 6 do
-                local chunk = {}
-                for j = i, math.min(i + 5, #customs) do chunk[#chunk + 1] = customs[j] end
-                add(vspan(gap)); add(swatchRow(chunk, true))
-            end
-            add(vspan(10))
-            add(self:actionButton(_("Custom colour (wheel)"), content_w,
-                function() closeSelf(); self:openColorPicker() end))
-        end
-        add(vspan(16))
-
-        -- stroke aids: two toggles on one row, then the stabilizer as a slider
+        -- The stroke aids (toggles + stabilizer) are the fixed tail of the sheet and
+        -- must never be pushed off-screen by the colour rows, so build them first,
+        -- measure them, and cap how many custom-colour rows we render to whatever
+        -- vertical space is left (see the colour section below).
+        local TextBoxWidget = require("ui/widget/textboxwidget")
+        local HINT = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF)
         local function toggle(label, on, cb)
             return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
         end
+        local tail = VerticalGroup:new{ align = "left" }
         local assistRow = HorizontalGroup:new{ align = "center",
             toggle(_("Shape assist"), self.shape_assist, function(on)
                 self.shape_assist = on; self:setSetting("inkaway_shape_assist", on) end),
@@ -1182,11 +1160,90 @@ function InkAwayView:openPenSettings()
             table.insert(assistRow, HorizontalSpan:new{ width = slack })
             table.insert(assistRow, pr)
         end
-        add(assistRow)
-        add(vspan(12))
-        add(SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
+        table.insert(tail, assistRow)
+        table.insert(tail, vspan(12))
+        table.insert(tail, SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
             width = content_w, parent = menu, format = function(v) return tostring(v) end,
             on_set = function(v) self.stabilizer = v; self:setSetting("inkaway_stabilizer", v) end })
+        table.insert(tail, vspan(4))
+        table.insert(tail, TextBoxWidget:new{
+            text = _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."),
+            face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
+
+        -- colour swatches: shades, then (colour screens) colours + saved customs,
+        -- and always the RGB picker as a "+" tile. Rows are centred so a short row
+        -- (the 5 shades) stays symmetrical instead of hugging the left.
+        local CenterContainer = require("ui/widget/container/centercontainer")
+        local BLACK = Blitbuffer.COLOR_BLACK
+        -- Swatches fill the width (six per row), so grey and colour tiles are all the
+        -- same size with no empty margins. Their height is capped on big high-DPI
+        -- colour screens so two colour rows don't overflow the sheet (they become
+        -- wide rounded tiles rather than large squares).
+        local sw = math.floor((content_w - 5 * gap) / 6)
+        local swh = math.min(sw, Screen:scaleBySize(58))
+        local function swatch(rgb, custom)
+            return self:swatchTile(rgb, sameColor(self.pen_color, rgb), sw,
+                function() self.pen_color = { rgb[1], rgb[2], rgb[3] }; self:openPenSettings() end,
+                custom and function() self:removeCustomColor(rgb); self:openPenSettings() end or nil, swh)
+        end
+        local function pickerTile()
+            local inner = sw - Screen:scaleBySize(8)
+            local inner_h = swh - Screen:scaleBySize(8)
+            local b = Button:new{ text = "+", text_font_size = 24, text_font_bold = true,
+                width = inner, height = inner_h, background = TILE_BG,
+                radius = Screen:scaleBySize(11), bordersize = 0, margin = 0, padding = 0,
+                show_parent = self, callback = function() closeSelf(); self:openColorPicker() end }
+            return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = BLACK,
+                radius = Screen:scaleBySize(14), padding = Screen:scaleBySize(3), margin = 0, b }
+        end
+        local function centeredRow(list)
+            local hg = HorizontalGroup:new{ align = "center" }
+            for i, t in ipairs(list) do
+                if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
+                table.insert(hg, t)
+            end
+            return CenterContainer:new{ dimen = GeomUI:new{ w = content_w, h = hg:getSize().h }, hg }
+        end
+
+        -- Build the colour rows as measurable widgets so we can cap custom rows by
+        -- their real rendered height (estimates were off by a row on high-DPI
+        -- colour screens), keeping the toggles + stabilizer always on screen.
+        local rowWidgets = {}
+        local shadeTiles = {}
+        for _, e in ipairs(SHADES) do shadeTiles[#shadeTiles + 1] = swatch(e.rgb) end
+        rowWidgets[#rowWidgets + 1] = centeredRow(shadeTiles)
+        if self:colorScreen() then
+            -- Colours row: five preset colours plus the "+" RGB picker, so with no
+            -- saved customs the colour section is one clean row of six.
+            local colorTiles = {}
+            for i = 1, 5 do colorTiles[#colorTiles + 1] = swatch(COLORS[i].rgb) end
+            colorTiles[#colorTiles + 1] = pickerTile()
+            rowWidgets[#rowWidgets + 1] = centeredRow(colorTiles)
+
+            -- Saved custom colours go on additional rows below, but only as many as
+            -- fit: measure everything and cap by the real remaining height.
+            local head_h = content:getSize().h   -- head = title..brushes
+            content._size = nil                  -- invalidate (VerticalGroup caches offsets)
+            local fixed_h = head_h + tail:getSize().h + Screen:scaleBySize(16)
+            for _, w in ipairs(rowWidgets) do fixed_h = fixed_h + w:getSize().h + gap end
+            local per_row = rowWidgets[1]:getSize().h + gap
+            local budget = Screen:getHeight() - self:sheetTopY() - Screen:scaleBySize(4)
+                - Screen:scaleBySize(8) - 2 * Screen:scaleBySize(18) - 2 * Size.border.window
+            local ncustrows = math.max(0, math.floor((budget - fixed_h) / per_row))
+            local customs = self:getCustomColors()
+            local shown = math.min(#customs, ncustrows * 6)
+            for i = 1, shown, 6 do
+                local chunk = {}
+                for j = i, math.min(i + 5, shown) do chunk[#chunk + 1] = swatch(customs[j], true) end
+                rowWidgets[#rowWidgets + 1] = centeredRow(chunk)
+            end
+        end
+        for i, w in ipairs(rowWidgets) do
+            if i > 1 then add(vspan(gap)) end
+            add(w)
+        end
+        add(vspan(16))
+        for _, w in ipairs(tail) do add(w) end
 
         return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
             radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
@@ -1616,10 +1673,11 @@ end
 -- A colour swatch tile: a colour-filled rounded square with a thin black border
 -- (thicker when selected, so white/light swatches stay visible). Optional
 -- hold_cb for deleting a saved custom colour.
-function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb)
+function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb, h)
     local BLACK = Blitbuffer.COLOR_BLACK
     local inner = w - Screen:scaleBySize(8)
-    local btn = Button:new{ text = "", width = inner, height = inner,
+    local inner_h = (h or w) - Screen:scaleBySize(8)
+    local btn = Button:new{ text = "", width = inner, height = inner_h,
         background = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF),
         radius = Screen:scaleBySize(11), bordersize = 0, margin = 0, padding = 0,
         callback = cb, hold_callback = hold_cb, show_parent = self }
@@ -1644,7 +1702,11 @@ function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
     local ok, wave = pcall(function() return self:renderBrushWave(key, iw, ih, sel) end)
     if ok and wave and b.label_container then
         local ImageWidget = require("ui/widget/imagewidget")
-        local img = ImageWidget:new{ image = wave, width = iw, height = ih }
+        -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
+        -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it must be
+        -- a real colour or the highlight crashes indexing a nil field.
+        local img = ImageWidget:new{ image = wave, width = iw, height = ih,
+            fgcolor = Blitbuffer.COLOR_BLACK }
         b.label_widget = img; b.label_container[1] = img
     end
     return b
@@ -3937,6 +3999,14 @@ function InkAwayView:openSettings()
             format = function(v) return v == 0 and _("off") or string.format(_("%d strokes"), v) end,
             on_set = function(v) self.ghost_clean = v; self:setSetting("inkaway_ghost", v)
                 self._strokes_since_full = 0 end })
+        add(vspan(4))
+        do
+            local TextBoxWidget = require("ui/widget/textboxwidget")
+            add(TextBoxWidget:new{
+                text = _("Fast strokes leave faint grey marks. A full refresh clears them after this many strokes."),
+                face = Font:getFace("cfont", 13),
+                fgcolor = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF), width = content_w })
+        end
         add(vspan(14))
 
         -- autosave (segmented)
