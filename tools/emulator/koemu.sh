@@ -157,6 +157,7 @@ cmd_run() {
     ( cd "$KO_DIR" && env XDG_DOCUMENTS_DIR="$sandbox" \
         KOREADER_WINDOW_POS_X="$pos_x" KOREADER_WINDOW_POS_Y="$pos_y" \
         INKAWAY_AUTOOPEN=1 INKAWAY_AUTOSHEET="${INKAWAY_AUTOSHEET:-}" \
+        INKAWAY_AUTOSHOT="${INKAWAY_AUTOSHOT:-}" \
         $mono_env ./kodev run -W "$w" -H "$h" -D "$dpi" "$sandbox" )
 }
 
