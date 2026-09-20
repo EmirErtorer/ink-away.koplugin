@@ -38,6 +38,9 @@ local BrushMaker = InputContainer:extend{
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
 local GREY  = Blitbuffer.COLOR_GRAY
+local TILE  = Blitbuffer.ColorRGB32(0xE6, 0xE6, 0xE6, 0xFF)   -- secondary button fill
+local TRACK = Blitbuffer.ColorRGB32(0xCF, 0xCF, 0xCF, 0xFF)   -- slider track
+local KNOB  = Blitbuffer.ColorRGB32(0x99, 0x99, 0x99, 0xFF)   -- slider knob edge
 
 function BrushMaker:init()
     self.params = self.params or Brushes.defaults()
@@ -151,54 +154,57 @@ end
 
 function BrushMaker:paintTo(bb, x, y)
     local bx, by, bw, bh = self.box_x + x, self.box_y + y, self.box_w, self.box_h
-    -- panel
-    bb:paintRect(bx, by, bw, bh, WHITE)
-    bb:paintBorder(bx, by, bw, bh, Size.border.window or 2, BLACK)
+    local radius = Screen:scaleBySize(28)
+    -- panel (rounded, to match the tool sheets)
+    bb:paintRoundedRect(bx, by, bw, bh, WHITE, radius)
+    bb:paintBorder(bx, by, bw, bh, Size.border.window or 2, BLACK, radius)
 
     -- title
-    local title = TextWidget:new{ text = _("Create brush"), face = Font:getFace("tfont", 20), fgcolor = BLACK }
+    local title = TextWidget:new{ text = _("Create brush"), face = Font:getFace("cfont", 22), bold = true, fgcolor = BLACK }
     title:paintTo(bb, bx + self.pad, by + math.floor((self.title_h - title:getSize().h) / 2))
     title:free()
 
-    -- preview
+    -- preview (rounded frame)
+    local pv_r = Screen:scaleBySize(12)
     bb:blitFrom(self.preview_bb, bx + self.pad, by + self.title_h, 0, 0,
         self.preview_bb:getWidth(), self.preview_bb:getHeight())
     bb:paintBorder(bx + self.pad, by + self.title_h, self.preview_bb:getWidth(),
-        self.preview_bb:getHeight(), 1, GREY)
+        self.preview_bb:getHeight(), 1, GREY, pv_r)
 
-    -- sliders
+    -- sliders (pill track + black fill + round white knob, like the tool sheets)
     for i, f in ipairs(Brushes.FIELDS) do
         local tx, cy, tw, ry, w, rx = self:trackRect(i)
         tx = tx + x; cy = cy + y; ry = ry + y; rx = rx + x
-        -- label
         local lbl = TextWidget:new{ text = _(f.label), face = Font:getFace("cfont", 17), fgcolor = BLACK }
         lbl:paintTo(bb, rx, cy - math.floor(lbl:getSize().h / 2))
         lbl:free()
-        -- track
-        local th = Screen:scaleBySize(4)
-        bb:paintRect(tx, cy - math.floor(th / 2), tw, th, GREY)
+        local th = Screen:scaleBySize(8)
+        local tr = math.floor(th / 2)
+        bb:paintRoundedRect(tx, cy - tr, tw, th, TRACK, tr)
         local val = self.params[f.id] or f.min
         local frac = (val - f.min) / (f.max - f.min)
         if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
         local fillw = math.floor(tw * frac)
-        bb:paintRect(tx, cy - math.floor(th / 2), fillw, th, BLACK)
-        -- knob
-        local kr = Screen:scaleBySize(9)
-        bb:paintRect(tx + fillw - kr, cy - kr, kr * 2, kr * 2, BLACK)
-        -- value readout
+        if fillw > 0 then bb:paintRoundedRect(tx, cy - tr, math.max(th, fillw), th, BLACK, tr) end
+        local kd = Screen:scaleBySize(24)
+        local kx = math.max(tx, math.min(tx + tw - kd, tx + fillw - math.floor(kd / 2)))
+        bb:paintRoundedRect(kx, cy - math.floor(kd / 2), kd, kd, WHITE, math.floor(kd / 2))
+        bb:paintBorder(kx, cy - math.floor(kd / 2), kd, kd, Screen:scaleBySize(1), KNOB, math.floor(kd / 2))
         local shown = f.step and tostring(math.floor(val + 0.5))
                               or tostring(math.floor(frac * 100 + 0.5))
-        local vw = TextWidget:new{ text = shown, face = Font:getFace("cfont", 15), fgcolor = BLACK }
+        local vw = TextWidget:new{ text = shown, face = Font:getFace("cfont", 15), bold = true, fgcolor = BLACK }
         vw:paintTo(bb, tx + tw + Screen:scaleBySize(8), cy - math.floor(vw:getSize().h / 2))
         vw:free()
     end
 
-    -- buttons
+    -- buttons (rounded; Save filled black, Cancel grey)
     local save, cancel = self:buttonRects()
+    local br = Screen:scaleBySize(14)
     for _, b in ipairs({ { save, _("Save brush"), true }, { cancel, _("Cancel"), false } }) do
         local r, label = b[1], b[2]
-        bb:paintBorder(r.x + x, r.y + y, r.w, r.h, b[3] and 2 or 1, BLACK)
-        local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 18), fgcolor = BLACK }
+        bb:paintRoundedRect(r.x + x, r.y + y, r.w, r.h, b[3] and BLACK or TILE, br)
+        local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 18), bold = true,
+            fgcolor = b[3] and WHITE or BLACK }
         t:paintTo(bb, r.x + x + math.floor((r.w - t:getSize().w) / 2),
                       r.y + y + math.floor((r.h - t:getSize().h) / 2))
         t:free()

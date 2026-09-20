@@ -102,6 +102,9 @@ local PILL_GREY = Blitbuffer.ColorRGB32(0xD6, 0xD6, 0xD6, 0xFF)
 local HAIRLINE  = Blitbuffer.ColorRGB32(0xCC, 0xCC, 0xCC, 0xFF)
 local TILE_BG   = Blitbuffer.ColorRGB32(0xE6, 0xE6, 0xE6, 0xFF)   -- shape-menu tile fill
 local CARET_BG  = Blitbuffer.ColorRGB32(0xB0, 0xB0, 0xB0, 0xFF)   -- line-tile corner caret chip
+-- Sheet widgets are defined further down but used by menu functions above them;
+-- forward-declare so those closures capture the right upvalues.
+local IconMenu, ToggleRow, SliderRow, TRACK_OFF, KNOB_EDGE
 -- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
 -- (it paints opaque), so instead of a see-through charcoal box we use a light,
 -- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
@@ -599,6 +602,10 @@ function InkAwayView:init()
         UIManager:scheduleIn(0.7, function()
             if autosheet == "pen" then self:openPenSettings()
             elseif autosheet == "eraser" then self:openEraserSettings()
+            elseif autosheet == "text" then self:openTextSettings()
+            elseif autosheet == "settings" then self:openSettings()
+            elseif autosheet == "save" then self:onSave()
+            elseif autosheet == "brush" then self:openBrushMaker()
             elseif autosheet == "shape" then self:openShapePicker()
             elseif autosheet == "shapeline" then self:openShapePicker(); self:openShapeLineMenu()
             elseif autosheet == "fill" then self:openFillColor() end
@@ -737,7 +744,7 @@ function InkAwayView:onCloseWidget()
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -1017,14 +1024,6 @@ function InkAwayView:swatchRowFor(entries, current, onpick)
     return row
 end
 
--- Pen swatch row: marks the pen colour, and picking one reopens the pen popup.
-function InkAwayView:swatchRow(entries)
-    return self:swatchRowFor(entries, self.pen_color, function(rgb)
-        self.pen_color = { rgb[1], rgb[2], rgb[3] }
-        self:openPenSettings()
-    end)
-end
-
 -- The reader's saved custom colours (a list of {r,g,b}), persisted so they last.
 function InkAwayView:getCustomColors()
     local list = self:getSetting("inkaway_custom_colors")
@@ -1049,31 +1048,6 @@ function InkAwayView:removeCustomColor(rgb)
     self:setSetting("inkaway_custom_colors", list)
 end
 
--- A row of saved-colour swatches: tap to use, hold to delete.
-function InkAwayView:customSwatchRow(entries)
-    local sw = math.floor(math.min(self.screen_w, self.screen_h) * 0.9 / 6)
-    local row = {}
-    for _, rgb in ipairs(entries) do
-        local col = rgb
-        row[#row + 1] = {
-            text = "",
-            background = Blitbuffer.ColorRGB32(col[1], col[2], col[3], 0xFF),
-            width = sw,
-            bordersize = sameColor(self.pen_color, col) and Size.border.thick or Size.border.default,
-            radius = 0,
-            callback = function()
-                self.pen_color = { col[1], col[2], col[3] }
-                self:openPenSettings()
-            end,
-            hold_callback = function()
-                self:removeCustomColor(col)
-                self:openPenSettings()
-            end,
-        }
-    end
-    return row
-end
-
 -- Open the colour wheel to pick (and optionally save) an exact colour.
 function InkAwayView:openColorPicker(target)
     local ok, ColorPicker = pcall(require, "ink/colorpicker")
@@ -1093,104 +1067,133 @@ function InkAwayView:openColorPicker(target)
     })
 end
 
--- Pen settings popup: size and opacity together, plus shade and (on colour
--- screens) colour swatches. Rebuilt and reshown whenever something changes.
+-- Pen settings sheet (same rounded-sheet style as the Shapes menu): size and
+-- opacity sliders, brush-style wave tiles with a create (+) tile, colour swatch
+-- rows, and the stroke aids. Rebuilt and reshown whenever something changes.
+local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
 function InkAwayView:openPenSettings()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    if self._pen_dialog then UIManager:close(self._pen_dialog) end
+    if self._pen_dialog then UIManager:close(self._pen_dialog); self._pen_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local Font = require("ui/font")
+    self:ensureUserIcons()
 
-    local pct = math.floor(self.pen_alpha / 255 * 100 + 0.5)
-    local function onoff(b) return b and _("on") or _("off") end
-    local buttons = {}
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local tileW = math.floor((target - 3 * gap) / 4)
+    local content_w = 4 * tileW + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local pxfmt = function(v) return v .. _(" px") end
+    local function closeSelf() if self._pen_dialog then UIManager:close(self._pen_dialog); self._pen_dialog = nil end end
 
-    -- size + opacity, opened together in a precise slider dialog
-    buttons[#buttons + 1] = {{
-        text = string.format(_("Size %d px   •   Opacity %d%%"), self.pen_width, pct),
-        callback = function()
-            UIManager:close(self._pen_dialog)
-            self:openSizeOpacity()
-        end,
-    }}
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
 
-    -- brush style: the built in brushes plus any the reader has made, three to a
-    -- row. Holding a made brush offers to delete it.
-    buttons[#buttons + 1] = {{ text = _("Style"), enabled = false }}
-    local menu = Brushes.menu(function(k) return self:getSetting(k) end)
-    local row = {}
-    for _, s in ipairs(menu) do
-        row[#row + 1] = {
-            text = (self.pen_style == s.key and "\u{25CF} " or "") .. s.label,
-            callback = function()
-                self.pen_style = s.key
-                self:setSetting("inkaway_pen_style", s.key)
-                self:openPenSettings()
-            end,
-            hold_callback = s.custom and function()
-                self:confirmDeleteBrush(s.key, s.label)
-            end or nil,
-        }
-        if #row == 3 then buttons[#buttons + 1] = row; row = {} end
-    end
-    if #row > 0 then buttons[#buttons + 1] = row end
-    buttons[#buttons + 1] = {{ text = "\u{271A} " .. _("Create brush"),
-        callback = function() UIManager:close(self._pen_dialog); self:openBrushMaker() end }}
+        add(self:sheetTitle(_("Pen"), content_w, _("Done"), closeSelf))
+        add(vspan(16))
+        add(SliderRow:new{ label = _("Size"), value = self.pen_width, min = 1, max = 60,
+            width = content_w, parent = menu, format = pxfmt,
+            on_set = function(v) self.pen_width = math.max(1, v) end })
+        add(vspan(10))
+        add(SliderRow:new{ label = _("Opacity"), value = math.floor(self.pen_alpha / 255 * 100 + 0.5),
+            width = content_w, parent = menu,
+            on_set = function(v) self.pen_alpha = math.max(1, math.floor(v / 100 * 255 + 0.5)) end })
+        add(vspan(16))
 
-    -- shades (primary on e-ink)
-    buttons[#buttons + 1] = {{ text = _("Shade"), enabled = false }}
-    buttons[#buttons + 1] = self:swatchRow(SHADES)
-
-    -- colours, only where the screen can show them
-    if self:colorScreen() then
-        buttons[#buttons + 1] = {{ text = _("Colour (colour screens)"), enabled = false }}
-        buttons[#buttons + 1] = self:swatchRow(COLORS)
-        -- saved custom colours: rows of six, added only as you save them (up to
-        -- three rows). Hold a swatch to delete it.
-        local customs = self:getCustomColors()
-        for i = 1, #customs, 6 do
-            local chunk = {}
-            for j = i, math.min(i + 5, #customs) do chunk[#chunk + 1] = customs[j] end
-            buttons[#buttons + 1] = self:customSwatchRow(chunk)
+        -- brush styles: wave tiles (four per row, wrapping), then a create (+) tile
+        local styleMenu = Brushes.menu(function(k) return self:getSetting(k) end)
+        local ncustom = 0
+        for _, s in ipairs(styleMenu) do if s.custom then ncustom = ncustom + 1 end end
+        local per = 4
+        local swtile = math.floor((content_w - (per - 1) * gap) / per)
+        local wave_h = Screen:scaleBySize(50)
+        local tiles = {}
+        for _, s in ipairs(styleMenu) do
+            local sel = (self.pen_style == s.key)
+            tiles[#tiles + 1] = self:brushWaveTile(s.key, swtile, wave_h, sel, function()
+                self.pen_style = s.key; self:setSetting("inkaway_pen_style", s.key); self:openPenSettings()
+            end, s.custom and function() self:confirmDeleteBrush(s.key, s.label) end or nil)
         end
-        buttons[#buttons + 1] = {{ text = _("Custom colour\u{2026} (wheel)"),
-            callback = function() UIManager:close(self._pen_dialog); self:openColorPicker() end }}
+        if ncustom < PEN_CUSTOM_CAP then
+            tiles[#tiles + 1] = Button:new{ text = "+", text_font_size = 26, text_font_bold = true,
+                width = swtile, height = wave_h, bordersize = 0, radius = Screen:scaleBySize(12),
+                background = TILE_BG, margin = 0, padding = 0, show_parent = self,
+                callback = function() closeSelf(); self:openBrushMaker() end }
+        end
+        for i = 1, #tiles, per do
+            local row = HorizontalGroup:new{ align = "center" }
+            for j = i, math.min(i + per - 1, #tiles) do
+                if j > i then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                table.insert(row, tiles[j])
+            end
+            add(row)
+            if i + per <= #tiles then add(vspan(gap)) end
+        end
+        add(vspan(16))
+
+        -- colour swatches: shades, then (colour screens) colours + saved customs
+        local sw = math.floor((content_w - 5 * gap) / 6)
+        local function swatchRow(entries, custom)
+            local row = HorizontalGroup:new{ align = "center" }
+            for i, e in ipairs(entries) do
+                local rgb = custom and e or e.rgb
+                if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                table.insert(row, self:swatchTile(rgb, sameColor(self.pen_color, rgb), sw,
+                    function() self.pen_color = { rgb[1], rgb[2], rgb[3] }; self:openPenSettings() end,
+                    custom and function() self:removeCustomColor(rgb); self:openPenSettings() end or nil))
+            end
+            return row
+        end
+        add(swatchRow(SHADES))
+        if self:colorScreen() then
+            add(vspan(gap)); add(swatchRow(COLORS))
+            local customs = self:getCustomColors()
+            for i = 1, #customs, 6 do
+                local chunk = {}
+                for j = i, math.min(i + 5, #customs) do chunk[#chunk + 1] = customs[j] end
+                add(vspan(gap)); add(swatchRow(chunk, true))
+            end
+            add(vspan(10))
+            add(self:actionButton(_("Custom colour (wheel)"), content_w,
+                function() closeSelf(); self:openColorPicker() end))
+        end
+        add(vspan(16))
+
+        -- stroke aids: two toggles on one row, then the stabilizer as a slider
+        local function toggle(label, on, cb)
+            return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
+        end
+        local assistRow = HorizontalGroup:new{ align = "center",
+            toggle(_("Shape assist"), self.shape_assist, function(on)
+                self.shape_assist = on; self:setSetting("inkaway_shape_assist", on) end),
+        }
+        do
+            local pr = toggle(_("Palm rejection"), self.palm_reject, function(on)
+                self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
+                if on and not self:penCapable() then
+                    UIManager:show(InfoMessage:new{ text = _(
+                        "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+                end
+            end)
+            local a1w = assistRow[1].width
+            local slack = math.max(Screen:scaleBySize(16), content_w - a1w - pr.width)
+            table.insert(assistRow, HorizontalSpan:new{ width = slack })
+            table.insert(assistRow, pr)
+        end
+        add(assistRow)
+        add(vspan(12))
+        add(SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
+            width = content_w, parent = menu, format = function(v) return tostring(v) end,
+            on_set = function(v) self.stabilizer = v; self:setSetting("inkaway_stabilizer", v) end })
+
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
 
-    -- Assist: the stroke aids belong with the pen, where the hand is, not buried
-    -- in Settings. Shape assist beautifies a freehand stroke; the stabilizer
-    -- smooths wobble; palm rejection (a pen device) ignores a resting hand.
-    buttons[#buttons + 1] = {{ text = _("Assist"), enabled = false }}
-    buttons[#buttons + 1] = {
-        { text = _("Shape assist: ") .. onoff(self.shape_assist),
-          callback = function()
-              self.shape_assist = not self.shape_assist
-              self:setSetting("inkaway_shape_assist", self.shape_assist)
-              self:openPenSettings()
-          end },
-        { text = string.format(_("Stabilizer: %d"), self.stabilizer),
-          callback = function() UIManager:close(self._pen_dialog); self:openStabilizer() end },
-    }
-    buttons[#buttons + 1] = {{
-        text = _("Palm rejection (pen): ") .. onoff(self.palm_reject)
-               .. (self:penCapable() and "" or _(" (needs newer KOReader)")),
-        callback = function()
-            self.palm_reject = not self.palm_reject
-            self:setSetting("inkaway_palm_reject", self.palm_reject)
-            self:applyPalmReject()
-            if self.palm_reject and not self:penCapable() then
-                UIManager:show(InfoMessage:new{ text = _(
-                    "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
-            elseif self.palm_reject and self.pen_debug then
-                UIManager:show(InfoMessage:new{ text = _(
-                    "Palm rejection on. The pen hook is registered. Draw with the pen: you should see a one-time 'pen detected' note. If the pen still acts like a finger and no note appears, the pen is not reaching the plugin.") })
-            end
-            self:openPenSettings()
-        end,
-    }}
-
-    buttons[#buttons + 1] = {{ text = _("Done"),
-        callback = function() UIManager:close(self._pen_dialog) end }}
-
-    self._pen_dialog = ButtonDialog:new{ title = _("Pen"), title_align = "center", buttons = buttons }
+    self._pen_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._pen_dialog = nil end }
     UIManager:show(self._pen_dialog)
 end
 
@@ -1233,62 +1236,37 @@ function InkAwayView:confirmDeleteBrush(key, label)
     })
 end
 
--- The precise size + opacity slider dialog, reached from the pen popup.
-function InkAwayView:openSizeOpacity()
-    local DoubleSpinWidget = require("ui/widget/doublespinwidget")
-    local dlg
-    dlg = DoubleSpinWidget:new{
-        title_text = _("Pen size and opacity"),
-        info_text = _("Size is in canvas pixels. Opacity sets how transparent the ink is; lower means more see-through in the export."),
-        left_text = _("Size"),
-        left_min = 1, left_max = 60, left_step = 1,
-        left_value = self.pen_width,
-        right_text = _("Opacity %"),
-        right_min = 5, right_max = 100, right_step = 5,
-        right_value = math.floor(self.pen_alpha / 255 * 100 + 0.5),
-        callback = function(size, opacity)
-            self.pen_width = math.max(1, math.floor(size))
-            self.pen_alpha = math.max(1, math.min(255, math.floor(opacity / 100 * 255 + 0.5)))
-            self:openPenSettings()   -- back to the pen popup with the new values
-        end,
-    }
-    UIManager:show(dlg)
-end
-
 -- Eraser menu: size, and whether the eraser also removes the background image.
+-- Eraser sheet (shapes-menu style): a size slider and an "erase pictures" toggle.
 function InkAwayView:openEraserSettings()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local buttons = {
-        {{ text = string.format(_("Size: %d px"), self.eraser_width),
-           callback = function() UIManager:close(dlg); self:openEraserSize() end }},
-        {{ text = _("Erase pictures: ") .. (self.erase_bg and _("on") or _("off")),
-           callback = function()
-               self.erase_bg = not self.erase_bg
-               self:setSetting("inkaway_erase_bg", self.erase_bg)
-               UIManager:close(dlg); self:openEraserSettings()
-           end }},
-        {{ text = _("When off, the eraser removes your ink but leaves the background and any placed images untouched. When on, it erases those too."), enabled = false }},
-        {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
-    }
-    dlg = ButtonDialog:new{ title = _("Eraser"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
-end
-
--- The eraser's width, in canvas pixels.
-function InkAwayView:openEraserSize()
-    local SpinWidget = require("ui/widget/spinwidget")
-    UIManager:show(SpinWidget:new{
-        title_text = _("Eraser size"),
-        info_text = _("The eraser's width, in canvas pixels."),
-        value = self.eraser_width,
-        value_min = 4, value_max = 120, value_step = 2, value_hold_step = 10,
-        unit = _("px"),
-        callback = function(spin)
-            self.eraser_width = math.max(1, math.floor(spin.value))
-            self:openEraserSettings()
-        end,
-    })
+    if self._eraser_dialog then UIManager:close(self._eraser_dialog); self._eraser_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    self:ensureUserIcons()
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._eraser_dialog then UIManager:close(self._eraser_dialog); self._eraser_dialog = nil end
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        table.insert(content, self:sheetTitle(_("Eraser"), content_w, _("Done"), closeSelf))
+        table.insert(content, vspan(16))
+        table.insert(content, SliderRow:new{ label = _("Size"), value = self.eraser_width, min = 4, max = 120,
+            width = content_w, parent = menu, format = function(v) return v .. _(" px") end,
+            on_set = function(v) self.eraser_width = math.max(1, v) end })
+        table.insert(content, vspan(14))
+        table.insert(content, ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
+            width = content_w, parent = menu,
+            callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end })
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._eraser_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._eraser_dialog = nil end }
+    UIManager:show(self._eraser_dialog)
 end
 
 -- Arrowhead size, in canvas pixels (used by the arrow shapes).
@@ -1326,14 +1304,15 @@ end
 -- and the child submenu is smaller than the parent, so covering the screen would
 -- make _repaint skip the canvas and leave stale sheet pixels around a closing or
 -- reopening smaller sheet (visible as ghost panels until you draw or refresh).
-local IconMenu = InputContainer:extend{
+IconMenu = InputContainer:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath
     build = nil,               -- function(menu) -> FrameContainer
     on_close = nil,
+    top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
+                               -- instead of centring it vertically
 }
 function IconMenu:init()
-    local CenterContainer = require("ui/widget/container/centercontainer")
     local MovableContainer = require("ui/widget/container/movablecontainer")
     if self.build then self.frame = self:build() end
     if Device:isTouchDevice() then
@@ -1344,21 +1323,38 @@ function IconMenu:init()
         self.key_events = { CloseMenu = { { Device.input.group.Back } } }
     end
     -- MovableContainer gives the content a reliable .dimen (set at paint time),
-    -- and swallows drag gestures that start on the frame.
+    -- and swallows drag gestures that start on the frame. We position it ourselves
+    -- in paintTo (see below), so it is the sole child.
     self.movable = MovableContainer:new{ self.frame }
-    self[1] = CenterContainer:new{ dimen = Screen:getSize(), self.movable }
+    self[1] = self.movable
 end
 -- THE fix: schedule the visible refresh ourselves (deferred region closure).
 function IconMenu:onShow()
     UIManager:setDirty(self, function() return "ui", self.movable.dimen end)
 end
--- Repaint/flush the canvas underneath on close so the menu doesn't ghost.
+-- Repaint/flush the canvas underneath on close so the menu doesn't ghost, and
+-- free the content subtree (some sheets build blitbuffers, e.g. brush previews).
 function IconMenu:onCloseWidget()
-    UIManager:setDirty(nil, function() return "flashui", self.movable.dimen end)
+    local region = self.movable and self.movable.dimen
+    UIManager:setDirty(nil, function() return "flashui", region end)
+    if self.movable and self.movable.free then self.movable:free() end
 end
+-- Paint the sheet horizontally centred and, when top_y is set, pinned just below
+-- the toolbar (so tapping a toolbar tool drops its options right under the hand),
+-- clamped to stay on screen. MovableContainer sets its own .dimen from where we
+-- paint it, which we adopt for hit-testing and refresh regions.
 function IconMenu:paintTo(bb, x, y)
-    InputContainer.paintTo(self, bb, x, y)
-    self.dimen = self.movable.dimen   -- give ourselves a real geometry
+    local sz = self.movable:getSize()
+    local pad = Screen:scaleBySize(4)
+    local px = math.floor((Screen:getWidth() - sz.w) / 2)
+    local py
+    if self.top_y then
+        py = math.max(pad, math.min(self.top_y, Screen:getHeight() - sz.h - pad))
+    else
+        py = math.floor((Screen:getHeight() - sz.h) / 2)
+    end
+    self.movable:paintTo(bb, px, py)
+    self.dimen = self.movable.dimen
 end
 function IconMenu:onTapClose(_, ges)
     if ges and ges.pos and self.movable.dimen
@@ -1377,11 +1373,11 @@ end
 -- the right (grey track + white knob at left when off; black track + knob at
 -- right when on). The whole row is one tap target and flips in place; `parent`
 -- is the shown widget used as the repaint target.
-local ToggleRow = InputContainer:extend{
+ToggleRow = InputContainer:extend{
     label = "", is_on = false, width = nil, callback = nil, parent = nil,
 }
-local TRACK_OFF = Blitbuffer.ColorRGB32(0xCF, 0xCF, 0xCF, 0xFF)
-local KNOB_EDGE = Blitbuffer.ColorRGB32(0x99, 0x99, 0x99, 0xFF)
+TRACK_OFF = Blitbuffer.ColorRGB32(0xCF, 0xCF, 0xCF, 0xFF)
+KNOB_EDGE = Blitbuffer.ColorRGB32(0x99, 0x99, 0x99, 0xFF)
 function ToggleRow:init()
     self.sw_h = Screen:scaleBySize(30)
     self.sw_w = Screen:scaleBySize(54)
@@ -1440,9 +1436,11 @@ end
 -- A horizontal slider row (0..100): a label on the left, a draggable track in
 -- the middle, and the value on the right. Tap or drag the track to set it; the
 -- value flips in place. `parent` is the shown widget used as the repaint target.
-local SliderRow = InputContainer:extend{
+SliderRow = InputContainer:extend{
     label = "", value = 0, width = nil, on_set = nil, parent = nil,
+    min = 0, max = 100, step = 1, format = nil,   -- format(v) -> value text (default "N%")
 }
+function SliderRow:_fmt(v) return self.format and self.format(v) or string.format("%d%%", v) end
 function SliderRow:init()
     self.knob = Screen:scaleBySize(26)
     self.track_h = Screen:scaleBySize(8)
@@ -1467,14 +1465,16 @@ function SliderRow:_build()
     local Font = require("ui/font")
     local gap = Screen:scaleBySize(14)
     local labelw = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
-    local valw = TextWidget:new{ text = string.format("%d%%", math.floor(self.value + 0.5)),
+    local valw = TextWidget:new{ text = self:_fmt(self.value),
         face = Font:getFace("cfont", 16), bold = true }
-    -- reserve a fixed width for the value so the track doesn't jump as digits change
-    local val_w = math.max(valw:getSize().w, Screen:scaleBySize(52))
+    -- reserve a fixed width for the value (measured at the max) so the track
+    -- doesn't jump as digits change
+    local wmax = TextWidget:new{ text = self:_fmt(self.max), face = Font:getFace("cfont", 16), bold = true }
+    local val_w = math.max(wmax:getSize().w, Screen:scaleBySize(40)); wmax:free()
     local track_w = self.width - labelw:getSize().w - val_w - 2 * gap
     self._track_w = track_w
     self._track_dx = labelw:getSize().w + gap
-    local frac = math.max(0, math.min(1, self.value / 100))
+    local frac = math.max(0, math.min(1, (self.value - self.min) / (self.max - self.min)))
     local th, kn = self.track_h, self.knob
     local ty = math.floor((kn - th) / 2)
     local fillW = math.max(th, math.floor(track_w * frac))
@@ -1499,7 +1499,10 @@ end
 function SliderRow:_setFromX(x)
     if not (self.dimen and self._track_w and self._track_w > 0) then return end
     local rel = x - (self.dimen.x + self._track_dx)
-    local v = math.max(0, math.min(100, math.floor(rel / self._track_w * 100 + 0.5)))
+    local frac = math.max(0, math.min(1, rel / self._track_w))
+    local v = self.min + frac * (self.max - self.min)
+    v = self.min + math.floor((v - self.min) / self.step + 0.5) * self.step
+    v = math.max(self.min, math.min(self.max, v))
     if v ~= self.value then
         self.value = v
         self:_build()
@@ -1515,6 +1518,12 @@ function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX
 function SliderRow:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     InputContainer.paintTo(self, bb, x, y)
+end
+
+-- Where a tool sheet's top should sit: just under the toolbar, so its options
+-- open right where the hand tapped (falls back to a small margin if unknown).
+function InkAwayView:sheetTopY()
+    return (self._bar_h or 0) + Screen:scaleBySize(6)
 end
 
 -- Shared tile helpers, used by both the Shapes menu and its line/arrow/curve
@@ -1569,6 +1578,102 @@ function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_c
         end
     end
     return b
+end
+
+-- Title row shared by every tool sheet: the sheet title on the left and a filled
+-- black pill (Done / Back) on the right, spanning content_w.
+function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb)
+    local TextWidget = require("ui/widget/textwidget")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", 22), bold = true }
+    local pill = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = pill_cb, show_parent = self }
+    local ptw = TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
+        bold = true, fgcolor = WHITE }
+    if pill.label_container then pill.label_widget = ptw; pill.label_container[1] = ptw end
+    local g = content_w - titleW:getSize().w - pill:getSize().w
+    return HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), g) }, pill }
+end
+
+-- A full/any-width rounded action button (grey by default, black when `dark`).
+function InkAwayView:actionButton(label, w, cb, dark)
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    local b = Button:new{ text = "", width = w, height = Screen:scaleBySize(48), bordersize = 0,
+        radius = Screen:scaleBySize(14), background = dark and BLACK or TILE_BG,
+        margin = 0, padding = 0, callback = cb, show_parent = self }
+    local tw = TextWidget:new{ text = label, face = Font:getFace("cfont", 17), bold = true,
+        fgcolor = dark and WHITE or BLACK }
+    if b.label_container then b.label_widget = tw; b.label_container[1] = tw end
+    return b
+end
+
+-- A colour swatch tile: a colour-filled rounded square with a thin black border
+-- (thicker when selected, so white/light swatches stay visible). Optional
+-- hold_cb for deleting a saved custom colour.
+function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb)
+    local BLACK = Blitbuffer.COLOR_BLACK
+    local inner = w - Screen:scaleBySize(8)
+    local btn = Button:new{ text = "", width = inner, height = inner,
+        background = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF),
+        radius = Screen:scaleBySize(11), bordersize = 0, margin = 0, padding = 0,
+        callback = cb, hold_callback = hold_cb, show_parent = self }
+    return FrameContainer:new{
+        bordersize = selected and Screen:scaleBySize(3) or Screen:scaleBySize(1),
+        color = BLACK, radius = Screen:scaleBySize(14),
+        padding = selected and Screen:scaleBySize(1) or Screen:scaleBySize(3),
+        margin = 0, btn }
+end
+
+-- A brush-style tile: a small rounded rectangle showing a sample wave rendered
+-- through the same rasterizer the pen uses, so it previews how the brush looks.
+function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
+    local WidgetContainer = require("ui/widget/container/widgetcontainer")
+    local BLACK = Blitbuffer.COLOR_BLACK
+    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
+        radius = Screen:scaleBySize(12), background = sel and BLACK or TILE_BG,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    -- render the sample wave into a bb sized to the inner tile
+    local iw = w - Screen:scaleBySize(16)
+    local ih = h - Screen:scaleBySize(16)
+    local ok, wave = pcall(function() return self:renderBrushWave(key, iw, ih, sel) end)
+    if ok and wave and b.label_container then
+        local ImageWidget = require("ui/widget/imagewidget")
+        local img = ImageWidget:new{ image = wave, width = iw, height = ih }
+        b.label_widget = img; b.label_container[1] = img
+    end
+    return b
+end
+
+-- Render a sample stroke for brush `key` into a fresh blitbuffer (caller frees via
+-- the ImageWidget). White wave on a dark tile when selected, black on grey else.
+function InkAwayView:renderBrushWave(key, w, h, sel)
+    local st = Raster.STYLES[key] or Raster.STYLES.solid
+    local bg = sel and Blitbuffer.COLOR_BLACK or TILE_BG
+    local ink = sel and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+    local bb = Blitbuffer.new(w, h, Screen.bb:getType())
+    bb:paintRect(0, 0, w, h, bg)
+    local pad = Screen:scaleBySize(6)
+    local function put(x, y, len)
+        if y < 0 or y >= h then return end
+        if x < 0 then len = len + x; x = 0 end
+        if x + len > w then len = w - x end
+        if len > 0 then bb:paintRect(x, y, len, 1, ink) end
+    end
+    local pts, n = {}, 36
+    for i = 0, n do
+        local u = i / n
+        pts[#pts + 1] = pad + u * (w - pad * 2)
+        pts[#pts + 1] = h / 2 + math.sin(u * math.pi * 2) * (h * 0.26)
+    end
+    local r = math.max(3, Screen:scaleBySize(5))
+    if st.solid then Raster.path(pts, r, put) else Raster.pathTex(pts, r, put, st, 12345) end
+    return bb
 end
 
 -- The Shapes menu: big rounded-square icon tiles (the Line tile carries a small
@@ -1719,7 +1824,8 @@ function InkAwayView:openShapePicker()
         }
     end
 
-    self._shape_dialog = IconMenu:new{ build = build, on_close = function() self._shape_dialog = nil end }
+    self._shape_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._shape_dialog = nil end }
     UIManager:show(self._shape_dialog)
 end
 
@@ -1807,7 +1913,8 @@ function InkAwayView:openShapeLineMenu()
         return FrameContainer:new{ background = WHITE, bordersize = Size.border.window,
             radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
-    self._shape_line_dialog = IconMenu:new{ build = build, on_close = function() self._shape_line_dialog = nil end }
+    self._shape_line_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._shape_line_dialog = nil end }
     UIManager:show(self._shape_line_dialog)
 end
 
@@ -1890,7 +1997,8 @@ function InkAwayView:openFillColor()
         return FrameContainer:new{ background = WHITE, bordersize = Size.border.window,
             radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
-    self._fill_dialog = IconMenu:new{ build = build, on_close = function() self._fill_dialog = nil end }
+    self._fill_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._fill_dialog = nil end }
     UIManager:show(self._fill_dialog)
 end
 
@@ -2185,29 +2293,55 @@ function InkAwayView:textFontDisplay()
 end
 
 -- Text settings submenu: font family and default size.
+-- Text sheet (shapes-menu style): font chooser, a font-size slider, and the
+-- snap / eraser-protect toggles.
 function InkAwayView:openTextSettings()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
+    if self._text_settings then UIManager:close(self._text_settings); self._text_settings = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    self:ensureUserIcons()
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
     local size = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
-    local snap = self.text_grid_snap
-    local buttons = {
-        -- Font and its size sit on one row; size is disabled while snap is on,
-        -- because snap sets the size from the ruling (see the note below).
-        {{ text = _("Font: ") .. self:textFontDisplay(),
-           callback = function() UIManager:close(dlg); self:openTextFont() end },
-         { text = string.format(_("Font size: %d px"), size), enabled = not snap,
-           callback = function() UIManager:close(dlg); self:openTextSize() end }},
-        {{ text = (snap and "\u{2713} " or "") .. _("Snap lines to ruling"),
-           callback = function() UIManager:close(dlg); self:toggleTextGridSnap() end }},
-        {{ text = _("Snap sets the size to match the ruling \u{2014} turn it off to set the size yourself."),
-           enabled = false }},
-        {{ text = (self.text_erase_protect and "\u{2713} " or "") .. _("Protect text from eraser"),
-           callback = function() UIManager:close(dlg); self:toggleTextEraseProtect() end }},
-        {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
-    }
-    dlg = ButtonDialog:new{ title = _("Text"), title_align = "center", buttons = buttons }
-    self._text_settings = dlg
-    UIManager:show(dlg)
+    local closeSelf = function()
+        if self._text_settings then UIManager:close(self._text_settings); self._text_settings = nil end
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Text"), content_w, _("Done"), closeSelf))
+        add(vspan(16))
+        add(self:actionButton(_("Font: ") .. self:textFontDisplay(), content_w,
+            function() closeSelf(); self:openTextFont() end))
+        add(vspan(12))
+        add(SliderRow:new{ label = _("Font size"), value = size, min = 10, max = 96,
+            width = content_w, parent = menu, format = function(v) return v .. _(" px") end,
+            on_set = function(v) self.text_size = v; self:setSetting("inkaway_text_size", v) end })
+        add(vspan(14))
+        add(ToggleRow:new{ label = _("Snap lines to ruling"), is_on = self.text_grid_snap,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.text_grid_snap = on; self:setSetting("inkaway_text_grid_snap", on)
+                if self.editing_text then
+                    self.editing_text.grid_snap = on
+                    if on then self:snapTextBoxToGrid(self.editing_text) end
+                    self:invalidateLayout(); self:refreshTextBox("flashui")
+                end
+            end })
+        add(vspan(10))
+        add(ToggleRow:new{ label = _("Protect text from eraser"), is_on = self.text_erase_protect,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.text_erase_protect = on; self:setSetting("inkaway_text_erase_protect", on)
+            end })
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._text_settings = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._text_settings = nil end }
+    UIManager:show(self._text_settings)
 end
 
 -- Apply a font change: rebuild the face cache, update the box being edited (or
@@ -2326,21 +2460,6 @@ function InkAwayView:openTextFont()
         close_callback = function() UIManager:close(menu) end,
     }
     UIManager:show(menu)
-end
-
-function InkAwayView:openTextSize()
-    local SpinWidget = require("ui/widget/spinwidget")
-    local cur = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
-    UIManager:show(SpinWidget:new{
-        title_text = _("Font size"),
-        info_text = _("Size of new text boxes, in pixels."),
-        value = cur, value_min = 10, value_max = 96, value_step = 2, value_hold_step = 10,
-        unit = _("px"),
-        callback = function(spin)
-            self.text_size = math.floor(spin.value)
-            self:setSetting("inkaway_text_size", self.text_size)
-        end,
-    })
 end
 
 -- Toggle grid-line snapping for new boxes (and the one being edited). It only has
@@ -3557,51 +3676,6 @@ end
 -- Symmetry, ghosting cleanup, and the background image.
 ------------------------------------------------------------------------------
 
--- Symmetry picker: mirror what you draw across a vertical or horizontal axis,
--- or both at once. It works for every tool because the mirroring happens at the
--- pixel-span level shared by the pen, shapes, fill and eraser.
-function InkAwayView:openSymmetry()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local opts = {
-        { "off",   _("Off") },
-        { "vert",  _("Vertical (mirror left and right)") },
-        { "horiz", _("Horizontal (mirror top and bottom)") },
-        { "quad",  _("Four way") },
-    }
-    local buttons = {}
-    for _, o in ipairs(opts) do
-        buttons[#buttons + 1] = {{
-            text = (self.symmetry == o[1] and "\u{25CF} " or "") .. o[2],
-            callback = function()
-                self.symmetry = o[1]
-                self:setSetting("inkaway_symmetry", o[1])
-                UIManager:close(dlg)
-                self:openSettings()
-            end,
-        }}
-    end
-    buttons[#buttons + 1] = {{ text = _("Draw on one side; it mirrors as you go."), enabled = false }}
-    buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
-    dlg = ButtonDialog:new{ title = _("Symmetry"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
-end
-
-function InkAwayView:openGhostClean()
-    local SpinWidget = require("ui/widget/spinwidget")
-    UIManager:show(SpinWidget:new{
-        title_text = _("Ghosting cleanup"),
-        info_text = _("E-ink leaves faint ghosts behind the fast refreshes used while drawing. Turn this on to do one full refresh every so many strokes, which wipes them clean. Set 0 to turn it off."),
-        value = self.ghost_clean, value_min = 0, value_max = 100, value_step = 5, value_hold_step = 10,
-        callback = function(spin)
-            self.ghost_clean = math.max(0, math.floor(spin.value))
-            self:setSetting("inkaway_ghost", self.ghost_clean)
-            self._strokes_since_full = 0
-            self:openSettings()
-        end,
-    })
-end
-
 -- Build a canvas-sized RGBA FFI buffer from the background (a BBRGB32 whose
 -- memory is already r,g,b,alpha). One memcpy per row, not a million per-pixel
 -- reads, so it is quick even on a Kindle. Alpha is kept, so a transparent PNG
@@ -3704,211 +3778,179 @@ function InkAwayView:renderPdfPage(doc, pageno, tw, th)
     return img
 end
 
--- Notebook paper (ruling) chooser: edits the current notebook's template.
-function InkAwayView:openPaperStyle()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local opts = { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
-        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
-    local buttons = {}
-    for _, o in ipairs(opts) do
-        buttons[#buttons + 1] = {{
-            text = (self.notebook.template.style == o[1] and "\u{25CF} " or "") .. o[2],
-            callback = function()
-                self.notebook.template.style = o[1]
-                self.nb_style = o[1]
-                self:setSetting("inkaway_nb_style", o[1])   -- remember for the next notebook
-                self.dirty = true
-                UIManager:close(dlg)
-                self:composeCanvas(); self:renderView(); self:refreshArea()
-                self:openSettings()
-            end,
-        }}
-    end
-    dlg = ButtonDialog:new{ title = _("Notebook paper"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
-end
-
-function InkAwayView:openGridStyle()
-    if self.notebook then return self:openPaperStyle() end
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local opts = {
-        { "square", _("Square grid") }, { "dots", _("Dot grid") },
-        { "lines", _("Ruled lines") }, { "iso", _("Isometric") },
-        { "thirds", _("Rule of thirds") },
-    }
-    local buttons = {}
-    for _, o in ipairs(opts) do
-        buttons[#buttons + 1] = {{
-            text = (self.grid_style == o[1] and "\u{25CF} " or "") .. o[2],
-            callback = function()
-                self.grid_style = o[1]
-                self:setSetting("inkaway_grid_style", o[1])
-                self.grid_on = true
-                self:setSetting("inkaway_grid", true)
-                UIManager:close(dlg)
-                self:renderView(); self:refreshArea()
-                self:openSettings()
-            end,
-        }}
-    end
-    dlg = ButtonDialog:new{ title = _("Grid style"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
-end
-
-function InkAwayView:openGridSize()
-    local SpinWidget = require("ui/widget/spinwidget")
-    if self.notebook then
-        local t = self.notebook.template
-        UIManager:show(SpinWidget:new{
-            title_text = _("Line spacing"),
-            value = t.size or 40, value_min = 12, value_max = 200, value_step = 4, value_hold_step = 20,
-            unit = _("px"),
-            callback = function(spin)
-                t.size = math.max(8, math.floor(spin.value))
-                self.nb_size = t.size
-                self:setSetting("inkaway_nb_size", t.size)   -- remember for the next notebook
-                self.dirty = true
-                self:composeCanvas(); self:renderView(); self:refreshArea()
-                self:openSettings()
-            end,
-        })
-        return
-    end
-    UIManager:show(SpinWidget:new{
-        title_text = _("Grid spacing"),
-        value = self.grid_size, value_min = 8, value_max = 200, value_step = 4, value_hold_step = 20,
-        unit = _("px"),
-        callback = function(spin)
-            self.grid_size = math.max(4, math.floor(spin.value))
-            self:setSetting("inkaway_grid_size", self.grid_size)
-            self:renderView(); self:refreshArea()
-            self:openSettings()
-        end,
-    })
-end
-
-function InkAwayView:openGridStrength()
-    local SpinWidget = require("ui/widget/spinwidget")
-    if self.notebook then
-        local t = self.notebook.template
-        UIManager:show(SpinWidget:new{
-            title_text = _("Line strength"),
-            info_text = _("How dark the ruling looks, from a faint guide up to solid, like drawn ink."),
-            value = t.strength or 45, value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
-            unit = "%",
-            callback = function(spin)
-                t.strength = math.max(1, math.min(100, math.floor(spin.value)))
-                self.nb_strength = t.strength
-                self:setSetting("inkaway_nb_strength", t.strength)   -- remember for the next notebook
-                self.dirty = true
-                self:composeCanvas(); self:renderView(); self:refreshArea()
-                self:openSettings()
-            end,
-        })
-        return
-    end
-    UIManager:show(SpinWidget:new{
-        title_text = _("Grid strength"),
-        info_text = _("How dark the grid lines look, from a faint guide up to solid, like drawn ink."),
-        value = self.grid_strength, value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
-        unit = "%",
-        callback = function(spin)
-            self.grid_strength = math.max(1, math.min(100, math.floor(spin.value)))
-            self:setSetting("inkaway_grid_strength", self.grid_strength)
-            self.grid_on = true
-            self:setSetting("inkaway_grid", true)
-            self:refreshArea()
-            self:openSettings()
-        end,
-    })
-end
-
-function InkAwayView:openStabilizer()
-    local SpinWidget = require("ui/widget/spinwidget")
-    UIManager:show(SpinWidget:new{
-        title_text = _("Stabilizer"),
-        info_text = _("How much finger wobble is smoothed out. 0 draws exactly what your finger does; higher is smoother but the line trails a little behind."),
-        value = self.stabilizer, value_min = 0, value_max = 100, value_step = 5, value_hold_step = 20,
-        callback = function(spin)
-            self.stabilizer = math.floor(spin.value)
-            self:setSetting("inkaway_stabilizer", self.stabilizer)
-            self:openPenSettings()   -- the stabilizer lives in the Pen menu now
-        end,
-    })
-end
-
--- Short label for the current symmetry mode.
-local SYM_LABEL = { off = "off", vert = "vertical", horiz = "horizontal", quad = "four way" }
-
 -- Friendly names for the notebook paper (ruling) styles.
 local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"),
     margin = _("margin"), cornell = _("Cornell"), blank = _("blank") }
 
--- The gear menu. Kept deliberately uncluttered: the everyday actions sit up top,
--- and the fiddlier toggles (snapping, stabilizer) live one tap away under
--- "Guides and aids" so the first screen stays calm.
+-- A generic "pick one of a list" sub-sheet in the shapes-menu style: a vertical
+-- stack of full-width buttons, the current one filled black. `options` is a list
+-- of { value, label }; onpick(value) is called after the sheet closes.
+function InkAwayView:openChooserSheet(title, options, current, onpick)
+    if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
+    end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        table.insert(content, self:sheetTitle(title, content_w, _("Done"), closeSelf))
+        table.insert(content, vspan(16))
+        for i, o in ipairs(options) do
+            if i > 1 then table.insert(content, vspan(8)) end
+            table.insert(content, self:actionButton(o[2], content_w,
+                function() closeSelf(); onpick(o[1]) end, current == o[1]))
+        end
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._chooser_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._chooser_dialog = nil end }
+    UIManager:show(self._chooser_dialog)
+end
+
+-- The gear menu (shapes-menu style): file/page actions as buttons, the grid or
+-- notebook-paper controls as a toggle/chooser and sliders, and symmetry /
+-- autosave as segmented rows. Reorganised into clear sections.
 function InkAwayView:openSettings()
     if self.active_image then self:finishImageEdit() end   -- settle a selected image first
-    local ButtonDialog = require("ui/widget/buttondialog")
-    if self._settings_dialog then UIManager:close(self._settings_dialog) end
-    local dlg
-    local function reopen() self:openSettings() end
-    local function onoff(b) return b and _("on") or _("off") end
-    local function mark(m) return (self.autosave == m) and "\u{25CF} " or "" end
-    local ghost = (self.ghost_clean and self.ghost_clean > 0)
-        and string.format(_("every %d"), self.ghost_clean) or _("off")
-    -- Paper/grid row differs by mode: a notebook has printed ruling (its
-    -- "paper"), the plain canvas has an on-screen grid guide.
-    local paper_row
-    if self.notebook then
-        paper_row = {
-            { text = _("Paper: ") .. TEMPLATE_LABEL[self.notebook.template.style or "lines"],
-              callback = function() UIManager:close(dlg); self:openGridStyle() end },
-            { text = _("Size"), callback = function() UIManager:close(dlg); self:openGridSize() end },
-            { text = _("Strength"), callback = function() UIManager:close(dlg); self:openGridStrength() end },
-        }
-    else
-        paper_row = {
-            { text = _("Grid: ") .. onoff(self.grid_on), callback = function()
-                self.grid_on = not self.grid_on; self:setSetting("inkaway_grid", self.grid_on)
-                self:renderView(); self:refreshArea(); reopen()
-            end },
-            { text = _("Style: ") .. self.grid_style, callback = function() UIManager:close(dlg); self:openGridStyle() end },
-            { text = _("Size"), callback = function() UIManager:close(dlg); self:openGridSize() end },
-            { text = _("Strength"), callback = function() UIManager:close(dlg); self:openGridStrength() end },
-        }
+    if self._settings_dialog then UIManager:close(self._settings_dialog); self._settings_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    self:ensureUserIcons()
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local halfW = math.floor((content_w - gap) / 2)
+    local pxfmt = function(v) return v .. _(" px") end
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._settings_dialog then UIManager:close(self._settings_dialog); self._settings_dialog = nil end
     end
-    local buttons = {
-        {
-            { text = _("New drawing"),  callback = function() UIManager:close(dlg); self:newDrawing() end },
-            { text = _("New notebook"), callback = function() UIManager:close(dlg); self:newNotebook() end },
-        },
-        {
-            { text = _("Open project"), callback = function() UIManager:close(dlg); self:openProject() end },
-            { text = _("Save project"), callback = function() UIManager:close(dlg); self:saveProject() end },
-        },
-        {{ text = _("Open PDF as notebook"), callback = function() UIManager:close(dlg); self:openPdfAsNotebook() end }},
-    }
-    buttons[#buttons + 1] = {{ text = string.format(_("Symmetry: %s"), _(SYM_LABEL[self.symmetry] or "off")),
-           callback = function() UIManager:close(dlg); self:openSymmetry() end }}
-    buttons[#buttons + 1] = paper_row
-    for _, row in ipairs({
-        {{ text = string.format(_("Ghosting: %s"), ghost), callback = function() UIManager:close(dlg); self:openGhostClean() end }},
-        {{ text = _("Background image\u{2026}"), callback = function() UIManager:close(dlg); self:openBackground() end }},
-        {
-            { text = mark("off") .. _("No autosave"),  callback = function() self:setAutosave("off"); reopen() end },
-            { text = mark("exit") .. _("On exit"), callback = function() self:setAutosave("exit"); reopen() end },
-            { text = mark("periodic") .. _("3 min"), callback = function() self:setAutosave("periodic"); reopen() end },
-        },
-        {{ text = _("Done"), callback = function() UIManager:close(dlg) end }},
-    }) do
-        buttons[#buttons + 1] = row
+    local function act(label, w, cb, dark)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
     end
-    dlg = ButtonDialog:new{ title = _("Settings"), title_align = "center", buttons = buttons }
-    self._settings_dialog = dlg
-    UIManager:show(dlg)
+    local function header(txt)
+        return TextWidget:new{ text = txt, face = Font:getFace("cfont", 15), bold = true,
+            fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) }
+    end
+
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        local function row2(a, b)
+            return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
+        end
+        -- a segmented picker: N equal buttons, the current one filled black
+        local function seg(options, current, onpick)
+            local n = #options
+            local w = math.floor((content_w - (n - 1) * gap) / n)
+            local row = HorizontalGroup:new{ align = "center" }
+            for i, o in ipairs(options) do
+                if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                table.insert(row, self:actionButton(o[2], w, function() closeSelf(); onpick(o[1]) end,
+                    current == o[1]))
+            end
+            return row
+        end
+
+        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf))
+        add(vspan(16))
+
+        -- files & pages
+        add(row2(act(_("New drawing"), halfW, function() self:newDrawing() end),
+                 act(_("New notebook"), halfW, function() self:newNotebook() end)))
+        add(vspan(8))
+        add(row2(act(_("Open project"), halfW, function() self:openProject() end),
+                 act(_("Save project"), halfW, function() self:saveProject() end)))
+        add(vspan(8))
+        add(act(_("Open PDF as notebook"), content_w, function() self:openPdfAsNotebook() end))
+        add(vspan(8))
+        add(act(_("Background image"), content_w, function() self:openBackground() end))
+        add(vspan(16))
+
+        -- grid (canvas) or paper (notebook)
+        if self.notebook then
+            local t = self.notebook.template
+            add(act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), content_w, function()
+                self:openChooserSheet(_("Notebook paper"), {
+                    { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
+                    { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } },
+                    t.style, function(v)
+                        t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self.dirty = true
+                        self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
+                    end)
+            end))
+            add(vspan(12))
+            add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
+                width = content_w, parent = menu, format = pxfmt,
+                on_set = function(v) t.size = v; self.nb_size = v; self:setSetting("inkaway_nb_size", v)
+                    self.dirty = true; self:composeCanvas(); self:renderView(); self:refreshArea() end })
+            add(vspan(10))
+            add(SliderRow:new{ label = _("Line strength"), value = t.strength or 45, min = 5, max = 100, step = 5,
+                width = content_w, parent = menu,
+                on_set = function(v) t.strength = v; self.nb_strength = v; self:setSetting("inkaway_nb_strength", v)
+                    self.dirty = true; self:composeCanvas(); self:renderView(); self:refreshArea() end })
+        else
+            add(ToggleRow:new{ label = _("Grid"), is_on = self.grid_on, width = content_w, parent = menu,
+                callback = function(on) self.grid_on = on; self:setSetting("inkaway_grid", on)
+                    self:renderView(); self:refreshArea() end })
+            add(vspan(10))
+            add(act(_("Grid style: ") .. self.grid_style, content_w, function()
+                self:openChooserSheet(_("Grid style"), {
+                    { "square", _("Square grid") }, { "dots", _("Dot grid") }, { "lines", _("Ruled lines") },
+                    { "iso", _("Isometric") }, { "thirds", _("Rule of thirds") } }, self.grid_style,
+                    function(v) self.grid_style = v; self:setSetting("inkaway_grid_style", v)
+                        self.grid_on = true; self:setSetting("inkaway_grid", true)
+                        self:renderView(); self:refreshArea(); self:openSettings() end)
+            end))
+            add(vspan(12))
+            add(SliderRow:new{ label = _("Grid size"), value = self.grid_size, min = 8, max = 200, step = 2,
+                width = content_w, parent = menu, format = pxfmt,
+                on_set = function(v) self.grid_size = v; self:setSetting("inkaway_grid_size", v)
+                    self:renderView(); self:refreshArea() end })
+            add(vspan(10))
+            add(SliderRow:new{ label = _("Grid strength"), value = self.grid_strength, min = 5, max = 100, step = 5,
+                width = content_w, parent = menu,
+                on_set = function(v) self.grid_strength = v; self:setSetting("inkaway_grid_strength", v)
+                    self.grid_on = true; self:setSetting("inkaway_grid", true); self:refreshArea() end })
+        end
+        add(vspan(16))
+
+        -- symmetry (segmented)
+        add(header(_("Symmetry")))
+        add(vspan(6))
+        add(seg({ { "off", _("Off") }, { "vert", _("Vertical") }, { "horiz", _("Horizontal") }, { "quad", _("Four-way") } },
+            self.symmetry, function(v) self.symmetry = v; self:setSetting("inkaway_symmetry", v); self:openSettings() end))
+        add(vspan(14))
+
+        -- ghosting cleanup slider (0 = off)
+        add(SliderRow:new{ label = _("Ghosting"), value = self.ghost_clean or 0, min = 0, max = 100, step = 5,
+            width = content_w, parent = menu,
+            format = function(v) return v == 0 and _("off") or string.format(_("%d strokes"), v) end,
+            on_set = function(v) self.ghost_clean = v; self:setSetting("inkaway_ghost", v)
+                self._strokes_since_full = 0 end })
+        add(vspan(14))
+
+        -- autosave (segmented)
+        add(header(_("Autosave")))
+        add(vspan(6))
+        add(seg({ { "off", _("Off") }, { "exit", _("On exit") }, { "periodic", _("Every 3 min") } },
+            self.autosave, function(v) self:setAutosave(v); self:openSettings() end))
+
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._settings_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._settings_dialog = nil end }
+    UIManager:show(self._settings_dialog)
 end
 
 ------------------------------------------------------------------------------
@@ -6894,38 +6936,58 @@ function InkAwayView:onSave()
         return
     end
     self.save_fmt = self.save_fmt or "png"
-    local dlg
-    local function reopen() self:onSave() end
-    local function fmtBtn(f, label)
-        return { text = (self.save_fmt == f and "\u{25CF} " or "") .. label,
-                 callback = function() self.save_fmt = f; UIManager:close(dlg); reopen() end }
+    if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    self:ensureUserIcons()
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local halfW = math.floor((content_w - gap) / 2)
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
     end
     local area_label = self.save_area
-        and string.format(_("Area: %d\u{00D7}%d (tap to use whole page)"), self.save_area.w, self.save_area.h)
+        and string.format(_("Area: %d\u{00D7}%d (tap for whole page)"), self.save_area.w, self.save_area.h)
         or _("Area: whole page (tap to choose)")
-    local buttons = {
-        {{ text = _("Format"), enabled = false }},
-        { fmtBtn("png", _("PNG (transparent)")), fmtBtn("jpg", _("JPEG (white)")) },
-        {{ text = area_label, callback = function()
-            if self.save_area then
-                self.save_area = nil; UIManager:close(dlg); reopen()
-            else
-                UIManager:close(dlg); self:beginCropSelect()
-            end
-        end }},
-    }
-    if self.bg_bb then
-        buttons[#buttons + 1] = {{
-            text = self.export_bg and _("Background: included") or _("Background: drawing only"),
-            callback = function() self.export_bg = not self.export_bg; UIManager:close(dlg); reopen() end,
-        }}
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Save drawing"), content_w, _("Cancel"), closeSelf))
+        add(vspan(16))
+        add(TextWidget:new{ text = _("Format"), face = Font:getFace("cfont", 15), bold = true,
+            fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) })
+        add(vspan(6))
+        add(HorizontalGroup:new{ align = "center",
+            self:actionButton(_("PNG (transparent)"), halfW, function()
+                self.save_fmt = "png"; self:onSave() end, self.save_fmt == "png"),
+            HorizontalSpan:new{ width = gap },
+            self:actionButton(_("JPEG (white)"), halfW, function()
+                self.save_fmt = "jpg"; self:onSave() end, self.save_fmt == "jpg") })
+        add(vspan(12))
+        add(self:actionButton(area_label, content_w, function()
+            if self.save_area then self.save_area = nil; self:onSave()
+            else closeSelf(); self:beginCropSelect() end
+        end))
+        if self.bg_bb then
+            add(vspan(12))
+            add(ToggleRow:new{ label = _("Include background"), is_on = self.export_bg,
+                width = content_w, parent = menu,
+                callback = function(on) self.export_bg = on end })
+        end
+        add(vspan(16))
+        add(self:actionButton(_("Save"), content_w, function()
+            closeSelf(); self:chooseDestination(self.save_fmt) end, true))
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
-    buttons[#buttons + 1] = {{ text = _("Save"),
-        callback = function() UIManager:close(dlg); self:chooseDestination(self.save_fmt) end }}
-    buttons[#buttons + 1] = {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }}
-    dlg = ButtonDialog:new{ title = _("Save drawing"), title_align = "center", buttons = buttons }
-    self._save_dialog = dlg
-    UIManager:show(dlg)
+    self._save_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._save_dialog = nil end }
+    UIManager:show(self._save_dialog)
 end
 
 -- Enter the area-selection mode: the next drag marks the export rectangle.
