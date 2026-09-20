@@ -828,7 +828,7 @@ function InkAwayView:buildToolbar()
     -- a compact bar: the icons carry the meaning, so the buttons are short. This is
     -- the active pill's height; the toolbar is taller by twice the button margin,
     -- so the pill floats clear of the top/bottom edges.
-    local bar_h = math.max(Screen:scaleBySize(28), math.min(Screen:scaleBySize(38), math.floor(btn_w * 0.58)))
+    local bar_h = math.max(Screen:scaleBySize(32), math.min(Screen:scaleBySize(46), math.floor(btn_w * 0.66)))
     self._btn_w, self._bar_h = btn_w, bar_h   -- for the active-tool pill in paintTo
     -- centre of the last (Exit) button, so the collapse chevron lines up under it
     self._last_btn_center = math.floor(btn_w * (n - 1) + (Screen:getWidth() - btn_w * (n - 1)) / 2)
@@ -836,7 +836,7 @@ function InkAwayView:buildToolbar()
     -- tool's icon shares the same height and baseline and the active black pill is
     -- identical for all of them. Keep the icon well inside the cell so the pill has
     -- clear breathing room and never reaches the toolbar edges.
-    local isz = math.max(16, math.floor(bar_h * 0.56))
+    local isz = math.max(20, math.floor(bar_h * 0.66))
     self.tool_buttons = {}
     self._toolbar_icons = {}
     local row = {}
@@ -966,6 +966,9 @@ end
 -- name "inkaway.<id>" -- IconWidget searches that dir first. Owning the icon in
 -- the Button (rather than overdrawing it) is what keeps it from vanishing on tap.
 function InkAwayView:ensureUserIcons()
+    -- Sync once per session: the plugin's files never change while it runs, so the
+    -- mtime-compare (46 stat calls) is pure latency on every later toolbar/menu open.
+    if self._icons_synced then return true end
     local ok = pcall(function()
         local lfs = require("libs/libkoreader-lfs")
         local DataStorage = require("datastorage")
@@ -990,6 +993,7 @@ function InkAwayView:ensureUserIcons()
             end
         end
     end)
+    if ok then self._icons_synced = true end
     return ok
 end
 
@@ -1402,15 +1406,22 @@ function IconMenu:init()
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable
 end
--- THE fix: schedule the visible refresh ourselves (deferred region closure).
+-- Schedule the visible refresh ourselves (deferred region closure). The sheet opens
+-- OVER the drawing canvas, which may hold dark ink; a non-flashing "ui" would morph
+-- those dark pixels straight into the white sheet (the sluggish "fade in" feel), so
+-- open with "flashui" -- one clean flash that clears the region and shows the sheet
+-- crisply. (KOReader's ButtonDialog can use "ui" because it opens over a white
+-- background, where there is nothing dark to morph.)
 function IconMenu:onShow()
-    UIManager:setDirty(self, function() return "ui", self.movable.dimen end)
+    UIManager:setDirty(self, function() return "flashui", self.movable.dimen end)
 end
--- Repaint/flush the canvas underneath on close so the menu doesn't ghost, and
--- free the content subtree (some sheets build blitbuffers, e.g. brush previews).
+-- On close, UIManager repaints the uncovered canvas underneath, so a plain "ui"
+-- brings it back with no black blink. (The old "flashui" here was the black flash
+-- the reader saw where the menu had been.) Free the content subtree (some sheets
+-- build blitbuffers, e.g. brush previews).
 function IconMenu:onCloseWidget()
     local region = self.movable and self.movable.dimen
-    UIManager:setDirty(nil, function() return "flashui", region end)
+    UIManager:setDirty(nil, function() return "ui", region end)
     if self.movable and self.movable.free then self.movable:free() end
 end
 -- Paint the sheet horizontally centred and, when top_y is set, pinned just below
@@ -1570,7 +1581,7 @@ function SliderRow:_build()
     local sz = self[1]:getSize()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
 end
-function SliderRow:_setFromX(x)
+function SliderRow:_setFromX(x, mode)
     if not (self.dimen and self._track_w and self._track_w > 0) then return end
     local rel = x - (self.dimen.x + self._track_dx)
     local frac = math.max(0, math.min(1, rel / self._track_w))
@@ -1578,17 +1589,35 @@ function SliderRow:_setFromX(x)
     v = self.min + math.floor((v - self.min) / self.step + 0.5) * self.step
     v = math.max(self.min, math.min(self.max, v))
     if v ~= self.value then
+        -- Capture the real painted position BEFORE _build (which resets dimen.x/y to
+        -- 0); the row's slot in the sheet is fixed, so this equals its next position.
+        local px, py, h = self.dimen.x, self.dimen.y, self.dimen.h
         self.value = v
         self:_build()
+        -- Restore the slot position immediately: the slider's GestureRange reads
+        -- self.dimen, so leaving it at {0,0} until the next paintTo would drop any
+        -- follow-on gesture batched in the same input frame (e.g. the pan_release
+        -- after a fast flick, which would skip the "ui" settle and leave the A2 track).
+        self.dimen.x, self.dimen.y = px, py
         if self.on_set then self.on_set(v) end
-        UIManager:setDirty(self.parent or self, "ui", self.dimen)
+        -- Refresh only the track-to-value band, not the whole row, and use the fast
+        -- (A2, monochrome) waveform WHILE dragging so the black fill, white knob and
+        -- value follow the finger crisply; settle to grey-capable "ui" on release so
+        -- the light-grey track renders correctly (A2 can't show its grey). This is
+        -- what stops a slider drag from flashing a screen-wide GC16 strip per tick.
+        -- self.parent (the sheet) is still the repaint target so the menu stays on
+        -- top of any canvas the on_set refreshed underneath (e.g. a grid preview).
+        local band = GeomUI:new{ x = px + self._track_dx, y = py,
+            w = self.width - self._track_dx, h = h }
+        UIManager:setDirty(self.parent or self, mode or "ui", band)
     end
 end
-function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x); return true end
-function SliderRow:onSlPan(_, ges) self:_setFromX(ges.pos.x); return true end
-function SliderRow:onSlHold(_, ges) self:_setFromX(ges.pos.x); return true end
-function SliderRow:onSlHoldPan(_, ges) self:_setFromX(ges.pos.x); return true end
-function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX(ges.pos.x) end; return true end
+function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x, "ui"); return true end
+function SliderRow:onSlPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
+function SliderRow:onSlHold(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
+function SliderRow:onSlHoldPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
+function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX(ges.pos.x, "ui")
+    else UIManager:setDirty(self.parent or self, "ui", self.dimen) end; return true end
 function SliderRow:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     InputContainer.paintTo(self, bb, x, y)
@@ -2966,6 +2995,44 @@ function InkAwayView:renderView()
     -- reaches the export (which is rebuilt from the ops, not from any buffer).
 end
 
+-- Re-render just an area-local sub-rectangle from the master, the same way
+-- renderView does for the whole screen but scaling ONLY the touched region. The
+-- soft eraser uses this so it can update the screen along its path without a
+-- full-screen crop-scale on every point (which made erasing heavy).
+function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
+    if not (self.area_bb and self.canvas_bb) then return end
+    local v = self.view
+    local W, H = v.canvas_w, v.canvas_h
+    cx0 = math.max(0, math.floor(cx0)); cy0 = math.max(0, math.floor(cy0))
+    cx1 = math.min(v.area_w, math.ceil(cx1)); cy1 = math.min(v.area_h, math.ceil(cy1))
+    if cx1 <= cx0 or cy1 <= cy0 then return end
+    -- same visible-crop origin + landing offset as renderView
+    local sx = math.max(0, math.min(W - 1, math.floor(v.pan_x)))
+    local sy = math.max(0, math.min(H - 1, math.floor(v.pan_y)))
+    local ox = math.max(0, math.floor((sx - v.pan_x) * v.zoom))
+    local oy = math.max(0, math.floor((sy - v.pan_y) * v.zoom))
+    -- map the requested area rect back to canvas source pixels
+    local scx0 = math.max(0, math.min(W, sx + math.floor((cx0 - ox) / v.zoom)))
+    local scy0 = math.max(0, math.min(H, sy + math.floor((cy0 - oy) / v.zoom)))
+    local scx1 = math.max(0, math.min(W, sx + math.ceil((cx1 - ox) / v.zoom)))
+    local scy1 = math.max(0, math.min(H, sy + math.ceil((cy1 - oy) / v.zoom)))
+    local sw, sh = scx1 - scx0, scy1 - scy0
+    if sw < 1 or sh < 1 then return end
+    -- destination aligned to the canvas source we grabbed
+    local dx = ox + math.floor((scx0 - sx) * v.zoom)
+    local dy = oy + math.floor((scy0 - sy) * v.zoom)
+    local dw = math.max(1, math.floor(sw * v.zoom))
+    local dh = math.max(1, math.floor(sh * v.zoom))
+    local bw = math.min(dw, v.area_w - dx)
+    local bh = math.min(dh, v.area_h - dy)
+    if bw < 1 or bh < 1 then return end
+    self.area_bb:paintRect(dx, dy, bw, bh, WHITE)
+    local sub = self.canvas_bb:viewport(scx0, scy0, sw, sh)
+    local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
+    self.area_bb:blitFrom(scaled, dx, dy, 0, 0, bw, bh)
+    if scaled ~= sub and scaled.free then scaled:free() end
+end
+
 -- A thin line into `bb` at screen offset (ox,oy), clipped to the drawing area.
 function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color)
     local aw, ah = self.view.area_w, self.view.area_h
@@ -3088,6 +3155,54 @@ function InkAwayView:liveWidth()
     return (self.tool == "erase") and self.eraser_width or self.pen_width
 end
 
+-- Build the reusable per-stroke drawing writers ONCE (called from beginStroke) so
+-- the per-point path (stampLive) allocates almost nothing. Colour, width, brush
+-- style and symmetry are fixed for the whole stroke, so the span writers, the
+-- symmetry-combining wrapper and the raster dispatcher never need rebuilding per
+-- point -- rebuilding them ~18x/point under quad symmetry was the GC thrash that
+-- made fast drawing with symmetry stutter (and never fully recover).
+function InkAwayView:setupLiveWriters()
+    local color = self:liveColor()
+    local style = (self.tool ~= "erase") and self.pen_style or nil
+    local st = style and Raster.STYLES[style]
+    local textured = st and not st.solid
+    local seed = self.live_seed or 0
+    self._lw_stroke = function(seg, r, put)
+        if textured then Raster.pathTex(seg, r, put, st, seed) else Raster.path(seg, r, put) end
+    end
+    -- remember which buffers these writers target, so stampLive can rebuild them if
+    -- a relayout/rotation reallocated a buffer mid-interaction (else the writers
+    -- would poke a freed buffer)
+    self._lw_area_bb, self._lw_canvas_bb = self.area_bb, self.canvas_bb
+    self._lw_acc = self._lw_acc or { x0 = 0, y0 = 0, x1 = 0, y1 = 0 }
+    local sym = self.symmetry
+    -- master (1:1) writer
+    local v = self.view
+    local cput = spanWriter(self.canvas_bb, v.canvas_w, v.canvas_h, color, nil)
+    if sym and sym ~= "off" then
+        local crefx, crefy = Symmetry.canvasRefs(v.canvas_w, v.canvas_h)
+        cput = Symmetry.wrap(cput, sym, crefx, crefy)
+    end
+    self._lw_cput = cput
+    -- on-screen writer, accumulating the base bbox into the reused acc table; the
+    -- mirror images are painted through a writer that does NOT grow acc, so the
+    -- refresh stays a few small rects (one per image) rather than one giant box.
+    local baseput = spanWriter(self.area_bb, v.area_w, v.area_h, color, self._lw_acc)
+    local aput = baseput
+    if sym and sym ~= "off" then
+        local arefx, arefy = Symmetry.areaRefs(v)
+        local mirror = spanWriter(self.area_bb, v.area_w, v.area_h, color, nil)
+        local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
+        aput = function(x, y, len)
+            baseput(x, y, len)
+            if mx then mirror(arefx(x, len), y, len) end
+            if my then mirror(x, arefy(y), len) end
+            if mx and my then mirror(arefx(x, len), arefy(y), len) end
+        end
+    end
+    self._lw_aput = aput
+end
+
 -- Stamp the live segment ending at canvas point (cx,cy) into BOTH buffers: the
 -- 1:1 master (so a later zoom/pan re-render is correct) and the on-screen buffer
 -- at the current zoom (so drawing feels immediate). Only the on-screen dirty
@@ -3111,7 +3226,6 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh)
         Raster.path({ cx, cy }, r, put)
     end
     self.last_cx, self.last_cy = cx, cy
-    self:renderView()   -- cheap crop-scale of the master, now showing the background
     local zr = r * self.view.zoom + 2
     local ax0, ay0 = self:toAreaLocal(px or cx, py or cy)
     local ax1, ay1 = self:toAreaLocal(cx, cy)
@@ -3128,8 +3242,11 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh)
         if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
         if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
     end
+    -- Re-render only the touched region (base + each mirror) from the restored
+    -- master, instead of a full-screen crop-scale on every point.
     for _, rr in ipairs(self:symAreaRects(acc)) do
-        self:dirtyAreaRect("fast", rr, 1)
+        self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
+        self:dirtyAreaRect(self._live_mode or "fast", rr, 1)
     end
 end
 
@@ -3137,56 +3254,36 @@ function InkAwayView:stampLive(cx, cy, fresh)
     if self.tool == "erase" and not self.erase_bg and self:eraseRevealBB() then
         return self:stampEraseRestore(cx, cy, fresh)
     end
-    local color = self:liveColor()
-    local width = self:liveWidth()
-    local style = nil
-    if self.tool ~= "erase" then style = self.pen_style end   -- eraser is always solid
-    local st = style and Raster.STYLES[style]
-    local textured = st and not st.solid
-    local seed = self.live_seed or 0
-    local function stroke(seg, r, put)
-        if textured then Raster.pathTex(seg, r, put, st, seed)
-        else Raster.path(seg, r, put) end
+    -- writers were built once in beginStroke (setupLiveWriters); rebuild them if
+    -- missing or if a buffer was reallocated since (relayout/rotation), so we never
+    -- draw into a freed buffer.
+    if not self._lw_stroke or self._lw_area_bb ~= self.area_bb
+            or self._lw_canvas_bb ~= self.canvas_bb then
+        self:setupLiveWriters()
     end
+    local width = self:liveWidth()
+    local strokeFn = self._lw_stroke
 
-    local sym = self.symmetry
     -- master, at 1:1
     if self.canvas_bb then
-        local cput = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h, color, nil)
-        if sym and sym ~= "off" then
-            local crefx, crefy = Symmetry.canvasRefs(self.view.canvas_w, self.view.canvas_h)
-            cput = Symmetry.wrap(cput, sym, crefx, crefy)
-        end
         if self.last_cx and not fresh then
-            stroke({ self.last_cx, self.last_cy, cx, cy }, width / 2, cput)
+            strokeFn({ self.last_cx, self.last_cy, cx, cy }, width / 2, self._lw_cput)
         else
-            stroke({ cx, cy }, width / 2, cput)
+            strokeFn({ cx, cy }, width / 2, self._lw_cput)
         end
         self.last_cx, self.last_cy = cx, cy
     end
 
-    -- on screen, at the current zoom. `acc` tracks only the base image; the
-    -- mirror images are painted through a writer that does NOT grow acc, so the
-    -- refresh stays a few small rects (one per image) instead of one giant box.
+    -- on screen, at the current zoom. The reused `acc` table tracks only the base
+    -- image (reset each point); the mirror images paint through a writer that does
+    -- NOT grow acc, so the refresh stays a few small rects (one per image).
     local ax, ay = self:toAreaLocal(cx, cy)
-    local acc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
-    local baseput = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, acc)
-    local aput = baseput
-    if sym and sym ~= "off" then
-        local arefx, arefy = Symmetry.areaRefs(self.view)
-        local mirror = spanWriter(self.area_bb, self.view.area_w, self.view.area_h, color, nil)
-        local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
-        aput = function(x, y, len)
-            baseput(x, y, len)
-            if mx then mirror(arefx(x, len), y, len) end
-            if my then mirror(x, arefy(y), len) end
-            if mx and my then mirror(arefx(x, len), arefy(y), len) end
-        end
-    end
+    local acc = self._lw_acc
+    acc.x0, acc.y0, acc.x1, acc.y1 = math.huge, math.huge, -math.huge, -math.huge
     if self.last_ax and not fresh then
-        stroke({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, aput)
+        strokeFn({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, self._lw_aput)
     else
-        stroke({ ax, ay }, (width * self.view.zoom) / 2, aput)
+        strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput)
     end
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
@@ -3201,7 +3298,7 @@ function InkAwayView:stampLive(cx, cy, fresh)
             if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
         end
         for _, r in ipairs(self:symAreaRects(acc)) do
-            self:dirtyAreaRect("fast", r, 1)
+            self:dirtyAreaRect(self._live_mode or "fast", r, 1)
         end
     end
 end
@@ -3227,6 +3324,21 @@ function InkAwayView:beginStroke(sx, sy)
     self.live_seed = math.random(1, 1000000)
     local style = nil
     if not is_erase then style = self.pen_style end
+    -- Live-refresh waveform, chosen once for the whole stroke. The "fast" (A2/DU)
+    -- waveform is 1-bit black/white: it shows opaque BLACK solid ink instantly, but
+    -- it physically cannot render grey/colour/low-opacity ink, so such a stroke
+    -- looks wrong (or invisible) mid-draw and only snaps in on the "ui" settle at
+    -- lift -- which is exactly why grey/white pens felt slow. Use "fast" only for a
+    -- solid, fully-opaque, pure-black pen; everything else draws under grey-capable
+    -- "ui" so it appears in the right shade as you draw.
+    if is_erase then
+        self._live_mode = "fast"                 -- the eraser paints white; DU shows white fine
+    else
+        local c = self.pen_color
+        local solid = (style == nil) or (Raster.STYLES[style] and Raster.STYLES[style].solid)
+        self._live_mode = (self.pen_alpha >= 255 and solid and c
+            and c[1] == 0 and c[2] == 0 and c[3] == 0) and "fast" or "ui"
+    end
     self.canvas:startStroke(is_erase and "erase" or "ink",
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
@@ -3237,6 +3349,7 @@ function InkAwayView:beginStroke(sx, sy)
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     self._stroke_rect = nil
+    self:setupLiveWriters()        -- build the reusable per-stroke writers once
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -4010,8 +4123,9 @@ function InkAwayView:openSettings()
             self.symmetry, function(v) self.symmetry = v; self:setSetting("inkaway_symmetry", v); self:openSettings() end))
         add(vspan(14))
 
-        -- ghosting cleanup slider (0 = off)
-        add(SliderRow:new{ label = _("Ghosting"), value = self.ghost_clean or 0, min = 0, max = 100, step = 5,
+        -- ghosting cleanup slider (0 = off). 0-50 in 5s: a small range is easier to
+        -- pinpoint, and clearing every >50 strokes is effectively never anyway.
+        add(SliderRow:new{ label = _("Ghosting"), value = math.min(50, self.ghost_clean or 0), min = 0, max = 50, step = 5,
             width = content_w, parent = menu,
             format = function(v) return v == 0 and _("off") or string.format(_("%d strokes"), v) end,
             on_set = function(v) self.ghost_clean = v; self:setSetting("inkaway_ghost", v)
@@ -6871,8 +6985,16 @@ end
 
 function InkAwayView:paintTo(bb, x, y)
     local v = self.view
-    -- white background across the whole screen
-    bb:paintRect(x, y, self.screen_w, self.screen_h, WHITE)
+    -- White background. The drawing area is repainted from area_bb below (which is
+    -- already white where there is no ink), so painting the whole screen white here
+    -- would just be overwritten -- clear only the strips OUTSIDE the area: the
+    -- toolbar above and any notebook bar (or letterbox) below/around it.
+    local ay0, ay1 = v.area_y, v.area_y + v.area_h
+    local ax0, ax1 = v.area_x, v.area_x + v.area_w
+    if ay0 > 0 then bb:paintRect(x, y, self.screen_w, ay0, WHITE) end
+    if ay1 < self.screen_h then bb:paintRect(x, y + ay1, self.screen_w, self.screen_h - ay1, WHITE) end
+    if ax0 > 0 then bb:paintRect(x, y + ay0, ax0, ay1 - ay0, WHITE) end
+    if ax1 < self.screen_w then bb:paintRect(x + ax1, y + ay0, self.screen_w - ax1, ay1 - ay0, WHITE) end
     -- toolbar (each button paints its icon; the active tool's button paints a grey
     -- pill background), then the hairline under the bar -- unless collapsed for
     -- immersive drawing, when the paper fills the freed space
