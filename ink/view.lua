@@ -100,6 +100,8 @@ local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
 -- Flagship UI greys (e-ink grayscale): a soft selection pill and a hairline.
 local PILL_GREY = Blitbuffer.ColorRGB32(0xD6, 0xD6, 0xD6, 0xFF)
 local HAIRLINE  = Blitbuffer.ColorRGB32(0xCC, 0xCC, 0xCC, 0xFF)
+local TILE_BG   = Blitbuffer.ColorRGB32(0xE6, 0xE6, 0xE6, 0xFF)   -- shape-menu tile fill
+local CARET_BG  = Blitbuffer.ColorRGB32(0xB0, 0xB0, 0xB0, 0xFF)   -- line-tile corner caret chip
 -- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
 -- (it paints opaque), so instead of a see-through charcoal box we use a light,
 -- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
@@ -597,8 +599,16 @@ function InkAwayView:init()
         UIManager:scheduleIn(0.7, function()
             if autosheet == "pen" then self:openPenSettings()
             elseif autosheet == "eraser" then self:openEraserSettings()
-            elseif autosheet == "shape" then self:openShapePicker() end
+            elseif autosheet == "shape" then self:openShapePicker()
+            elseif autosheet == "shapeline" then self:openShapePicker(); self:openShapeLineMenu()
+            elseif autosheet == "fill" then self:openFillColor() end
         end)
+    end
+    -- Dev hook (emulator only): dump the framebuffer to a PNG a moment after the
+    -- sheet opens, so UI iteration needs no OS-level screen capture. No-op on device.
+    local autoshot = os.getenv("INKAWAY_AUTOSHOT")
+    if autoshot then
+        UIManager:scheduleIn(1.7, function() pcall(function() Screen:shot(autoshot) end) end)
     end
 end
 
@@ -727,7 +737,7 @@ function InkAwayView:onCloseWidget()
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -939,7 +949,10 @@ function InkAwayView:ensureUserIcons()
         if lfs.attributes(dst_dir, "mode") ~= "directory" then lfs.mkdir(dst_dir) end
         local src_dir = self:pluginDir() .. "ink/icons/"
         for _, name in ipairs({ "pen", "eraser", "shape", "text", "image", "pan",
-                                "undo", "redo", "menu", "save", "exit" }) do
+                                "undo", "redo", "menu", "save", "exit",
+                                "sh_line", "sh_rect", "sh_ellipse", "sh_triangle",
+                                "sh_curve", "sh_arrow", "sh_darrow", "sh_carrow", "sh_cdarrow",
+                                "bucket", "lasso", "caret" }) do
             local src = src_dir .. name .. ".svg"
             local dst = dst_dir .. "/inkaway." .. name .. ".svg"
             local sa, da = lfs.attributes(src), lfs.attributes(dst)
@@ -1289,7 +1302,7 @@ function InkAwayView:openArrowSize()
         callback = function(spin)
             self.arrow_head = math.max(4, math.floor(spin.value))
             self:setSetting("inkaway_arrow_head", self.arrow_head)
-            self:openShapePicker()
+            self:openShapeLineMenu()
         end,
     })
 end
@@ -1297,108 +1310,588 @@ end
 -- Shape chooser. Each entry shows the actual shape glyph next to its name; the
 -- current one gets a checkmark. Shapes are drawn with the pen's size, opacity
 -- and colour.
-function InkAwayView:openShapePicker()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    -- Place any shape still pending before the picker can change the type under
-    -- it (setTool("shape") early-returns when already in shape mode, so it does
-    -- not flush -- do it here). This is what stops a drawn square from being
-    -- re-committed as, say, an arrow after you pick a new shape.
-    self:flushShape()
-    if self._shape_dialog then UIManager:close(self._shape_dialog) end
+-- A lightweight modal composed of stock KOReader widgets, mirroring ButtonDialog's
+-- machinery (CenterContainer > MovableContainer > FrameContainer) so it opens
+-- reliably on device. `build(menu)` returns the FrameContainer (built with a
+-- reference to the menu, so child CheckButtons can use it as their repaint
+-- parent). A tap outside the panel, or Back, closes it.
+--
+-- The critical detail: UIManager:show(widget) with no refreshtype only marks the
+-- widget dirty -- it paints into the buffer but schedules NO e-ink refresh, so
+-- nothing reaches the panel and the menu looks like it "never opened". onShow must
+-- schedule the refresh itself (as every stock modal does), with the region read
+-- from a closure so movable.dimen is available (it is nil until first paintTo).
+-- NOTE: deliberately NOT covers_fullscreen. The canvas below must keep painting
+-- under the sheet (as ButtonDialog does): the sheet is smaller than the screen
+-- and the child submenu is smaller than the parent, so covering the screen would
+-- make _repaint skip the canvas and leave stale sheet pixels around a closing or
+-- reopening smaller sheet (visible as ghost panels until you draw or refresh).
+local IconMenu = InputContainer:extend{
+    modal = true,              -- stay on top; don't let un-consumed gestures fall
+                               -- through and draw on the canvas underneath
+    build = nil,               -- function(menu) -> FrameContainer
+    on_close = nil,
+}
+function IconMenu:init()
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local MovableContainer = require("ui/widget/container/movablecontainer")
+    if self.build then self.frame = self:build() end
+    if Device:isTouchDevice() then
+        self.ges_events = { TapClose = { GestureRange:new{ ges = "tap",
+            range = GeomUI:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() } } } }
+    end
+    if Device:hasKeys() then
+        self.key_events = { CloseMenu = { { Device.input.group.Back } } }
+    end
+    -- MovableContainer gives the content a reliable .dimen (set at paint time),
+    -- and swallows drag gestures that start on the frame.
+    self.movable = MovableContainer:new{ self.frame }
+    self[1] = CenterContainer:new{ dimen = Screen:getSize(), self.movable }
+end
+-- THE fix: schedule the visible refresh ourselves (deferred region closure).
+function IconMenu:onShow()
+    UIManager:setDirty(self, function() return "ui", self.movable.dimen end)
+end
+-- Repaint/flush the canvas underneath on close so the menu doesn't ghost.
+function IconMenu:onCloseWidget()
+    UIManager:setDirty(nil, function() return "flashui", self.movable.dimen end)
+end
+function IconMenu:paintTo(bb, x, y)
+    InputContainer.paintTo(self, bb, x, y)
+    self.dimen = self.movable.dimen   -- give ourselves a real geometry
+end
+function IconMenu:onTapClose(_, ges)
+    if ges and ges.pos and self.movable.dimen
+            and ges.pos:notIntersectWith(self.movable.dimen) then
+        self:onCloseMenu()
+    end
+    return true
+end
+function IconMenu:onCloseMenu()
+    UIManager:close(self)
+    if self.on_close then self.on_close() end
+    return true
+end
 
-    -- One shape button. Fill is a separate toggle (below), so each closed shape
-    -- appears once here instead of as an outline/filled pair -- halving the list.
-    local function shapeBtn(glyph, label, shape, arrow)
-        return {
-            text = glyph .. "  " .. label,
-            checked_func = function()
-                return self.shape == shape and (self.shape_arrow or false) == (arrow or false)
-            end,
-            callback = function()
-                self:flushShape()   -- place any pending shape as its old type first
-                self.shape, self.shape_arrow = shape, arrow
-                self:refreshToolLabels()
-                self:openShapePicker()   -- reopen to move the checkmark
-            end,
+-- A classic sliding on/off toggle row: a label on the left and a pill switch on
+-- the right (grey track + white knob at left when off; black track + knob at
+-- right when on). The whole row is one tap target and flips in place; `parent`
+-- is the shown widget used as the repaint target.
+local ToggleRow = InputContainer:extend{
+    label = "", is_on = false, width = nil, callback = nil, parent = nil,
+}
+local TRACK_OFF = Blitbuffer.ColorRGB32(0xCF, 0xCF, 0xCF, 0xFF)
+local KNOB_EDGE = Blitbuffer.ColorRGB32(0x99, 0x99, 0x99, 0xFF)
+function ToggleRow:init()
+    self.sw_h = Screen:scaleBySize(30)
+    self.sw_w = Screen:scaleBySize(54)
+    self:_build()
+    if Device:isTouchDevice() then
+        self.ges_events = { Tap = { GestureRange:new{ ges = "tap",
+            range = function() return self.dimen end } } }
+    end
+end
+function ToggleRow:_switch()
+    local WidgetContainer = require("ui/widget/container/widgetcontainer")
+    local w, h = self.sw_w, self.sw_h
+    local track = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0,
+        radius = math.floor(h / 2), background = self.is_on and Blitbuffer.COLOR_BLACK or TRACK_OFF,
+        WidgetContainer:new{ dimen = GeomUI:new{ w = w, h = h } } }
+    local knob = h - Screen:scaleBySize(6)
+    local inset = Screen:scaleBySize(3)
+    local knobFrame = FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = KNOB_EDGE,
+        padding = 0, margin = 0, radius = math.floor(knob / 2), background = Blitbuffer.COLOR_WHITE,
+        WidgetContainer:new{ dimen = GeomUI:new{ w = knob - Screen:scaleBySize(2), h = knob - Screen:scaleBySize(2) } } }
+    knobFrame.overlap_offset = { self.is_on and (w - knob - inset) or inset, math.floor((h - knob) / 2) }
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    return OverlapGroup:new{ dimen = { w = w, h = h }, allow_mirroring = false, track, knobFrame }
+end
+function ToggleRow:_build()
+    local TextWidget = require("ui/widget/textwidget")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local Font = require("ui/font")
+    local label = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
+    local sw = self:_switch()
+    local span
+    if self.compact then
+        -- toggle sits just after the label; the row is only as wide as its content
+        span = Screen:scaleBySize(12)
+        self.width = label:getSize().w + span + self.sw_w
+    else
+        span = math.max(Screen:scaleBySize(8), self.width - label:getSize().w - self.sw_w)
+    end
+    self[1] = HorizontalGroup:new{ align = "center",
+        label, HorizontalSpan:new{ width = span }, sw }
+    local sz = self[1]:getSize()
+    self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
+end
+function ToggleRow:onTap()
+    self.is_on = not self.is_on
+    self:_build()
+    if self.callback then self.callback(self.is_on) end
+    UIManager:setDirty(self.parent or self, "ui", self.dimen)
+    return true
+end
+function ToggleRow:paintTo(bb, x, y)
+    self.dimen.x, self.dimen.y = x, y
+    InputContainer.paintTo(self, bb, x, y)
+end
+
+-- A horizontal slider row (0..100): a label on the left, a draggable track in
+-- the middle, and the value on the right. Tap or drag the track to set it; the
+-- value flips in place. `parent` is the shown widget used as the repaint target.
+local SliderRow = InputContainer:extend{
+    label = "", value = 0, width = nil, on_set = nil, parent = nil,
+}
+function SliderRow:init()
+    self.knob = Screen:scaleBySize(26)
+    self.track_h = Screen:scaleBySize(8)
+    self:_build()
+    if Device:isTouchDevice() then
+        local range = function() return self.dimen end
+        self.ges_events = {
+            SlTap = { GestureRange:new{ ges = "tap", range = range } },
+            SlPan = { GestureRange:new{ ges = "pan", range = range } },
+            SlPanRelease = { GestureRange:new{ ges = "pan_release", range = range } },
+            SlHold = { GestureRange:new{ ges = "hold", range = range } },
+            SlHoldPan = { GestureRange:new{ ges = "hold_pan", range = range } },
+        }
+    end
+end
+function SliderRow:_build()
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    local WidgetContainer = require("ui/widget/container/widgetcontainer")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(14)
+    local labelw = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
+    local valw = TextWidget:new{ text = string.format("%d%%", math.floor(self.value + 0.5)),
+        face = Font:getFace("cfont", 16), bold = true }
+    -- reserve a fixed width for the value so the track doesn't jump as digits change
+    local val_w = math.max(valw:getSize().w, Screen:scaleBySize(52))
+    local track_w = self.width - labelw:getSize().w - val_w - 2 * gap
+    self._track_w = track_w
+    self._track_dx = labelw:getSize().w + gap
+    local frac = math.max(0, math.min(1, self.value / 100))
+    local th, kn = self.track_h, self.knob
+    local ty = math.floor((kn - th) / 2)
+    local fillW = math.max(th, math.floor(track_w * frac))
+    local track = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, radius = math.floor(th / 2),
+        background = TRACK_OFF, WidgetContainer:new{ dimen = GeomUI:new{ w = track_w, h = th } } }
+    track.overlap_offset = { 0, ty }
+    local fill = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, radius = math.floor(th / 2),
+        background = Blitbuffer.COLOR_BLACK, WidgetContainer:new{ dimen = GeomUI:new{ w = fillW, h = th } } }
+    fill.overlap_offset = { 0, ty }
+    local knob = FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = KNOB_EDGE,
+        padding = 0, margin = 0, radius = math.floor(kn / 2), background = Blitbuffer.COLOR_WHITE,
+        WidgetContainer:new{ dimen = GeomUI:new{ w = kn - Screen:scaleBySize(2), h = kn - Screen:scaleBySize(2) } } }
+    local knobX = math.max(0, math.min(track_w - kn, math.floor(track_w * frac) - math.floor(kn / 2)))
+    knob.overlap_offset = { knobX, 0 }
+    local trackGroup = OverlapGroup:new{ dimen = { w = track_w, h = kn }, allow_mirroring = false,
+        track, fill, knob }
+    self[1] = HorizontalGroup:new{ align = "center",
+        labelw, HorizontalSpan:new{ width = gap }, trackGroup, HorizontalSpan:new{ width = gap }, valw }
+    local sz = self[1]:getSize()
+    self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
+end
+function SliderRow:_setFromX(x)
+    if not (self.dimen and self._track_w and self._track_w > 0) then return end
+    local rel = x - (self.dimen.x + self._track_dx)
+    local v = math.max(0, math.min(100, math.floor(rel / self._track_w * 100 + 0.5)))
+    if v ~= self.value then
+        self.value = v
+        self:_build()
+        if self.on_set then self.on_set(v) end
+        UIManager:setDirty(self.parent or self, "ui", self.dimen)
+    end
+end
+function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x); return true end
+function SliderRow:onSlPan(_, ges) self:_setFromX(ges.pos.x); return true end
+function SliderRow:onSlHold(_, ges) self:_setFromX(ges.pos.x); return true end
+function SliderRow:onSlHoldPan(_, ges) self:_setFromX(ges.pos.x); return true end
+function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX(ges.pos.x) end; return true end
+function SliderRow:paintTo(bb, x, y)
+    self.dimen.x, self.dimen.y = x, y
+    InputContainer.paintTo(self, bb, x, y)
+end
+
+-- Shared tile helpers, used by both the Shapes menu and its line/arrow/curve
+-- child menu so they look identical.
+function InkAwayView:iconPath(name)
+    return self:pluginDir() .. "ink/icons/" .. name .. ".svg"
+end
+-- Transparent icon (tile colour shows through) when unselected; white-flattened +
+-- whole-rect inverted when selected so black strokes read white on the black tile.
+function InkAwayView:tileIcon(name, size, sel)
+    local ok, w = pcall(function()
+        if sel then
+            return IconWidget:new{ file = self:iconPath(name), width = size, height = size,
+                alpha = false, invert = true }
+        end
+        return IconWidget:new{ file = self:iconPath(name), width = size, height = size, alpha = true }
+    end)
+    return ok and w or nil
+end
+-- A rounded tile button. Uses Button's native icon path (so `text` stays nil and
+-- the tap-highlight takes the safe invert branch, not the text one which would
+-- index a fgcolor our icon widget lacks), then swaps in a transparent icon,
+-- optionally above a label and a small grey hint sublabel. `hold_cb` wires a
+-- long-press action.
+function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_cb)
+    local TextWidget = require("ui/widget/textwidget")
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    local b = Button:new{ icon = "inkaway." .. name, icon_width = size, icon_height = size,
+        width = w, height = h, bordersize = 0,
+        radius = Screen:scaleBySize(16), background = sel and BLACK or TILE_BG,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    local iw = self:tileIcon(name, size, sel)
+    if iw and b.label_container then
+        if label then
+            local tw = TextWidget:new{ text = label, face = Font:getFace("cfont", 15),
+                bold = true, fgcolor = sel and WHITE or BLACK }
+            local vg = VerticalGroup:new{ align = "center", iw,
+                VerticalSpan:new{ width = Screen:scaleBySize(6) }, tw }
+            if sublabel then
+                local hint = TextWidget:new{ text = sublabel, face = Font:getFace("cfont", 11),
+                    fgcolor = sel and Blitbuffer.ColorRGB32(0xC8, 0xC8, 0xC8, 0xFF)
+                                   or Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF) }
+                table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(3) })
+                table.insert(vg, hint)
+            end
+            b.label_widget = vg; b.label_container[1] = vg
+        else
+            b.label_widget = iw; b.label_container[1] = iw
+        end
+    end
+    return b
+end
+
+-- The Shapes menu: big rounded-square icon tiles (the Line tile carries a small
+-- caret in its bottom-right corner that opens the line/arrow/curve submenu; the
+-- rest of the tile selects a plain line), the paint-bucket and lasso tools as
+-- smaller secondary tiles, and Fill / snap options as sliding toggles that flip
+-- in place. Icons are rendered with true transparency (alpha = true) so the tile
+-- colour shows through; the selected tile inverts a white-flattened icon so black
+-- strokes read as white on the black tile.
+function InkAwayView:openShapePicker()
+    self:flushShape()
+    if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    self:ensureUserIcons()
+
+    -- Four square tiles fill the row with equal gaps; derive the exact content
+    -- width from the tile size so everything lines up flush to the panel padding.
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local tileW = math.floor((target - 3 * gap) / 4)
+    local content_w = 4 * tileW + 3 * gap
+    local halfW = math.floor((content_w - gap) / 2)
+    local isz = math.floor(tileW * 0.60)   -- big icon inside the tile
+
+    -- The Line tile: a full-size select button (picks a plain line) with a small
+    -- caret button pinned to the bottom-right that opens the variants submenu.
+    local function lineTile(sel)
+        local select_btn = self:makeTile("sh_line", tileW, tileW, isz, sel, function()
+            self:flushShape(); self.shape, self.shape_arrow = "line", nil
+            self:refreshToolLabels(); self:openShapePicker()
+        end)
+        local caretW = Screen:scaleBySize(30)
+        local inset = Screen:scaleBySize(5)
+        local caretIsz = caretW - Screen:scaleBySize(8)
+        local caret_btn = Button:new{ icon = "inkaway.caret", icon_width = caretIsz, icon_height = caretIsz,
+            width = caretW, height = caretW,
+            bordersize = 0, radius = Screen:scaleBySize(8), background = CARET_BG,
+            margin = 0, padding = 0, show_parent = self,
+            callback = function() self:openShapeLineMenu() end,
+            overlap_offset = { tileW - caretW - inset, tileW - caretW - inset } }
+        local cw = self:tileIcon("caret", caretIsz, false)
+        if cw and caret_btn.label_container then
+            caret_btn.label_widget = cw; caret_btn.label_container[1] = cw
+        end
+        -- Caret is child[1] so the default first->last dispatch checks its small
+        -- corner range first; any tap outside it falls through to the big select
+        -- button (child[2]). paintTo is reversed so the select button draws
+        -- underneath and the caret stays visible on top.
+        local og = OverlapGroup:new{ dimen = { w = tileW, h = tileW },
+            allow_mirroring = false, caret_btn, select_btn }
+        function og:paintTo(bb, x, y)
+            for i = #self, 1, -1 do
+                local w = self[i]
+                if w.overlap_offset then
+                    w:paintTo(bb, x + w.overlap_offset[1], y + w.overlap_offset[2])
+                else
+                    w:paintTo(bb, x, y)
+                end
+            end
+        end
+        return og
+    end
+
+    local function shapeTile(name, shape)
+        return self:makeTile(name, tileW, tileW, isz, self.shape == shape, function()
+            self:flushShape(); self.shape, self.shape_arrow = shape, nil
+            self:refreshToolLabels(); self:openShapePicker()
+        end)
+    end
+
+    local lineSel = (self.shape == "line" or self.shape == "curve")
+    local shapeRow = HorizontalGroup:new{ align = "center",
+        lineTile(lineSel), HorizontalSpan:new{ width = gap },
+        shapeTile("sh_rect", "rect"), HorizontalSpan:new{ width = gap },
+        shapeTile("sh_ellipse", "ellipse"), HorizontalSpan:new{ width = gap },
+        shapeTile("sh_triangle", "triangle"),
+    }
+
+    -- tools row: paint bucket + lasso, deliberately smaller/secondary tiles
+    -- (shorter than the shape squares) with a label under a compact icon
+    local toolH = Screen:scaleBySize(96)
+    local toolIsz = Screen:scaleBySize(36)
+    local toolRow = HorizontalGroup:new{ align = "center",
+        self:makeTile("bucket", halfW, toolH, toolIsz, self.tool == "fill", function()
+            self:flushShape(); self.tool = "fill"; self:refreshToolLabels()
+            UIManager:close(self._shape_dialog); self._shape_dialog = nil
+        end, _("Paint bucket"), _("hold to pick colour"), function() self:openFillColor() end),
+        HorizontalSpan:new{ width = gap },
+        self:makeTile("lasso", halfW, toolH, toolIsz, self.tool == "lasso", function()
+            self:flushPending(); self:flushShape()
+            if self.selection or self.lassoing then self:clearSelection() end
+            self.tool = "lasso"; self:refreshToolLabels()
+            UIManager:close(self._shape_dialog); self._shape_dialog = nil
+            self:composeCanvas(); self:renderView(); UIManager:setDirty("all", "full")
+        end, _("Lasso select")),
+    }
+
+    -- title row: "Shapes" on the left, a black Done pill on the right
+    local titleW = TextWidget:new{ text = _("Shapes"), face = Font:getFace("cfont", 22), bold = true }
+    local done = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = function() UIManager:close(self._shape_dialog); self._shape_dialog = nil end, show_parent = self }
+    do
+        local dtw = TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 15), bold = true, fgcolor = WHITE }
+        if done.label_container then done.label_widget = dtw; done.label_container[1] = dtw end
+    end
+    local title_gap = content_w - titleW:getSize().w - done:getSize().w
+    local titleRow = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), title_gap) }, done }
+
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+
+    -- The whole panel is built inside the menu's build callback so the toggle
+    -- rows can use the (about-to-be-shown) menu as their repaint parent.
+    local build = function(menu)
+        -- three compact toggles (switch right after its label) spread across one row
+        local function toggle(label, on, cb)
+            return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
+        end
+        local fillRow = toggle(_("Fill"), self.shape_fill, function(on)
+            self.shape_fill = on end)
+        local gridRow = toggle(_("Snap to grid"), self.snap_grid, function(on)
+            self.snap_grid = on; self:setSetting("inkaway_snap_grid", on) end)
+        local snap45Row = toggle(_("Snap to 45\u{00B0}"), self.snap_angle, function(on)
+            self.snap_angle = on; self:setSetting("inkaway_snap_angle", on) end)
+        local totalW = fillRow.width + gridRow.width + snap45Row.width
+        local slack = math.max(Screen:scaleBySize(16), math.floor((content_w - totalW) / 2))
+        local togglesRow = HorizontalGroup:new{ align = "center",
+            fillRow, HorizontalSpan:new{ width = slack },
+            gridRow, HorizontalSpan:new{ width = slack },
+            snap45Row }
+        local content = VerticalGroup:new{ align = "left",
+            titleRow, vspan(16),
+            shapeRow, vspan(16),
+            togglesRow, vspan(16),
+            toolRow,
+        }
+        return FrameContainer:new{
+            background = WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18),
+            content,
         }
     end
 
-    local buttons = {
-        { shapeBtn("\u{2571}", _("Line"),  "line",  nil),
-          shapeBtn("\u{2312}", _("Curve"), "curve", nil) },
-        { shapeBtn("\u{2192}", _("Arrow"),        "line",  "end"),
-          shapeBtn("\u{2933}", _("Curved arrow"), "curve", "end") },
-        { shapeBtn("\u{2194}", _("Double arrow"),        "line",  "both"),
-          shapeBtn("\u{21DD}", _("Curved double arrow"), "curve", "both") },
-        { shapeBtn("\u{25AD}", _("Rectangle"), "rect",     nil),
-          shapeBtn("\u{25EF}", _("Ellipse"),   "ellipse",  nil),
-          shapeBtn("\u{25B3}", _("Triangle"),  "triangle", nil) },
-    }
-    -- Fill toggle: turns the closed shapes (rectangle / ellipse / triangle) solid
-    buttons[#buttons + 1] = {{
-        text = _("Fill \u{2014} solid interior"),
-        checked_func = function() return self.shape_fill end,
-        callback = function()
-            self.shape_fill = not self.shape_fill
-            self:refreshToolLabels()
-            self:openShapePicker()
-        end,
-    }}
-    -- arrowhead size (small; only matters for the arrow shapes)
-    buttons[#buttons + 1] = {{
-        text = string.format(_("Arrowhead size: %d px"), self.arrow_head),
-        callback = function() UIManager:close(self._shape_dialog); self:openArrowSize() end,
-    }}
-    -- bucket + lasso tools, each with its icon
-    buttons[#buttons + 1] = {
-        { text = "\u{25A8}  " .. _("Paint bucket"),
-          checked_func = function() return self.tool == "fill" end,
-          callback = function()
-              self:flushShape()
-              self.tool = "fill"
-              self:refreshToolLabels()
-              UIManager:close(self._shape_dialog)
-          end,
-          hold_callback = function()
-              UIManager:close(self._shape_dialog)
-              self:openFillSettings()
-          end },
-        { text = "\u{2B21}  " .. _("Lasso"),
-          checked_func = function() return self.tool == "lasso" end,
-          callback = function()
-              self:flushPending()
-              self:flushShape()
-              if self.selection or self.lassoing then self:clearSelection() end
-              self.tool = "lasso"
-              self:refreshToolLabels()
-              UIManager:close(self._shape_dialog)
-              self:composeCanvas()
-              self:renderView()
-              UIManager:setDirty("all", "full")
-          end },
-    }
-    -- snapping toggles (checkmark shows the state)
-    buttons[#buttons + 1] = {
-        { text = _("Snap to grid"),
-          checked_func = function() return self.snap_grid end,
-          callback = function()
-              self.snap_grid = not self.snap_grid
-              self:setSetting("inkaway_snap_grid", self.snap_grid)
-              self:openShapePicker()
-          end },
-        { text = _("Snap 45\u{00B0}"),
-          checked_func = function() return self.snap_angle end,
-          callback = function()
-              self.snap_angle = not self.snap_angle
-              self:setSetting("inkaway_snap_angle", self.snap_angle)
-              self:openShapePicker()
-          end },
-    }
-    buttons[#buttons + 1] = {{ text = _("Done"),
-        callback = function() UIManager:close(self._shape_dialog) end }}
-
-    self._shape_dialog = ButtonDialog:new{ title = _("Shapes"), title_align = "center", buttons = buttons }
+    self._shape_dialog = IconMenu:new{ build = build, on_close = function() self._shape_dialog = nil end }
     UIManager:show(self._shape_dialog)
+end
+
+-- The line/arrow/curve variants, opened from the Line tile. Kept as a compact
+-- ButtonDialog (glyph + label), with the arrowhead size for the arrow variants.
+-- The line/arrow/curve variants, in the SAME rounded-tile style as the parent
+-- Shapes menu but with smaller tiles (it is a child menu): two rows of three
+-- (straight family / curved family), plus an arrowhead-size row and a Back pill.
+function InkAwayView:openShapeLineMenu()
+    if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
+    if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    self:ensureUserIcons()
+
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local parentTileW = math.floor((target - 3 * gap) / 4)
+    local tileW = math.floor(parentTileW * 0.78)   -- smaller than the parent's tiles
+    local isz = math.floor(tileW * 0.60)
+    local content_w = 3 * tileW + 2 * gap
+
+    local function isSel(shape, arrow)
+        return self.shape == shape and (self.shape_arrow or false) == (arrow or false)
+    end
+    local function pick(shape, arrow)
+        return function()
+            self:flushShape(); self.shape, self.shape_arrow = shape, arrow
+            self:refreshToolLabels()
+            if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+            self:openShapePicker()
+        end
+    end
+    local function tile(name, shape, arrow)
+        return self:makeTile(name, tileW, tileW, isz, isSel(shape, arrow), pick(shape, arrow))
+    end
+
+    local row1 = HorizontalGroup:new{ align = "center",
+        tile("sh_line", "line", nil), HorizontalSpan:new{ width = gap },
+        tile("sh_arrow", "line", "end"), HorizontalSpan:new{ width = gap },
+        tile("sh_darrow", "line", "both") }
+    local row2 = HorizontalGroup:new{ align = "center",
+        tile("sh_curve", "curve", nil), HorizontalSpan:new{ width = gap },
+        tile("sh_carrow", "curve", "end"), HorizontalSpan:new{ width = gap },
+        tile("sh_cdarrow", "curve", "both") }
+
+    -- title row: label on the left, a black Back pill on the right
+    local titleW = TextWidget:new{ text = _("Line / arrow / curve"), face = Font:getFace("cfont", 20), bold = true }
+    local back = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = function()
+            if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+            self:openShapePicker()
+        end, show_parent = self }
+    do
+        local btw = TextWidget:new{ text = _("Back"), face = Font:getFace("cfont", 15), bold = true, fgcolor = WHITE }
+        if back.label_container then back.label_widget = btw; back.label_container[1] = btw end
+    end
+    local title_gap = content_w - titleW:getSize().w - back:getSize().w
+    local titleRow = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), title_gap) }, back }
+
+    -- arrowhead size: a full-width rounded grey text button (text buttons are safe)
+    local ahRow = Button:new{ text = string.format(_("Arrowhead size: %d px"), self.arrow_head),
+        width = content_w, height = Screen:scaleBySize(48), bordersize = 0,
+        radius = Screen:scaleBySize(14), background = TILE_BG, margin = 0, padding = 0,
+        text_font_size = 17, show_parent = self,
+        callback = function()
+            if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+            self:openArrowSize()
+        end }
+
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left",
+            titleRow, vspan(16),
+            row1, vspan(gap),
+            row2, vspan(16),
+            ahRow,
+        }
+        return FrameContainer:new{ background = WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._shape_line_dialog = IconMenu:new{ build = build, on_close = function() self._shape_line_dialog = nil end }
+    UIManager:show(self._shape_line_dialog)
+end
+
+-- The paint-bucket colour picker (opened by holding the Paint bucket tile), in
+-- the same rounded-sheet style as the Shapes menu: rows of colour swatch tiles
+-- (grey shades, plus chromatic colours on a colour screen) and an opacity row.
+function InkAwayView:openFillColor()
+    if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
+    if self._fill_dialog then UIManager:close(self._fill_dialog); self._fill_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    self:ensureUserIcons()
+
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local sw = math.floor((target - 5 * gap) / 6)   -- 6 swatches per row (colours)
+    local content_w = 6 * sw + 5 * gap
+
+    -- one colour swatch: a colour-filled rounded tile; the current colour gets a
+    -- black ring (via a wrapping FrameContainer), others a hairline.
+    local function swatch(e)
+        local selected = sameColor(self.fill_color, e.rgb)
+        local inner = sw - Screen:scaleBySize(8)
+        local btn = Button:new{ text = "", width = inner, height = inner,
+            background = Blitbuffer.ColorRGB32(e.rgb[1], e.rgb[2], e.rgb[3], 0xFF),
+            radius = Screen:scaleBySize(12), bordersize = 0, margin = 0, padding = 0,
+            show_parent = self,
+            callback = function() self.fill_color = { e.rgb[1], e.rgb[2], e.rgb[3] }; self:openFillColor() end }
+        return FrameContainer:new{
+            bordersize = selected and Screen:scaleBySize(3) or Screen:scaleBySize(1),
+            color = selected and BLACK or HAIRLINE,
+            radius = Screen:scaleBySize(15),
+            padding = selected and Screen:scaleBySize(1) or Screen:scaleBySize(3),
+            margin = 0, btn }
+    end
+    local function swatchRow(entries)
+        local row = HorizontalGroup:new{ align = "center" }
+        for i, e in ipairs(entries) do
+            if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+            table.insert(row, swatch(e))
+        end
+        return row
+    end
+
+    -- title + Done
+    local titleW = TextWidget:new{ text = _("Fill colour"), face = Font:getFace("cfont", 22), bold = true }
+    local done = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = function() if self._fill_dialog then UIManager:close(self._fill_dialog); self._fill_dialog = nil end end,
+        show_parent = self }
+    do
+        local dtw = TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 15), bold = true, fgcolor = WHITE }
+        if done.label_container then done.label_widget = dtw; done.label_container[1] = dtw end
+    end
+    local title_gap = content_w - titleW:getSize().w - done:getSize().w
+    local titleRow = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), title_gap) }, done }
+
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    -- opacity: a 0..100 slider built inside build() so it can use the shown menu
+    -- as its repaint parent for the in-place value change.
+    local build = function(menu)
+        local pct = math.floor(self.fill_alpha / 255 * 100 + 0.5)
+        local opacity = SliderRow:new{ label = _("Opacity"), value = pct, width = content_w, parent = menu,
+            on_set = function(v) self.fill_alpha = math.floor(v / 100 * 255 + 0.5) end }
+        local content = VerticalGroup:new{ align = "center" }
+        table.insert(content, titleRow)
+        table.insert(content, vspan(16))
+        table.insert(content, swatchRow(SHADES))
+        if self:colorScreen() then
+            table.insert(content, vspan(gap))
+            table.insert(content, swatchRow(COLORS))
+        end
+        table.insert(content, vspan(18))
+        table.insert(content, opacity)
+        return FrameContainer:new{ background = WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._fill_dialog = IconMenu:new{ build = build, on_close = function() self._fill_dialog = nil end }
+    UIManager:show(self._fill_dialog)
 end
 
 
