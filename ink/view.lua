@@ -5674,8 +5674,15 @@ end
 function InkAwayView:penPalm(slot)
     local key = slot.slot or 0
     local id = tonumber(slot.id)
+    local promoted = false
     if id and id >= 0 then
-        if not self._palm_slots[key] then self._palm_count = self._palm_count + 1 end
+        local prev = self._palm_slots[key]
+        if prev == nil then
+            self._palm_count = self._palm_count + 1
+            promoted = true              -- a slot that was an ordinary touch is now a palm
+        elseif prev ~= id then
+            promoted = true              -- a new physical generation on the same slot
+        end
         self._palm_slots[key] = id
     elseif id and id < 0 then
         if self._palm_slots[key] then
@@ -5684,6 +5691,14 @@ function InkAwayView:penPalm(slot)
         end
     end
     self:holdReject()
+    -- A palm is usually promoted MID-CONTACT: the digitizer flags it as a palm only
+    -- after it has landed, so it first arrives as an ordinary touch and may already
+    -- have opened a stroke (the stray dot/line the tester sees). On the promotion,
+    -- retire that contact so no mark is left behind -- unless the pen itself is the
+    -- one drawing (a different, trusted slot), whose stroke must never be dropped.
+    if promoted and not self._pen_started and not self._pen_owner then
+        self:penDropFingerOps()
+    end
 end
 
 -- The stylus callback (registered on KOReader's Input). Runs before gesture
