@@ -43,11 +43,10 @@ function Canvas.new(w, h)
     }, Canvas)
 end
 
--- A shallow snapshot of the current ops list.
+-- A shallow snapshot of the current ops list (op tables are shared by reference;
+-- only the array of pointers is copied). table.move is the C-level array copy.
 local function snapshot(self)
-    local s = {}
-    for i = 1, #self.ops do s[i] = self.ops[i] end
-    return s
+    return table.move(self.ops, 1, #self.ops, 1, {})
 end
 
 -- Record the current state so the next change can be undone. Call BEFORE the

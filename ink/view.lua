@@ -7621,6 +7621,12 @@ end
 -- Load the current notebook page into the canvas and repaint.
 function InkAwayView:nbLoad()
     if not self.notebook then return end
+    -- Drop the previous page's placed-image decode caches (`_img_*`): only the
+    -- visible page's images need to be resident, and composeCanvas below re-decodes
+    -- whatever this page uses. Without this, every page with pictures leaves its
+    -- full-size decodes behind, so memory climbs across a long multi-page session.
+    -- The page-strip thumbnails (`_nav_img`) are the nav UI and are left alone.
+    self:freeImageCache()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
     self.selected, self.rotating = nil, nil
