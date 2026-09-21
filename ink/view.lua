@@ -1095,7 +1095,7 @@ end
 -- rows, and the stroke aids. Rebuilt and reshown whenever something changes.
 local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
 function InkAwayView:openPenSettings()
-    if self._pen_dialog then UIManager:close(self._pen_dialog); self._pen_dialog = nil end
+    if self._pen_dialog then self._pen_dialog:rebuild(); return end
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -1325,7 +1325,7 @@ end
 -- Eraser menu: size, and whether the eraser also removes the background image.
 -- Eraser sheet (shapes-menu style): a size slider and an "erase pictures" toggle.
 function InkAwayView:openEraserSettings()
-    if self._eraser_dialog then UIManager:close(self._eraser_dialog); self._eraser_dialog = nil end
+    if self._eraser_dialog then self._eraser_dialog:rebuild(); return end
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     self:ensureUserIcons()
@@ -1432,6 +1432,35 @@ function IconMenu:onCloseWidget()
     local region = self.movable and self.movable.dimen
     UIManager:setDirty(nil, function() return "ui", region end)
     if self.movable and self.movable.free then self.movable:free() end
+end
+-- Rebuild the sheet's contents in place (used when a control inside it changes
+-- state, e.g. picking a brush or colour), instead of closing and reopening the
+-- whole dialog. When the sheet keeps its footprint -- the common case, a
+-- selection highlight moving -- refresh only that region with a non-flashing "ui"
+-- (the sheet is already an opaque white rectangle on screen, so there is nothing
+-- dark to clear): the same partial, no-flash update the sliders and toggles do.
+-- Only when the footprint changes (a row added/removed) fall back to repainting
+-- the exposed canvas and flashing the union.
+function IconMenu:rebuild()
+    if not (self.movable and self.build) then return end
+    local old = self.movable.dimen and self.movable.dimen:copy()
+    if self.movable.free then self.movable:free() end
+    local MovableContainer = require("ui/widget/container/movablecontainer")
+    self.frame = self:build()
+    self.movable = MovableContainer:new{ self.frame }
+    self[1] = self.movable
+    UIManager:widgetRepaint(self, 0, 0)      -- paint the new contents; sets movable.dimen
+    local new = self.movable.dimen
+    if old and new and old.x == new.x and old.y == new.y
+            and old.w == new.w and old.h == new.h then
+        -- mark THIS menu dirty (not nil): if the same tap also repaints the view
+        -- underneath (e.g. a shape pick refreshes the toolbar pill), the menu must
+        -- be repainted on top of it, or the canvas would clobber the sheet.
+        UIManager:setDirty(self, function() return "ui", new end)
+    else
+        local region = (old and new) and old:combine(new) or new
+        UIManager:setDirty("all", function() return "flashui", region end)
+    end
 end
 -- Paint the sheet horizontally centred and, when top_y is set, pinned just below
 -- the toolbar (so tapping a toolbar tool drops its options right under the hand),
@@ -1809,7 +1838,7 @@ end
 -- strokes read as white on the black tile.
 function InkAwayView:openShapePicker()
     self:flushShape()
-    if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
+    if self._shape_dialog then self._shape_dialog:rebuild(); return end
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -1874,33 +1903,6 @@ function InkAwayView:openShapePicker()
         end)
     end
 
-    local lineSel = (self.shape == "line" or self.shape == "curve")
-    local shapeRow = HorizontalGroup:new{ align = "center",
-        lineTile(lineSel), HorizontalSpan:new{ width = gap },
-        shapeTile("sh_rect", "rect"), HorizontalSpan:new{ width = gap },
-        shapeTile("sh_ellipse", "ellipse"), HorizontalSpan:new{ width = gap },
-        shapeTile("sh_triangle", "triangle"),
-    }
-
-    -- tools row: paint bucket + lasso, deliberately smaller/secondary tiles
-    -- (shorter than the shape squares) with a label under a compact icon
-    local toolH = Screen:scaleBySize(96)
-    local toolIsz = Screen:scaleBySize(36)
-    local toolRow = HorizontalGroup:new{ align = "center",
-        self:makeTile("bucket", halfW, toolH, toolIsz, self.tool == "fill", function()
-            self:flushShape(); self.tool = "fill"; self:refreshToolLabels()
-            UIManager:close(self._shape_dialog); self._shape_dialog = nil
-        end, _("Paint bucket"), _("hold to pick colour"), function() self:openFillColor() end),
-        HorizontalSpan:new{ width = gap },
-        self:makeTile("lasso", halfW, toolH, toolIsz, self.tool == "lasso", function()
-            self:flushPending(); self:flushShape()
-            if self.selection or self.lassoing then self:clearSelection() end
-            self.tool = "lasso"; self:refreshToolLabels()
-            UIManager:close(self._shape_dialog); self._shape_dialog = nil
-            self:composeCanvas(); self:renderView(); UIManager:setDirty("all", "full")
-        end, _("Lasso select")),
-    }
-
     -- title row: "Shapes" on the left, a black Done pill on the right
     local titleW = TextWidget:new{ text = _("Shapes"), face = Font:getFace("cfont", 22), bold = true }
     local done = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
@@ -1919,6 +1921,33 @@ function InkAwayView:openShapePicker()
     -- The whole panel is built inside the menu's build callback so the toggle
     -- rows can use the (about-to-be-shown) menu as their repaint parent.
     local build = function(menu)
+        -- The shape and tool tiles show the current selection, so they must be
+        -- rebuilt here (inside the rebuild callback), not once above -- otherwise
+        -- picking a shape would not move the highlight until the sheet reopened.
+        local lineSel = (self.shape == "line" or self.shape == "curve")
+        local shapeRow = HorizontalGroup:new{ align = "center",
+            lineTile(lineSel), HorizontalSpan:new{ width = gap },
+            shapeTile("sh_rect", "rect"), HorizontalSpan:new{ width = gap },
+            shapeTile("sh_ellipse", "ellipse"), HorizontalSpan:new{ width = gap },
+            shapeTile("sh_triangle", "triangle"),
+        }
+        -- tools row: paint bucket + lasso, smaller/secondary tiles with a label
+        local toolH = Screen:scaleBySize(96)
+        local toolIsz = Screen:scaleBySize(36)
+        local toolRow = HorizontalGroup:new{ align = "center",
+            self:makeTile("bucket", halfW, toolH, toolIsz, self.tool == "fill", function()
+                self:flushShape(); self.tool = "fill"; self:refreshToolLabels()
+                UIManager:close(self._shape_dialog); self._shape_dialog = nil
+            end, _("Paint bucket"), _("hold to pick colour"), function() self:openFillColor() end),
+            HorizontalSpan:new{ width = gap },
+            self:makeTile("lasso", halfW, toolH, toolIsz, self.tool == "lasso", function()
+                self:flushPending(); self:flushShape()
+                if self.selection or self.lassoing then self:clearSelection() end
+                self.tool = "lasso"; self:refreshToolLabels()
+                UIManager:close(self._shape_dialog); self._shape_dialog = nil
+                self:composeCanvas(); self:renderView(); UIManager:setDirty("all", "full")
+            end, _("Lasso select")),
+        }
         -- three compact toggles (switch right after its label) spread across one row
         local function toggle(label, on, cb)
             return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
@@ -1959,6 +1988,8 @@ end
 -- Shapes menu but with smaller tiles (it is a child menu): two rows of three
 -- (straight family / curved family), plus an arrowhead-size row and a Back pill.
 function InkAwayView:openShapeLineMenu()
+    -- (no rebuild-in-place: every button here closes this sheet and navigates
+    -- away, so it is always opened fresh)
     if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
     if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
     local VerticalGroup = require("ui/widget/verticalgroup")
@@ -2046,8 +2077,8 @@ end
 -- the same rounded-sheet style as the Shapes menu: rows of colour swatch tiles
 -- (grey shades, plus chromatic colours on a colour screen) and an opacity row.
 function InkAwayView:openFillColor()
+    if self._fill_dialog then self._fill_dialog:rebuild(); return end
     if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
-    if self._fill_dialog then UIManager:close(self._fill_dialog); self._fill_dialog = nil end
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -4190,7 +4221,7 @@ end
 -- autosave as segmented rows. Reorganised into clear sections.
 function InkAwayView:openSettings()
     if self.active_image then self:finishImageEdit() end   -- settle a selected image first
-    if self._settings_dialog then UIManager:close(self._settings_dialog); self._settings_dialog = nil end
+    if self._settings_dialog then self._settings_dialog:rebuild(); return end
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -4227,7 +4258,10 @@ function InkAwayView:openSettings()
             local row = HorizontalGroup:new{ align = "center" }
             for i, o in ipairs(options) do
                 if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
-                table.insert(row, self:actionButton(o[2], w, function() closeSelf(); onpick(o[1]) end,
+                -- do NOT close the sheet: these pickers change a setting and stay,
+                -- so onpick's openSettings() rebuilds this sheet in place (the moved
+                -- highlight refreshes just this region, no full-screen flash)
+                table.insert(row, self:actionButton(o[2], w, function() onpick(o[1]) end,
                     current == o[1]))
             end
             return row
