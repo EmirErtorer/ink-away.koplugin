@@ -2365,21 +2365,35 @@ end
 -- symmetry produces. This keeps refreshes to a few small rectangles instead of
 -- one huge box spanning the drawn side and all its mirrors (which would make
 -- every stroke a near full-screen refresh, the symmetry slowdown).
+-- Returns a REUSED pool of rects and a count (base rect + one per mirror). The
+-- pool and the arithmetic (no per-call closures) keep this allocation-free, since
+-- it runs once per drawn point under symmetry. Callers must read each rect within
+-- the loop before the next call -- which they do, consuming it immediately.
 function InkAwayView:symAreaRects(acc)
-    local base = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
-    local rects = { base }
+    local p = self._sar_pool
+    if not p then p = { {}, {}, {}, {} }; self._sar_pool = p end
+    local b = p[1]
+    b.x0, b.y0, b.x1, b.y1 = acc.x0, acc.y0, acc.x1, acc.y1
     local sym = self.symmetry
-    if not sym or sym == "off" then return rects end
+    if not sym or sym == "off" then return p, 1 end
     local v = self.view
     local kx = (v.canvas_w - 2 * v.pan_x) * v.zoom
     local ky = (v.canvas_h - 2 * v.pan_y) * v.zoom
     local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
-    local function flipX(r) return { x0 = kx - r.x1, y0 = r.y0, x1 = kx - r.x0, y1 = r.y1 } end
-    local function flipY(r) return { x0 = r.x0, y0 = ky - r.y1, x1 = r.x1, y1 = ky - r.y0 } end
-    if mx then rects[#rects + 1] = flipX(base) end
-    if my then rects[#rects + 1] = flipY(base) end
-    if mx and my then rects[#rects + 1] = flipY(flipX(base)) end
-    return rects
+    local n = 1
+    if mx then
+        n = n + 1; local r = p[n]
+        r.x0, r.y0, r.x1, r.y1 = kx - b.x1, b.y0, kx - b.x0, b.y1
+    end
+    if my then
+        n = n + 1; local r = p[n]
+        r.x0, r.y0, r.x1, r.y1 = b.x0, ky - b.y1, b.x1, ky - b.y0
+    end
+    if mx and my then
+        n = n + 1; local r = p[n]
+        r.x0, r.y0, r.x1, r.y1 = kx - b.x1, ky - b.y1, kx - b.x0, ky - b.y0
+    end
+    return p, n
 end
 
 -- Refresh one area-local rectangle (clipped to the drawing area) at `mode`.
@@ -3218,6 +3232,10 @@ function InkAwayView:setupLiveWriters()
     -- would poke a freed buffer)
     self._lw_area_bb, self._lw_canvas_bb = self.area_bb, self.canvas_bb
     self._lw_acc = self._lw_acc or { x0 = 0, y0 = 0, x1 = 0, y1 = 0 }
+    -- reused 4-slot segment tables (master + on-screen), so a continuing stroke
+    -- allocates no per-point segment garbage; Raster.path reads them synchronously
+    self._lw_seg_c = self._lw_seg_c or { 0, 0, 0, 0 }
+    self._lw_seg_a = self._lw_seg_a or { 0, 0, 0, 0 }
     local sym = self.symmetry
     -- master (1:1) writer
     local v = self.view
@@ -3287,7 +3305,9 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh)
     end
     -- Re-render only the touched region (base + each mirror) from the restored
     -- master, instead of a full-screen crop-scale on every point.
-    for _, rr in ipairs(self:symAreaRects(acc)) do
+    local rects, nr = self:symAreaRects(acc)
+    for i = 1, nr do
+        local rr = rects[i]
         self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
         self:dirtyAreaRect(self._live_mode or "fast", rr, 1)
     end
@@ -3310,7 +3330,9 @@ function InkAwayView:stampLive(cx, cy, fresh)
     -- master, at 1:1
     if self.canvas_bb then
         if self.last_cx and not fresh then
-            strokeFn({ self.last_cx, self.last_cy, cx, cy }, width / 2, self._lw_cput)
+            local seg = self._lw_seg_c
+            seg[1], seg[2], seg[3], seg[4] = self.last_cx, self.last_cy, cx, cy
+            strokeFn(seg, width / 2, self._lw_cput)
         else
             strokeFn({ cx, cy }, width / 2, self._lw_cput)
         end
@@ -3324,7 +3346,9 @@ function InkAwayView:stampLive(cx, cy, fresh)
     local acc = self._lw_acc
     acc.x0, acc.y0, acc.x1, acc.y1 = math.huge, math.huge, -math.huge, -math.huge
     if self.last_ax and not fresh then
-        strokeFn({ self.last_ax, self.last_ay, ax, ay }, (width * self.view.zoom) / 2, self._lw_aput)
+        local seg = self._lw_seg_a
+        seg[1], seg[2], seg[3], seg[4] = self.last_ax, self.last_ay, ax, ay
+        strokeFn(seg, (width * self.view.zoom) / 2, self._lw_aput)
     else
         strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput)
     end
@@ -3340,8 +3364,9 @@ function InkAwayView:stampLive(cx, cy, fresh)
             if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
             if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
         end
-        for _, r in ipairs(self:symAreaRects(acc)) do
-            self:dirtyAreaRect(self._live_mode or "fast", r, 1)
+        local rects, nr = self:symAreaRects(acc)
+        for i = 1, nr do
+            self:dirtyAreaRect(self._live_mode or "fast", rects[i], 1)
         end
     end
 end
@@ -3564,8 +3589,9 @@ function InkAwayView:finalizeStroke()
     if sr then
         -- refresh the base rect and each mirror rect separately, so an erase
         -- under symmetry flashes a few small areas rather than the whole screen
-        for _, r in ipairs(self:symAreaRects(sr)) do
-            self:dirtyAreaRect(mode, r, 2)
+        local rects, nr = self:symAreaRects(sr)
+        for i = 1, nr do
+            self:dirtyAreaRect(mode, rects[i], 2)
         end
     else
         UIManager:setDirty(self, mode, self:areaScreenRect())

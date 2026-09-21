@@ -30,7 +30,9 @@ Canvas.__index = Canvas
 -- Simplification tuning (canvas pixels).
 local MIN_SPACING = 1.5   -- drop points closer than this while drawing
 local RDP_TOL = 0.75      -- max deviation when collapsing a finished stroke
-local HISTORY_MAX = 30    -- undo/redo depth
+local HISTORY_MAX = 8     -- undo/redo depth (kept small: each entry pins a full
+                          -- ops snapshot, and deep history is the main avoidable
+                          -- memory a long session accumulates)
 
 function Canvas.new(w, h)
     return setmetatable({
@@ -49,12 +51,30 @@ local function snapshot(self)
     return table.move(self.ops, 1, #self.ops, 1, {})
 end
 
--- Record the current state so the next change can be undone. Call BEFORE the
--- change. Clears the redo stack, since a new change forks history.
-function Canvas:pushHistory()
-    self.undo_stack[#self.undo_stack + 1] = snapshot(self)
-    if #self.undo_stack > HISTORY_MAX then table.remove(self.undo_stack, 1) end
+-- History entries are one of:
+--   { snap = <ops array> }  -- restore this whole list; used for edits that change
+--                              existing ops (colour/size/move/delete/z-order/clear/load).
+--   { add = true }          -- the last op was appended; to undo, drop the last op.
+-- Appending one op is by far the most common action while drawing, so it uses the
+-- cheap `add` entry: a committed stroke costs O(1) history instead of copying the
+-- whole ops list. Copying the list every stroke is what made a long drawing throw
+-- off garbage proportional to its size and slow down as it filled up.
+local function pushEntry(self, entry)
+    local u = self.undo_stack
+    u[#u + 1] = entry
+    if #u > HISTORY_MAX then table.remove(u, 1) end
     self.redo_stack = {}
+end
+
+-- Snapshot checkpoint: call BEFORE an edit that changes existing ops in place.
+function Canvas:pushHistory()
+    pushEntry(self, { snap = snapshot(self) })
+end
+
+-- O(1) checkpoint for appending one op to the end of the list. Undo just drops
+-- whatever is last, so it does not matter that the op is recorded by position.
+function Canvas:recordAppend()
+    pushEntry(self, { add = true })
 end
 
 function Canvas:canUndo() return #self.undo_stack > 0 end
@@ -115,8 +135,8 @@ function Canvas:finishStroke()
     local pts = Geom.dropClose(live.pts, MIN_SPACING)
     pts = Geom.rdp(pts, RDP_TOL)
     live.pts = pts
-    self:pushHistory()
     self.ops[#self.ops + 1] = live
+    self:recordAppend()
     return live
 end
 
@@ -131,32 +151,46 @@ function Canvas:addShape(shape, fill, pts, width, alpha, color)
         kind = "shape", shape = shape, fill = fill and true or false,
         width = width, alpha = alpha or 255, color = color, pts = pts,
     }
-    self:pushHistory()
     self.ops[#self.ops + 1] = op
+    self:recordAppend()
     return op
 end
 
 -- Commit a flood fill as one op. `runs` is a flat { x,y,len, ... } run list.
 function Canvas:addFillOp(runs, color, alpha)
     local op = { kind = "fill", runs = runs, color = color, alpha = alpha or 255 }
-    self:pushHistory()
     self.ops[#self.ops + 1] = op
+    self:recordAppend()
     return op
 end
 
--- Undo/redo swap the whole ops list with a snapshot. Returns true if it moved.
+-- Undo/redo step through the history entries. An `add` entry is reversed by
+-- dropping (undo) or re-appending (redo) the single op; a `snap` entry swaps the
+-- whole ops list. Returns true if it moved.
 function Canvas:undo()
-    if #self.undo_stack == 0 then return false end
-    self.redo_stack[#self.redo_stack + 1] = snapshot(self)
-    self.ops = table.remove(self.undo_stack)
+    local entry = table.remove(self.undo_stack)
+    if not entry then return false end
+    if entry.snap ~= nil then
+        self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self) }
+        self.ops = entry.snap
+    else   -- an appended op: drop the last one, remember it so redo can re-add it
+        local op = table.remove(self.ops)
+        self.redo_stack[#self.redo_stack + 1] = { readd = op }
+    end
     self.live = nil
     return true
 end
 
 function Canvas:redo()
-    if #self.redo_stack == 0 then return false end
-    self.undo_stack[#self.undo_stack + 1] = snapshot(self)
-    self.ops = table.remove(self.redo_stack)
+    local entry = table.remove(self.redo_stack)
+    if not entry then return false end
+    if entry.snap ~= nil then
+        self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self) }
+        self.ops = entry.snap
+    else   -- re-append the op an undo removed
+        self.ops[#self.ops + 1] = entry.readd
+        self.undo_stack[#self.undo_stack + 1] = { add = true }
+    end
     self.live = nil
     return true
 end
