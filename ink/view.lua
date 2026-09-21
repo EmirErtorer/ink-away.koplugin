@@ -3638,6 +3638,17 @@ function InkAwayView:healMemory()
     if collectgarbage("count") > GC_HEAL_KB then collectgarbage("collect") end
 end
 
+-- Hand the previous drawing's / notebook's memory back when switching to a fresh
+-- one: drop the per-stroke snapshot buffer and collect now, so the new context
+-- starts light without needing to close Ink Away or restart KOReader. Call after
+-- the new canvas/notebook is loaded (a New action, not a page turn).
+function InkAwayView:resetTransientMemory()
+    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
+    self._pre_stroke_valid = false
+    self._commits_since_gc = 0
+    collectgarbage("collect")
+end
+
 -- Commit immediately if a stroke is open (or pending). Safe to call any time.
 function InkAwayView:flushPending()
     if self.capturing then self:finalizeStroke() end
@@ -4341,17 +4352,11 @@ function InkAwayView:newDrawing()
         self.selected, self.rotating = nil, nil
         self.active_image, self._img_drag = nil, nil
         self:freeImageCache()
-        if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
-        self._pre_stroke_valid = false
         self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
         self.dirty = false
         os.remove(self:sessionPath())   -- so reopening does not restore the old drawing
         self:composeCanvas(); self:renderView()
-        -- A new drawing is the natural moment to hand the old one's memory back:
-        -- collect now so a fresh canvas always starts light, without needing to
-        -- close Ink Away or restart KOReader.
-        self._commits_since_gc = 0
-        collectgarbage("collect")
+        self:resetTransientMemory()     -- reclaim the old drawing's memory now
         UIManager:setDirty(self, "full")
     end
     if self.canvas:isEmpty() and not self.notebook then fresh(); return end
@@ -7683,7 +7688,7 @@ function InkAwayView:nbLoad()
     -- visible page's images need to be resident, and composeCanvas below re-decodes
     -- whatever this page uses. Without this, every page with pictures leaves its
     -- full-size decodes behind, so memory climbs across a long multi-page session.
-    -- The page-strip thumbnails (`_nav_img`) are the nav UI and are left alone.
+    -- (`_nav_img` is the tiny nav-bar icon cache, not per-page, so it is untouched.)
     self:freeImageCache()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
@@ -7897,6 +7902,7 @@ function InkAwayView:startNotebook(template)
     self:recomputeArea()
     self:nbLoad()
     self.dirty = false
+    self:resetTransientMemory()     -- reclaim the previous work's memory now
     -- persist the fresh notebook straight away so a close before the next
     -- autosave tick still brings it back as a notebook, not the old drawing
     if self.autosave ~= "off" then self:saveSession() end
@@ -7914,6 +7920,7 @@ function InkAwayView:openNotebookData(data)
     self:recomputeArea()
     self:nbLoad()
     self.dirty = false
+    self:resetTransientMemory()     -- reclaim the previous work's memory now
     -- warn clearly if this was a PDF-backed notebook but the source PDF is gone
     -- (the ink is safe; only the page images are missing until it is restored)
     if self.notebook.template.pdf_path and not self._nb_pdf_doc then
@@ -7958,6 +7965,7 @@ function InkAwayView:startPdfNotebook(path)
     self:recomputeArea()
     self:nbLoad()
     self.dirty = false
+    self:resetTransientMemory()     -- reclaim the previous work's memory now
     if self.autosave ~= "off" then self:saveSession() end
 end
 
