@@ -549,6 +549,12 @@ function InkAwayView:init()
             self:refreshFabRegion(self:fabRect("bar"))
         end
     end
+    self._show_nbbar_toggle = function()
+        if self._nbbar_toggle_hidden then
+            self._nbbar_toggle_hidden = false
+            self:refreshFabRegion(self:fabRect("nbbar"))
+        end
+    end
     -- Let the exporter render text ops (it has no fonts of its own).
     Export.text_raster = function(op) return self:exportTextRaster(op) end
     -- ...and placed images (it has no image decoder either).
@@ -625,7 +631,8 @@ function InkAwayView:init()
             elseif autosheet == "brush" then self:openBrushMaker()
             elseif autosheet == "shape" then self:openShapePicker()
             elseif autosheet == "shapeline" then self:openShapePicker(); self:openShapeLineMenu()
-            elseif autosheet == "fill" then self:openFillColor() end
+            elseif autosheet == "fill" then self:openFillColor()
+            end
         end)
     end
     -- Dev hook (emulator only): dump the framebuffer to a PNG a moment after the
@@ -754,6 +761,7 @@ function InkAwayView:onCloseWidget()
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     if self._show_zoom_fab then UIManager:unschedule(self._show_zoom_fab) end
     if self._show_bar_toggle then UIManager:unschedule(self._show_bar_toggle) end
+    if self._show_nbbar_toggle then UIManager:unschedule(self._show_nbbar_toggle) end
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
     if self.active_image then self:finishImageEdit() end       -- bake a selected image
     self.selected, self.shape_move = nil, nil
@@ -763,7 +771,7 @@ function InkAwayView:onCloseWidget()
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -839,6 +847,7 @@ function InkAwayView:buildToolbar()
     -- identical for all of them. Keep the icon well inside the cell so the pill has
     -- clear breathing room and never reaches the toolbar edges.
     local isz = math.max(20, math.floor(bar_h * 0.66))
+    self._icon_sz = isz   -- the notebook bottom bar matches this exactly, for one consistent style
     self.tool_buttons = {}
     self._toolbar_icons = {}
     local row = {}
@@ -1397,6 +1406,8 @@ IconMenu = InputContainer:extend{
     on_close = nil,
     top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
                                -- instead of centring it vertically
+    bottom_y = nil,            -- if set, pin the sheet's BOTTOM here (e.g. touching
+                               -- the notebook bottom bar); takes precedence over top_y
 }
 function IconMenu:init()
     local MovableContainer = require("ui/widget/container/movablecontainer")
@@ -1471,7 +1482,10 @@ function IconMenu:paintTo(bb, x, y)
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)
     local py
-    if self.top_y then
+    if self.bottom_y then
+        -- pin the sheet's BOTTOM here (e.g. touching the notebook bottom bar's top)
+        py = math.max(pad, math.min(self.bottom_y - sz.h, Screen:getHeight() - sz.h - pad))
+    elseif self.top_y then
         py = math.max(pad, math.min(self.top_y, Screen:getHeight() - sz.h - pad))
     else
         py = math.floor((Screen:getHeight() - sz.h) / 2)
@@ -2231,6 +2245,16 @@ function InkAwayView:fabRect(which)
     if which == "zoom" then
         local h = Screen:scaleBySize(92)
         return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
+    elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
+        -- bar's top-left, mirroring the toolbar toggle. Anchored to the area bottom
+        -- so it stays reachable whether the bar is shown (sits on the bar's top edge)
+        -- or collapsed (sits near the screen bottom).
+        if not self.notebook then return nil end
+        local bw = Screen:scaleBySize(34)
+        local bh = Screen:scaleBySize(22)
+        local cx = v.area_x + Screen:scaleBySize(24)
+        return { x = math.floor(cx - bw / 2), y = v.area_y + v.area_h - bh - Screen:scaleBySize(2),
+                 w = bw, h = bh }
     else -- "bar": a small bare chevron centred under the toolbar's Exit button
         local bw = Screen:scaleBySize(34)
         local bh = Screen:scaleBySize(22)
@@ -2240,7 +2264,9 @@ function InkAwayView:fabRect(which)
 end
 
 function InkAwayView:fabHidden(which)
-    if which == "zoom" then return self._zoom_hidden else return self._bar_toggle_hidden end
+    if which == "zoom" then return self._zoom_hidden
+    elseif which == "nbbar" then return self._nbbar_toggle_hidden
+    else return self._bar_toggle_hidden end
 end
 
 -- Repaint just a control's footprint (plus a margin): hiding reveals the canvas,
@@ -2270,6 +2296,12 @@ function InkAwayView:fabHit(px, py)
             return "bar"
         end
     end
+    if self.notebook and not self._nbbar_toggle_hidden then
+        local r = self:fabRect("nbbar")
+        if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
+            return "nbbar"
+        end
+    end
     return nil
 end
 
@@ -2277,7 +2309,8 @@ end
 function InkAwayView:fabAction(kind)
     if kind == "zoomin" then self:zoomStep(1)
     elseif kind == "zoomout" then self:zoomStep(-1)
-    elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden) end
+    elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden)
+    elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed) end
 end
 
 -- Called from the drawing handlers: if the active point comes near a control,
@@ -2298,6 +2331,13 @@ function InkAwayView:fabProximity(px, py)
     end
     if rb and self._bar_toggle_hidden and near(rb) then
         UIManager:unschedule(self._show_bar_toggle); UIManager:scheduleIn(0.6, self._show_bar_toggle)
+    end
+    local rn = self.notebook and self:fabRect("nbbar")
+    if rn and not self._nbbar_toggle_hidden and near(rn) then
+        self._nbbar_toggle_hidden = true; self:refreshFabRegion(rn)
+    end
+    if rn and self._nbbar_toggle_hidden and near(rn) then
+        UIManager:unschedule(self._show_nbbar_toggle); UIManager:scheduleIn(0.6, self._show_nbbar_toggle)
     end
 end
 
@@ -2356,6 +2396,17 @@ function InkAwayView:drawFabs(bb, ox, oy)
                 math.floor(w * 0.28), dir, math.max(2, Screen:scaleBySize(2)))
         end
     end
+    -- notebook bottom-bar toggle: the same bare chevron at the bar's top-left. Bar
+    -- shown -> down (collapse it away); collapsed -> up (bring it back).
+    if self.notebook and not self._nbbar_toggle_hidden then
+        local r = self:fabRect("nbbar")
+        if r then
+            local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
+            local dir = self._nb_collapsed and -1 or 1     -- up = expand, down = collapse
+            fabChevron(bb, x + math.floor(w / 2), y + math.floor(h / 2),
+                math.floor(w * 0.28), dir, math.max(2, Screen:scaleBySize(2)))
+        end
+    end
 end
 
 -- Hide or show the top toolbar, growing the paper to fill the freed space. The
@@ -2372,6 +2423,28 @@ function InkAwayView:setToolbarHidden(hidden)
     -- when hidden, the toolbar buttons must not swallow taps in the freed strip
     -- (plain if/else: `hidden and nil or self.toolbar` would never yield nil)
     if hidden then self[1] = nil else self[1] = self.toolbar end
+    self.zoom_min = InkGeom.fitZoom(v)
+    v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
+    InkGeom.clampPan(v)
+    if self.area_bb then self.area_bb:free() end
+    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self:renderView()
+    UIManager:setDirty(self, "full")
+end
+
+-- Hide or show the notebook bottom bar, growing the paper to fill the freed space
+-- (mirrors setToolbarHidden). Honours a hidden toolbar too, so the two can be
+-- collapsed independently.
+function InkAwayView:setNbBarHidden(hidden)
+    if not self.notebook then return end
+    if (self._nb_collapsed or false) == hidden then return end
+    self:flushPending()
+    self._nb_collapsed = hidden
+    self.nb_bar_h = self:nbBarHeight()      -- 0 when collapsed (see nbBarHeight)
+    local v = self.view
+    local th = self._toolbar_hidden and 0 or self.toolbar:getSize().h
+    v.area_y = th
+    v.area_h = self.screen_h - th - self.nb_bar_h
     self.zoom_min = InkGeom.fitZoom(v)
     v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
@@ -4221,7 +4294,13 @@ end
 -- autosave as segmented rows. Reorganised into clear sections.
 function InkAwayView:openSettings()
     if self.active_image then self:finishImageEdit() end   -- settle a selected image first
-    if self._settings_dialog then self._settings_dialog:rebuild(); return end
+    -- `_settings_dialog` is normally this settings IconMenu (rebuild in place), but a
+    -- few transient ButtonDialogs (Page menu, page overview) reuse the field and have
+    -- no rebuild -- drop such a one and open fresh instead of crashing.
+    if self._settings_dialog then
+        if self._settings_dialog.rebuild then self._settings_dialog:rebuild(); return end
+        UIManager:close(self._settings_dialog); self._settings_dialog = nil
+    end
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -7371,7 +7450,9 @@ function InkAwayView:paintTo(bb, x, y)
     -- image selected: its live overlay, frame, corner handles and Delete/Done pills
     if self.active_image then self:paintImageOverlay(bb, x, y) end
 
-    -- notebook page-nav strip along the bottom (only in notebook mode)
+    -- notebook page-nav strip along the bottom (only in notebook mode). Styled to
+    -- match the top toolbar exactly: same bar height, the same icon size, and real
+    -- icon glyphs (not ad-hoc chevrons) so the two bars read as one consistent UI.
     if self.notebook and self.nb_bar_h > 0 then
         local Font = require("ui/font")
         local TextWidget = require("ui/widget/textwidget")
@@ -7379,78 +7460,64 @@ function InkAwayView:paintTo(bb, x, y)
         local h = self.nb_bar_h
         local w = self.screen_w
         local sy0 = y + v.area_y + v.area_h
-        bb:paintRect(x, sy0, w, h, WHITE)
-        bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
-        local face = Font:getFace("cfont", math.max(14, math.floor(h / 3)))
         local cy = sy0 + math.floor(h / 2)
         local BLACKC = Blitbuffer.COLOR_BLACK
-        local function label(text, cx)
-            local t = TextWidget:new{ text = text, face = face, fgcolor = BLACKC }
-            local sz = t:getSize()
-            t:paintTo(bb, math.floor(cx - sz.w / 2), cy - math.floor(sz.h / 2))
-            t:free()
+        bb:paintRect(x, sy0, w, h, WHITE)
+        bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
+        local isz = self._icon_sz or math.max(20, math.floor(h * 0.66))
+        -- blit one nav icon (isz x isz, exactly a toolbar icon) centred at cx
+        local function icon(name, cx)
+            local im = self:navImage(name, isz)
+            if not im then return end
+            local iw, ih = im:getWidth(), im:getHeight()
+            bb:blitFrom(im, math.floor(cx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
         end
-        -- a thick straight segment (Bresenham, stamping a small block per step)
-        local function seg(x0, y0, x1, y1, tk)
-            x0, y0, x1, y1 = math.floor(x0 + 0.5), math.floor(y0 + 0.5), math.floor(x1 + 0.5), math.floor(y1 + 0.5)
-            local dx, dy = math.abs(x1 - x0), -math.abs(y1 - y0)
-            local sx, sy = x0 < x1 and 1 or -1, y0 < y1 and 1 or -1
-            local err, hb = dx + dy, math.floor(tk / 2)
-            while true do
-                bb:paintRect(x0 - hb, y0 - hb, tk, tk, BLACKC)
-                if x0 == x1 and y0 == y1 then break end
-                local e2 = 2 * err
-                if e2 >= dy then err = err + dy; x0 = x0 + sx end
-                if e2 <= dx then err = err + dx; y0 = y0 + sy end
+        local pad = math.floor(isz * 0.4)              -- comfort padding around each tap zone
+        local zone = isz + 2 * pad
+        -- Prev (far left) and Next (far right), icon-sized like the toolbar
+        local prev_cx = x + math.floor(zone / 2)
+        local next_cx = x + w - math.floor(zone / 2)
+        icon("nav_prev", prev_cx)
+        icon("nav_next", next_cx)
+        self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
+        self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
+        -- page counter, dead centre: "index / count", all sized to the icon height.
+        -- The two numbers are text; the divider is a hand-drawn slash the SAME height
+        -- as the digits (the font's own "/" is noticeably taller), so nothing in the
+        -- bar overtops anything else.
+        local face = Font:getFace("cfont", math.max(10, math.floor(isz * 0.6)))
+        local idxw = TextWidget:new{ text = tostring(nb.index), face = face, fgcolor = BLACKC }
+        local cntw = TextWidget:new{ text = tostring(nb:count()), face = face, fgcolor = BLACKC }
+        local iw, ih = idxw:getSize().w, idxw:getSize().h
+        local slh = math.floor(isz * 0.5)                  -- slash (and digit) target height
+        local cw = cntw:getSize().w
+        local slw = math.max(2, math.floor(slh * 0.5))     -- slash horizontal span
+        local stk = math.max(2, math.floor(isz * 0.09))    -- slash thickness
+        local g = math.floor(isz * 0.34)
+        local counter_w = iw + g + slw + g + cw
+        local x0 = math.floor(x + w / 2 - counter_w / 2)
+        idxw:paintTo(bb, x0, math.floor(cy - ih / 2)); idxw:free()
+        local sx = x0 + iw + g
+        do  -- diagonal slash, bottom-left to top-right, centred on cy
+            local steps = math.max(slw, slh)
+            for i = 0, steps do
+                local t = i / steps
+                bb:paintRect(math.floor(sx + t * slw) - math.floor(stk / 2),
+                    math.floor(cy + slh / 2 - t * slh) - math.floor(stk / 2), stk, stk, BLACKC)
             end
         end
-        -- a chevron arrow centred at (cx, cy); dir -1 = "‹", +1 = "›"
-        local function chevron(cx, cy2, half_w, half_h, dir, tk)
-            seg(cx - dir * half_w, cy2 - half_h, cx + dir * half_w, cy2, tk)
-            seg(cx + dir * half_w, cy2, cx - dir * half_w, cy2 + half_h, tk)
-        end
-        -- Layout: [ ‹ ]  ...  i / n  [+]  ...  [ › ]
-        -- Prev/Next are wide tap zones at the two edges showing just an arrow; the
-        -- page counter sits dead centre; the add-page button is a square box in the
-        -- clear gap between the counter and the Next zone, so nothing overlaps.
-        local side = math.floor(w * 0.26)          -- prev / next tap zones
-        self._nb_prev = { x = x, y = sy0, w = side, h = h }
-        self._nb_next = { x = x + w - side, y = sy0, w = side, h = h }
-        -- Prev / Next arrows (chevrons), sized to the strip
-        local ah = math.floor(h * 0.24)
-        local atk = math.max(3, math.floor(h * 0.06))
-        chevron(x + side / 2, cy, math.floor(ah * 0.6), ah, -1, atk)
-        chevron(x + w - side / 2, cy, math.floor(ah * 0.6), ah, 1, atk)
-        -- page counter, dead centre
-        local ctext = string.format("%d / %d", nb.index, nb:count())
-        local ct = TextWidget:new{ text = ctext, face = face, fgcolor = BLACKC }
-        local counter_w = ct:getSize().w; ct:free()
-        label(ctext, x + w / 2)
-        -- add-page icon (a page with a plus): sized to most of the strip height but
-        -- with clear padding above and below (never touching the divider or bottom),
-        -- and placed just to the right of the counter's ACTUAL right edge (a small
-        -- margin) so it follows the page number's width -- e.g. "1 / 3295" pushes it
-        -- right without ever overlapping the digits. Clamped so it never runs into
-        -- the Next arrow.
-        local isz = math.max(16, math.floor(h * 0.72))
-        local icon = self:navImage("newpage", isz)
-        local iw = icon and icon:getWidth() or isz
-        local ih = icon and icon:getHeight() or isz
-        local margin = math.floor(h * 0.30)
-        local icx = math.floor(x + w / 2 + counter_w / 2 + margin + iw / 2)  -- just right of counter
-        local arrow_left = (x + w - side / 2) - math.floor(ah * 0.6)
-        local max_icx = arrow_left - margin - math.floor(iw / 2)            -- keep clear of Next
+        cntw:paintTo(bb, sx + slw + g, math.floor(cy - ih / 2)); cntw:free()
+        -- add-page icon, just right of the counter, same icon size, clamped clear of Next
+        local margin = math.floor(isz * 0.5)
+        local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
+        local max_icx = (next_cx - math.floor(zone / 2)) - margin - math.floor(isz / 2)
         if icx > max_icx then icx = max_icx end
-        local tap = math.floor(h * 0.24)                     -- roomy tap target around it
-        self._nb_plus = { x = math.floor(icx - iw / 2 - tap), y = math.floor(cy - ih / 2 - tap),
-                          w = iw + 2 * tap, h = ih + 2 * tap }
-        if icon then
-            bb:blitFrom(icon, math.floor(icx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
-        end
+        icon("newpage", icx)
+        self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
         -- the counter is its own tap target (opens the page menu), spanning the
         -- clear gap between the Prev zone and the add-page icon so nothing overlaps
-        self._nb_count = { x = x + side, y = sy0,
-            w = math.max(1, self._nb_plus.x - (x + side)), h = h }
+        local count_x = self._nb_prev.x + self._nb_prev.w
+        self._nb_count = { x = count_x, y = sy0, w = math.max(1, self._nb_plus.x - count_x), h = h }
     end
 
     -- the floating immersive controls (zoom pill + toolbar toggle), on top
@@ -7699,7 +7766,11 @@ end
 
 -- Height of the bottom page-nav strip in notebook mode.
 function InkAwayView:nbBarHeight()
-    return math.max(48, math.floor(self.screen_h / 14))
+    if self._nb_collapsed then return 0 end   -- hidden via the bottom-bar toggle
+    -- Snug around the icon row (the icon size + a little padding) so the bar is only
+    -- as tall as it needs to be -- shorter than the top toolbar, freeing screen space.
+    local isz = self._icon_sz or math.max(20, Screen:scaleBySize(26))
+    return isz + 2 * Screen:scaleBySize(4)
 end
 
 -- Recompute the drawing area (it shrinks by nb_bar_h in notebook mode) and the
@@ -7846,23 +7917,46 @@ end
 function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local buttons = {
-        {{ text = string.format(_("Page %d of %d"), nb.index, nb:count()), enabled = false }},
-        {{ text = _("Go to page\u{2026}"), callback = function() UIManager:close(dlg); self:nbJumpPrompt() end }},
-        {{ text = _("Page overview\u{2026}"), callback = function() UIManager:close(dlg); self:openPageGrid() end }},
-        {{ text = _("Duplicate page"), callback = function() UIManager:close(dlg); self:nbDuplicatePage() end }},
-        {
-            { text = _("\u{2039} Move earlier"), callback = function() UIManager:close(dlg); self:nbMovePage(-1) end },
-            { text = _("Move later \u{203A}"), callback = function() UIManager:close(dlg); self:nbMovePage(1) end },
-        },
-        {{ text = _("Delete page"), callback = function() UIManager:close(dlg); self:nbDeletePage() end }},
-        {{ text = _("Close"), callback = function() UIManager:close(dlg) end }},
-    }
-    dlg = ButtonDialog:new{ title = _("Page"), title_align = "center", buttons = buttons }
-    self._settings_dialog = dlg
-    UIManager:show(dlg)
+    if self._page_dialog then UIManager:close(self._page_dialog); self._page_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._page_dialog then UIManager:close(self._page_dialog); self._page_dialog = nil end
+    end
+    local function act(label, cb)
+        return self:actionButton(label, content_w, function() closeSelf(); cb() end)
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Page"), content_w, _("Close"), closeSelf))
+        add(vspan(6))
+        add(TextWidget:new{ text = string.format(_("Page %d of %d"), nb.index, nb:count()),
+            face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) })
+        add(vspan(12))
+        add(act(_("Go to page\u{2026}"), function() self:nbJumpPrompt() end))
+        add(vspan(8))
+        add(act(_("Page overview\u{2026}"), function() self:openPageGrid() end))
+        add(vspan(8))
+        add(act(_("Duplicate page"), function() self:nbDuplicatePage() end))
+        add(vspan(8))
+        add(act(_("Delete page"), function() self:nbDeletePage() end))
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    -- Move earlier / later are omitted: the bottom bar's arrows already do that. The
+    -- sheet's bottom is pinned to the top of the notebook bottom bar (bottom_y).
+    local v = self.view
+    self._page_dialog = IconMenu:new{ build = build,
+        bottom_y = v.area_y + v.area_h,
+        on_close = function() self._page_dialog = nil end }
+    UIManager:show(self._page_dialog)
 end
 
 -- Render one notebook page to a small thumbnail bitmap fitting maxw x maxh,
@@ -8066,23 +8160,33 @@ function InkAwayView:newNotebook()
             begin(style)
         end
     end
-    local dlg
-    local function row(style, label) return {{ text = label,
-        callback = function() UIManager:close(dlg); go(style) end }} end
-    dlg = ButtonDialog:new{
-        title = _("New notebook \u{2014} paper"), title_align = "center",
-        buttons = {
-            row("lines", _("Lined")),
-            row("grid",  _("Grid")),
-            row("dots",  _("Dotted")),
-            row("margin", _("Margin ruled")),
-            row("cornell", _("Cornell")),
-            row("blank", _("Blank")),
-            {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }},
-        },
-    }
-    self._settings_dialog = dlg
-    UIManager:show(dlg)
+    if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
+    end
+    local styles = { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
+        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("New notebook"), content_w, _("Cancel"), closeSelf))
+        add(vspan(10))
+        for i, s in ipairs(styles) do
+            add(self:actionButton(s[2], content_w, function() closeSelf(); go(s[1]) end))
+            if i < #styles then add(vspan(8)) end
+        end
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._chooser_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._chooser_dialog = nil end }
+    UIManager:show(self._chooser_dialog)
 end
 
 -- The notebook page indices chosen by the current export scope: all pages,
