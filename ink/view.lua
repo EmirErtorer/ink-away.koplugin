@@ -1414,20 +1414,28 @@ function IconMenu:init()
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable
 end
--- Schedule the visible refresh ourselves (deferred region closure). The sheet opens
--- OVER the drawing canvas, which may hold dark ink; a non-flashing "ui" would morph
--- those dark pixels straight into the white sheet (the sluggish "fade in" feel), so
--- open with "flashui" -- one clean flash that clears the region and shows the sheet
--- crisply. (KOReader's ButtonDialog can use "ui" because it opens over a white
--- background, where there is nothing dark to morph.)
+-- The sheet opens OVER the drawing canvas, which may hold dark ink. A non-flashing
+-- "ui" would morph those dark pixels into the white sheet (the sluggish "fade in"
+-- feel); a "flashui" clears them but with a full black blink that reads as a slow
+-- animation. So do neither: pop the sheet in immediately with a fast (1-bit)
+-- refresh -- it clears the dark region to the crisp sheet at once, no blink, no
+-- fade -- then a beat later settle the same region with "ui" so the greys (swatches,
+-- rounded edges) fill in. Appear-then-sharpen feels snappy instead of animated.
 function IconMenu:onShow()
-    UIManager:setDirty(self, function() return "flashui", self.movable.dimen end)
+    local region = self.movable and self.movable.dimen
+    UIManager:setDirty(self, function() return "fast", region end)
+    self._settle = function()
+        self._settle = nil
+        UIManager:setDirty(self, function() return "ui", region end)
+    end
+    UIManager:scheduleIn(0.15, self._settle)
 end
 -- On close, UIManager repaints the uncovered canvas underneath, so a plain "ui"
 -- brings it back with no black blink. (The old "flashui" here was the black flash
 -- the reader saw where the menu had been.) Free the content subtree (some sheets
 -- build blitbuffers, e.g. brush previews).
 function IconMenu:onCloseWidget()
+    if self._settle then UIManager:unschedule(self._settle); self._settle = nil end
     local region = self.movable and self.movable.dimen
     UIManager:setDirty(nil, function() return "ui", region end)
     if self.movable and self.movable.free then self.movable:free() end
@@ -3604,6 +3612,7 @@ end
 -- the actions and, at the threshold, force one full-screen refresh to clear the
 -- ghosting that fast refreshes leave behind, then reset the count and carry on.
 function InkAwayView:afterCommit()
+    self:healMemory()
     local n = self.ghost_clean or 0
     if n <= 0 then return end
     self._strokes_since_full = (self._strokes_since_full or 0) + 1
@@ -3611,6 +3620,22 @@ function InkAwayView:afterCommit()
         self._strokes_since_full = 0
         UIManager:setDirty(self, "full")
     end
+end
+
+-- Safety net against a runaway heap. Called at idle moments (a stroke just
+-- committed): if the Lua heap has grown large over a very long session, reclaim
+-- garbage right here so drawing can never degrade into GC thrashing. This is a
+-- backstop, not the fix -- the per-stroke allocation is already flat (see the
+-- delta-history + pooled-hot-path work); this only ever fires if something starts
+-- leaking again. Gated on size so a normal session pays nothing, and it runs
+-- between strokes (never mid-stroke), so the one-off collect is invisible.
+local GC_HEAL_KB = 48 * 1024        -- ~48 MB: far above any legitimate drawing
+local GC_HEAL_EVERY = 96            -- check at most once per this many commits
+function InkAwayView:healMemory()
+    self._commits_since_gc = (self._commits_since_gc or 0) + 1
+    if self._commits_since_gc < GC_HEAL_EVERY then return end
+    self._commits_since_gc = 0
+    if collectgarbage("count") > GC_HEAL_KB then collectgarbage("collect") end
 end
 
 -- Commit immediately if a stroke is open (or pending). Safe to call any time.
@@ -4316,10 +4341,17 @@ function InkAwayView:newDrawing()
         self.selected, self.rotating = nil, nil
         self.active_image, self._img_drag = nil, nil
         self:freeImageCache()
+        if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
+        self._pre_stroke_valid = false
         self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
         self.dirty = false
         os.remove(self:sessionPath())   -- so reopening does not restore the old drawing
         self:composeCanvas(); self:renderView()
+        -- A new drawing is the natural moment to hand the old one's memory back:
+        -- collect now so a fresh canvas always starts light, without needing to
+        -- close Ink Away or restart KOReader.
+        self._commits_since_gc = 0
+        collectgarbage("collect")
         UIManager:setDirty(self, "full")
     end
     if self.canvas:isEmpty() and not self.notebook then fresh(); return end
