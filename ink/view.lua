@@ -700,6 +700,8 @@ function InkAwayView:free()
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
+    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
+    self._pre_stroke_valid = false
     if self._nav_img then
         for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
         self._nav_img = nil
@@ -1166,7 +1168,13 @@ function InkAwayView:openPenSettings()
         local tail = VerticalGroup:new{ align = "left" }
         local assistRow = HorizontalGroup:new{ align = "center",
             toggle(_("Shape assist"), self.shape_assist, function(on)
-                self.shape_assist = on; self:setSetting("inkaway_shape_assist", on) end),
+                self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
+                -- release the pre-stroke snapshot when assist is off; it is only
+                -- ever used by beautify, and re-created on the next stroke if needed
+                if not on and self._pre_stroke_bb then
+                    self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
+                    self._pre_stroke_valid = false
+                end end),
         }
         do
             local pr = toggle(_("Palm rejection"), self.palm_reject, function(on)
@@ -2996,7 +3004,6 @@ function InkAwayView:renderView()
     self._blit_rect = nil   -- the whole area_bb is rebuilt; paintTo must blit it all
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
-    self.area_bb:paintRect(0, 0, v.area_w, v.area_h, WHITE)
 
     -- visible crop of the canvas, clamped inside it
     local sx = math.max(0, math.min(W - 1, math.floor(v.pan_x)))
@@ -3013,6 +3020,13 @@ function InkAwayView:renderView()
     local oy = math.max(0, math.floor((sy - v.pan_y) * v.zoom))
     local bw = math.min(dw, v.area_w - ox)
     local bh = math.min(dh, v.area_h - oy)
+    -- Clear to white only what the blit will NOT cover: the letterbox margin when
+    -- the whole page fits, or a trimmed edge. When the blit fills the area (the
+    -- common case when zoomed in and panning), skip the full-area clear entirely
+    -- -- that saves one screenful memset per pan frame.
+    if ox > 0 or oy > 0 or bw < v.area_w or bh < v.area_h then
+        self.area_bb:paintRect(0, 0, v.area_w, v.area_h, WHITE)
+    end
     if bw < 1 or bh < 1 then return end
 
     local sub = self.canvas_bb:viewport(sx, sy, sw, sh)     -- shares memory
@@ -3378,6 +3392,24 @@ function InkAwayView:beginStroke(sx, sy)
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     self._stroke_rect = nil
+    -- Shape assist may rewrite this stroke into a clean shape on lift, which means
+    -- rebuilding the master. Snapshot the pre-stroke master now so beautify can
+    -- restore just the stroke's footprint instead of replaying every op (which got
+    -- progressively slower as a drawing filled up). Only when it might actually
+    -- run: a pen stroke with shape assist on.
+    self._pre_stroke_valid = false
+    if self.shape_assist and not is_erase and self.canvas_bb then
+        local W, H = self.view.canvas_w, self.view.canvas_h
+        if self._pre_stroke_bb and (self._pre_stroke_bb:getWidth() ~= W
+                or self._pre_stroke_bb:getHeight() ~= H) then
+            self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
+        end
+        if not self._pre_stroke_bb then
+            self._pre_stroke_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
+        end
+        self._pre_stroke_bb:blitFrom(self.canvas_bb, 0, 0, 0, 0, W, H)
+        self._pre_stroke_valid = true
+    end
     self:setupLiveWriters()        -- build the reusable per-stroke writers once
     self:addScreenPoint(sx, sy, true)
 end
@@ -3424,9 +3456,73 @@ function InkAwayView:beautifyStroke(raw, committed)
         committed.pts = pts
     end
     self.dirty = true
-    self:composeCanvas()
+    -- Rebuild the master WITHOUT replaying every op when we can (see below); only
+    -- fall back to a full composeCanvas when the snapshot is unusable.
+    if not self:beautifyRecompose(raw, committed) then
+        self:composeCanvas()
+    end
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
+    return true
+end
+
+-- Rebuild the master after shape assist swapped a stroke, without a whole-canvas
+-- replay. beginStroke snapshotted the pre-stroke master; restore just the raw
+-- stroke's footprint (and each symmetry mirror of it) from that snapshot to wipe
+-- the old wobbly ink, then stamp the clean op back on top. The result is pixel
+-- identical to composeCanvas but costs O(stroke area) instead of O(number of
+-- ops), which is what made a filling-up drawing get slower per stroke. Returns
+-- false (caller runs the full composeCanvas) when the snapshot cannot be used.
+function InkAwayView:beautifyRecompose(raw, committed)
+    if not (self._pre_stroke_valid and self._pre_stroke_bb and self.canvas_bb) then
+        return false
+    end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    if self._pre_stroke_bb:getWidth() ~= W or self._pre_stroke_bb:getHeight() ~= H then
+        return false
+    end
+    -- footprint (canvas px) of the OLD raw ink and the NEW clean op together
+    local hw = (committed.width or self.pen_width or 1) / 2 + 2
+    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    local function grow(pts)
+        if not pts then return end
+        for i = 1, #pts - 1, 2 do
+            local px, py = pts[i], pts[i + 1]
+            if px < x0 then x0 = px end
+            if px > x1 then x1 = px end
+            if py < y0 then y0 = py end
+            if py > y1 then y1 = py end
+        end
+    end
+    grow(raw)
+    grow(committed.pts)
+    if x1 < x0 or y1 < y0 then return false end
+    local base = {
+        x0 = math.max(0, math.floor(x0 - hw)),
+        y0 = math.max(0, math.floor(y0 - hw)),
+        x1 = math.min(W, math.ceil(x1 + hw)),
+        y1 = math.min(H, math.ceil(y1 + hw)),
+    }
+    -- the raw ink was mirrored into the master under symmetry, so restore every
+    -- mirror of the footprint too (exact pixel reflection in canvas space)
+    local rects = { base }
+    local sym = committed.sym
+    if sym and sym ~= "off" then
+        local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
+        local function flipX(r) return { x0 = W - r.x1, y0 = r.y0, x1 = W - r.x0, y1 = r.y1 } end
+        local function flipY(r) return { x0 = r.x0, y0 = H - r.y1, x1 = r.x1, y1 = H - r.y0 } end
+        if mx then rects[#rects + 1] = flipX(base) end
+        if my then rects[#rects + 1] = flipY(base) end
+        if mx and my then rects[#rects + 1] = flipY(flipX(base)) end
+    end
+    for _, r in ipairs(rects) do
+        local w, h = r.x1 - r.x0, r.y1 - r.y0
+        if w > 0 and h > 0 then
+            self.canvas_bb:blitFrom(self._pre_stroke_bb, r.x0, r.y0, r.x0, r.y0, w, h)
+        end
+    end
+    self:stampOpIntoCanvas(committed)   -- draw the clean op (all mirrors) back on top
+    self._pre_stroke_valid = false      -- snapshot consumed; a stale reuse would be wrong
     return true
 end
 
