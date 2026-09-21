@@ -1578,8 +1578,23 @@ function SliderRow:_build()
         track, fill, knob }
     self[1] = HorizontalGroup:new{ align = "center",
         labelw, HorizontalSpan:new{ width = gap }, trackGroup, HorizontalSpan:new{ width = gap }, valw }
+    -- references so _apply can update the moving parts in place, without rebuilding
+    -- the whole row (and re-measuring text) on every drag tick
+    self._fill_wc, self._knob, self._valw = fill[1], knob, valw
     local sz = self[1]:getSize()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
+end
+-- Update only the fill width, knob position and value text for the current value,
+-- in place -- no widget/text-shaping churn per drag tick.
+function SliderRow:_apply()
+    local track_w, th, kn = self._track_w, self.track_h, self.knob
+    local frac = math.max(0, math.min(1, (self.value - self.min) / (self.max - self.min)))
+    if self._fill_wc then self._fill_wc.dimen.w = math.max(th, math.floor(track_w * frac)) end
+    if self._knob then
+        self._knob.overlap_offset[1] =
+            math.max(0, math.min(track_w - kn, math.floor(track_w * frac) - math.floor(kn / 2)))
+    end
+    if self._valw then self._valw:setText(self:_fmt(self.value)) end
 end
 function SliderRow:_setFromX(x, mode)
     if not (self.dimen and self._track_w and self._track_w > 0) then return end
@@ -1589,16 +1604,8 @@ function SliderRow:_setFromX(x, mode)
     v = self.min + math.floor((v - self.min) / self.step + 0.5) * self.step
     v = math.max(self.min, math.min(self.max, v))
     if v ~= self.value then
-        -- Capture the real painted position BEFORE _build (which resets dimen.x/y to
-        -- 0); the row's slot in the sheet is fixed, so this equals its next position.
-        local px, py, h = self.dimen.x, self.dimen.y, self.dimen.h
         self.value = v
-        self:_build()
-        -- Restore the slot position immediately: the slider's GestureRange reads
-        -- self.dimen, so leaving it at {0,0} until the next paintTo would drop any
-        -- follow-on gesture batched in the same input frame (e.g. the pan_release
-        -- after a fast flick, which would skip the "ui" settle and leave the A2 track).
-        self.dimen.x, self.dimen.y = px, py
+        self:_apply()   -- update the moving parts in place; no rebuild, dimen unchanged
         if self.on_set then self.on_set(v) end
         -- Refresh only the track-to-value band, not the whole row, and use the fast
         -- (A2, monochrome) waveform WHILE dragging so the black fill, white knob and
@@ -1607,8 +1614,8 @@ function SliderRow:_setFromX(x, mode)
         -- what stops a slider drag from flashing a screen-wide GC16 strip per tick.
         -- self.parent (the sheet) is still the repaint target so the menu stays on
         -- top of any canvas the on_set refreshed underneath (e.g. a grid preview).
-        local band = GeomUI:new{ x = px + self._track_dx, y = py,
-            w = self.width - self._track_dx, h = h }
+        local band = GeomUI:new{ x = self.dimen.x + self._track_dx, y = self.dimen.y,
+            w = self.width - self._track_dx, h = self.dimen.h }
         UIManager:setDirty(self.parent or self, mode or "ui", band)
     end
 end
@@ -2200,6 +2207,9 @@ end
 -- showing draws the control, both without a full redraw.
 function InkAwayView:refreshFabRegion(r)
     if not r then return end
+    self._blit_rect = nil   -- a control melted/appeared over the canvas; blit the
+                            -- whole area so the region under it is restored, not
+                            -- just the live-stroke sub-rect
     local m = Screen:scaleBySize(4)
     UIManager:setDirty(self, "ui", GeomUI:new{
         x = r.x - m, y = r.y - m, w = r.w + 2 * m, h = r.h + 2 * m })
@@ -2373,6 +2383,19 @@ function InkAwayView:dirtyAreaRect(mode, r, pad)
     local x1 = math.min(v.area_w, math.ceil(r.x1) + pad)
     local y1 = math.min(v.area_h, math.ceil(r.y1) + pad)
     if x1 <= x0 or y1 <= y0 then return end
+    -- While a live stroke is drawing, only these sub-rects of area_bb change, so
+    -- accumulate them and let paintTo blit ONLY this region instead of the whole
+    -- drawing surface every point (see paintTo). Area-local coords.
+    if self.capturing then
+        local br = self._blit_rect
+        if not br then self._blit_rect = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+        else
+            if x0 < br.x0 then br.x0 = x0 end
+            if y0 < br.y0 then br.y0 = y0 end
+            if x1 > br.x1 then br.x1 = x1 end
+            if y1 > br.y1 then br.y1 = y1 end
+        end
+    end
     UIManager:setDirty(self, mode, GeomUI:new{
         x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
 end
@@ -2747,7 +2770,12 @@ end
 -- background picture, notebook ruling, then the ink ops. Shared by the live
 -- master bitmap and by the page-overview thumbnails, so a thumbnail always
 -- matches exactly what the page looks like.
-function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic)
+-- `reveal_resolved` = the caller already ran the reveal-buffer detection (via
+-- buildRevealPic/buildRevealText) and the reveal_pic/reveal_text it passed are
+-- authoritative (nil means "not needed"). composeCanvas sets it so composeInto
+-- skips two redundant full-ops scans; the thumbnail path leaves it off so
+-- composeInto detects and builds its own reveal buffers.
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved)
     local W, H = self.view.canvas_w, self.view.canvas_h
     dst:paintRect(0, 0, W, H, WHITE)
     if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
@@ -2761,7 +2789,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     -- when the caller did not pass one (e.g. page thumbnails), so it is always
     -- correct for whatever is being composed. dst currently holds the plain base.
     local owns_rp = false
-    if not reveal_pic then
+    if not reveal_resolved and not reveal_pic then
         local has_img, has_soft = false, false
         for _, op in ipairs(ops) do
             if not op.hidden then
@@ -2785,7 +2813,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     -- setting is never retroactive. dst currently holds the plain base (paper /
     -- background / ruling), so a copy of it now is exactly the plain reveal.
     local owns_rt = false
-    if not reveal_text then
+    if not reveal_resolved and not reveal_text then
         local has_text, has_spare = false, false
         for _, op in ipairs(ops) do
             if not op.hidden then
@@ -2950,12 +2978,12 @@ function InkAwayView:composeCanvas()
         self:buildRevealPic(self._paper_bb)
         self:buildRevealText(self._reveal_pic_bb or self._paper_bb)   -- text reveal keeps images too
         self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil,
-            self._reveal_text_bb, self._reveal_pic_bb)
+            self._reveal_text_bb, self._reveal_pic_bb, true)   -- reveal buffers already resolved
     else
         self:buildRevealPic(self.bg_bb)
         self:buildRevealText(self._reveal_pic_bb or self.bg_bb)
         self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil,
-            self._reveal_text_bb, self._reveal_pic_bb)
+            self._reveal_text_bb, self._reveal_pic_bb, true)   -- reveal buffers already resolved
     end
 end
 
@@ -2965,6 +2993,7 @@ end
 -- single scale of one screenful, whatever the zoom or the amount of ink.
 function InkAwayView:renderView()
     if not (self.area_bb and self.canvas_bb) then return end
+    self._blit_rect = nil   -- the whole area_bb is rebuilt; paintTo must blit it all
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
     self.area_bb:paintRect(0, 0, v.area_w, v.area_h, WHITE)
@@ -7003,8 +7032,22 @@ function InkAwayView:paintTo(bb, x, y)
         self.toolbar:paintTo(bb, x, y)
         self:drawToolbarIcons(bb)
     end
-    -- drawing area (the committed strokes, at the current zoom/pan)
-    bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
+    -- drawing area (the committed strokes, at the current zoom/pan). While a live
+    -- stroke is drawing, only a small sub-rect of area_bb changed since the last
+    -- paint (dirtyAreaRect accumulated it), so blit ONLY that region rather than the
+    -- whole surface on every point -- the whole-area blit was a big per-point cost.
+    -- Everything else here is cheap and stays unconditional so it never goes stale.
+    local br = self.capturing and self._blit_rect
+    if br then
+        local rx0 = math.max(0, math.floor(br.x0)); local ry0 = math.max(0, math.floor(br.y0))
+        local rx1 = math.min(v.area_w, math.ceil(br.x1)); local ry1 = math.min(v.area_h, math.ceil(br.y1))
+        if rx1 > rx0 and ry1 > ry0 then
+            bb:blitFrom(self.area_bb, x + v.area_x + rx0, y + v.area_y + ry0, rx0, ry0, rx1 - rx0, ry1 - ry0)
+        end
+    else
+        bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
+    end
+    self._blit_rect = nil   -- consumed; default back to a full blit next paint
     -- grid guides on top, straight onto the screen buffer so they never mix into
     -- the drawing: the eraser can't rub them out and they stay out of the export
     -- the canvas grid overlay is a canvas-mode guide; a notebook has its own
@@ -8175,5 +8218,8 @@ function InkAwayView:autoSaveDrawingProject(image_name)
     local ok = Project.save(self.canvas, proj)
     return ok and proj or nil
 end
+
+-- Expose the internal sheet widgets for headless tests (they are file-locals).
+InkAwayView._SliderRow, InkAwayView._ToggleRow = SliderRow, ToggleRow
 
 return InkAwayView
