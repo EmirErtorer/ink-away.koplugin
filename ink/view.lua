@@ -1414,28 +1414,21 @@ function IconMenu:init()
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable
 end
--- The sheet opens OVER the drawing canvas, which may hold dark ink. A non-flashing
--- "ui" would morph those dark pixels into the white sheet (the sluggish "fade in"
--- feel); a "flashui" clears them but with a full black blink that reads as a slow
--- animation. So do neither: pop the sheet in immediately with a fast (1-bit)
--- refresh -- it clears the dark region to the crisp sheet at once, no blink, no
--- fade -- then a beat later settle the same region with "ui" so the greys (swatches,
--- rounded edges) fill in. Appear-then-sharpen feels snappy instead of animated.
+-- The sheet opens OVER the drawing canvas, which holds dark ink and grid lines.
+-- It MUST be shown with a flashing refresh ("flashui"): only a flash fully clears
+-- the region to the opaque white sheet. A non-flashing "ui" morphs the dark pixels
+-- in (a slow fade), and a 1-bit "fast"/A2 refresh does not clear at all, so the
+-- grid and ink ghost straight through the sheet (it looks translucent) and every
+-- later refresh has to fight that ghost. The flash is a deliberate, one-time cost
+-- for a crisp, opaque sheet -- do not "optimise" it to fast/ui.
 function IconMenu:onShow()
-    local region = self.movable and self.movable.dimen
-    UIManager:setDirty(self, function() return "fast", region end)
-    self._settle = function()
-        self._settle = nil
-        UIManager:setDirty(self, function() return "ui", region end)
-    end
-    UIManager:scheduleIn(0.15, self._settle)
+    UIManager:setDirty(self, function() return "flashui", self.movable.dimen end)
 end
 -- On close, UIManager repaints the uncovered canvas underneath, so a plain "ui"
--- brings it back with no black blink. (The old "flashui" here was the black flash
--- the reader saw where the menu had been.) Free the content subtree (some sheets
--- build blitbuffers, e.g. brush previews).
+-- brings it back with no black blink. (A "flashui" here would be a black flash
+-- where the menu had been.) Free the content subtree (some sheets build
+-- blitbuffers, e.g. brush previews).
 function IconMenu:onCloseWidget()
-    if self._settle then UIManager:unschedule(self._settle); self._settle = nil end
     local region = self.movable and self.movable.dimen
     UIManager:setDirty(nil, function() return "ui", region end)
     if self.movable and self.movable.free then self.movable:free() end
