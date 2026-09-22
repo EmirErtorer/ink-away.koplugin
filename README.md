@@ -1,14 +1,27 @@
 # Ink Away
 
-A finger drawing and handwriting app for KOReader, made for e-ink readers like the Kindle and Kobo.
+A complete drawing and handwriting studio for KOReader, built for e-ink readers like the Kindle and Kobo.
 
-Draw or write with your finger, add typed text boxes, sketch and take notes across a multi page notebook, or open any PDF and annotate it by hand. You can also save a drawing as a PNG with a real transparent background, or a JPEG on white, at the exact pixel size of your screen, which is handy for making your own sleep screen covers and overlays that sit cleanly on top of anything.
+Draw or write with your finger, add typed text boxes, sketch and take notes across a multi page notebook, or open any PDF and annotate it by hand. Save a drawing as a PNG with a real transparent background, or a JPEG on white, at the exact pixel size of your screen, which is handy for making your own sleep screen covers and overlays that sit cleanly on top of anything, or export a whole notebook back to an ordinary paged PDF.
 
-Here is a quick look:
+It is one of the most capable drawing tools you can add to KOReader, bringing together an adjustable pen, brushes you make yourself, shapes and arrows, a paint bucket, lasso select, text boxes with rich formatting, a symmetry mode, background images, palm rejection, and full notebook and PDF annotation, with save for the whole page or just a chosen area. Everything stays on your device: there are no accounts and no networking.
 
-<video src="https://github.com/user-attachments/assets/e6b5eeba-c5c7-4495-b273-91da3c10720d" controls muted></video>
+## Screenshots
 
-Ink Away gives you a pen with adjustable size, opacity, and shade or colour; brushes you can make yourself; shapes and arrows; a paint bucket; an eraser; text boxes with rich formatting; undo and redo; zoom and pan; a symmetry mode; an optional background picture to draw over; and save, whole page or a chosen area. Everything stays on your device: there are no accounts and no networking.
+<table>
+  <tr>
+    <td width="33%" valign="top"><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" alt="Pen settings"></a><br><sub>The pen: size, opacity, brush style and shade, with palm rejection.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/brush-maker.png"><img src="assets/screenshots/brush-maker.png" alt="Brush maker"></a><br><sub>Design your own brush while a sample stroke redraws live.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/shapes-menu.png"><img src="assets/screenshots/shapes-menu.png" alt="Shapes menu"></a><br><sub>Shapes and arrows, a fill toggle, snapping, paint bucket and lasso.</sub></td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><a href="assets/screenshots/text-settings.png"><img src="assets/screenshots/text-settings.png" alt="Text settings"></a><br><sub>Typed text with any installed font, sizing and ruling snap.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/settings-menu.png"><img src="assets/screenshots/settings-menu.png" alt="Settings"></a><br><sub>Notebooks, open a PDF to annotate, grid, symmetry and autosave.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/notebook.png"><img src="assets/screenshots/notebook.png" alt="Notebook page"></a><br><sub>A notebook page with handwritten notes, an image and shapes.</sub></td>
+  </tr>
+</table>
+
+<sub>Tap any screenshot to open it full size.</sub>
 
 It is also a full note taking tool. Open a **notebook** and write across many pages by hand or with **typed text boxes**, or open **any PDF as a notebook** and write straight on top of it, then export the whole thing back to a normal paged PDF. A **lasso** lets you loop around part of a drawing or a page and move, duplicate or delete it as one piece.
 
@@ -27,6 +40,7 @@ It is also a full note taking tool. Open a **notebook** and write across many pa
 - **Export the whole page or just a part**: choose an area with a quick drag so a signature in the middle of the screen comes out on its own, at its own size.
 - **Ghosting cleanup** (optional): e-ink leaves faint ghosts behind the fast refreshes used while drawing, so you can have it do one full refresh every so many strokes to wipe them. Off by default.
 - A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
+- **Palm rejection**: on a reader with a pen, rest your hand on the screen while you write and only the pen marks the page. It is on automatically for pen devices like the Kindle Scribe and reMarkable, and a switch in the pen menu for everyone else.
 - Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
 - **Undo and redo**.
 - An optional **grid** (square, dots, ruled lines, isometric, or rule of thirds) with snapping, and a snap-to-45° for straight lines. You can set how strong it looks, from a faint guide up to solid like drawn ink. It is a guide on screen only: the eraser leaves it alone and it never shows up in a saved image.
@@ -37,7 +51,6 @@ It is also a full note taking tool. Open a **notebook** and write across many pa
 - Smooth zoom, in even steps from "whole page" up to 8×, with panning for close work.
 - Save as a transparent PNG or a white JPEG, always at the exact canvas size.
 - Pick the folder and file name with KOReader's own file browser.
-- Made with e-ink in mind: it repaints only the part of the screen that changed, keeps one screen buffer around, and builds the big export image only while it is saving.
 
 ## Requirements
 

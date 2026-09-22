@@ -468,11 +468,6 @@ function InkAwayView:init()
     -- (MT_TOOL_PALM == TOOL_TYPE_ERASER == 2); we tell a real pen from a promoted
     -- palm by slot with Stylus.classify (see onStylusSlot / ink/stylus.lua).
     self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus()) and true or false
-    -- TEMP diagnostic for the palm-rejection prerelease (shows an on-screen note
-    -- the first time the pen and the first time a palm are seen, with the slot
-    -- facts that drove the decision). Flip default to false once confirmed on real
-    -- pen hardware.
-    self.pen_debug   = self:getSetting("inkaway_pen_debug", true) and true or false
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot number currently drawing the pen stroke
     self._palm_slots = {}         -- slot number -> tracking id, for palms we swallow
@@ -5800,26 +5795,6 @@ function InkAwayView:onStylusSlot(inp, slot)
     local sn = slot.slot or 0
     if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner then
         role = Stylus.ROLE_PALM
-    end
-    -- DIAGNOSTIC (prerelease): show the first pen and the first palm we classify,
-    -- with the facts that decided it. If a tester turns palm rejection on and never
-    -- sees the pen note, the pen is not being routed here at all (a device/KOReader
-    -- issue). If palm marks still appear but no palm note shows, the palm is not
-    -- reaching this callback as a stylus tool -- a different leak.
-    if self.pen_debug then
-        if role == Stylus.ROLE_PEN and not self._seen_pen then
-            self._seen_pen = true
-            UIManager:show(InfoMessage:new{ text = string.format(
-                "Ink Away pen: tool=%s slot=%s pen_slot=%s wacom=%s",
-                tostring(slot.tool), tostring(slot.slot),
-                tostring(input and input.pen_slot), tostring(input and input.wacom_protocol)) })
-        elseif role == Stylus.ROLE_PALM and not self._seen_palm then
-            self._seen_palm = true
-            UIManager:show(InfoMessage:new{ text = string.format(
-                "Ink Away palm rejected: tool=%s slot=%s pen_slot=%s",
-                tostring(slot.tool), tostring(slot.slot),
-                tostring(input and input.pen_slot)) })
-        end
     end
     if role == Stylus.ROLE_PALM then
         self:penPalm(slot)   -- remember it, keep fingers out; never draw
