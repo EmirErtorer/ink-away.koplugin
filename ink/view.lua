@@ -2821,6 +2821,43 @@ function InkAwayView:faceAt(name, px)
     return f
 end
 
+-- Where a digit's INK actually sits inside a TextWidget's box. A text box has empty
+-- ascent/descent, so centring the box makes a run of digits look high against an
+-- icon; centring the measured ink instead lines them up. Renders the digits to a
+-- scratch buffer once per icon size and scans for the first/last inked row, caching
+-- {mid, h} (ink centre offset from the box top, and ink height) so the notebook
+-- bottom-bar counter can both centre and size itself to the icon glyphs on any font
+-- or device. Falls back to box metrics if the scan is unavailable (e.g. in tests).
+function InkAwayView:digitInkMetric(face, isz, box_h)
+    if self._digit_ink and self._digit_ink.key == isz then return self._digit_ink end
+    local res
+    pcall(function()
+        local TextWidget = require("ui/widget/textwidget")
+        local probe = TextWidget:new{ text = "0123456789", face = face,
+            fgcolor = Blitbuffer.COLOR_BLACK }
+        local pw, ph = probe:getSize().w, probe:getSize().h
+        if not (pw and ph and pw > 0 and ph > 0) then probe:free(); return end
+        local sb = Blitbuffer.new(pw, ph, Blitbuffer.TYPE_BB8)
+        sb:fill(Blitbuffer.COLOR_WHITE)
+        probe:paintTo(sb, 0, 0); probe:free()
+        local top, bot
+        for row = 0, ph - 1 do
+            local inked = false
+            for col = 0, pw - 1 do
+                local c = sb:getPixel(col, row)
+                local v = (c and c.getColor8 and c:getColor8().a) or 255
+                if v < 128 then inked = true; break end
+            end
+            if inked then top = top or row; bot = row end
+        end
+        sb:free()
+        if top and bot then res = { key = isz, mid = (top + bot + 1) / 2, h = (bot - top + 1) } end
+    end)
+    res = res or { key = isz, mid = box_h / 2, h = math.floor(isz * 0.66) }
+    self._digit_ink = res
+    return res
+end
+
 -- The context the text engine uses to measure and render one op. `scale` is 1
 -- for the 1:1 master bitmap and the view zoom for the crisp editing overlay.
 function InkAwayView:textCtx(op, scale)
@@ -7558,28 +7595,29 @@ function InkAwayView:paintTo(bb, x, y)
         icon("nav_next", next_cx)
         self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
         self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
-        -- page counter, dead centre: "index / count", all sized to the icon height.
-        -- The two numbers are text; the divider is a hand-drawn slash the SAME height
-        -- as the digits (the font's own "/" is noticeably taller), so nothing in the
-        -- bar overtops anything else.
-        -- Size the digits through faceAt (a REAL pixel size) so they match the
-        -- icon height on every device. Font:getFace re-applies Screen DPI scaling,
-        -- which made the counter scale differently from the real-pixel icons and
-        -- slash -- uniform by luck on high-res greyscale Kindles, visibly too small
-        -- on other resolutions (e.g. the Kobo Libra Colour). faceAt divides that
-        -- factor out, so the digit height tracks the icons identically everywhere.
-        local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.62)))
+        -- Page counter, dead centre: "index / count", with a hand-drawn slash (the
+        -- font's own "/" is noticeably taller than the digits). Every element in the
+        -- bar must share the same top and bottom. faceAt renders at an exact pixel
+        -- size (dividing out the DPI factor Font:getFace would re-apply), so the digit
+        -- size is identical on Kindle, colour Kobo and Android; ~0.95*isz matches the
+        -- visible icon-glyph height. A TextWidget's box has empty ascent/descent, so
+        -- box-centring makes the number sit high -- we MEASURE the digits' real ink
+        -- extent (cached per size) and centre THAT on cy, and size the slash to it, so
+        -- the number lines up with the icons instead of floating above them.
+        local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
         local idxw = TextWidget:new{ text = tostring(nb.index), face = face, fgcolor = BLACKC }
         local cntw = TextWidget:new{ text = tostring(nb:count()), face = face, fgcolor = BLACKC }
         local iw, ih = idxw:getSize().w, idxw:getSize().h
-        local slh = math.floor(isz * 0.5)                  -- slash (and digit) target height
+        local ink = self:digitInkMetric(face, isz, ih)
+        local ty = math.floor(cy - ink.mid)                -- centre the digit INK on cy
+        local slh = ink.h                                  -- slash spans the digit ink height
         local cw = cntw:getSize().w
-        local slw = math.max(2, math.floor(slh * 0.5))     -- slash horizontal span
+        local slw = math.max(2, math.floor(slh * 0.42))    -- slash horizontal span
         local stk = math.max(2, math.floor(isz * 0.09))    -- slash thickness
-        local g = math.floor(isz * 0.34)
+        local g = math.floor(isz * 0.30)
         local counter_w = iw + g + slw + g + cw
         local x0 = math.floor(x + w / 2 - counter_w / 2)
-        idxw:paintTo(bb, x0, math.floor(cy - ih / 2)); idxw:free()
+        idxw:paintTo(bb, x0, ty); idxw:free()
         local sx = x0 + iw + g
         do  -- diagonal slash, bottom-left to top-right, centred on cy
             local steps = math.max(slw, slh)
@@ -7589,7 +7627,7 @@ function InkAwayView:paintTo(bb, x, y)
                     math.floor(cy + slh / 2 - t * slh) - math.floor(stk / 2), stk, stk, BLACKC)
             end
         end
-        cntw:paintTo(bb, sx + slw + g, math.floor(cy - ih / 2)); cntw:free()
+        cntw:paintTo(bb, sx + slw + g, ty); cntw:free()
         -- add-page icon, just right of the counter, same icon size, clamped clear of Next
         local margin = math.floor(isz * 0.5)
         local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
