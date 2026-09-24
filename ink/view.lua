@@ -7744,6 +7744,14 @@ function InkAwayView:onSave()
         add(vspan(16))
         add(self:actionButton(_("Save"), content_w, function()
             closeSelf(); self:chooseDestination(self.save_fmt) end, true))
+        -- One-tap save straight into the bookshelf plugin's ornament folder, only
+        -- when that plugin is in use. Always a transparent PNG (an ornament needs
+        -- its transparency), so it ignores the format toggle above.
+        if self:ornamentsDir() then
+            add(vspan(10))
+            add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
+                closeSelf(); self:saveOrnament() end))
+        end
         return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
             radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
@@ -8727,6 +8735,129 @@ function InkAwayView:writeFile(fmt, dir, name, ext)
             text = string.format(_("Could not save the image.\n%s"), tostring(err)),
             icon = "notice-warning",
         })
+    end
+end
+
+-- Is the bookshelf plugin present? Prefer KOReader's loaded-plugin registry (so
+-- it is found wherever it is installed), then fall back to a directory probe next
+-- to this plugin and in the user plugins folder. Cached for the session.
+function InkAwayView:bookshelfInstalled()
+    if self._bookshelf_seen ~= nil then return self._bookshelf_seen end
+    local seen = false
+    pcall(function()
+        local PluginLoader = require("pluginloader")
+        local groups = { PluginLoader.enabled_plugins }
+        for _, group in ipairs(groups) do
+            if type(group) == "table" then
+                for _, p in ipairs(group) do
+                    local path = type(p) == "table" and p.path
+                    if type(path) == "string" and path:lower():find("bookshelf%.koplugin") then
+                        seen = true; return
+                    end
+                end
+            end
+        end
+    end)
+    if not seen then
+        pcall(function()
+            local lfs = require("libs/libkoreader-lfs")
+            local cand = { self:pluginDir() .. "../bookshelf.koplugin" }
+            local ok, DataStorage = pcall(require, "datastorage")
+            if ok and DataStorage then
+                cand[#cand + 1] = DataStorage:getDataDir() .. "/plugins/bookshelf.koplugin"
+            end
+            for _, d in ipairs(cand) do
+                if lfs.attributes(d, "mode") == "directory" then seen = true; break end
+            end
+        end)
+    end
+    self._bookshelf_seen = seen
+    return seen
+end
+
+-- The bookshelf plugin's ornament folder (koreader/icons/bookshelf.ornaments),
+-- or nil when the bookshelf plugin isn't in use. A saved ornament is just a
+-- transparent PNG dropped in here -- the bookshelf plugin picks up any *.png or
+-- *.svg it finds. KOReader never creates icons/ itself, so callers make the tree.
+-- "In use" means the folder already exists (the user keeps ornaments there) or
+-- the bookshelf plugin is installed, so the option also shows before the first
+-- ornament is saved.
+function InkAwayView:ornamentsDir()
+    local ok, DataStorage = pcall(require, "datastorage")
+    if not (ok and DataStorage) then return nil end
+    local dir = DataStorage:getDataDir() .. "/icons/bookshelf.ornaments"
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if lok and lfs and lfs.attributes(dir, "mode") == "directory" then return dir end
+    if self:bookshelfInstalled() then return dir end
+    return nil
+end
+
+-- Save the canvas straight into the bookshelf ornament folder as a transparent
+-- PNG. The destination is fixed, so this skips the folder chooser and only asks
+-- for a name; it makes icons/ and the ornaments folder if they aren't there yet.
+function InkAwayView:saveOrnament()
+    local dir = self:ornamentsDir()
+    if not dir then return end
+    pcall(function()
+        local lfs = require("libs/libkoreader-lfs")
+        local DataStorage = require("datastorage")
+        local icons = DataStorage:getDataDir() .. "/icons"
+        if lfs.attributes(icons, "mode") ~= "directory" then lfs.mkdir(icons) end
+        if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
+    end)
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not (lok and lfs and lfs.attributes(dir, "mode") == "directory") then
+        UIManager:show(InfoMessage:new{
+            text = _("Could not create the bookshelf ornaments folder."),
+            icon = "notice-warning" })
+        return
+    end
+    self:promptOrnamentName(dir)
+end
+
+-- Ask for an ornament name, then write it. A trailing ".invert" is kept (the
+-- bookshelf plugin reads name.invert.png as the dark-mode variant); the ".png"
+-- extension is added when the name doesn't already end in it.
+function InkAwayView:promptOrnamentName(dir)
+    local default_name = os.date("ornament-%Y%m%d-%H%M%S")
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Ornament name"),
+        input = default_name,
+        input_hint = default_name,
+        description = _("Saved as a transparent PNG in the bookshelf ornaments folder.\nEnd the name with .invert for a dark-mode version."),
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            {
+                text = _("Save"),
+                is_enter_default = true,
+                callback = function()
+                    local name = dialog:getInputText()
+                    UIManager:close(dialog)
+                    if not name or name == "" then name = default_name end
+                    self:writeOrnament(dir, name)
+                end,
+            },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function InkAwayView:writeOrnament(dir, name)
+    name = name:gsub("[/\\]", "_")               -- keep it a plain filename
+    if not name:lower():match("%.png$") then name = name .. ".png" end
+    local sep = (dir:sub(-1) == "/") and "" or "/"
+    local path = dir .. sep .. name
+    local opts = { rect = self.save_area, bg = (self.export_bg and self.bg_rgba) or nil }
+    local ok, err = Export.savePNG(self.canvas, path, opts)
+    if ok then
+        UIManager:show(InfoMessage:new{ text = string.format(_("Saved bookshelf ornament:\n%s"), path) })
+    else
+        logger.warn("InkAway: ornament save failed:", err)
+        UIManager:show(InfoMessage:new{
+            text = string.format(_("Could not save the ornament.\n%s"), tostring(err)),
+            icon = "notice-warning" })
     end
 end
 
