@@ -5763,9 +5763,10 @@ function InkAwayView:applyPalmReject()
 end
 
 -- Drop all in-flight pen/palm state (called when palm rejection is turned off or
--- the widget closes). Restores a tool we swapped for the eraser tip if a stroke
--- was mid-flight, so toggling off during a rear-eraser stroke can't leave the tool
--- stuck on "erase" or the state machine wedged half-down.
+-- the widget closes). Restores a tool we swapped for the eraser tip or side button
+-- if a stroke was mid-flight, so toggling off during a rear-eraser or side-button
+-- stroke can't leave the tool stuck on "erase"/"lasso" or the state machine wedged
+-- half-down.
 function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_clear)
     if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
@@ -5896,7 +5897,8 @@ end
 function InkAwayView:onStylusSlot(inp, slot)
     if not self.palm_reject or self.closing then return false end
     local input = inp or Device.input
-    local role = Stylus.classify(slot, self:stylusFacts(input))
+    local facts = self:stylusFacts(input)
+    local role = Stylus.classify(slot, facts)
     -- Learn the pen's slot from the first genuine pen-tip frame, so the rear eraser
     -- and a held barrel button (which report the ambiguous ERASER value) are trusted
     -- on that same slot even when the runtime never set Input.pen_slot. The pen slot
@@ -5935,7 +5937,7 @@ function InkAwayView:onStylusSlot(inp, slot)
     local action = Stylus.step(self._pen_state, slot.id)
     if action == "down" then
         self._pen_owner = sn        -- this slot owns the stroke until it lifts
-        self:penDown(slot)
+        self:penDown(slot, facts)
     elseif action == "move" then
         self:penMove(slot)
     elseif action == "up" then
@@ -5975,8 +5977,8 @@ function InkAwayView:penDropFingerOps()
     self.lassoing, self.lasso_scr, self.sel_press = false, nil, nil
 end
 
-function InkAwayView:penDown(slot)
-    -- restore a tool we may have swapped for an eraser tip if the last up was lost
+function InkAwayView:penDown(slot, facts)
+    -- restore a tool we swapped for the eraser tip / side button if the last up was lost
     if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
     self._reject_finger = true
     self._pen_started = false      -- the stroke opens on the first point with coordinates
@@ -5984,9 +5986,17 @@ function InkAwayView:penDown(slot)
     self._pen_last_ms = nil
     UIManager:unschedule(self._pen_clear)
     self:penDropFingerOps()
-    -- the eraser end of the pen erases; the tip (or a highlighter) uses the
-    -- current tool. Swap in the eraser just for this stroke and restore on lift.
-    if slot.tool == Stylus.TOOL_ERASER and self.tool ~= "erase" then
+    -- What this pen contact does: the rear eraser end erases, the primary side
+    -- (barrel) button is a lasso-select modifier, and everything else draws with
+    -- the current tool. Swap the tool in just for this stroke and restore it on
+    -- lift, so the eraser end and the side button behave like held modifiers. The
+    -- lasso selection lives in self.selection independent of the tool, so it
+    -- survives the restore and can be moved by re-holding the side button.
+    local act = Stylus.penAction(slot, facts)
+    if act == Stylus.ACT_SELECT and self.tool ~= "lasso" then
+        self._pen_prev_tool = self.tool
+        self.tool = "lasso"
+    elseif act == Stylus.ACT_ERASE and self.tool ~= "erase" then
         self._pen_prev_tool = self.tool
         self.tool = "erase"
     end

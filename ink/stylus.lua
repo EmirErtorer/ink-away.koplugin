@@ -111,6 +111,26 @@ function Stylus.classify(slot, facts)
     return Stylus.ROLE_TOUCH
 end
 
+-- What a trusted pen contact should DO, from its tool value and the live button
+-- latches. Called only for slots that already classified as ROLE_PEN. KOReader
+-- rewrites the routed slot's tool to ERASER while the primary barrel button
+-- (BTN_STYLUS -> Input.stylus_eraser_active) is held, so the SAME tool value (2)
+-- means two different things: a held side button, or the pen's real rear-eraser
+-- end. The latch tells them apart. Mapping:
+--   * primary side button held  -> ACT_SELECT (lasso select)
+--   * rear eraser end (tool ERASER, no latch) -> ACT_ERASE
+--   * anything else             -> ACT_DRAW (draw with the current tool)
+-- Pure / unit-testable.
+Stylus.ACT_DRAW   = "draw"
+Stylus.ACT_ERASE  = "erase"
+Stylus.ACT_SELECT = "select"
+function Stylus.penAction(slot, facts)
+    facts = facts or {}
+    if facts.eraser_latch then return Stylus.ACT_SELECT end   -- primary side button held
+    if slot and slot.tool == Stylus.TOOL_ERASER then return Stylus.ACT_ERASE end
+    return Stylus.ACT_DRAW
+end
+
 -- Kinematic palm filter: a real nib cannot teleport. Some Wacom panels (the Kindle
 -- Scribe among them) share one slot table between the pen digitizer and the
 -- capacitive panel, so a resting palm's coordinates get written into the pen's slot
