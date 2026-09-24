@@ -64,10 +64,24 @@ end
 --
 -- `facts` carries what only the live Input object knows:
 --   pen_slot          the digitizer's dedicated slot number (or nil)
+--   learned_slot      the slot a genuine TOOL_PEN frame was last seen on this
+--                     session (the caller learns it dynamically; see below)
 --   wacom             true on a Wacom protocol device (Kindle Scribe, reMarkable)
---   eraser_latch      Input.stylus_eraser_active (a held barrel button, off Wacom)
+--   eraser_latch      Input.stylus_eraser_active (a held barrel button)
 --   highlighter_latch Input.stylus_highlighter_active
 -- Returns one of ROLE_PEN / ROLE_PALM / ROLE_TOUCH.
+--
+-- The primary signal is the TOOL TYPE, not the slot number. A genuine pen tip
+-- always reports TOOL_PEN (1), and no finger or palm ever does -- Linux reuses the
+-- ERASER value (2) for MT_TOOL_PALM, but never the PEN value. So TOOL_PEN can be
+-- trusted unconditionally, which means the pen draws even on a device/firmware that
+-- never populates Input.pen_slot (the Kindle Scribe gen 1 "the pen doesn't work"
+-- report: the old code required a preset pen_slot and, finding it nil, classified
+-- the real pen as a palm so nothing drew). The slot number is only a secondary hint
+-- for disambiguating the ERASER value (rear tip vs resting palm): we trust a stylus
+-- tool on the pen's OWN slot -- preset by the runtime, or learned from the first
+-- real pen frame -- and the barrel-button latch, and treat any other bare 2/3 as a
+-- promoted palm.
 Stylus.ROLE_PEN   = "pen"     -- a trusted stylus: draw or erase with it
 Stylus.ROLE_PALM  = "palm"    -- a palm promoted to a stylus tool number: discard
 Stylus.ROLE_TOUCH = "touch"   -- an ordinary finger that only reached us in passing
@@ -77,33 +91,68 @@ function Stylus.classify(slot, facts)
     local tool = slot.tool
     local stylus_tool = Stylus.isPen(tool)
     local pen_slot = facts.pen_slot
+    local learned = facts.learned_slot
+    local on_pen_slot = (pen_slot ~= nil and slot.slot == pen_slot)
+                     or (learned ~= nil and slot.slot == learned)
 
-    if facts.wacom then
-        -- Wacom (Kindle Scribe, reMarkable): the digitizer owns one pen slot, and
-        -- the pen and its rear eraser are ALWAYS on it. A stylus-valued tool on
-        -- any other slot is the palm collision above.
-        if pen_slot == nil then
-            -- The runtime never told us the pen slot: fail closed so nothing draws
-            -- from a guess.
-            return stylus_tool and Stylus.ROLE_PALM or Stylus.ROLE_TOUCH
-        end
-        if slot.slot == pen_slot then return Stylus.ROLE_PEN end
-        if stylus_tool then return Stylus.ROLE_PALM end
-        return Stylus.ROLE_TOUCH
-    end
-
-    -- Off Wacom (Kobo stylus, SDL) the tool number has several possible authors.
-    -- The dedicated pen slot decides first; then a real PEN tool (the one value
-    -- that means "pen" in every namespace); then KOReader's own barrel-button
-    -- latch, which rewrites PEN into ERASER/HIGHLIGHTER while the button is held
-    -- (live on a Kobo). A bare 2/3 with no latch is a panel MT_TOOL_PALM/DIAL --
-    -- a palm.
-    if pen_slot ~= nil and slot.slot == pen_slot then return Stylus.ROLE_PEN end
+    -- 1. A real pen tip is unambiguous on every device: always the pen.
     if tool == Stylus.TOOL_PEN then return Stylus.ROLE_PEN end
+    -- 2. On the pen's own slot (preset or learned) a stylus tool is the pen, its
+    --    rear eraser, or a held barrel button.
+    if on_pen_slot and stylus_tool then return Stylus.ROLE_PEN end
+    -- 3. KOReader rewrites the pen's tool to ERASER/HIGHLIGHTER while a side button
+    --    is held; trust that latch even if slot bookkeeping lags.
     if tool == Stylus.TOOL_ERASER and facts.eraser_latch then return Stylus.ROLE_PEN end
     if tool == Stylus.TOOL_HIGHLIGHTER and facts.highlighter_latch then return Stylus.ROLE_PEN end
+    -- 4. Any other stylus tool number is a promoted palm (a bare 2/3 == MT_TOOL_PALM,
+    --    or a stylus tool on a slot that is not the pen's). Everything else is an
+    --    ordinary finger that only reached the callback in passing.
     if stylus_tool then return Stylus.ROLE_PALM end
     return Stylus.ROLE_TOUCH
+end
+
+-- Kinematic palm filter: a real nib cannot teleport. Some Wacom panels (the Kindle
+-- Scribe among them) share one slot table between the pen digitizer and the
+-- capacitive panel, so a resting palm's coordinates get written into the pen's slot
+-- and arrive as the nib "jumping" across the page -- the "sometimes weird lines"
+-- report. Physics tells them apart: a sample more than `base + dt*speed` (pixels)
+-- from the last accepted point in the elapsed time `dt_ms` is not the pen, so it is
+-- dropped rather than drawn to. After `limit` consecutive drops we accept one anyway
+-- so a genuine unreported lift/re-touch can never wedge the stroke shut.
+--   state: {x, y, drops} carried across ONE stroke (pass a fresh {} at pen-down)
+--   dt_ms: elapsed ms since the last sample, or nil when no reliable clock exists
+--   scale: Screen DPI factor so the pixel thresholds are resolution-independent
+-- Returns true to ACCEPT the sample, false to DROP it. Pure / unit-testable. When
+-- dt_ms is missing it accepts unconditionally (no clock -> no filtering, never worse
+-- than not having the filter at all).
+function Stylus.acceptMove(state, x, y, dt_ms, scale, tune)
+    tune = tune or {}
+    scale = scale or 1
+    if state.x == nil then                       -- first point of the stroke: seed
+        state.x, state.y, state.drops = x, y, 0
+        return true
+    end
+    if not (dt_ms and dt_ms >= 0) then           -- no reliable elapsed time: don't filter
+        state.x, state.y, state.drops = x, y, 0
+        return true
+    end
+    local base  = tune.jump_base  or 48          -- px allowed even at ~zero elapsed
+    local speed = tune.max_speed  or 6           -- px per ms a real nib can move
+    local gap   = tune.max_gap_ms or 120         -- cap dt so a long gap can't allow anything
+    local limit = tune.limit      or 8
+    local dt = dt_ms < gap and dt_ms or gap
+    local allowed = (base + dt * speed) * scale
+    local dx, dy = x - state.x, y - state.y
+    if dx * dx + dy * dy <= allowed * allowed then
+        state.x, state.y, state.drops = x, y, 0
+        return true
+    end
+    state.drops = (state.drops or 0) + 1
+    if state.drops >= limit then                  -- escape hatch: accept and restart
+        state.x, state.y, state.drops = x, y, 0
+        return true
+    end
+    return false
 end
 
 -- Fresh per-pen tracking state.

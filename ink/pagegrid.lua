@@ -23,6 +23,11 @@ local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
 local GREY  = Blitbuffer.COLOR_GRAY
+-- Luminance greys (Color8), so paintRoundedRect gets a luminance colour -- passing a
+-- ColorRGB32 to it renders on the newer emulator but misbehaves on older on-device
+-- builds, so the rounded cards/pills stay on the luminance path.
+local CARD  = Blitbuffer.Color8(0xE6)   -- light-grey rounded card behind a thumbnail
+local LABEL = Blitbuffer.Color8(0x66)   -- muted grey for the page-number labels
 
 local PageGrid = InputContainer:extend{
     count = 1,          -- number of pages
@@ -106,26 +111,47 @@ end
 function PageGrid:paintTo(bb, x, y)
     self:prepare()
     local sw, sh = self.sw, self.sh
+    local S = function(px) return Screen:scaleBySize(px) end
     bb:paintRect(x, y, sw, sh, WHITE)
-    -- top bar
-    local face = Font:getFace("cfont", Screen:scaleBySize(20))
-    local function text(s, cx, cy, fgcolor)
+    local function label(s, cx, cy, face, fgcolor)
         local t = TextWidget:new{ text = s, face = face, fgcolor = fgcolor or BLACK }
         local sz = t:getSize()
         t:paintTo(bb, math.floor(cx - sz.w / 2), math.floor(cy - sz.h / 2))
         t:free()
     end
+    -- top bar: a left-aligned bold title and a black "Done" pill on the right.
+    -- Font sizes are plain points (Font:getFace applies the DPI scaling itself);
+    -- wrapping them in scaleBySize would double-scale the text, oversizing it on
+    -- higher-DPI/colour panels -- which is what the old page grid did.
+    local title = TextWidget:new{ text = string.format(_("Pages  (%d)"), self.count),
+        face = Font:getFace("cfont", 22), bold = true }
+    local tsz = title:getSize()
+    title:paintTo(bb, x + self.pad, y + math.floor(self.top_h / 2 - tsz.h / 2))
+    title:free()
+    local pill_w, pill_h = S(84), S(34)
+    local pill_x = x + sw - self.pad - pill_w
+    local pill_y = y + math.floor(self.top_h / 2 - pill_h / 2)
+    bb:paintRoundedRect(pill_x, pill_y, pill_w, pill_h, BLACK, S(11))
+    self._close = { x = pill_x, y = pill_y, w = pill_w, h = pill_h }
+    label(_("Done"), pill_x + pill_w / 2, pill_y + pill_h / 2, Font:getFace("cfont", 15), WHITE)
     bb:paintRect(x, y + self.top_h - 1, sw, 1, GREY)
-    text(string.format(_("Pages  (%d)"), self.count), x + sw / 2, y + self.top_h / 2)
 
-    local label_h = Screen:scaleBySize(22)
+    local label_h = S(22)
+    local card_r = S(16)
+    local nface = Font:getFace("cfont", 17)
     for slot = 0, self.per - 1 do
         local c = self:cellRect(slot)
         if c.index then
-            -- thumbnail frame; thicker border on the current page
-            local border = (c.index == self.current) and 3 or 1
-            bb:paintBorder(x + c.x, y + c.y, c.w, c.h - label_h, border,
-                (c.index == self.current) and BLACK or GREY)
+            local sel = (c.index == self.current)
+            -- a rounded light-grey card behind each thumbnail; the current page gets a
+            -- solid black rounded border (a black card with an inset grey card)
+            if sel then
+                bb:paintRoundedRect(x + c.x, y + c.y, c.w, c.h, BLACK, card_r)
+                local ins = S(3)
+                bb:paintRoundedRect(x + c.x + ins, y + c.y + ins, c.w - 2 * ins, c.h - 2 * ins, CARD, card_r)
+            else
+                bb:paintRoundedRect(x + c.x, y + c.y, c.w, c.h, CARD, card_r)
+            end
             local thumb = self.cache[c.index]
             if thumb then
                 local tw, th = thumb:getWidth(), thumb:getHeight()
@@ -133,22 +159,33 @@ function PageGrid:paintTo(bb, x, y)
                 local ty = y + c.y + math.floor((c.h - label_h - th) / 2)
                 bb:blitFrom(thumb, tx, ty, 0, 0, tw, th)
             end
-            text(tostring(c.index), x + c.x + c.w / 2, y + c.y + c.h - label_h / 2,
-                (c.index == self.current) and BLACK or GREY)
+            label(tostring(c.index), x + c.x + c.w / 2, y + c.y + c.h - label_h / 2, nface,
+                sel and BLACK or LABEL)
         end
     end
 
-    -- bottom bar: grid paging + close
+    -- bottom bar: rounded pill paging buttons, with a "grid page / total" indicator
     local by = y + sh - self.bot_h
-    bb:paintRect(x, by, sw, 1, GREY)
-    local third = math.floor(sw / 3)
-    self._prev = { x = x, y = by, w = third, h = self.bot_h }
-    self._close = { x = x + third, y = by, w = sw - 2 * third, h = self.bot_h }
-    self._next = { x = x + sw - third, y = by, w = third, h = self.bot_h }
-    local bcy = by + self.bot_h / 2
-    if self.gpage > 0 then text("\u{2039} " .. _("Prev"), x + third / 2, bcy) end
-    text(_("Close"), x + sw / 2, bcy)
-    if self.gpage < self:gridCount() - 1 then text(_("More") .. " \u{203A}", x + sw - third / 2, bcy) end
+    local pw, ph = S(120), S(40)
+    local pcy = by + math.floor(self.bot_h / 2)
+    local pface = Font:getFace("cfont", 16)
+    self._prev, self._next = nil, nil
+    if self.gpage > 0 then
+        local px0 = x + self.pad
+        bb:paintRoundedRect(px0, pcy - math.floor(ph / 2), pw, ph, CARD, S(14))
+        self._prev = { x = px0, y = pcy - math.floor(ph / 2), w = pw, h = ph }
+        label("\u{2039} " .. _("Prev"), px0 + pw / 2, pcy, pface)
+    end
+    if self.gpage < self:gridCount() - 1 then
+        local px0 = x + sw - self.pad - pw
+        bb:paintRoundedRect(px0, pcy - math.floor(ph / 2), pw, ph, CARD, S(14))
+        self._next = { x = px0, y = pcy - math.floor(ph / 2), w = pw, h = ph }
+        label(_("More") .. " \u{203A}", px0 + pw / 2, pcy, pface)
+    end
+    if self:gridCount() > 1 then
+        label(string.format("%d / %d", self.gpage + 1, self:gridCount()),
+            x + sw / 2, pcy, Font:getFace("cfont", 15), LABEL)
+    end
 end
 
 function PageGrid:gridGo(delta)

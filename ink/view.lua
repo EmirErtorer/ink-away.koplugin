@@ -766,7 +766,7 @@ function InkAwayView:onCloseWidget()
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -1954,7 +1954,7 @@ function InkAwayView:openShapePicker()
                 if self.selection or self.lassoing then self:clearSelection() end
                 self.tool = "lasso"; self:refreshToolLabels()
                 UIManager:close(self._shape_dialog); self._shape_dialog = nil
-                self:composeCanvas(); self:renderView(); UIManager:setDirty("all", "full")
+                self:composeCanvas(); self:renderView(); self:refresh("all", "full")
             end, _("Lasso select")),
         }
         -- three compact toggles (switch right after its label) spread across one row
@@ -2424,7 +2424,7 @@ function InkAwayView:setToolbarHidden(hidden)
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
     self:renderView()
-    UIManager:setDirty(self, "full")
+    self:refresh(self, "full")
 end
 
 -- Hide or show the notebook bottom bar, growing the paper to fill the freed space
@@ -2446,7 +2446,7 @@ function InkAwayView:setNbBarHidden(hidden)
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
     self:renderView()
-    UIManager:setDirty(self, "full")
+    self:refresh(self, "full")
 end
 
 ------------------------------------------------------------------------------
@@ -2458,6 +2458,27 @@ end
 function InkAwayView:areaScreenRect()
     local v = self.view
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
+end
+
+-- True only on a colour (Kaleido) panel. Cached once: on grey e-ink a full-screen
+-- flash is cheap, but on a colour panel it costs ~1-2s of colour waveform whether
+-- or not any pixel changed, so colour needs a lighter refresh policy.
+function InkAwayView:colourPanel()
+    if self._is_colour == nil then self._is_colour = self:colorScreen() end
+    return self._is_colour
+end
+
+-- Colour-aware refresh. On grey e-ink this is a byte-for-byte pass-through to
+-- UIManager:setDirty (zero Kindle change). On a colour panel it turns an AVOIDABLE
+-- full-screen flash ("full") into a non-flashing partial update ("ui"), which
+-- covers the same region without the ~1-2s colour flash. Other modes are passed
+-- through unchanged. Use this for repaints that only need the pixels updated (tool
+-- switches, bar toggles, page turns, text-box commit); keep a literal
+-- setDirty(..., "full", ...) for the deliberate flashes that must clear ghosting
+-- (open/close, rotation, the periodic de-ghost, and big page-wide content swaps).
+function InkAwayView:refresh(target, mode, region)
+    if self:colourPanel() and mode == "full" then mode = "ui" end
+    UIManager:setDirty(target, mode, region)
 end
 
 -- Given a changed rectangle of the base (un-mirrored) stroke in area-local
@@ -2607,7 +2628,7 @@ function InkAwayView:afterFontChange()
         self.editing_text.font = self.text_font
         self:refreshTextBox("flashui")
     else
-        self:composeCanvas(); self:renderView(); UIManager:setDirty(self, "full")
+        self:composeCanvas(); self:renderView(); self:refresh(self, "full")
     end
 end
 
@@ -3500,7 +3521,14 @@ function InkAwayView:beginStroke(sx, sy)
     -- solid, fully-opaque, pure-black pen; everything else draws under grey-capable
     -- "ui" so it appears in the right shade as you draw.
     if is_erase then
-        self._live_mode = "fast"                 -- the eraser paints white; DU shows white fine
+        -- "fast" (A2/DU) is 1-bit black/white, so it can only show white. That is
+        -- fine when the eraser reveals plain white (a blank drawing page), but in a
+        -- notebook it reveals the grey ruling, and over a background image it reveals
+        -- that picture -- neither of which A2 can render, so the erased path flashes
+        -- to white and (on colour panels especially) does not settle back to the
+        -- revealed shade. Use the grey-capable "ui" waveform whenever the reveal is
+        -- non-white; keep the snappy "fast" erase only for the blank-white case.
+        self._live_mode = self:eraseRevealBB() and "ui" or "fast"
     else
         local c = self.pen_color
         local solid = (style == nil) or (Raster.STYLES[style] and Raster.STYLES[style].solid)
@@ -4014,7 +4042,7 @@ function InkAwayView:cropRelease(pos)
         self.save_area = (w >= 8 and h >= 8)
             and { x = math.floor(x0), y = math.floor(y0), w = w, h = h } or nil
     end
-    UIManager:setDirty(self, "full")
+    self:refresh(self, "full")
     self:onSave()   -- return to the save dialog with the area now chosen
     return true
 end
@@ -4206,22 +4234,42 @@ function InkAwayView:chooseBackground()
 end
 
 function InkAwayView:openBackground()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local buttons = {
-        {{ text = _("Open image as background"),
-           callback = function() UIManager:close(dlg); self:chooseBackground() end }},
-    }
-    if self.bg_bb then
-        buttons[#buttons + 1] = {{ text = _("Remove background"),
-            callback = function() UIManager:close(dlg); self:removeBackground() end }}
-        buttons[#buttons + 1] = {{ text = _("At save time you can include the picture or export just your drawing. The grid is always left out."), enabled = false }}
-    else
-        buttons[#buttons + 1] = {{ text = _("Draw over a photo or screenshot; your drawing sits on top. To draw on a PDF, use \u{201C}Open PDF as notebook\u{201D} instead."), enabled = false }}
+    if self._bg_dialog then UIManager:close(self._bg_dialog); self._bg_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local HINT = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF)
+    local closeSelf = function()
+        if self._bg_dialog then UIManager:close(self._bg_dialog); self._bg_dialog = nil end
     end
-    buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
-    dlg = ButtonDialog:new{ title = _("Background image"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        table.insert(content, self:sheetTitle(_("Background image"), content_w, _("Done"), closeSelf))
+        table.insert(content, vspan(16))
+        table.insert(content, self:actionButton(_("Open image as background"), content_w,
+            function() closeSelf(); self:chooseBackground() end))
+        if self.bg_bb then
+            table.insert(content, vspan(8))
+            table.insert(content, self:actionButton(_("Remove background"), content_w,
+                function() closeSelf(); self:removeBackground() end, true))
+        end
+        table.insert(content, vspan(12))
+        local hint = self.bg_bb
+            and _("At save time you can include the picture or export just your drawing. The grid is always left out.")
+            or _("Draw over a photo or screenshot; your drawing sits on top. To draw on a PDF, use \u{201C}Open PDF as notebook\u{201D} instead.")
+        table.insert(content, TextBoxWidget:new{ text = hint, width = content_w,
+            face = Font:getFace("cfont", 15), fgcolor = HINT })
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._bg_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._bg_dialog = nil end }
+    UIManager:show(self._bg_dialog)
 end
 
 -- Render one PDF page to a canvas-sized page BlitBuffer, on demand. Mirrors the
@@ -5691,6 +5739,9 @@ function InkAwayView:resetPenState()
     self._reject_finger = false
     self._palm_slots = {}
     self._palm_count = 0
+    self._pen_kin = nil
+    self._pen_last_ms = nil
+    self._learned_pen_slot = nil
 end
 
 -- True while finger input must be ignored. Latched on PHYSICAL presence -- the pen
@@ -5725,10 +5776,34 @@ function InkAwayView:stylusFacts(input)
     input = input or Device.input
     return {
         pen_slot          = input and input.pen_slot,
+        learned_slot      = self._learned_pen_slot,   -- slot a real TOOL_PEN was seen on
         wacom             = input and input.wacom_protocol == true,
         eraser_latch      = input and input.stylus_eraser_active == true,
         highlighter_latch = input and input.stylus_highlighter_active == true,
     }
+end
+
+-- Elapsed milliseconds since the previous stylus frame, from the slot's own
+-- timestamp, for the kinematic palm filter. Returns nil when no usable timestamp
+-- is present (then the filter does not engage). KOReader's timev has been both a
+-- {sec/usec} table and, in newer builds, a plain seconds number, so handle both.
+function InkAwayView:penFrameMs(slot)
+    local tv = slot.timev
+    local ms
+    if type(tv) == "number" then
+        ms = tv * 1000
+    elseif type(tv) == "table" then
+        local s = tv.tv_sec or tv.sec
+        local u = tv.tv_usec or tv.usec
+        if s then ms = s * 1000 + (u or 0) / 1000 end
+    end
+    if not ms then self._pen_last_ms = nil; return nil end
+    local prev = self._pen_last_ms
+    self._pen_last_ms = ms
+    if not prev then return nil end
+    local dt = ms - prev
+    if dt < 0 then return nil end
+    return dt
 end
 
 -- Hold finger rejection open for the lift debounce and (re)start the clear timer.
@@ -5785,6 +5860,14 @@ function InkAwayView:onStylusSlot(inp, slot)
     if not self.palm_reject or self.closing then return false end
     local input = inp or Device.input
     local role = Stylus.classify(slot, self:stylusFacts(input))
+    -- Learn the pen's slot from the first genuine pen-tip frame, so the rear eraser
+    -- and a held barrel button (which report the ambiguous ERASER value) are trusted
+    -- on that same slot even when the runtime never set Input.pen_slot. The pen slot
+    -- is fixed per device, so once learned it stays until palm rejection is reset.
+    if role == Stylus.ROLE_PEN and slot.tool == Stylus.TOOL_PEN and slot.slot ~= nil
+            and (self._pen_owner == nil or slot.slot == self._pen_owner) then
+        self._learned_pen_slot = slot.slot
+    end
     -- Single-slot ownership. While one slot is drawing the pen stroke, any OTHER
     -- slot that also classifies as a stylus must NOT co-drive the same stroke --
     -- feeding two slots into one pen state machine is what draws lines between
@@ -5793,7 +5876,14 @@ function InkAwayView:onStylusSlot(inp, slot)
     -- here it is demoted back to a palm and discarded. (On Wacom only the single
     -- pen slot is ever ROLE_PEN, so this never triggers there.)
     local sn = slot.slot or 0
-    if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner then
+    -- The pen's own slot (known from the runtime or learned from a real pen frame)
+    -- is always the pen, so it is never demoted -- this also lets a coordinate-late
+    -- pen (whose announce frame carried no slot number, defaulting the owner to 0)
+    -- keep drawing once its real slotted frames arrive.
+    local is_pen_slot = (self._learned_pen_slot ~= nil and sn == self._learned_pen_slot)
+                     or (input and input.pen_slot ~= nil and sn == input.pen_slot)
+    if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner
+            and not is_pen_slot then
         role = Stylus.ROLE_PALM
     end
     if role == Stylus.ROLE_PALM then
@@ -5853,6 +5943,8 @@ function InkAwayView:penDown(slot)
     if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
     self._reject_finger = true
     self._pen_started = false      -- the stroke opens on the first point with coordinates
+    self._pen_kin = {}             -- fresh kinematic-filter state for this stroke
+    self._pen_last_ms = nil
     UIManager:unschedule(self._pen_clear)
     self:penDropFingerOps()
     -- the eraser end of the pen erases; the tip (or a highlighter) uses the
@@ -5867,6 +5959,16 @@ end
 function InkAwayView:penMove(slot)
     if not (slot.x and slot.y) then return end   -- a coordinate-less down/hover frame
     local x, y = self:penScreenXY(slot)
+    -- Kinematic palm filter: drop a sample that jumped implausibly far in the elapsed
+    -- time (a resting palm's coordinates written into the pen slot), keeping the
+    -- stroke open. It seeds itself on the first point and no-ops without a timestamp,
+    -- so a normal stroke is never affected. See Stylus.acceptMove.
+    if self._pen_kin then
+        local dt = self:penFrameMs(slot)
+        if not Stylus.acceptMove(self._pen_kin, x, y, dt, self._dpi_factor or 1) then
+            return
+        end
+    end
     self._pen_last_x, self._pen_last_y = x, y
     -- Some pen protocols announce the contact one frame before the first
     -- coordinates, so the stroke is opened by whichever frame first has a point.
@@ -6353,7 +6455,7 @@ function InkAwayView:selDelete()
     self.selection = nil
     self.dirty = true
     self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "full")
+    self:refresh(self, "full")
 end
 
 function InkAwayView:openSelectionMenu()
@@ -6748,7 +6850,7 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx, hit_pos)
     end
     self:ensureCaretVisible()           -- only pans if the caret is actually hidden
     self:renderView()
-    UIManager:setDirty(self, "full")
+    self:refresh(self, "full")
 end
 
 -- Leave edit mode, baking the box in (commit) or dropping the edit (cancel).
@@ -6794,7 +6896,7 @@ function InkAwayView:finishTextEdit(commit)
     self:hideTextKeyboard()
     self:composeCanvas()
     self:renderView()
-    UIManager:setDirty("all", "full")
+    self:refresh("all", "full")
 end
 
 -- ---- per-box undo / redo -------------------------------------------------
@@ -7460,7 +7562,13 @@ function InkAwayView:paintTo(bb, x, y)
         -- The two numbers are text; the divider is a hand-drawn slash the SAME height
         -- as the digits (the font's own "/" is noticeably taller), so nothing in the
         -- bar overtops anything else.
-        local face = Font:getFace("cfont", math.max(10, math.floor(isz * 0.6)))
+        -- Size the digits through faceAt (a REAL pixel size) so they match the
+        -- icon height on every device. Font:getFace re-applies Screen DPI scaling,
+        -- which made the counter scale differently from the real-pixel icons and
+        -- slash -- uniform by luck on high-res greyscale Kindles, visibly too small
+        -- on other resolutions (e.g. the Kobo Libra Colour). faceAt divides that
+        -- factor out, so the digit height tracks the icons identically everywhere.
+        local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.62)))
         local idxw = TextWidget:new{ text = tostring(nb.index), face = face, fgcolor = BLACKC }
         local cntw = TextWidget:new{ text = tostring(nb:count()), face = face, fgcolor = BLACKC }
         local iw, ih = idxw:getSize().w, idxw:getSize().h
@@ -7783,7 +7891,22 @@ function InkAwayView:nbLoad()
     self.selected, self.rotating = nil, nil
     self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "full")
+    -- A page turn must not fire a full-screen colour FLASH every time: on a Kaleido
+    -- panel that costs ~1-2s even for a blank page. On colour, use a non-flashing
+    -- partial refresh and only flash occasionally to clear accumulated ghosting; on
+    -- grey e-ink this stays a plain full refresh, exactly as before.
+    if self:colourPanel() then
+        self._turns_since_full = (self._turns_since_full or 0) + 1
+        local every = (self.ghost_clean and self.ghost_clean > 0) and self.ghost_clean or 8
+        if self._turns_since_full >= every then
+            self._turns_since_full = 0
+            UIManager:setDirty(self, "full")
+        else
+            self:refresh(self, "full")   -- -> non-flashing "ui" on colour
+        end
+    else
+        UIManager:setDirty(self, "full")
+    end
 end
 
 -- Keep one open handle to the source PDF for the whole session, so page turns
@@ -7847,8 +7970,54 @@ function InkAwayView:nbGoTo(target)
     self.dirty = true
 end
 
--- Ask for a page number and jump there.
+-- Go to a page: a new-style sheet with quick First/Last jumps and a "type a
+-- number" button that opens the stock number keypad (kept as a stock InputDialog,
+-- the device-safe way to type -- the sheet gives the chrome, the keypad the entry).
 function InkAwayView:nbJumpPrompt()
+    local nb = self.notebook
+    if not nb then return end
+    if self._goto_dialog then UIManager:close(self._goto_dialog); self._goto_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local halfW = math.floor((content_w - gap) / 2)
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._goto_dialog then UIManager:close(self._goto_dialog); self._goto_dialog = nil end
+    end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) content[#content + 1] = w end
+        add(self:sheetTitle(_("Go to page"), content_w, _("Close"), closeSelf))
+        add(vspan(6))
+        add(TextWidget:new{ text = string.format(_("Page %d of %d"), nb.index, nb:count()),
+            face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) })
+        add(vspan(12))
+        add(HorizontalGroup:new{ align = "center",
+            self:actionButton(_("First page"), halfW, function() closeSelf(); self:nbGoTo(1) end),
+            HorizontalSpan:new{ width = gap },
+            self:actionButton(_("Last page"), halfW, function() closeSelf(); self:nbGoTo(nb:count()) end),
+        })
+        add(vspan(8))
+        add(self:actionButton(_("Type a page number\u{2026}"), content_w,
+            function() closeSelf(); self:promptGotoNumber() end, true))
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    local v = self.view
+    self._goto_dialog = IconMenu:new{ build = build, bottom_y = v.area_y + v.area_h,
+        on_close = function() self._goto_dialog = nil end }
+    UIManager:show(self._goto_dialog)
+end
+
+-- The actual page-number entry, reached from the Go-to-page sheet. A stock
+-- InputDialog with the number keypad -- the proven, device-safe way to type.
+function InkAwayView:promptGotoNumber()
     local nb = self.notebook
     if not nb then return end
     local InputDialog = require("ui/widget/inputdialog")
@@ -8191,47 +8360,67 @@ function InkAwayView:exportNotebookPDF()
     local is_pdf = nb.template and nb.template.pdf_path
     self.nb_paper = self.nb_paper or "white"
     self.nb_scope = self.nb_scope or "all"
-    local dlg
+    if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local halfW = math.floor((content_w - gap) / 2)
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local GREY = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF)
     local SCOPE_LABEL = { all = _("All pages"), ink = _("Pages with ink"), range = _("Range") }
-    local function paperBtn(k, label)
-        return { text = (self.nb_paper == k and "\u{25CF} " or "") .. label,
-                 callback = function() self.nb_paper = k; UIManager:close(dlg); self:exportNotebookPDF() end }
+    local closeSelf = function()
+        if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
     end
-    local function reopen() UIManager:close(dlg); self:exportNotebookPDF() end
-    local buttons = {
-        {{ text = _("Paper colour"), enabled = false }},
-        { paperBtn("white", _("White")), paperBtn("sand", _("Sandpaper")) },
-    }
-    if self.bg_bb and not is_pdf then   -- an imported PDF always prints its pages
-        buttons[#buttons + 1] = {{
-            text = self.export_bg and _("Background: included") or _("Background: drawing only"),
-            callback = function() self.export_bg = not self.export_bg; reopen() end,
-        }}
-    end
-    -- page scope: cycle All -> Pages with ink -> Range
-    buttons[#buttons + 1] = {{ text = _("Pages: ") .. (SCOPE_LABEL[self.nb_scope] or SCOPE_LABEL.all),
-        callback = function()
+    local reopen = function() self:exportNotebookPDF() end   -- rebuild after a choice changes the layout
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Export notebook"), content_w, _("Cancel"), closeSelf))
+        add(vspan(16))
+        add(TextWidget:new{ text = _("Paper"), face = Font:getFace("cfont", 15), bold = true, fgcolor = GREY })
+        add(vspan(6))
+        add(HorizontalGroup:new{ align = "center",
+            self:actionButton(_("White"), halfW, function() self.nb_paper = "white"; reopen() end, self.nb_paper == "white"),
+            HorizontalSpan:new{ width = gap },
+            self:actionButton(_("Sandpaper"), halfW, function() self.nb_paper = "sand"; reopen() end, self.nb_paper == "sand") })
+        if self.bg_bb and not is_pdf then   -- an imported PDF always prints its own pages
+            add(vspan(12))
+            add(ToggleRow:new{ label = _("Include background"), is_on = self.export_bg,
+                width = content_w, parent = menu, callback = function(on) self.export_bg = on end })
+        end
+        add(vspan(12))
+        add(TextWidget:new{ text = _("Pages"), face = Font:getFace("cfont", 15), bold = true, fgcolor = GREY })
+        add(vspan(6))
+        add(self:actionButton(_("Pages: ") .. (SCOPE_LABEL[self.nb_scope] or SCOPE_LABEL.all), content_w, function()
             self.nb_scope = (self.nb_scope == "all" and "ink") or (self.nb_scope == "ink" and "range") or "all"
-            if self.nb_scope == "range" and not self.nb_range then
-                self.nb_range = { from = 1, to = nb:count() }
-            end
+            if self.nb_scope == "range" and not self.nb_range then self.nb_range = { from = 1, to = nb:count() } end
             reopen()
-        end }}
-    if self.nb_scope == "range" then
-        buttons[#buttons + 1] = {{ text = string.format(_("Range: %d\u{2013}%d (tap to set)"),
-            self.nb_range.from or 1, self.nb_range.to or nb:count()),
-            callback = function() UIManager:close(dlg); self:promptExportRange() end }}
+        end))
+        if self.nb_scope == "range" then
+            add(vspan(8))
+            add(self:actionButton(string.format(_("Range: %d\u{2013}%d (tap to set)"),
+                (self.nb_range and self.nb_range.from) or 1, (self.nb_range and self.nb_range.to) or nb:count()),
+                content_w, function() closeSelf(); self:promptExportRange() end))
+        end
+        add(vspan(12))
+        add(ToggleRow:new{ label = _("Page numbers"), is_on = self.nb_numbers and true or false,
+            width = content_w, parent = menu, callback = function(on) self.nb_numbers = on end })
+        add(vspan(16))
+        local n = #self:selectedNotebookPages()
+        add(self:actionButton(string.format(_("Export %d page(s) to PDF"), n), content_w, function()
+            if n > 0 then closeSelf(); self:chooseNotebookDestination() end
+        end, true))
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
-    buttons[#buttons + 1] = {{ text = _("Page numbers: ") .. (self.nb_numbers and _("on") or _("off")),
-        callback = function() self.nb_numbers = not self.nb_numbers; reopen() end }}
-    local n = #self:selectedNotebookPages()
-    buttons[#buttons + 1] = {{ text = string.format(_("Export %d page(s) to PDF"), n),
-           enabled = n > 0,
-           callback = function() UIManager:close(dlg); self:chooseNotebookDestination() end }}
-    buttons[#buttons + 1] = {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }}
-    dlg = ButtonDialog:new{ title = _("Export notebook"), title_align = "center", buttons = buttons }
-    self._save_dialog = dlg
-    UIManager:show(dlg)
+    self._save_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._save_dialog = nil end }
+    UIManager:show(self._save_dialog)
 end
 
 -- Ask for the first and last page of the export range.
