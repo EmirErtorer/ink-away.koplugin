@@ -6117,8 +6117,21 @@ function InkAwayView:imageBrowserBuild(menu)
         self:actionButton("\u{2039} " .. _("Prev"), btnW, function() self:imageBrowserGo(-1) end),
         HorizontalSpan:new{ width = gap },
         self:actionButton(_("Next") .. " \u{203A}", btnW, function() self:imageBrowserGo(1) end) }
-    local show_page = (st.page and st.page > 1) or st.has_next
-    local page_w = show_page and TextWidget:new{ text = string.format(_("Page %d"), st.page or 1),
+    -- A caption under the grid: which source these results came from (so you can
+    -- tell DuckDuckGo from a fallback) and the page number.
+    local FRIENDLY = { duckduckgo = "DuckDuckGo", commons = "Wikimedia Commons", openverse = "Openverse" }
+    local caption
+    do
+        local parts = {}
+        if #st.results > 0 and st.provider and FRIENDLY[st.provider] then
+            parts[#parts + 1] = _("via ") .. FRIENDLY[st.provider]
+        end
+        if (st.page and st.page > 1) or st.has_next then
+            parts[#parts + 1] = string.format(_("Page %d"), st.page or 1)
+        end
+        if #parts > 0 then caption = table.concat(parts, "   \u{00B7}   ") end
+    end
+    local page_w = caption and TextWidget:new{ text = caption,
         face = Font:getFace("cfont", 13), fgcolor = GREY } or nil
 
     local top_h = title:getSize().h + Screen:scaleBySize(12)
