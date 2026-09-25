@@ -7,12 +7,19 @@ The pure pieces (URL building, query encoding, JSON normalising) live at the top
 and are unit-tested without a KOReader environment. The network fetch and image
 decoding lazily require KOReader modules, so the file still loads for the tests.
 
-Providers (both keyless, HTTPS, safe-for-work):
-  * openverse -- api.openverse.org, openly/CC-licensed media, filters to PNG with
-    extension=png, mature=false by default. The default.
-  * commons   -- Wikimedia Commons MediaWiki API, filters to PNG with
-    filemime:image/png. The fallback; proven on-device (KOReader's own Wikipedia
-    lookup uses this same API).
+Providers (both keyless, HTTPS, safe-for-work); the reader switches between them
+in the browser:
+  * openverse -- api.openverse.org, a broad, varied catalogue (Flickr, museums,
+    galleries), filters to PNG with extension=png, mature=false by default.
+  * commons   -- Wikimedia Commons MediaWiki API, encyclopedic but with the most
+    reliable thumbnails (KOReader's own Wikipedia lookup uses this same API),
+    filters to PNG with filemime:image/png.
+
+There is deliberately no "web-wide" search engine here: DuckDuckGo, Bing and
+Google all gate their image-results endpoints behind a signature computed by
+their in-page JavaScript, which a plain HTTP client (no JS engine) cannot mint --
+they answer such requests with an immediate 403. So the two keyless catalogue
+APIs above are what actually works on-device.
 
 A "transparent only" search maps to a PNG-format filter: these catalogues'
 PNG results are dominated by transparent graphics (icons, stickers, clip-art).
@@ -28,15 +35,14 @@ ImageSearch.PAGE_SIZE = 6        -- results per page (a snappy 3-wide, 2-tall gr
 ImageSearch.THUMB_MAX = 240      -- px, longest side of a grid thumbnail
 ImageSearch.FULL_MAX  = 1400     -- px cap on the added image when "full res" is off
 ImageSearch.USER_AGENT = "InkAway/3 KOReader plugin (https://github.com/EmirErtorer/ink-away.koplugin)"
--- A browser-like agent for the image search + CDN image fetches. DuckDuckGo's
--- endpoint and image CDNs (bing thumbnails, etc.) reject/limit a non-browser agent.
+-- A browser-like agent for the CDN image (thumbnail/full) fetches: some image
+-- hosts reject or throttle a plainly non-browser agent.
 ImageSearch.BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 
--- DuckDuckGo first: keyless, web-wide (Google-like) results with fast CDN
--- thumbnails. Wikimedia Commons then Openverse are the fallbacks (keyless too),
--- used only when DuckDuckGo returns nothing -- Commons' MediaWiki thumbnails are
--- reliable, and Openverse is the last resort (its own thumbnail proxy is flaky).
-ImageSearch.PROVIDERS = { "duckduckgo", "commons", "openverse" }
+-- The two keyless catalogues. When the reader hasn't chosen one, searchPage tries
+-- them in this order (Openverse first, for its broader mix); when they have, only
+-- their choice is queried so the source toggle is exact.
+ImageSearch.PROVIDERS = { "openverse", "commons" }
 
 -- URL-encode one component (keep RFC 3986 unreserved, percent-escape the rest).
 function ImageSearch.urlencode(s)
@@ -211,70 +217,10 @@ function ImageSearch.decode(bytes, max_side)
     return bb
 end
 
--- Normalise a DuckDuckGo i.js JSON body into the uniform result shape. Pure (an
--- injected decoder for tests). `page` (1-based) and `page_size` set page_count so
--- the caller knows whether a Next page exists. Returns nil on a bad body.
-function ImageSearch.parseDDG(body, opts, decode)
-    opts = opts or {}
-    if type(body) ~= "string" or body == "" then return nil end
-    decode = decode or ImageSearch._decoder()
-    local ok, data = pcall(decode, body)
-    if not ok or type(data) ~= "table" or type(data.results) ~= "table" then return nil end
-    local size = tonumber(opts.page_size) or ImageSearch.PAGE_SIZE
-    local page = math.max(1, tonumber(opts.page) or 1)
-    local raw = {}
-    for _, r in ipairs(data.results) do
-        if type(r) == "table" and r.image then
-            raw[#raw + 1] = {
-                thumb = r.thumbnail or r.image, full = r.image,
-                w = tonumber(r.width), h = tonumber(r.height),
-                title = r.title, source = r.source,
-            }
-        end
-    end
-    local out = { net_ok = true, provider = "duckduckgo", results = {} }
-    for i = 1, math.min(size, #raw) do out.results[i] = raw[i] end
-    out.page_count = (#raw > size) and (page + 1) or page   -- more available -> a Next page
-    return out
-end
-
--- Query DuckDuckGo images: fetch the one-time vqd token (cached per query), then
--- the JSON results. Uses a browser agent + Referer, which the endpoint requires.
--- When png_only is on, biases the query toward transparent images (a robust query
--- hint -- DuckDuckGo's own transparent filter token is undocumented/fragile).
-function ImageSearch._ddgSearch(query, opts)
-    opts = opts or {}
-    local q = query or ""
-    if opts.png_only then q = q .. " transparent" end
-    local UA = ImageSearch.BROWSER_UA
-    local cache = ImageSearch._ddg
-    if not (cache and cache.q == q and cache.vqd) then
-        local html = ImageSearch.httpGet(
-            "https://duckduckgo.com/?q=" .. ImageSearch.urlencode(q) .. "&iax=images&ia=images",
-            8, 15, { ["User-Agent"] = UA })
-        if type(html) ~= "string" then return nil end
-        local vqd = html:match('vqd="([%w%._%-]+)"') or html:match("vqd=([%w%._%-]+)&")
-            or html:match("vqd=([%d%-]+)")
-        if not vqd then return nil end
-        cache = { q = q, vqd = vqd }
-        ImageSearch._ddg = cache
-    end
-    local size = tonumber(opts.page_size) or ImageSearch.PAGE_SIZE
-    local page = math.max(1, tonumber(opts.page) or 1)
-    local url = table.concat({
-        "https://duckduckgo.com/i.js?l=us-en&o=json&q=", ImageSearch.urlencode(q),
-        "&vqd=", cache.vqd, "&f=,,,,,&p=1&s=", tostring((page - 1) * size),
-    })
-    local body = ImageSearch.httpGet(url, 8, 15,
-        { ["User-Agent"] = UA, ["Referer"] = "https://duckduckgo.com/", ["Accept"] = "application/json" })
-    if type(body) ~= "string" then ImageSearch._ddg = nil; return nil end   -- token/session may be stale
-    local out = ImageSearch.parseDDG(body, { page = page, page_size = size })
-    if not out then ImageSearch._ddg = nil end
-    return out
-end
-
 -- Fetch and parse one page of search results in the CALLER's process, under
--- Trapper. Tries DuckDuckGo, then Commons, then Openverse. Returns
+-- Trapper. When opts.provider names a catalogue ("openverse" | "commons") only
+-- that one is queried, so the reader's source choice is honoured exactly;
+-- otherwise both are tried in PROVIDERS order as a fallback. Returns
 --   { net_ok, provider, page_count, results = { {thumb, full, w, h, mime,
 --     title, source} ... } }  with plain URLs; the caller downloads thumbnails.
 -- Deliberately NOT run in a forked subprocess: LuaSec's SSL crashes hard inside a
@@ -284,24 +230,23 @@ end
 -- between each.
 function ImageSearch.searchPage(query, opts)
     opts = opts or {}
+    local order
+    if opts.provider == "openverse" or opts.provider == "commons" then
+        order = { opts.provider }
+    else
+        order = ImageSearch.PROVIDERS
+    end
     local any_response = false
-    for _, provider in ipairs(ImageSearch.PROVIDERS) do
-        local page
-        if provider == "duckduckgo" then
-            page = ImageSearch._ddgSearch(query, opts)
-            if page then any_response = true end
-        else
-            local body = ImageSearch.httpGet(ImageSearch.buildURL(provider, query, opts))
-            if type(body) == "string" then
-                any_response = true
-                local parsed = ImageSearch.parse(provider, body)
-                if parsed and #parsed.results > 0 then
-                    page = { net_ok = true, provider = provider,
-                        page_count = parsed.page_count, results = parsed.results }
-                end
+    for _, provider in ipairs(order) do
+        local body = ImageSearch.httpGet(ImageSearch.buildURL(provider, query, opts))
+        if type(body) == "string" then
+            any_response = true
+            local parsed = ImageSearch.parse(provider, body)
+            if parsed and #parsed.results > 0 then
+                return { net_ok = true, provider = provider,
+                    page_count = parsed.page_count, results = parsed.results }
             end
         end
-        if page and page.results and #page.results > 0 then return page end
     end
     return { net_ok = any_response, results = {} }
 end

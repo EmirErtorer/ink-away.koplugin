@@ -6051,7 +6051,10 @@ function InkAwayView:openImageBrowser(query)
         query = query, page = 1,
         png_only = (self._img_png_only ~= false),   -- default ON, remembered this session
         full_res = (self._img_full_res == true),     -- default OFF (scaled to save space)
-        provider = "openverse",
+        -- Which catalogue to search; remembered across sessions. Openverse (broad,
+        -- varied) by default, Wikimedia Commons the alternative -- the reader flips
+        -- between them with the Source button.
+        provider = (self:getSetting("inkaway_img_source", "openverse") == "commons") and "commons" or "openverse",
         results = {}, thumbs = {}, status = _("Searching\u{2026}"), has_next = false,
     }
     if self._image_browser_dialog then
@@ -6082,7 +6085,7 @@ function InkAwayView:onImageBrowserClose()
     UIManager:setDirty("all", "ui")   -- repaint the whole screen so nothing lingers
 end
 
--- Build the browser sheet: title, a search bar, the PNG/full-res toggles, the
+-- Build the browser sheet: title, a search bar, the source selector, the PNG/full-res toggles, the
 -- thumbnail grid, and a Prev/Next footer.
 function InkAwayView:imageBrowserBuild(menu)
     local st = self._image_browser or {}
@@ -6108,6 +6111,19 @@ function InkAwayView:imageBrowserBuild(menu)
     local q_label = (st.query and st.query ~= "") and st.query or _("Search\u{2026}")
     local search = self:actionButton("\u{1F50D}  " .. q_label, content_w,
         function() self:imageBrowserSearchPrompt(false) end)
+    -- Source selector: two keyless catalogues, tap to switch and re-search. Web
+    -- engines (DuckDuckGo/Bing/Google) can't be used -- they gate results behind
+    -- in-page JavaScript a plain HTTP client can't run -- so this is the way to a
+    -- wider selection.
+    local SOURCE_LABEL = { openverse = _("Openverse"), commons = _("Wikimedia") }
+    local src = self:actionButton(
+        _("Source: ") .. (SOURCE_LABEL[st.provider] or _("Openverse")) .. "   \u{21C4}", content_w,
+        function()
+            st.provider = (st.provider == "commons") and "openverse" or "commons"
+            self:setSetting("inkaway_img_source", st.provider)
+            st.page = 1
+            self:imageBrowserFetch()
+        end)
     local tog1 = ToggleRow:new{ label = _("Transparent PNG only"), is_on = st.png_only, width = content_w, parent = menu,
         callback = function(on) st.png_only = on; self._img_png_only = on; st.page = 1; self:imageBrowserFetch() end }
     local tog2 = ToggleRow:new{ label = _("Full resolution"), is_on = st.full_res, width = content_w, parent = menu,
@@ -6117,9 +6133,9 @@ function InkAwayView:imageBrowserBuild(menu)
         self:actionButton("\u{2039} " .. _("Prev"), btnW, function() self:imageBrowserGo(-1) end),
         HorizontalSpan:new{ width = gap },
         self:actionButton(_("Next") .. " \u{203A}", btnW, function() self:imageBrowserGo(1) end) }
-    -- A caption under the grid: which source these results came from (so you can
-    -- tell DuckDuckGo from a fallback) and the page number.
-    local FRIENDLY = { duckduckgo = "DuckDuckGo", commons = "Wikimedia Commons", openverse = "Openverse" }
+    -- A caption under the grid: which catalogue these results came from and the
+    -- page number.
+    local FRIENDLY = { commons = "Wikimedia Commons", openverse = "Openverse" }
     local caption
     do
         local parts = {}
@@ -6135,7 +6151,8 @@ function InkAwayView:imageBrowserBuild(menu)
         face = Font:getFace("cfont", 13), fgcolor = GREY } or nil
 
     local top_h = title:getSize().h + Screen:scaleBySize(12)
-        + search:getSize().h + Screen:scaleBySize(10)
+        + search:getSize().h + Screen:scaleBySize(8)
+        + src:getSize().h + Screen:scaleBySize(10)
         + tog1:getSize().h + Screen:scaleBySize(8)
         + tog2:getSize().h + Screen:scaleBySize(12)
     local bottom_h = Screen:scaleBySize(12) + footer:getSize().h
@@ -6147,7 +6164,8 @@ function InkAwayView:imageBrowserBuild(menu)
     local content = VerticalGroup:new{ align = "left" }
     local function add(w) content[#content + 1] = w end
     add(title); add(vspan(12))
-    add(search); add(vspan(10))
+    add(search); add(vspan(8))
+    add(src); add(vspan(10))
     add(tog1); add(vspan(8))
     add(tog2); add(vspan(12))
 
@@ -6230,15 +6248,16 @@ function InkAwayView:imageBrowserFetch()
     self:freeThumbs()
     st.results, st.thumbs, st.status = {}, {}, _("Searching\u{2026}")
     if self._image_browser_dialog then self._image_browser_dialog:rebuild() end
-    local q, opts = st.query, { png_only = st.png_only, page = st.page, page_size = ImageSearch.PAGE_SIZE }
+    local q, opts = st.query, { png_only = st.png_only, page = st.page,
+        page_size = ImageSearch.PAGE_SIZE, provider = st.provider }
     Trapper:wrap(function()
         if not Trapper:info(_("Searching images\u{2026}")) then return end
         local page = ImageSearch.searchPage(q, opts)
         if not self._image_browser or self._image_browser ~= st then return end   -- browser closed
         if not (page and page.net_ok) then
-            st.status = _("Couldn't reach the image service.\nCheck your Wi-Fi and try again.")
+            st.status = _("Couldn't reach the image service.\nCheck your Wi-Fi, or try the other source above.")
         elseif #page.results == 0 then
-            st.status = _("No images found. Try another search.")
+            st.status = _("No images found here.\nTry another search, or the other source above.")
         else
             st.provider = page.provider or st.provider
             st.has_next = page.page_count and (st.page < page.page_count)
@@ -6262,7 +6281,7 @@ function InkAwayView:imageBrowserFetch()
                     end
                 end
             end
-            st.status = (#st.thumbs == 0) and _("No images found. Try another search.") or nil
+            st.status = (#st.thumbs == 0) and _("No images found here.\nTry another search, or the other source above.") or nil
         end
         Trapper:reset()
         if self._image_browser and self._image_browser == st and self._image_browser_dialog then
