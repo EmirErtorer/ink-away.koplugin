@@ -6207,9 +6207,11 @@ function InkAwayView:imageBrowserFetch()
                 if not Trapper:info(string.format(_("Loading images\u{2026} %d/%d"), idx, total)) then break end
                 -- light thumbnail first; fall back to the full image (some providers'
                 -- thumbnail proxies fail), with short timeouts so one slow image
-                -- can't stall the grid
-                local bytes = (r.thumb and ImageSearch.httpGet(r.thumb, 6, 12))
-                    or (r.full and ImageSearch.httpGet(r.full, 6, 15))
+                -- can't stall the grid. A browser agent keeps image CDNs from
+                -- rejecting the request.
+                local iua = { ["User-Agent"] = ImageSearch.BROWSER_UA, ["Accept"] = "image/*,*/*" }
+                local bytes = (r.thumb and ImageSearch.httpGet(r.thumb, 6, 12, iua))
+                    or (r.full and ImageSearch.httpGet(r.full, 6, 15, iua))
                 if not self._image_browser or self._image_browser ~= st then return end
                 if type(bytes) == "string" then
                     local bb = ImageSearch.decode(bytes, ImageSearch.THUMB_MAX)
@@ -6257,10 +6259,12 @@ function InkAwayView:imageBrowserDownloadAndInsert(r)
     self._img_dl_seq = (self._img_dl_seq or 0) + 1
     local base = string.format("online-%d-%d", os.time(), self._img_dl_seq)
     Trapper:wrap(function()
-        local completed, bytes = Trapper:dismissableRunInSubprocess(function()
-            return ImageSearch.httpGet(r.full)
-        end, _("Downloading image\u{2026}"), true)
-        if not completed then return end
+        if not Trapper:info(_("Downloading image\u{2026}")) then return end
+        -- main-process download (a browser agent, so image CDNs don't reject us);
+        -- kept out of a subprocess for the same LuaSec-in-fork reason as the search
+        local bytes = ImageSearch.httpGet(r.full, 10, 30,
+            { ["User-Agent"] = ImageSearch.BROWSER_UA, ["Accept"] = "image/*,*/*" })
+        Trapper:reset()
         if type(bytes) ~= "string" then
             UIManager:show(InfoMessage:new{ text = _("Couldn't download that image."),
                 icon = "notice-warning" })
