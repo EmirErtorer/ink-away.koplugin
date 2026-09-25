@@ -1212,16 +1212,23 @@ function InkAwayView:openPenSettings()
         table.insert(tail, TextBoxWidget:new{
             text = _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."),
             face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
-        table.insert(tail, vspan(10))
-        table.insert(tail, ToggleRow:new{ label = _("Handwriting to text (beta)"), is_on = self.hwr_enabled,
-            width = content_w, parent = menu, callback = function(on)
-                self.hwr_enabled = on; self:setSetting("inkaway_hwr", on)
-                if not on then self:hwrCancel() end
-            end })
-        table.insert(tail, vspan(4))
-        table.insert(tail, TextBoxWidget:new{
-            text = _("Print letters with the pen, then pause -- they turn into text in your current text style. Offline; clear, separated capitals and digits work best."),
-            face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
+        -- Handwriting to text (beta) is hidden from the pen menu for now, while the
+        -- feature is still being worked on. All of its code is left in place (the
+        -- hwr_enabled setting, hwrCapture/hwrRecognizePending, ink/hwr.lua, and the
+        -- finalizeStroke hook); flip this guard back to `true` to show the toggle
+        -- again. hwr_enabled defaults off, so with the toggle hidden it stays dormant.
+        if false then
+            table.insert(tail, vspan(10))
+            table.insert(tail, ToggleRow:new{ label = _("Handwriting to text (beta)"), is_on = self.hwr_enabled,
+                width = content_w, parent = menu, callback = function(on)
+                    self.hwr_enabled = on; self:setSetting("inkaway_hwr", on)
+                    if not on then self:hwrCancel() end
+                end })
+            table.insert(tail, vspan(4))
+            table.insert(tail, TextBoxWidget:new{
+                text = _("Print letters with the pen, then pause -- they turn into text in your current text style. Offline; clear, separated capitals and digits work best."),
+                face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
+        end
 
         -- colour swatches: shades, then (colour screens) colours + saved customs,
         -- and always the RGB picker as a "+" tile. Rows are centred so a short row
