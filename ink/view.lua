@@ -772,7 +772,7 @@ function InkAwayView:onCloseWidget()
     if self.autosave ~= "off" then self:saveSession() end
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -5994,21 +5994,27 @@ end
 -- Ask for a search term. `is_initial` opens the browser on the first search;
 -- otherwise it refines the query in the already-open browser.
 function InkAwayView:imageBrowserSearchPrompt(is_initial)
+    -- Only ever one search box at a time: a stale one left showing (with its
+    -- keyboard) is what made the next one refuse input and what lingered on screen
+    -- after closing the browser.
+    self:closeImageSearchPrompt()
     local st = self._image_browser
-    local cur = (st and st.query) or ""
+    -- A fresh browse starts empty so a leftover query is never searched by mistake;
+    -- refining an already-open browser keeps the current query so it can be tweaked.
+    local cur = (not is_initial and st and st.query) or ""
     local dialog
     dialog = InputDialog:new{
         title = _("Search images"),
         input = cur,
         input_hint = _("e.g. cat, tree, arrow"),
         buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Cancel"), id = "close", callback = function() self:closeImageSearchPrompt() end },
             {
                 text = _("Search"),
                 is_enter_default = true,
                 callback = function()
                     local q = dialog:getInputText() or ""
-                    UIManager:close(dialog)
+                    self:closeImageSearchPrompt()
                     q = q:gsub("^%s+", ""):gsub("%s+$", "")
                     if q == "" then return end
                     if is_initial or not self._image_browser then
@@ -6022,8 +6028,21 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
             },
         }},
     }
+    self._img_search_dialog = dialog
     UIManager:show(dialog)
-    dialog:onShowKeyboard()
+    -- Show the keyboard on the next tick, after the tap that opened this has fully
+    -- resolved -- doing it inline sometimes lost focus, so the field wouldn't type.
+    UIManager:nextTick(function()
+        if self._img_search_dialog == dialog and dialog.onShowKeyboard then dialog:onShowKeyboard() end
+    end)
+end
+
+-- Close the search box and its keyboard if one is open.
+function InkAwayView:closeImageSearchPrompt()
+    if self._img_search_dialog then
+        UIManager:close(self._img_search_dialog)
+        self._img_search_dialog = nil
+    end
 end
 
 function InkAwayView:openImageBrowser(query)
@@ -6041,17 +6060,26 @@ function InkAwayView:openImageBrowser(query)
     self._image_browser_dialog = IconMenu:new{
         build = function(menu) return self:imageBrowserBuild(menu) end,
         top_y = self:sheetTopY(),
-        on_close = function() self:freeThumbs(); self._image_browser_dialog = nil end,
+        -- tap-outside close: tear the whole session down like the Done button does
+        on_close = function()
+            self:closeImageSearchPrompt(); self:freeThumbs()
+            self._image_browser = nil; self._image_browser_dialog = nil
+        end,
     }
     UIManager:show(self._image_browser_dialog)
     self:imageBrowserFetch()
 end
 
+-- Close the browser completely: the search box, the sheet, its thumbnails, and the
+-- session state (so the next "Browse online" starts fresh, not with the old query).
 function InkAwayView:onImageBrowserClose()
+    self:closeImageSearchPrompt()
     if self._image_browser_dialog then
         UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
     end
     self:freeThumbs()
+    self._image_browser = nil
+    UIManager:setDirty("all", "ui")   -- repaint the whole screen so nothing lingers
 end
 
 -- Build the browser sheet: title, a search bar, the PNG/full-res toggles, the
