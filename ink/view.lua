@@ -5688,7 +5688,9 @@ function InkAwayView:paintImageOverlay(bb, x, y)
 end
 
 -- Insert a new image from a file: fit it to ~60% of the visible area (so its
--- corners show for dragging), centre it in the viewport, and select it.
+-- corners show for dragging), centre it in the viewport, and select it. The
+-- picture lands in Pan mode with its edit menu already open (see the tail of this
+-- function) so it can be moved, resized, duplicated or deleted straight away.
 function InkAwayView:insertImage(path)
     local tmp = { kind = "image", path = path, x = 0, y = 0, w = 1, h = 1 }
     local src = self:imageSrc(tmp)
@@ -5711,7 +5713,13 @@ function InkAwayView:insertImage(path)
     self.canvas:pushHistory()
     self.canvas.ops[#self.canvas.ops + 1] = op
     self.dirty = true
+    -- Drop straight into Pan mode with the picture selected and its edit menu open,
+    -- exactly as if the reader had tapped it there. Pan mode's move/resize is the
+    -- smooth, responsive one, and it isn't obvious you have to switch to it -- so a
+    -- freshly added image is immediately ready to move, resize, duplicate or delete.
+    self:setTool("pan")
     self:selectImage({ op = op, idx = #self.canvas.ops }, true)   -- fresh: bake it in once
+    self:openImageMenu(self.active_image)
 end
 
 -- The image tool now asks first: a local file, or browse online. Browsing is
@@ -6002,6 +6010,17 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     -- A fresh browse starts empty so a leftover query is never searched by mistake;
     -- refining an already-open browser keeps the current query so it can be tweaked.
     local cur = (not is_initial and st and st.query) or ""
+    -- Make sure the on-screen keyboard is available for this search field. On a
+    -- device that reports a physical keyboard -- notably the desktop emulator, and
+    -- any reader with the on-screen keyboard turned off in settings -- InputDialog
+    -- would otherwise suppress its virtual keyboard, leaving no way to type here by
+    -- touch. Turning the global flag on only while the dialog is built lets it lay
+    -- itself out with the keyboard from the start (one clean paint, no reinit); the
+    -- flag is restored immediately after. On a reader with no physical keyboard
+    -- nothing was ever suppressed, so this makes no visible difference there.
+    local G = rawget(_G, "G_reader_settings")
+    local prev_vk = G and G:readSetting("virtual_keyboard_enabled")
+    if G then G:saveSetting("virtual_keyboard_enabled", true) end
     local dialog
     dialog = InputDialog:new{
         title = _("Search images"),
@@ -6028,10 +6047,11 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
             },
         }},
     }
+    if G then G:saveSetting("virtual_keyboard_enabled", prev_vk) end   -- restore (nil clears it)
     self._img_search_dialog = dialog
     UIManager:show(dialog)
     -- Show the keyboard on the next tick, after the tap that opened this has fully
-    -- resolved -- doing it inline sometimes lost focus, so the field wouldn't type.
+    -- resolved (doing it inline sometimes lost focus, so the field wouldn't type).
     UIManager:nextTick(function()
         if self._img_search_dialog == dialog and dialog.onShowKeyboard then dialog:onShowKeyboard() end
     end)
@@ -6049,12 +6069,15 @@ function InkAwayView:openImageBrowser(query)
     self:freeThumbs()
     self._image_browser = {
         query = query, page = 1,
-        png_only = (self._img_png_only ~= false),   -- default ON, remembered this session
+        -- Transparent-only is off by default (true PNGs are scarce in both
+        -- catalogues, so an on-by-default filter mostly returns nothing); remembered
+        -- across sessions once the reader changes it.
+        png_only = (self:getSetting("inkaway_img_png_only", false) == true),
         full_res = (self._img_full_res == true),     -- default OFF (scaled to save space)
-        -- Which catalogue to search; remembered across sessions. Openverse (broad,
-        -- varied) by default, Wikimedia Commons the alternative -- the reader flips
-        -- between them with the Source button.
-        provider = (self:getSetting("inkaway_img_source", "openverse") == "commons") and "commons" or "openverse",
+        -- Which catalogue to search; remembered across sessions. Wikimedia Commons
+        -- (faster, most reliable thumbnails) by default, Openverse the alternative --
+        -- the reader flips between them with the Source button.
+        provider = (self:getSetting("inkaway_img_source", "commons") == "openverse") and "openverse" or "commons",
         results = {}, thumbs = {}, status = _("Searching\u{2026}"), has_next = false,
     }
     if self._image_browser_dialog then
@@ -6125,9 +6148,35 @@ function InkAwayView:imageBrowserBuild(menu)
             self:imageBrowserFetch()
         end)
     local tog1 = ToggleRow:new{ label = _("Transparent PNG only"), is_on = st.png_only, width = content_w, parent = menu,
-        callback = function(on) st.png_only = on; self._img_png_only = on; st.page = 1; self:imageBrowserFetch() end }
+        callback = function(on) st.png_only = on; self:setSetting("inkaway_img_png_only", on); st.page = 1; self:imageBrowserFetch() end }
     local tog2 = ToggleRow:new{ label = _("Full resolution"), is_on = st.full_res, width = content_w, parent = menu,
         callback = function(on) st.full_res = on; self._img_full_res = on end }
+    -- A short note on how the two sources differ, so the Source button explains
+    -- itself. Grey and small so it reads as a hint under the control, not a button.
+    local src_hint = TextBoxWidget:new{
+        text = _("Wikimedia is faster. Openverse has a wider variety."),
+        face = Font:getFace("cfont", 13), width = content_w, alignment = "center", fgcolor = GREY }
+    -- A friendly tip: truly transparent PNGs are scarce in both catalogues, so nudge
+    -- the reader toward the eraser's background removal. Framed and accented so it
+    -- reads as a helpful aside rather than an error line.
+    local ACCENT = Blitbuffer.ColorRGB32(0x2E, 0x2E, 0x2E, 0xFF)
+    local tip_pad = Screen:scaleBySize(12)
+    local tip_star = TextWidget:new{ text = "\u{2605}", face = Font:getFace("cfont", 20), fgcolor = ACCENT }
+    local tip_gap = Screen:scaleBySize(10)
+    local tip_text_w = content_w - 2 * (tip_pad + Size.border.default) - tip_star:getSize().w - tip_gap
+    local tip_body = VerticalGroup:new{ align = "left",
+        TextWidget:new{ text = _("Tip"), face = Font:getFace("cfont", 14), bold = true, fgcolor = ACCENT },
+        VerticalSpan:new{ width = Screen:scaleBySize(3) },
+        TextBoxWidget:new{
+            text = _("Truly transparent pictures are scarce here. Add any image, then switch on Erase pictures in the Eraser settings to wipe its background away."),
+            face = Font:getFace("cfont", 13), width = tip_text_w, alignment = "left", fgcolor = GREY },
+    }
+    local tip = FrameContainer:new{
+        background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.default,
+        radius = Screen:scaleBySize(14), padding = tip_pad, margin = 0,
+        HorizontalGroup:new{ align = "top",
+            tip_star, HorizontalSpan:new{ width = tip_gap }, tip_body },
+    }
     local btnW = math.floor((content_w - gap) / 2)
     local footer = HorizontalGroup:new{ align = "center",
         self:actionButton("\u{2039} " .. _("Prev"), btnW, function() self:imageBrowserGo(-1) end),
@@ -6152,9 +6201,11 @@ function InkAwayView:imageBrowserBuild(menu)
 
     local top_h = title:getSize().h + Screen:scaleBySize(12)
         + search:getSize().h + Screen:scaleBySize(8)
-        + src:getSize().h + Screen:scaleBySize(10)
+        + src:getSize().h + Screen:scaleBySize(6)
+        + src_hint:getSize().h + Screen:scaleBySize(10)
         + tog1:getSize().h + Screen:scaleBySize(8)
-        + tog2:getSize().h + Screen:scaleBySize(12)
+        + tog2:getSize().h + Screen:scaleBySize(10)
+        + tip:getSize().h + Screen:scaleBySize(12)
     local bottom_h = Screen:scaleBySize(12) + footer:getSize().h
         + (page_w and (Screen:scaleBySize(6) + page_w:getSize().h) or 0)
     local frame_pad = Screen:scaleBySize(18)
@@ -6165,9 +6216,11 @@ function InkAwayView:imageBrowserBuild(menu)
     local function add(w) content[#content + 1] = w end
     add(title); add(vspan(12))
     add(search); add(vspan(8))
-    add(src); add(vspan(10))
+    add(src); add(vspan(6))
+    add(src_hint); add(vspan(10))
     add(tog1); add(vspan(8))
-    add(tog2); add(vspan(12))
+    add(tog2); add(vspan(10))
+    add(tip); add(vspan(12))
 
     local cols = 3
     local cell_w = math.floor((content_w - (cols - 1) * gap) / cols)
