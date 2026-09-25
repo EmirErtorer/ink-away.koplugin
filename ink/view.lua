@@ -765,8 +765,9 @@ function InkAwayView:onCloseWidget()
     Export.text_raster = nil   -- drop the closure over this view
     Export.image_raster = nil
     if self.autosave ~= "off" then self:saveSession() end
+    self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
         if self[key] then UIManager:close(self[key]); self[key] = nil end
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -5690,8 +5691,46 @@ function InkAwayView:insertImage(path)
     self:selectImage({ op = op, idx = #self.canvas.ops }, true)   -- fresh: bake it in once
 end
 
+-- The image tool now asks first: a local file, or browse online. Browsing is
+-- entirely optional -- Ink Away never needs a connection -- so the local path is
+-- the dark (primary) button and stays exactly as it always was.
 function InkAwayView:chooseImage()
     self:flushImage()
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._img_src_dialog then UIManager:close(self._img_src_dialog); self._img_src_dialog = nil end
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) content[#content + 1] = w end
+        add(self:sheetTitle(_("Add image"), content_w, _("Cancel"), closeSelf))
+        add(vspan(16))
+        add(self:actionButton(_("Local file"), content_w, function()
+            closeSelf(); self:chooseLocalImage() end, true))
+        add(vspan(10))
+        add(self:actionButton(_("Browse online"), content_w, function()
+            closeSelf(); self:browseOnlineImages() end))
+        add(vspan(8))
+        add(TextBoxWidget:new{ text = _("Browsing needs Wi-Fi. Ink Away itself never requires a connection."),
+            face = Font:getFace("cfont", 13), width = content_w,
+            fgcolor = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF) })
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._img_src_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._img_src_dialog = nil end }
+    UIManager:show(self._img_src_dialog)
+end
+
+-- The original local-file picker, unchanged in behaviour.
+function InkAwayView:chooseLocalImage()
     local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = false, select_file = true, show_files = true,
@@ -5705,6 +5744,357 @@ function InkAwayView:chooseImage()
             end
         end,
     })
+end
+
+------------------------------------------------------------------------------
+-- Online image browser: a small e-ink grid over keyless image APIs (Openverse,
+-- Wikimedia Commons). Consistent with the tool sheets (rounded IconMenu, black
+-- pills, sliding toggles), paged with Prev/Next rather than scrolling, and
+-- entirely optional -- see ink/imagesearch.lua for the network/parse pieces.
+------------------------------------------------------------------------------
+
+-- A writable folder to keep added online images. Projects reference images by
+-- path, so these must persist (unlike the thumbnail cache below). Returns nil if
+-- it can't be made (then the caller reports it and does nothing).
+function InkAwayView:onlineImagesDir()
+    local ok, DataStorage = pcall(require, "datastorage")
+    if not (ok and DataStorage) then return nil end
+    local parent = DataStorage:getDataDir() .. "/ink away"
+    local dir = parent .. "/online images"
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if lok and lfs then
+        if lfs.attributes(parent, "mode") ~= "directory" then pcall(lfs.mkdir, parent) end
+        if lfs.attributes(dir, "mode") ~= "directory" then pcall(lfs.mkdir, dir) end
+        if lfs.attributes(dir, "mode") == "directory" then return dir end
+    end
+    return nil
+end
+
+-- Free the decoded thumbnail buffers (called on refetch and on close).
+function InkAwayView:freeThumbs()
+    local st = self._image_browser
+    if not st or not st.thumbs then return end
+    for i, bb in pairs(st.thumbs) do
+        if bb and bb.free then pcall(function() bb:free() end) end
+        st.thumbs[i] = nil
+    end
+end
+
+-- Entry point from the "Browse online" button. runWhenOnline prompts to enable
+-- Wi-Fi per the reader's own settings and runs the callback when connected; if
+-- they decline or there is no network, nothing happens -- nothing is disrupted.
+function InkAwayView:browseOnlineImages()
+    local start = function() self:imageBrowserSearchPrompt(true) end
+    local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
+    if ok_nm and NetworkMgr and NetworkMgr.runWhenOnline then
+        NetworkMgr:runWhenOnline(start)
+    else
+        start()
+    end
+end
+
+-- Ask for a search term. `is_initial` opens the browser on the first search;
+-- otherwise it refines the query in the already-open browser.
+function InkAwayView:imageBrowserSearchPrompt(is_initial)
+    local st = self._image_browser
+    local cur = (st and st.query) or ""
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Search images"),
+        input = cur,
+        input_hint = _("e.g. cat, tree, arrow"),
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            {
+                text = _("Search"),
+                is_enter_default = true,
+                callback = function()
+                    local q = dialog:getInputText() or ""
+                    UIManager:close(dialog)
+                    q = q:gsub("^%s+", ""):gsub("%s+$", "")
+                    if q == "" then return end
+                    if is_initial or not self._image_browser then
+                        self:openImageBrowser(q)
+                    else
+                        self._image_browser.query = q
+                        self._image_browser.page = 1
+                        self:imageBrowserFetch()
+                    end
+                end,
+            },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function InkAwayView:openImageBrowser(query)
+    self:freeThumbs()
+    self._image_browser = {
+        query = query, page = 1,
+        png_only = (self._img_png_only ~= false),   -- default ON, remembered this session
+        full_res = (self._img_full_res == true),     -- default OFF (scaled to save space)
+        provider = "openverse",
+        results = {}, thumbs = {}, status = _("Searching\u{2026}"), has_next = false,
+    }
+    if self._image_browser_dialog then
+        UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
+    end
+    self._image_browser_dialog = IconMenu:new{
+        build = function(menu) return self:imageBrowserBuild(menu) end,
+        top_y = self:sheetTopY(),
+        on_close = function() self:freeThumbs(); self._image_browser_dialog = nil end,
+    }
+    UIManager:show(self._image_browser_dialog)
+    self:imageBrowserFetch()
+end
+
+function InkAwayView:onImageBrowserClose()
+    if self._image_browser_dialog then
+        UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
+    end
+    self:freeThumbs()
+end
+
+-- Build the browser sheet: title, a search bar, the PNG/full-res toggles, the
+-- thumbnail grid, and a Prev/Next footer.
+function InkAwayView:imageBrowserBuild(menu)
+    local st = self._image_browser or {}
+    local TextWidget = require("ui/widget/textwidget")
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local ImageWidget = require("ui/widget/imagewidget")
+    local Font = require("ui/font")
+    local GREY = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF)
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+
+    -- Build the fixed chrome first and measure it, so the grid can be given exactly
+    -- the vertical space that's left. That keeps the whole sheet on screen (with its
+    -- Prev/Next footer visible) on every device, from a small Kobo to a Scribe,
+    -- instead of a fixed cell size that overflows tall panels.
+    local title = self:sheetTitle(_("Browse images"), content_w, _("Done"),
+        function() self:onImageBrowserClose() end)
+    local q_label = (st.query and st.query ~= "") and st.query or _("Search\u{2026}")
+    local search = self:actionButton("\u{1F50D}  " .. q_label, content_w,
+        function() self:imageBrowserSearchPrompt(false) end)
+    local tog1 = ToggleRow:new{ label = _("Transparent PNG only"), is_on = st.png_only, width = content_w, parent = menu,
+        callback = function(on) st.png_only = on; self._img_png_only = on; st.page = 1; self:imageBrowserFetch() end }
+    local tog2 = ToggleRow:new{ label = _("Full resolution"), is_on = st.full_res, width = content_w, parent = menu,
+        callback = function(on) st.full_res = on; self._img_full_res = on end }
+    local btnW = math.floor((content_w - gap) / 2)
+    local footer = HorizontalGroup:new{ align = "center",
+        self:actionButton("\u{2039} " .. _("Prev"), btnW, function() self:imageBrowserGo(-1) end),
+        HorizontalSpan:new{ width = gap },
+        self:actionButton(_("Next") .. " \u{203A}", btnW, function() self:imageBrowserGo(1) end) }
+    local show_page = (st.page and st.page > 1) or st.has_next
+    local page_w = show_page and TextWidget:new{ text = string.format(_("Page %d"), st.page or 1),
+        face = Font:getFace("cfont", 13), fgcolor = GREY } or nil
+
+    local top_h = title:getSize().h + Screen:scaleBySize(12)
+        + search:getSize().h + Screen:scaleBySize(10)
+        + tog1:getSize().h + Screen:scaleBySize(8)
+        + tog2:getSize().h + Screen:scaleBySize(12)
+    local bottom_h = Screen:scaleBySize(12) + footer:getSize().h
+        + (page_w and (Screen:scaleBySize(6) + page_w:getSize().h) or 0)
+    local frame_pad = Screen:scaleBySize(18)
+    local usable = Screen:getHeight() - self:sheetTopY() - Screen:scaleBySize(10) - 2 * frame_pad
+    local grid_avail = math.max(Screen:scaleBySize(80), usable - top_h - bottom_h)
+
+    local content = VerticalGroup:new{ align = "left" }
+    local function add(w) content[#content + 1] = w end
+    add(title); add(vspan(12))
+    add(search); add(vspan(10))
+    add(tog1); add(vspan(8))
+    add(tog2); add(vspan(12))
+
+    local cols = 3
+    local cell_w = math.floor((content_w - (cols - 1) * gap) / cols)
+    local n = #st.results
+    if n == 0 then
+        local msg = TextBoxWidget:new{ text = st.status or _("Long-press an image to add it."),
+            face = Font:getFace("cfont", 15), width = content_w, alignment = "center", fgcolor = GREY }
+        add(msg)
+        local fill = grid_avail - msg:getSize().h
+        if fill > 0 then add(VerticalSpan:new{ width = fill }) end
+    else
+        local rows = math.ceil(n / cols)
+        local cell_h = math.floor((grid_avail - (rows - 1) * gap) / rows)
+        cell_h = math.max(Screen:scaleBySize(64), math.min(cell_h, cell_w))
+        local i = 1
+        while i <= n do
+            local row = HorizontalGroup:new{ align = "center" }
+            for c = 1, cols do
+                if i <= n then
+                    row[#row + 1] = self:imageBrowserCell(st, i, cell_w, cell_h, ImageWidget)
+                    if c < cols and i < n then row[#row + 1] = HorizontalSpan:new{ width = gap } end
+                    i = i + 1
+                end
+            end
+            add(row)
+            if i <= n then add(vspan(12)) end
+        end
+    end
+
+    add(vspan(12))
+    add(footer)
+    if page_w then add(vspan(6)); add(page_w) end
+    return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+        radius = Screen:scaleBySize(28), padding = frame_pad, content }
+end
+
+-- One grid cell: a rounded tappable tile holding the thumbnail. Both a tap and a
+-- long-press ask to add the image (long-press is what the reader asked for; tap
+-- works too since paging uses its own buttons, so an accidental tap can't page).
+function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h, ImageWidget)
+    local TILE = TILE_BG
+    local b = Button:new{ text = "", width = cell_w, height = cell_h, bordersize = 0,
+        radius = Screen:scaleBySize(12), background = TILE, margin = 0, padding = 0,
+        callback = function() self:imageBrowserAdd(index) end,
+        hold_callback = function() self:imageBrowserAdd(index) end,
+        show_parent = self }
+    local bb = st.thumbs[index]
+    if bb and b.label_container then
+        local pad = Screen:scaleBySize(6)
+        local img = ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
+            scale_factor = 0, image_disposable = false }
+        b.label_widget = img
+        b.label_container[1] = img
+    end
+    return b
+end
+
+function InkAwayView:imageBrowserGo(delta)
+    local st = self._image_browser
+    if not st then return end
+    local np = (st.page or 1) + delta
+    if np < 1 then return end
+    if delta > 0 and not st.has_next then return end
+    st.page = np
+    self:imageBrowserFetch()
+end
+
+-- Fetch the current page in the main loop under Trapper: the JSON search, then each
+-- thumbnail, with a dismissable progress spinner and a cancel check between steps.
+-- The network runs here (not a forked subprocess) because LuaSec's SSL can crash a
+-- fork on some builds; a small page + short per-request timeouts keep it responsive.
+-- Rebuilds the sheet when done.
+function InkAwayView:imageBrowserFetch()
+    local st = self._image_browser
+    if not st then return end
+    local ImageSearch = require("ink/imagesearch")
+    local Trapper = require("ui/trapper")
+    self:freeThumbs()
+    st.results, st.thumbs, st.status = {}, {}, _("Searching\u{2026}")
+    if self._image_browser_dialog then self._image_browser_dialog:rebuild() end
+    local q, opts = st.query, { png_only = st.png_only, page = st.page, page_size = ImageSearch.PAGE_SIZE }
+    Trapper:wrap(function()
+        if not Trapper:info(_("Searching images\u{2026}")) then return end
+        local page = ImageSearch.searchPage(q, opts)
+        if not self._image_browser or self._image_browser ~= st then return end   -- browser closed
+        if not (page and page.net_ok) then
+            st.status = _("Couldn't reach the image service.\nCheck your Wi-Fi and try again.")
+        elseif #page.results == 0 then
+            st.status = _("No images found. Try another search.")
+        else
+            st.provider = page.provider or st.provider
+            st.has_next = page.page_count and (st.page < page.page_count)
+                or (#page.results >= ImageSearch.PAGE_SIZE)
+            local total = #page.results
+            for idx, r in ipairs(page.results) do
+                if not Trapper:info(string.format(_("Loading images\u{2026} %d/%d"), idx, total)) then break end
+                -- light thumbnail first; fall back to the full image (some providers'
+                -- thumbnail proxies fail), with short timeouts so one slow image
+                -- can't stall the grid
+                local bytes = (r.thumb and ImageSearch.httpGet(r.thumb, 6, 12))
+                    or (r.full and ImageSearch.httpGet(r.full, 6, 15))
+                if not self._image_browser or self._image_browser ~= st then return end
+                if type(bytes) == "string" then
+                    local bb = ImageSearch.decode(bytes, ImageSearch.THUMB_MAX)
+                    if bb then
+                        st.results[#st.results + 1] = r
+                        st.thumbs[#st.thumbs + 1] = bb
+                    end
+                end
+            end
+            st.status = (#st.thumbs == 0) and _("No images found. Try another search.") or nil
+        end
+        Trapper:reset()
+        if self._image_browser and self._image_browser == st and self._image_browser_dialog then
+            self._image_browser_dialog:rebuild()
+        end
+    end)
+end
+
+function InkAwayView:imageBrowserAdd(index)
+    local st = self._image_browser
+    if not st then return end
+    local r = st.results[index]
+    if not r or not r.full then return end
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = _("Add this image to your drawing?"),
+        ok_text = _("Add"),
+        ok_callback = function() self:imageBrowserDownloadAndInsert(r) end,
+    })
+end
+
+-- Download the chosen full image, then place it exactly like a local file. When
+-- "full resolution" is off, decode + scale down + re-save as PNG (keeps any
+-- transparency and saves space); otherwise keep the original bytes/format.
+function InkAwayView:imageBrowserDownloadAndInsert(r)
+    local ImageSearch = require("ink/imagesearch")
+    local Trapper = require("ui/trapper")
+    local full_res = self._image_browser and self._image_browser.full_res
+    local dir = self:onlineImagesDir()
+    if not dir then
+        UIManager:show(InfoMessage:new{ text = _("Couldn't prepare a folder for the image."),
+            icon = "notice-warning" })
+        return
+    end
+    self._img_dl_seq = (self._img_dl_seq or 0) + 1
+    local base = string.format("online-%d-%d", os.time(), self._img_dl_seq)
+    Trapper:wrap(function()
+        local completed, bytes = Trapper:dismissableRunInSubprocess(function()
+            return ImageSearch.httpGet(r.full)
+        end, _("Downloading image\u{2026}"), true)
+        if not completed then return end
+        if type(bytes) ~= "string" then
+            UIManager:show(InfoMessage:new{ text = _("Couldn't download that image."),
+                icon = "notice-warning" })
+            return
+        end
+        local path
+        if full_res then
+            local ext = (r.mime and r.mime:find("jpeg", 1, true)) and "jpg" or "png"
+            path = string.format("%s/%s.%s", dir, base, ext)
+            local f = io.open(path, "wb")
+            if not f then
+                UIManager:show(InfoMessage:new{ text = _("Couldn't save the image."), icon = "notice-warning" })
+                return
+            end
+            f:write(bytes); f:close()
+        else
+            local bb = ImageSearch.decode(bytes, ImageSearch.FULL_MAX)
+            if not bb then
+                UIManager:show(InfoMessage:new{ text = _("Couldn't read that image."), icon = "notice-warning" })
+                return
+            end
+            path = string.format("%s/%s.png", dir, base)
+            local ok = pcall(function() bb:writePNG(path) end)
+            if bb.free then pcall(function() bb:free() end) end
+            if not ok then
+                UIManager:show(InfoMessage:new{ text = _("Couldn't save the image."), icon = "notice-warning" })
+                return
+            end
+        end
+        self:onImageBrowserClose()
+        self:insertImage(path)
+    end)
 end
 
 ------------------------------------------------------------------------------
