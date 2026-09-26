@@ -604,48 +604,38 @@ function InkAwayView:setOrientation(class)
     UIManager:setDirty(self, "full")
 end
 
--- If nothing has been drawn yet, reshape the blank page to match the screen's
--- current size, so a fresh drawing or notebook fills the whole screen in the new
--- orientation. A page with work on it is left at its own size (shown rotated).
--- Returns true if it reshaped. Recomposes the master buffer so the caller's
--- renderView shows the reshaped (blank) page.
-function InkAwayView:reshapeIfEmpty()
+-- Reshape the page to the screen's current size, so it always MATCHES the
+-- orientation: a landscape session gets a landscape page (and a landscape export),
+-- a portrait session a portrait one. Existing marks keep their canvas coordinates,
+-- so they stay upright and line-snapped text stays on its ruling; a mark that now
+-- falls past the new, shorter edge is simply not drawn or exported until you rotate
+-- back -- nothing is deleted from the ops list, so it is fully reversible. A
+-- PDF-backed notebook is the one exception: its page size is the imported PDF's, so
+-- it is never reshaped. Returns true if it reshaped, and recomposes the master so
+-- the caller's renderView shows the reshaped page.
+function InkAwayView:reshapeToScreen()
     local W, H = Screen:getWidth(), Screen:getHeight()
     local v = self.view
     if not v then return false end
     if v.canvas_w == W and v.canvas_h == H then return false end   -- already that shape
-    local empty
-    if self.notebook then
-        -- a PDF-backed notebook is tied to its source pages: never reshape it
-        if self.notebook.template and self.notebook.template.pdf_path then return false end
-        -- The page being drawn on lives in the live canvas (self.canvas.ops) and is
-        -- only copied back into notebook.pages on a page turn/save, so check it FIRST
-        -- -- otherwise a shape just drawn (not yet synced) is missed and the page is
-        -- wrongly reshaped, clipping that shape at the new (shorter) page edge.
-        empty = self.canvas:isEmpty()
-        if empty then
-            for _, pg in ipairs(self.notebook.pages) do
-                if pg.ops and #pg.ops > 0 then empty = false; break end
-            end
-        end
-    else
-        empty = self.canvas:isEmpty() and not self.bg_bb
+    -- a PDF-backed notebook's pages ARE the imported PDF at its own size: never reshape
+    if self.notebook and self.notebook.template and self.notebook.template.pdf_path then
+        return false
     end
-    if not empty then return false end
     v.canvas_w, v.canvas_h = W, H
     self.canvas.w, self.canvas.h = W, H
     if self.notebook then self.notebook.w, self.notebook.h = W, H end
     if self.canvas_bb then self.canvas_bb:free() end
     self.canvas_bb = Blitbuffer.new(W, H, Screen.bb:getType())
-    self:composeCanvas()   -- fill the fresh master (paper/ruling for a notebook)
+    self:composeCanvas()   -- marks past the new bounds are just not drawn (kept in ops)
     return true
 end
 
 -- Re-lay-out after the screen size changed -- from our own orientation toggle, or
--- the device being physically turned (onSetDimensions). Reshape a blank page to
--- the new orientation first, then rebuild the toolbar/area and refit the view.
+-- the device being physically turned (onSetDimensions). Reshape the page to the new
+-- orientation first, then rebuild the toolbar/area and refit the view.
 function InkAwayView:handleScreenResize()
-    self:reshapeIfEmpty()
+    self:reshapeToScreen()
     self:relayout()
     self.orientation = self:orientationClass()
 end
