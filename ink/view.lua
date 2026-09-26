@@ -6182,6 +6182,22 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     -- A fresh browse starts empty so a leftover query is never searched by mistake;
     -- refining an already-open browser keeps the current query so it can be tweaked.
     local cur = (not is_initial and st and st.query) or ""
+    -- Don't stack the query editor over the open browser sheet. That sheet is a
+    -- full-screen modal, and an InputDialog shown on top of it comes up with an
+    -- on-screen keyboard that cannot reach the field -- you see the keyboard but
+    -- can't type or re-search (which is why the FIRST search, with no sheet under
+    -- it, worked, but refining did not). So close the sheet while editing and bring
+    -- it straight back. Closing it this way (UIManager:close, not its tap-close)
+    -- keeps the query, results and thumbnails, so nothing is refetched on Cancel.
+    local reopen = false
+    if not is_initial and self._image_browser_dialog then
+        UIManager:close(self._image_browser_dialog)
+        self._image_browser_dialog = nil
+        reopen = true
+    end
+    local function backToBrowser()
+        if reopen and self._image_browser then self:showImageBrowserSheet() end
+    end
     -- Make sure the on-screen keyboard is available for this search field. On a
     -- device that reports a physical keyboard -- notably the desktop emulator, and
     -- any reader with the on-screen keyboard turned off in settings -- InputDialog
@@ -6199,7 +6215,8 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
         input = cur,
         input_hint = _("e.g. cat, tree, arrow"),
         buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() self:closeImageSearchPrompt() end },
+            { text = _("Cancel"), id = "close", callback = function()
+                self:closeImageSearchPrompt(); backToBrowser() end },
             {
                 text = _("Search"),
                 is_enter_default = true,
@@ -6207,13 +6224,14 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
                     local q = dialog:getInputText() or ""
                     self:closeImageSearchPrompt()
                     q = q:gsub("^%s+", ""):gsub("%s+$", "")
-                    if q == "" then return end
+                    if q == "" then backToBrowser(); return end   -- nothing typed: just go back
                     if is_initial or not self._image_browser then
                         self:openImageBrowser(q)
                     else
                         self._image_browser.query = q
                         self._image_browser.page = 1
-                        self:imageBrowserFetch()
+                        self:showImageBrowserSheet()   -- bring the sheet back first...
+                        self:imageBrowserFetch()        -- ...then load the new query into it
                     end
                 end,
             },
@@ -6237,6 +6255,29 @@ function InkAwayView:closeImageSearchPrompt()
     end
 end
 
+-- (Re)create and show the browser sheet from the CURRENT browser state, without
+-- starting a new search. Used to open the browser and to bring it back after the
+-- query editor closes. Closing the sheet with UIManager:close (below and in the
+-- query editor) only repaints -- it does NOT run on_close -- so the browser state
+-- (query, results, thumbnails) survives a close/reopen; only a tap-outside
+-- (onCloseMenu) tears the session down.
+function InkAwayView:showImageBrowserSheet()
+    if not self._image_browser then return end
+    if self._image_browser_dialog then
+        UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
+    end
+    self._image_browser_dialog = IconMenu:new{
+        build = function(menu) return self:imageBrowserBuild(menu) end,
+        top_y = self:sheetTopY(),
+        -- tap-outside close: tear the whole session down like the Done button does
+        on_close = function()
+            self:closeImageSearchPrompt(); self:freeThumbs()
+            self._image_browser = nil; self._image_browser_dialog = nil
+        end,
+    }
+    UIManager:show(self._image_browser_dialog)
+end
+
 function InkAwayView:openImageBrowser(query)
     self:freeThumbs()
     self._image_browser = {
@@ -6252,19 +6293,7 @@ function InkAwayView:openImageBrowser(query)
         provider = (self:getSetting("inkaway_img_source", "commons") == "openverse") and "openverse" or "commons",
         results = {}, thumbs = {}, status = _("Searching\u{2026}"), has_next = false,
     }
-    if self._image_browser_dialog then
-        UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
-    end
-    self._image_browser_dialog = IconMenu:new{
-        build = function(menu) return self:imageBrowserBuild(menu) end,
-        top_y = self:sheetTopY(),
-        -- tap-outside close: tear the whole session down like the Done button does
-        on_close = function()
-            self:closeImageSearchPrompt(); self:freeThumbs()
-            self._image_browser = nil; self._image_browser_dialog = nil
-        end,
-    }
-    UIManager:show(self._image_browser_dialog)
+    self:showImageBrowserSheet()
     self:imageBrowserFetch()
 end
 
