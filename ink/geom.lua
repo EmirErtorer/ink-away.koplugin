@@ -41,10 +41,21 @@ function Geom.toScreen(view, cx, cy)
            view.area_y + (cy - view.pan_y) * view.zoom
 end
 
--- Smallest zoom that fits the whole canvas inside the area (used as the default
--- "see the whole page" view). May be < 1 when the canvas is larger than the area.
+-- Smallest zoom that fits the whole canvas inside the area (used as the pinch-out
+-- floor: "see the whole page"). May be < 1 when the canvas is larger than the area.
+-- At this zoom a canvas whose shape differs from the area is letterboxed.
 function Geom.fitZoom(view)
     return math.min(view.area_w / view.canvas_w, view.area_h / view.canvas_h)
+end
+
+-- Smallest zoom that COVERS the whole area (fills both dimensions; the longer side
+-- of the canvas overflows and is reached by panning). Used as the default view so
+-- the drawing area is always fully paintable -- no undrawable margin or bar, even
+-- when the canvas orientation differs from the screen (a landscape page kept as-is
+-- after rotating back to portrait). Equals fill-width when the canvas is the same
+-- shape as (or narrower than) the area, so it changes nothing in the common case.
+function Geom.coverZoom(view)
+    return math.max(view.area_w / view.canvas_w, view.area_h / view.canvas_h)
 end
 
 -- Clamp pan so the visible window stays over the canvas. When the canvas is

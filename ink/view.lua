@@ -700,11 +700,11 @@ function InkAwayView:init()
         zoom = 1, pan_x = 0, pan_y = 0,
     }
     self.zoom_min = InkGeom.fitZoom(self.view)
-    -- Start filling the full width of the drawing area (no side letterbox), so the
-    -- whole screen is paintable. The page is as wide as the screen, so this is 1:1;
-    -- any part taller than the visible area is reachable by panning or by hiding the
-    -- toolbar. zoom_min (fit-to-page) stays the lower bound for pinch-zooming out.
-    self.view.zoom = math.max(self.zoom_min, self.view.area_w / self.view.canvas_w)
+    -- Start with the page covering the whole drawing area (no letterbox), so every
+    -- pixel of the area is paintable. The page is as wide as the screen, so this is
+    -- 1:1; any part taller than the visible area is reachable by panning or by hiding
+    -- the toolbar. zoom_min (fit-to-page) stays the lower bound for pinch-zooming out.
+    self.view.zoom = math.max(self.zoom_min, InkGeom.coverZoom(self.view))
     InkGeom.clampPan(self.view)
 
     -- self[1] lets gesture events propagate to the toolbar buttons; the actual
@@ -875,7 +875,12 @@ function InkAwayView:relayout()
     local v = self.view
     v.area_x, v.area_y, v.area_w, v.area_h = 0, th, W, H - th - self.nb_bar_h
     self.zoom_min = InkGeom.fitZoom(v)
-    v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
+    -- Default to covering the whole area (see InkGeom.coverZoom): a page whose
+    -- shape differs from the screen -- e.g. a landscape drawing shown after rotating
+    -- back to portrait -- then still fills the drawing area instead of being centred
+    -- with an undrawable margin/bar (and a stray page-edge line) under the toolbar.
+    -- A zoomed-in view is kept; only a view below "cover" is lifted up to it.
+    v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     -- the canvas keeps its size; only the on-screen buffer follows the screen
     if self.area_bb then self.area_bb:free() end
@@ -2596,7 +2601,12 @@ function InkAwayView:setToolbarHidden(hidden)
     -- (plain if/else: `hidden and nil or self.toolbar` would never yield nil)
     if hidden then self[1] = nil else self[1] = self.toolbar end
     self.zoom_min = InkGeom.fitZoom(v)
-    v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
+    -- Default to covering the whole area (see InkGeom.coverZoom): a page whose
+    -- shape differs from the screen -- e.g. a landscape drawing shown after rotating
+    -- back to portrait -- then still fills the drawing area instead of being centred
+    -- with an undrawable margin/bar (and a stray page-edge line) under the toolbar.
+    -- A zoomed-in view is kept; only a view below "cover" is lifted up to it.
+    v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
@@ -2618,7 +2628,12 @@ function InkAwayView:setNbBarHidden(hidden)
     v.area_y = th
     v.area_h = self.screen_h - th - self.nb_bar_h
     self.zoom_min = InkGeom.fitZoom(v)
-    v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
+    -- Default to covering the whole area (see InkGeom.coverZoom): a page whose
+    -- shape differs from the screen -- e.g. a landscape drawing shown after rotating
+    -- back to portrait -- then still fills the drawing area instead of being centred
+    -- with an undrawable margin/bar (and a stray page-edge line) under the toolbar.
+    -- A zoomed-in view is kept; only a view below "cover" is lifted up to it.
+    v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
@@ -8843,9 +8858,10 @@ function InkAwayView:recomputeArea()
     if self.area_bb then self.area_bb:free() end
     self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
     self.zoom_min = InkGeom.fitZoom(v)
-    -- fill the full width (no side letterbox), exactly like a flat canvas; this is
-    -- what keeps notebooks as wide as the device instead of fit-to-page centred
-    v.zoom = math.max(self.zoom_min, v.area_w / v.canvas_w)
+    -- Cover the whole area (no letterbox), exactly like a flat canvas; this keeps a
+    -- notebook filling the device -- and, if its page shape differs from the screen
+    -- after a rotation, still covers the area rather than centring with a margin.
+    v.zoom = math.max(self.zoom_min, InkGeom.coverZoom(v))
     InkGeom.clampPan(v)
 end
 
