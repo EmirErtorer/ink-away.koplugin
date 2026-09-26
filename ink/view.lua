@@ -6429,21 +6429,36 @@ function InkAwayView:imageBrowserBuild(menu)
         radius = Screen:scaleBySize(28), padding = frame_pad, content }
 end
 
--- One grid cell: a rounded tappable tile holding the thumbnail. Both a tap and a
--- long-press ask to add the image (long-press is what the reader asked for; tap
--- works too since paging uses its own buttons, so an accidental tap can't page).
+-- One grid cell: a rounded tappable tile holding the thumbnail. A tap and a
+-- long-press do the same thing -- ask to add the image -- since a plain tap is
+-- what most people try first (paging has its own buttons, so a tap can't page).
 function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h, ImageWidget)
     local TILE = TILE_BG
+    -- Adding runs behind a guard: if anything goes wrong (a bad result, a network
+    -- hiccup) it shows a message instead of letting the error escape and take all
+    -- of KOReader down with it.
+    local add = function()
+        local ok, err = xpcall(function() self:imageBrowserAdd(index) end, debug.traceback)
+        if not ok then
+            logger.warn("Ink Away: adding an online image failed: " .. tostring(err))
+            UIManager:show(InfoMessage:new{
+                text = _("Something went wrong adding that image. Please try another."),
+                icon = "notice-warning" })
+        end
+    end
     local b = Button:new{ text = "", width = cell_w, height = cell_h, bordersize = 0,
         radius = Screen:scaleBySize(12), background = TILE, margin = 0, padding = 0,
-        callback = function() self:imageBrowserAdd(index) end,
-        hold_callback = function() self:imageBrowserAdd(index) end,
-        show_parent = self }
+        callback = add, hold_callback = add, show_parent = self }
     local bb = st.thumbs[index]
     if bb and b.label_container then
         local pad = Screen:scaleBySize(6)
+        -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
+        -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it MUST be a
+        -- real colour. Without it a plain tap crashed KOReader indexing a nil field
+        -- (a long-press took a different feedback path, which is why only tapping a
+        -- result crashed). Same fix as brushWaveTile.
         local img = ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
-            scale_factor = 0, image_disposable = false }
+            scale_factor = 0, image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
         b.label_widget = img
         b.label_container[1] = img
     end
