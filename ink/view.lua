@@ -4303,6 +4303,28 @@ function InkAwayView:refreshPreview()
     local y2 = math.min(v.area_y + v.area_h, u.y2)
     if x2 > x and y2 > yy then
         UIManager:setDirty(self, "fast", GeomUI:new{ x = x, y = yy, w = x2 - x, h = y2 - yy })
+        -- Region fast-path (see paintTo): while CREATING a shape (a live drag or the
+        -- curve's bend stage) with no symmetry mirror to track, re-blit only this
+        -- region instead of the whole surface + toolbar on every touch sample -- the
+        -- full-repaint branch was why shape creation felt much slower than freehand,
+        -- especially on a rotated landscape screen. Accumulate into any pending rect
+        -- (u already unions the previous preview) so a skipped paint never strands an
+        -- un-erased outline. Restricted to shape CREATION (not moving/rotating an
+        -- existing shape, which can carry selection chrome outside this rect) and to
+        -- symmetry off (previewRect covers only the un-mirrored shape).
+        if (self.shape_drag or self.curve_stage) and self.symmetry == "off" then
+            local nx0, ny0 = x - v.area_x, yy - v.area_y
+            local nx1, ny1 = x2 - v.area_x, y2 - v.area_y
+            local br = self._blit_rect
+            if br then
+                if nx0 < br.x0 then br.x0 = nx0 end
+                if ny0 < br.y0 then br.y0 = ny0 end
+                if nx1 > br.x1 then br.x1 = nx1 end
+                if ny1 > br.y1 then br.y1 = ny1 end
+            else
+                self._blit_rect = { x0 = nx0, y0 = ny0, x1 = nx1, y1 = ny1 }
+            end
+        end
     end
 end
 
@@ -8821,30 +8843,36 @@ function InkAwayView:paintTo(bb, x, y)
     -- was rotated the other way with no relayout); the fast landscape blit below
     -- relies on it matching.
     self:matchAreaTarget()
-    -- White background. The drawing area is repainted from area_bb below (which is
-    -- already white where there is no ink), so painting the whole screen white here
-    -- would just be overwritten -- clear only the strips OUTSIDE the area: the
-    -- toolbar above and any notebook bar (or letterbox) below/around it.
-    local ay0, ay1 = v.area_y, v.area_y + v.area_h
-    local ax0, ax1 = v.area_x, v.area_x + v.area_w
-    if ay0 > 0 then bb:paintRect(x, y, self.screen_w, ay0, WHITE) end
-    if ay1 < self.screen_h then bb:paintRect(x, y + ay1, self.screen_w, self.screen_h - ay1, WHITE) end
-    if ax0 > 0 then bb:paintRect(x, y + ay0, ax0, ay1 - ay0, WHITE) end
-    if ax1 < self.screen_w then bb:paintRect(x + ax1, y + ay0, self.screen_w - ax1, ay1 - ay0, WHITE) end
-    -- toolbar (each button paints its icon; the active tool's button paints a grey
-    -- pill background), then the hairline under the bar -- unless collapsed for
-    -- immersive drawing, when the paper fills the freed space
-    if not self._toolbar_hidden then
-        self:drawActiveToolPill(bb, x, y)   -- black pill behind the active tool
-        self.toolbar:paintTo(bb, x, y)
-        self:drawToolbarIcons(bb)
+    -- While a live stroke OR a shape being created is dragging, only a small sub-rect
+    -- of the drawing area changed (dirtyAreaRect / refreshPreview accumulated it into
+    -- _blit_rect, area-local). In that case blit ONLY that region and SKIP the outer
+    -- margins, the toolbar and the page frame: none of them changed on the screen
+    -- buffer, and the e-ink refresh region is just the sub-rect, so leaving last
+    -- frame's pixels there is correct. On a software-rotated (landscape) screen the
+    -- toolbar's icon blits are a rotated per-pixel copy, so re-doing them on every
+    -- touch point was a big per-point cost -- this is what made landscape drawing,
+    -- and shape creation especially, feel sluggish. A full paint (br nil) does it all.
+    local br = self._blit_rect
+    if not br then
+        -- White background OUTSIDE the drawing area: the toolbar strip above and any
+        -- notebook bar (or letterbox) below/around it. The area itself is repainted
+        -- from area_bb below, so clearing it here would just be overwritten.
+        local ay0, ay1 = v.area_y, v.area_y + v.area_h
+        local ax0, ax1 = v.area_x, v.area_x + v.area_w
+        if ay0 > 0 then bb:paintRect(x, y, self.screen_w, ay0, WHITE) end
+        if ay1 < self.screen_h then bb:paintRect(x, y + ay1, self.screen_w, self.screen_h - ay1, WHITE) end
+        if ax0 > 0 then bb:paintRect(x, y + ay0, ax0, ay1 - ay0, WHITE) end
+        if ax1 < self.screen_w then bb:paintRect(x + ax1, y + ay0, self.screen_w - ax1, ay1 - ay0, WHITE) end
+        -- toolbar (each button paints its icon; the active tool's button paints a grey
+        -- pill background), then the hairline under the bar -- unless collapsed for
+        -- immersive drawing, when the paper fills the freed space
+        if not self._toolbar_hidden then
+            self:drawActiveToolPill(bb, x, y)   -- black pill behind the active tool
+            self.toolbar:paintTo(bb, x, y)
+            self:drawToolbarIcons(bb)
+        end
     end
-    -- drawing area (the committed strokes, at the current zoom/pan). While a live
-    -- stroke is drawing, only a small sub-rect of area_bb changed since the last
-    -- paint (dirtyAreaRect accumulated it), so blit ONLY that region rather than the
-    -- whole surface on every point -- the whole-area blit was a big per-point cost.
-    -- Everything else here is cheap and stays unconditional so it never goes stale.
-    local br = self.capturing and self._blit_rect
+    -- drawing area (the committed strokes, at the current zoom/pan).
     if br then
         local rx0 = math.max(0, math.floor(br.x0)); local ry0 = math.max(0, math.floor(br.y0))
         local rx1 = math.min(v.area_w, math.ceil(br.x1)); local ry1 = math.min(v.area_h, math.ceil(br.y1))
@@ -8873,20 +8901,24 @@ function InkAwayView:paintTo(bb, x, y)
     -- area (i.e. the reader has pinched out so the page is smaller than the
     -- screen). At the default fill-width zoom the page edges sit on the screen's
     -- own border, so nothing is drawn -- no frame, and the whole screen paints.
-    local ax0, ay0 = x + v.area_x, y + v.area_y
-    local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
-    local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
-    local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
-    fx0, fy0 = math.floor(fx0 + x), math.floor(fy0 + y)
-    fx1, fy1 = math.floor(fx1 + x), math.floor(fy1 + y)
-    local top = math.max(fy0, ay0)
-    local bot = math.min(fy1, ay1)
-    if fx0 > ax0 and fx0 < ax1 and bot > top then bb:paintRect(fx0, top, 1, bot - top, FRAME) end
-    if fx1 < ax1 and fx1 > ax0 and bot > top then bb:paintRect(fx1, top, 1, bot - top, FRAME) end
-    local lft = math.max(fx0, ax0)
-    local rgt = math.min(fx1, ax1)
-    if fy0 > ay0 and fy0 < ay1 and rgt > lft then bb:paintRect(lft, fy0, rgt - lft, 1, FRAME) end
-    if fy1 < ay1 and fy1 > ay0 and rgt > lft then bb:paintRect(lft, fy1, rgt - lft, 1, FRAME) end
+    -- Skipped during a region blit: pan/zoom are fixed while a stroke or shape
+    -- drags, so the frame is unchanged on the screen buffer.
+    if not br then
+        local ax0, ay0 = x + v.area_x, y + v.area_y
+        local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
+        local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
+        local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
+        fx0, fy0 = math.floor(fx0 + x), math.floor(fy0 + y)
+        fx1, fy1 = math.floor(fx1 + x), math.floor(fy1 + y)
+        local top = math.max(fy0, ay0)
+        local bot = math.min(fy1, ay1)
+        if fx0 > ax0 and fx0 < ax1 and bot > top then bb:paintRect(fx0, top, 1, bot - top, FRAME) end
+        if fx1 < ax1 and fx1 > ax0 and bot > top then bb:paintRect(fx1, top, 1, bot - top, FRAME) end
+        local lft = math.max(fx0, ax0)
+        local rgt = math.min(fx1, ax1)
+        if fy0 > ay0 and fy0 < ay1 and rgt > lft then bb:paintRect(lft, fy0, rgt - lft, 1, FRAME) end
+        if fy1 < ay1 and fy1 > ay0 and rgt > lft then bb:paintRect(lft, fy1, rgt - lft, 1, FRAME) end
+    end
 
     -- live shape preview drawn on top of the (untouched) drawing, clipped to
     -- the area so it never spills onto the toolbar
@@ -8989,7 +9021,10 @@ function InkAwayView:paintTo(bb, x, y)
     -- notebook page-nav strip along the bottom (only in notebook mode). Styled to
     -- match the top toolbar exactly: same bar height, the same icon size, and real
     -- icon glyphs (not ad-hoc chevrons) so the two bars read as one consistent UI.
-    if self.notebook and self.nb_bar_h > 0 then
+    -- Skipped during a region blit (a live stroke/shape): the strip sits below the
+    -- drawing area, never overlaps the changed rect, and does not change mid-drag --
+    -- re-blitting its icons every touch point was pure cost on a rotated screen.
+    if not br and self.notebook and self.nb_bar_h > 0 then
         local Font = require("ui/font")
         local TextWidget = require("ui/widget/textwidget")
         local nb = self.notebook
