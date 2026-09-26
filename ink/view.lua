@@ -1537,10 +1537,13 @@ function InkAwayView:openPenSettings()
             table.insert(assistRow, pr)
         end
         table.insert(tail, assistRow)
-        -- A quick self-test for stylus devices: it reports whether the pen reaches
-        -- the plugin AS a pen or as an ordinary finger, so palm-rejection problems on
-        -- devices we can't test (a Kindle Scribe report) can be diagnosed from afar.
-        if self:deviceHasStylus() then
+        -- A quick self-test: it reports whether the pen reaches the plugin AS a pen
+        -- or as an ordinary finger, so palm-rejection problems on devices we can't
+        -- test (a Kindle Scribe report) can be diagnosed from afar. Shown wherever
+        -- palm rejection is available (the stylus API exists) -- next to its toggle
+        -- above -- so it can be found and run on any modern-KOReader reader, not just
+        -- a device that flags a Wacom pen.
+        if self:penCapable() then
             table.insert(tail, vspan(10))
             table.insert(tail, self:actionButton(_("Test pen input"), content_w,
                 function() closeSelf(); self:startPenInputTest() end))
