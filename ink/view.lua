@@ -2158,14 +2158,16 @@ function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb)
 end
 
 -- A full/any-width rounded action button (grey by default, black when `dark`).
-function InkAwayView:actionButton(label, w, cb, dark)
+function InkAwayView:actionButton(label, w, cb, dark, big)
     local TextWidget = require("ui/widget/textwidget")
     local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     local b = Button:new{ text = "", width = w, height = Screen:scaleBySize(48), bordersize = 0,
         radius = Screen:scaleBySize(14), background = dark and BLACK or TILE_BG,
         margin = 0, padding = 0, callback = cb, show_parent = self }
-    local tw = TextWidget:new{ text = label, face = Font:getFace("cfont", 17), bold = true,
+    -- `big` marks a primary action (New drawing / New notebook): a larger bold
+    -- face so it reads heavier than the ordinary buttons around it
+    local tw = TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17), bold = true,
         fgcolor = dark and WHITE or BLACK }
     if b.label_container then b.label_widget = tw; b.label_container[1] = tw end
     return b
@@ -3660,8 +3662,12 @@ function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
 end
 
 -- A thin line into `bb` at screen offset (ox,oy), clipped to the drawing area.
-function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color)
+function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color, bx0, by0, bx1, by1)
     local aw, ah = self.view.area_w, self.view.area_h
+    bx0 = bx0 or 0; by0 = by0 or 0; bx1 = bx1 or aw; by1 = by1 or ah
+    -- cheap bbox reject: the segment cannot touch the clip window
+    if math.max(x0, x1) < bx0 or math.min(x0, x1) > bx1
+        or math.max(y0, y1) < by0 or math.min(y0, y1) > by1 then return end
     local dx, dy = x1 - x0, y1 - y0
     local steps = math.max(math.abs(dx), math.abs(dy))
     if steps < 1 then return end
@@ -3669,7 +3675,7 @@ function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color)
     local x, y = x0, y0
     for _ = 0, steps do
         local px, py = math.floor(x + 0.5), math.floor(y + 0.5)
-        if px >= 0 and px < aw and py >= 0 and py < ah then bb:paintRect(ox + px, oy + py, 1, 1, color) end
+        if px >= bx0 and px < bx1 and py >= by0 and py < by1 then bb:paintRect(ox + px, oy + py, 1, 1, color) end
         x = x + ix; y = y + iy
     end
 end
@@ -3677,7 +3683,13 @@ end
 -- Draw the current grid style into `bb` at screen offset (ox,oy). Display only:
 -- painted onto the screen buffer each frame, never baked into area_bb, so the
 -- eraser leaves it alone and it stays out of the saved PNG or JPEG.
-function InkAwayView:drawGrid(bb, ox, oy)
+-- `clip` (optional, area-local {x0,y0,x1,y1}) confines the redraw to a sub-rect.
+-- While a stroke is drawing, paintTo only re-blits the small changed region, so we
+-- pass that region here too: without it the WHOLE grid was repainted on every
+-- touch point, which at a small grid size (thousands of cells, dots worst of all)
+-- made grid-on drawing crawl -- even plain finger drawing. Clipping keeps grid-on
+-- drawing as fast as grid-off. With no clip (a full paint) it covers the area.
+function InkAwayView:drawGrid(bb, ox, oy, clip)
     local v = self.view
     local aw, ah = v.area_w, v.area_h
     local g = self.grid_size
@@ -3686,16 +3698,26 @@ function InkAwayView:drawGrid(bb, ox, oy)
     -- so the reader can make the grid a light guide or as dark as drawn ink
     local lvl = strengthToLevel(self.grid_strength)
     local col = Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF)
+    -- clip window in area-local coords (whole area when no clip is given)
+    local bx0 = clip and math.max(0, math.floor(clip.x0)) or 0
+    local by0 = clip and math.max(0, math.floor(clip.y0)) or 0
+    local bx1 = clip and math.min(aw, math.ceil(clip.x1)) or aw
+    local by1 = clip and math.min(ah, math.ceil(clip.y1)) or ah
+    if bx1 <= bx0 or by1 <= by0 then return end
     local function ax(cx) return (cx - v.pan_x) * v.zoom end
     local function ay(cy) return (cy - v.pan_y) * v.zoom end
-    -- paint a rect given in area coords, clipped to the area and then offset
+    -- paint a rect given in area coords, clipped to the clip window then offset
     local function rect(px, py, w, h, c)
-        if px < 0 then w = w + px; px = 0 end
-        if py < 0 then h = h + py; py = 0 end
-        if px + w > aw then w = aw - px end
-        if py + h > ah then h = ah - py end
-        if w > 0 and h > 0 then bb:paintRect(ox + px, oy + py, w, h, c) end
+        local x0 = math.max(px, bx0); local y0 = math.max(py, by0)
+        local x1 = math.min(px + w, bx1); local y1 = math.min(py + h, by1)
+        if x1 > x0 and y1 > y0 then bb:paintRect(ox + x0, oy + y0, x1 - x0, y1 - y0, c) end
     end
+    -- canvas-coord span that maps into the clip window, so uniform grids iterate
+    -- only the lines that can land inside it instead of the whole page every frame
+    local cxA = math.max(0, bx0 / v.zoom + v.pan_x)
+    local cxB = math.min(v.canvas_w, bx1 / v.zoom + v.pan_x)
+    local cyA = math.max(0, by0 / v.zoom + v.pan_y)
+    local cyB = math.min(v.canvas_h, by1 / v.zoom + v.pan_y)
 
     if style == "thirds" then
         -- rule of thirds over the page rectangle
@@ -3711,8 +3733,8 @@ function InkAwayView:drawGrid(bb, ox, oy)
     if not g or g <= 0 then return end
 
     if style == "lines" then                       -- ruled horizontal lines
-        local cy = 0
-        while cy <= v.canvas_h do
+        local cy = math.floor(cyA / g) * g
+        while cy <= cyB do
             local y = math.floor(ay(cy))
             if y >= 0 and y < ah then rect(0, y, aw, 1, col) end
             cy = cy + g
@@ -3720,12 +3742,13 @@ function InkAwayView:drawGrid(bb, ox, oy)
     elseif style == "dots" then                     -- a dot at each intersection
         local dot = math.max(3, math.floor(Screen:scaleBySize(3)))
         local dcol = col                              -- follow the grid strength
-        local cy = 0
-        while cy <= v.canvas_h do
+        local cxStart = math.floor(cxA / g) * g
+        local cy = math.floor(cyA / g) * g
+        while cy <= cyB do
             local y = math.floor(ay(cy)) - math.floor(dot / 2)
             if y + dot >= 0 and y < ah then
-                local cx = 0
-                while cx <= v.canvas_w do
+                local cx = cxStart
+                while cx <= cxB do
                     local x = math.floor(ax(cx)) - math.floor(dot / 2)
                     if x >= 0 and x + dot <= aw and y >= 0 and y + dot <= ah then
                         rect(x, y, dot, dot, dcol)
@@ -3736,31 +3759,32 @@ function InkAwayView:drawGrid(bb, ox, oy)
             cy = cy + g
         end
     elseif style == "iso" then                      -- isometric: verticals + 30 deg diagonals
-        local cx = 0
-        while cx <= v.canvas_w do
+        local cx = math.floor(cxA / g) * g
+        while cx <= cxB do
             local x = ax(cx)
             if x >= 0 and x < aw then rect(math.floor(x), 0, 1, ah, col) end
             cx = cx + g
         end
         local slope = math.tan(math.rad(30))
         local spacing = g / math.cos(math.rad(30))
-        -- two diagonal families, offset so they cover the whole area
+        -- two diagonal families, offset so they cover the whole area (each gridLine
+        -- rejects itself when its bbox misses the clip window)
         local start = -math.ceil(ah * slope / spacing) * spacing
         local b = start
         while b <= v.canvas_w * v.zoom + ah do
-            self:gridLine(bb, ox, oy, ax(0) + b, 0, ax(0) + b + ah * slope, ah, col)   -- down-right
-            self:gridLine(bb, ox, oy, ax(0) + b, ah, ax(0) + b + ah * slope, 0, col)   -- up-right
+            self:gridLine(bb, ox, oy, ax(0) + b, 0, ax(0) + b + ah * slope, ah, col, bx0, by0, bx1, by1)   -- down-right
+            self:gridLine(bb, ox, oy, ax(0) + b, ah, ax(0) + b + ah * slope, 0, col, bx0, by0, bx1, by1)   -- up-right
             b = b + spacing * v.zoom
         end
     else                                            -- "square"
-        local cx = 0
-        while cx <= v.canvas_w do
+        local cx = math.floor(cxA / g) * g
+        while cx <= cxB do
             local x = math.floor(ax(cx))
             if x >= 0 and x < aw then rect(x, 0, 1, ah, col) end
             cx = cx + g
         end
-        local cy = 0
-        while cy <= v.canvas_h do
+        local cy = math.floor(cyA / g) * g
+        while cy <= cyB do
             local y = math.floor(ay(cy))
             if y >= 0 and y < ah then rect(0, y, aw, 1, col) end
             cy = cy + g
@@ -4784,6 +4808,84 @@ function InkAwayView:openChooserSheet(title, options, current, onpick)
     UIManager:show(self._chooser_dialog)
 end
 
+-- The grid sub-sheet: type, size and opacity in one place, opened from the main
+-- settings sheet's single "Grid" button so that sheet stays short (no scrolling).
+-- Picking a type rebuilds this sheet in place (the highlight moves) like the other
+-- segmented pickers; the sliders drive the same live grid refresh the old inline
+-- controls did, and it wears the same rounded-corner sheet chrome as every sheet.
+function InkAwayView:openGridSettings()
+    if self._grid_dialog then
+        if self._grid_dialog.rebuild then self._grid_dialog:rebuild(); return end
+        UIManager:close(self._grid_dialog); self._grid_dialog = nil
+    end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local pxfmt = function(v) return v .. _(" px") end
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._grid_dialog then UIManager:close(self._grid_dialog); self._grid_dialog = nil end
+    end
+    -- picking a type keeps the sheet open (rebuild in place) so several tweaks are
+    -- one visit; "Off" remembers the last real style so turning it back on restores
+    -- the same look. Size/opacity never force the grid on -- only the type does --
+    -- so the "Off" choice stays honest while its values are kept for next time.
+    local function pick(v)
+        if v == "off" then
+            self.grid_on = false; self:setSetting("inkaway_grid", false)
+        else
+            self.grid_style = v; self:setSetting("inkaway_grid_style", v)
+            self.grid_on = true; self:setSetting("inkaway_grid", true)
+        end
+        self:renderView(); self:refreshArea(); self:openGridSettings()
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        -- a segmented row of equal buttons, the current one filled black
+        local function seg(options, current, onpick)
+            local n = #options
+            local w = math.floor((content_w - (n - 1) * gap) / n)
+            local row = HorizontalGroup:new{ align = "center" }
+            for i, o in ipairs(options) do
+                if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                table.insert(row, self:actionButton(o[2], w, function() onpick(o[1]) end, current == o[1]))
+            end
+            return row
+        end
+        add(self:sheetTitle(_("Grid"), content_w, _("Done"),
+            function() closeSelf(); self:openSettings() end))
+        add(vspan(16))
+
+        -- type: two tidy rows of three (Off + the five styles)
+        local cur = self.grid_on and self.grid_style or "off"
+        add(seg({ { "off", _("Off") }, { "square", _("Square") }, { "dots", _("Dots") } }, cur, pick))
+        add(vspan(8))
+        add(seg({ { "lines", _("Lines") }, { "iso", _("Isometric") }, { "thirds", _("Thirds") } }, cur, pick))
+        add(vspan(16))
+
+        -- size + opacity, live-refreshing the grid behind the sheet as they move
+        add(SliderRow:new{ label = _("Size"), value = self.grid_size, min = 8, max = 200, step = 2,
+            width = content_w, parent = menu, format = pxfmt,
+            on_set = function(v) self.grid_size = v; self:setSetting("inkaway_grid_size", v)
+                self:renderView(); self:refreshArea() end })
+        add(vspan(12))
+        add(SliderRow:new{ label = _("Opacity"), value = self.grid_strength, min = 5, max = 100, step = 5,
+            width = content_w, parent = menu,
+            on_set = function(v) self.grid_strength = v; self:setSetting("inkaway_grid_strength", v)
+                self:renderView(); self:refreshArea() end })
+
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._grid_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._grid_dialog = nil end }
+    UIManager:show(self._grid_dialog)
+end
+
 -- The gear menu (shapes-menu style): file/page actions as buttons, the grid or
 -- notebook-paper controls as a toggle/chooser and sliders, and symmetry /
 -- autosave as segmented rows. Reorganised into clear sections.
@@ -4811,8 +4913,8 @@ function InkAwayView:openSettings()
     local closeSelf = function()
         if self._settings_dialog then UIManager:close(self._settings_dialog); self._settings_dialog = nil end
     end
-    local function act(label, w, cb, dark)
-        return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
+    local function act(label, w, cb, dark, big)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, dark, big)
     end
     local function header(txt)
         return TextWidget:new{ text = txt, face = Font:getFace("cfont", 15), bold = true,
@@ -4844,16 +4946,16 @@ function InkAwayView:openSettings()
         add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf))
         add(vspan(16))
 
-        -- files & pages
-        add(row2(act(_("New drawing"), halfW, function() self:newDrawing() end),
-                 act(_("New notebook"), halfW, function() self:newNotebook() end)))
+        -- files & pages. New drawing / New notebook are the primary actions, so
+        -- they get the larger bold face (the `big` flag) to stand out.
+        add(row2(act(_("New drawing"), halfW, function() self:newDrawing() end, false, true),
+                 act(_("New notebook"), halfW, function() self:newNotebook() end, false, true)))
         add(vspan(8))
         add(row2(act(_("Open project"), halfW, function() self:openProject() end),
                  act(_("Save project"), halfW, function() self:saveProject() end)))
         add(vspan(8))
-        add(act(_("Open PDF as notebook"), content_w, function() self:openPdfAsNotebook() end))
-        add(vspan(8))
-        add(act(_("Background image"), content_w, function() self:openBackground() end))
+        add(row2(act(_("Open PDF"), halfW, function() self:openPdfAsNotebook() end),
+                 act(_("Background"), halfW, function() self:openBackground() end)))
         add(vspan(16))
 
         -- orientation: portrait vs landscape. Switches the whole app (and the shape
@@ -4894,28 +4996,15 @@ function InkAwayView:openSettings()
                 on_set = function(v) t.strength = v; self.nb_strength = v; self:setSetting("inkaway_nb_strength", v)
                     self.dirty = true; self:composeCanvas(); self:renderView(); self:refreshArea() end })
         else
-            add(ToggleRow:new{ label = _("Grid"), is_on = self.grid_on, width = content_w, parent = menu,
-                callback = function(on) self.grid_on = on; self:setSetting("inkaway_grid", on)
-                    self:renderView(); self:refreshArea() end })
-            add(vspan(10))
-            add(act(_("Grid style: ") .. self.grid_style, content_w, function()
-                self:openChooserSheet(_("Grid style"), {
-                    { "square", _("Square grid") }, { "dots", _("Dot grid") }, { "lines", _("Ruled lines") },
-                    { "iso", _("Isometric") }, { "thirds", _("Rule of thirds") } }, self.grid_style,
-                    function(v) self.grid_style = v; self:setSetting("inkaway_grid_style", v)
-                        self.grid_on = true; self:setSetting("inkaway_grid", true)
-                        self:renderView(); self:refreshArea(); self:openSettings() end)
-            end))
-            add(vspan(12))
-            add(SliderRow:new{ label = _("Grid size"), value = self.grid_size, min = 8, max = 200, step = 2,
-                width = content_w, parent = menu, format = pxfmt,
-                on_set = function(v) self.grid_size = v; self:setSetting("inkaway_grid_size", v)
-                    self:renderView(); self:refreshArea() end })
-            add(vspan(10))
-            add(SliderRow:new{ label = _("Grid strength"), value = self.grid_strength, min = 5, max = 100, step = 5,
-                width = content_w, parent = menu,
-                on_set = function(v) self.grid_strength = v; self:setSetting("inkaway_grid_strength", v)
-                    self.grid_on = true; self:setSetting("inkaway_grid", true); self:refreshArea() end })
+            -- The grid type, size and opacity all live in their own sub-sheet
+            -- (openGridSettings), reached by this one button. Folding three
+            -- controls into one keeps the main sheet short enough to never scroll.
+            -- The button shows the current grid at a glance; state is remembered.
+            local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
+                lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds") }
+            local cur = self.grid_on and self.grid_style or "off"
+            add(act(_("Grid: ") .. (GRID_LABEL[cur] or cur), content_w, function()
+                self:openGridSettings() end))
         end
         add(vspan(16))
 
@@ -4937,7 +5026,7 @@ function InkAwayView:openSettings()
         do
             local TextBoxWidget = require("ui/widget/textboxwidget")
             add(TextBoxWidget:new{
-                text = _("Fast strokes leave faint grey marks. A full refresh clears them after this many strokes."),
+                text = _("Fast strokes leave faint marks; a full refresh clears them this often."),
                 face = Font:getFace("cfont", 13),
                 fgcolor = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF), width = content_w })
         end
@@ -8774,7 +8863,12 @@ function InkAwayView:paintTo(bb, x, y)
     -- the drawing: the eraser can't rub them out and they stay out of the export
     -- the canvas grid overlay is a canvas-mode guide; a notebook has its own
     -- printed ruling, so never draw both (they would overlap)
-    if self.grid_on and not self.notebook then self:drawGrid(bb, x + v.area_x, y + v.area_y) end
+    if self.grid_on and not self.notebook then
+        -- while a stroke is drawing only the small region `br` was re-blitted above,
+        -- so redraw the grid over just that region (the rest keeps last frame's grid)
+        -- instead of repainting the entire grid on every touch point
+        self:drawGrid(bb, x + v.area_x, y + v.area_y, br)
+    end
     -- Page edge indicator: only for edges that fall STRICTLY inside the drawing
     -- area (i.e. the reader has pinched out so the page is smaller than the
     -- screen). At the default fill-width zoom the page edges sit on the screen's
