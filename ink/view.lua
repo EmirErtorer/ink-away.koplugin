@@ -853,7 +853,7 @@ function InkAwayView:init()
     --    it is zoomed in.
     local bbtype = Screen.bb:getType()
     self.canvas_bb = Blitbuffer.new(self.view.canvas_w, self.view.canvas_h, bbtype)
-    self.area_bb = Blitbuffer.new(self.view.area_w, self.view.area_h, bbtype)
+    self.area_bb = self:newAreaBuffer()   -- panel-order buffer (fast landscape blit)
 
     self:restoreSession()   -- reopen the last drawing if one was kept
     self:composeCanvas()
@@ -966,6 +966,72 @@ function InkAwayView:free()
     self.bg_rgba = nil
 end
 
+------------------------------------------------------------------------------
+-- On-screen buffer in the screen's panel pixel order (landscape speed)
+--
+-- When a device shows landscape by rotating its framebuffer in software (many
+-- Kindles), copying a plain top-left buffer onto Screen.bb goes pixel-by-pixel
+-- through that rotation -- about 10x slower than the row copies portrait gets, and
+-- what made menus / undo / placing text feel sluggish in landscape. So area_bb is
+-- built in the SCREEN's own pixel order: allocated with the panel's dimensions and
+-- given the screen's rotation, so all the drawing into it still uses ordinary area
+-- coordinates, but the finished bytes are already turned. Copying it onto the
+-- screen is then a plain memcpy through an unrotated view of the screen memory at
+-- the buffer's physical position (blitAreaFull), byte-identical to the rotated
+-- blit. This mirrors backgammon.koplugin's buildBoardBuffer / blitBoard. On the SDL
+-- emulator (which rotates its window, not the framebuffer) and on hardware-rotation
+-- devices Screen.bb's rotation is 0, so all of this collapses to the ordinary blit.
+
+function InkAwayView:screenBBRot() return Screen.bb.getRotation and Screen.bb:getRotation() or 0 end
+function InkAwayView:screenBBInv() return Screen.bb.getInverse and Screen.bb:getInverse() or 0 end
+
+-- Allocate area_bb in the screen's panel order (see the note above). Records the
+-- rotation / inversion / type it was built for, so matchAreaTarget can spot a later
+-- change (turning landscape one way to the other keeps the screen size, so no
+-- relayout fires, but the pixel order flips).
+function InkAwayView:newAreaBuffer()
+    local v = self.view
+    local aw, ah = v.area_w, v.area_h
+    local rot, inv, typ = self:screenBBRot(), self:screenBBInv(), Screen.bb:getType()
+    local pw, ph = aw, ah
+    if rot % 2 == 1 then pw, ph = ah, aw end          -- a quarter turn swaps the physical dims
+    local bb = Blitbuffer.new(pw, ph, typ)
+    if bb.setRotation then bb:setRotation(rot) end
+    if bb.setInverse then bb:setInverse(inv) end
+    self._area_rot, self._area_inv, self._area_type = rot, inv, typ
+    return bb
+end
+
+-- Rebuild area_bb (and re-render it) if the screen's rotation, inversion or buffer
+-- type has changed since it was made. Called at the top of every paint, cheap when
+-- nothing changed.
+function InkAwayView:matchAreaTarget()
+    if not self.area_bb then return end
+    if self:screenBBRot() ~= self._area_rot or self:screenBBInv() ~= self._area_inv
+            or Screen.bb:getType() ~= self._area_type then
+        self.area_bb:free()
+        self.area_bb = self:newAreaBuffer()
+        self:renderView()
+    end
+end
+
+-- Copy the whole area_bb onto the screen at (dstx, dsty). Unrotated: a plain blit.
+-- Software-rotated: area_bb already holds panel-order bytes, so it goes in through
+-- an unrotated view of the screen memory at the area's physical position -- row
+-- copies, exactly the pixels the rotated blit would have produced.
+function InkAwayView:blitAreaFull(bb, dstx, dsty)
+    local area, v = self.area_bb, self.view
+    if self._area_rot == 0 then
+        bb:blitFrom(area, dstx, dsty, 0, 0, v.area_w, v.area_h)
+        return
+    end
+    local dpx, dpy = bb:getPhysicalRect(dstx, dsty, v.area_w, v.area_h)
+    local sphys = Blitbuffer.new(bb.w, bb.h, bb:getType(), bb.data, bb.stride, bb.pixel_stride)
+    local aphys = Blitbuffer.new(area.w, area.h, area:getType(), area.data, area.stride, area.pixel_stride)
+    if sphys.setInverse then sphys:setInverse(bb:getInverse()) end
+    sphys:blitFrom(aphys, dpx, dpy, 0, 0, area.w, area.h)
+end
+
 function InkAwayView:onShow()
     UIManager:setDirty(self, "full")
     return true
@@ -994,7 +1060,7 @@ function InkAwayView:relayout()
     InkGeom.clampPan(v)
     -- the canvas keeps its size; only the on-screen buffer follows the screen
     if self.area_bb then self.area_bb:free() end
-    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self.area_bb = self:newAreaBuffer()
     self:renderView()
 end
 
@@ -1016,6 +1082,8 @@ function InkAwayView:onCloseWidget()
     if self._show_zoom_fab then UIManager:unschedule(self._show_zoom_fab) end
     if self._show_bar_toggle then UIManager:unschedule(self._show_bar_toggle) end
     if self._show_nbbar_toggle then UIManager:unschedule(self._show_nbbar_toggle) end
+    if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
+    self._pen_capture = nil
     self:hwrCancel()   -- drop any pending handwriting recognition timer
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
     if self.active_image then self:finishImageEdit() end       -- bake a selected image
@@ -1469,6 +1537,14 @@ function InkAwayView:openPenSettings()
             table.insert(assistRow, pr)
         end
         table.insert(tail, assistRow)
+        -- A quick self-test for stylus devices: it reports whether the pen reaches
+        -- the plugin AS a pen or as an ordinary finger, so palm-rejection problems on
+        -- devices we can't test (a Kindle Scribe report) can be diagnosed from afar.
+        if self:deviceHasStylus() then
+            table.insert(tail, vspan(10))
+            table.insert(tail, self:actionButton(_("Test pen input"), content_w,
+                function() closeSelf(); self:startPenInputTest() end))
+        end
         table.insert(tail, vspan(12))
         table.insert(tail, SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
             width = content_w, parent = menu, format = function(v) return tostring(v) end,
@@ -1696,9 +1772,38 @@ IconMenu = InputContainer:extend{
     bottom_y = nil,            -- if set, pin the sheet's BOTTOM here (e.g. touching
                                -- the notebook bottom bar); takes precedence over top_y
 }
+-- If the built sheet is taller than the screen allows (a long settings sheet, or
+-- any sheet in short landscape), wrap its content in a ScrollableContainer capped to
+-- the available height, so nothing is clipped -- it scrolls instead. This mirrors
+-- how KOReader's own ButtonDialog copes with a button list taller than the screen.
+-- Child-first gesture propagation means a pan inside the scroll area scrolls, while
+-- MovableContainer only sees drags outside it, so the two coexist.
+function IconMenu:fitFrame()
+    if not self.frame then return end
+    local content = self.frame[1]
+    if not content or not content.getSize then return end
+    local pad = Screen:scaleBySize(4)
+    local avail
+    if self.bottom_y then avail = self.bottom_y - pad
+    else avail = Screen:getHeight() - (self.top_y or pad) - pad end
+    local chrome = 2 * ((self.frame.padding or 0) + (self.frame.bordersize or 0))
+    -- measuring can fail in the headless mock env (incomplete widgets); then just
+    -- skip -- no scroll wrapper, exactly the old behaviour
+    local ok, csz = pcall(function() return content:getSize() end)
+    if not ok or not csz or csz.h + chrome <= avail then return end   -- fails or fits
+    local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
+    local sbw = ScrollableContainer:getScrollbarWidth()
+    self.frame[1] = ScrollableContainer:new{
+        dimen = GeomUI:new{ w = csz.w + sbw, h = math.max(1, avail - chrome) },
+        show_parent = self,
+        content,
+    }
+    self.frame._size = nil   -- drop any cached size so the frame remeasures
+end
+
 function IconMenu:init()
     local MovableContainer = require("ui/widget/container/movablecontainer")
-    if self.build then self.frame = self:build() end
+    if self.build then self.frame = self:build(); self:fitFrame() end
     if Device:isTouchDevice() then
         self.ges_events = { TapClose = { GestureRange:new{ ges = "tap",
             range = GeomUI:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() } } } }
@@ -1745,6 +1850,7 @@ function IconMenu:rebuild()
     if self.movable.free then self.movable:free() end
     local MovableContainer = require("ui/widget/container/movablecontainer")
     self.frame = self:build()
+    self:fitFrame()
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable
     UIManager:widgetRepaint(self, 0, 0)      -- paint the new contents; sets movable.dimen
@@ -2719,7 +2825,7 @@ function InkAwayView:setToolbarHidden(hidden)
     v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     if self.area_bb then self.area_bb:free() end
-    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self.area_bb = self:newAreaBuffer()
     self:renderView()
     self:refresh(self, "full")
 end
@@ -2746,7 +2852,7 @@ function InkAwayView:setNbBarHidden(hidden)
     v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     if self.area_bb then self.area_bb:free() end
-    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self.area_bb = self:newAreaBuffer()
     self:renderView()
     self:refresh(self, "full")
 end
@@ -6885,6 +6991,80 @@ function InkAwayView:applyPalmReject()
     end
 end
 
+------------------------------------------------------------------------------
+-- Pen input diagnostic
+--
+-- Palm rejection can only work if KOReader hands the plugin the pen as a STYLUS
+-- (its Input routes a slot to our callback only when the kernel tags it with a pen
+-- tool -- BTN_TOOL_PEN or ABS_MT_TOOL_TYPE). On some devices/firmwares (a Kindle
+-- Scribe gen 1 report) the pen instead arrives as an ordinary finger, so it can't
+-- be told apart from a resting palm and both draw. Since that can't be reproduced
+-- without the device, this test captures a few seconds of what the device actually
+-- sends -- stylus events routed to us vs. plain finger touches -- and shows a
+-- summary a tester can screenshot. It is opt-in from the pen menu.
+------------------------------------------------------------------------------
+
+function InkAwayView:penCaptureRecord(slot)
+    local cap = self._pen_capture
+    if not cap then return end
+    cap.styl = cap.styl + 1
+    local key = "tool=" .. tostring(slot.tool) .. " slot=" .. tostring(slot.slot)
+    cap.combos[key] = (cap.combos[key] or 0) + 1
+    if slot.timev ~= nil then cap.has_timev = true end
+end
+
+function InkAwayView:startPenInputTest()
+    if self._pen_capture then return end   -- already running
+    -- Register the stylus hook for the test even if palm rejection is off, so we
+    -- capture what the device sends regardless of the toggle.
+    self._pen_test_temp_cb = false
+    if self:penCapable() and not self._stylus_cb then
+        self._stylus_cb = function(inp, slot) return self:onStylusSlot(inp, slot) end
+        pcall(function() Device.input:registerStylusCallback(self._stylus_cb) end)
+        self._pen_test_temp_cb = true
+    end
+    self._pen_capture = { combos = {}, styl = 0, fingers = 0, has_timev = false }
+    self._pen_test_stop = self._pen_test_stop or function() self:finishPenInputTest() end
+    UIManager:show(InfoMessage:new{ text = _(
+        "Pen input test (about 6 seconds):\n\nDraw a few lines with your PEN, and rest your PALM on the screen while you do. A result will appear when it finishes."),
+        timeout = 5 })
+    UIManager:scheduleIn(6, self._pen_test_stop)
+end
+
+function InkAwayView:finishPenInputTest()
+    if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
+    local cap = self._pen_capture
+    self._pen_capture = nil
+    if self._pen_test_temp_cb then
+        pcall(function() Device.input:unregisterStylusCallback() end)
+        self._stylus_cb = nil
+        self._pen_test_temp_cb = false
+        self:applyPalmReject()   -- put the real hook back if palm rejection is on
+    end
+    if not cap then return end
+    local f = self:stylusFacts()
+    local lines = {
+        string.format("Stylus events: %d    Finger touches: %d", cap.styl, cap.fingers),
+        string.format("wacom=%s  pen_slot=%s  timev=%s",
+            tostring(f.wacom), tostring(f.pen_slot), tostring(cap.has_timev)),
+    }
+    if cap.styl > 0 then
+        lines[#lines + 1] = "Seen (tool / slot):"
+        for k, n in pairs(cap.combos) do lines[#lines + 1] = "  " .. k .. "   x" .. n end
+    end
+    lines[#lines + 1] = ""
+    if cap.styl == 0 and cap.fingers > 0 then
+        lines[#lines + 1] = "Your pen is arriving as an ordinary finger, so a palm can't be told apart from it. This needs pen support at the KOReader level for this device -- the plugin can't separate them on its own."
+    elseif cap.styl > 0 then
+        lines[#lines + 1] = "The pen IS seen as a stylus. Please screenshot this and send it, so the tool/slot values can be checked."
+    else
+        lines[#lines + 1] = "No input was captured. Please run it again and make sure you draw during the test."
+    end
+    local msg = table.concat(lines, "\n")
+    logger.info("Ink Away pen input test:\n" .. msg)
+    UIManager:show(InfoMessage:new{ text = msg })
+end
+
 -- Drop all in-flight pen/palm state (called when palm rejection is turned off or
 -- the widget closes). Restores a tool we swapped for the eraser tip or side button
 -- if a stroke was mid-flight, so toggling off during a rear-eraser or side-button
@@ -7018,6 +7198,7 @@ end
 -- resting palm (MT_TOOL_PALM == ERASER == 2), so we classify by slot first and
 -- only drive the drawing from a genuinely trusted pen.
 function InkAwayView:onStylusSlot(inp, slot)
+    if self._pen_capture then self:penCaptureRecord(slot) end
     if not self.palm_reject or self.closing then return false end
     local input = inp or Device.input
     local facts = self:stylusFacts(input)
@@ -7169,6 +7350,9 @@ end
 -- Touch down: begin a stroke or a pan, or carry on a stroke that just lifted if
 -- the panel dropped the finger and picked it up again.
 function InkAwayView:onIaTouch(_, ges)
+    -- Pen input test: count ordinary finger touches so the diagnostic can tell
+    -- whether the pen is arriving here (as a finger) instead of as a stylus.
+    if self._pen_capture then self._pen_capture.fingers = self._pen_capture.fingers + 1 end
     -- palm rejection: pen/palm is present. Refresh the window so a palm that
     -- reverted to a finger tool (and so reappears here as a gesture) stays out
     -- until it truly lifts.
@@ -8541,6 +8725,10 @@ end
 
 function InkAwayView:paintTo(bb, x, y)
     local v = self.view
+    -- Keep area_bb in the screen's current pixel order (rebuilds it if the screen
+    -- was rotated the other way with no relayout); the fast landscape blit below
+    -- relies on it matching.
+    self:matchAreaTarget()
     -- White background. The drawing area is repainted from area_bb below (which is
     -- already white where there is no ink), so painting the whole screen white here
     -- would just be overwritten -- clear only the strips OUTSIDE the area: the
@@ -8569,10 +8757,14 @@ function InkAwayView:paintTo(bb, x, y)
         local rx0 = math.max(0, math.floor(br.x0)); local ry0 = math.max(0, math.floor(br.y0))
         local rx1 = math.min(v.area_w, math.ceil(br.x1)); local ry1 = math.min(v.area_h, math.ceil(br.y1))
         if rx1 > rx0 and ry1 > ry0 then
+            -- small changed region while drawing: an ordinary blit (area_bb shares the
+            -- screen's rotation, so a same-rotation copy is correct and cheap here)
             bb:blitFrom(self.area_bb, x + v.area_x + rx0, y + v.area_y + ry0, rx0, ry0, rx1 - rx0, ry1 - ry0)
         end
     else
-        bb:blitFrom(self.area_bb, x + v.area_x, y + v.area_y, 0, 0, v.area_w, v.area_h)
+        -- whole surface: the fast panel-order copy (a memcpy when the screen is
+        -- software-rotated, instead of a per-pixel turn)
+        self:blitAreaFull(bb, x + v.area_x, y + v.area_y)
     end
     self._blit_rect = nil   -- consumed; default back to a full blit next paint
     -- grid guides on top, straight onto the screen buffer so they never mix into
@@ -9043,7 +9235,7 @@ function InkAwayView:recomputeArea()
     v.area_y = th
     v.area_h = self.screen_h - th - self.nb_bar_h
     if self.area_bb then self.area_bb:free() end
-    self.area_bb = Blitbuffer.new(v.area_w, v.area_h, Screen.bb:getType())
+    self.area_bb = self:newAreaBuffer()
     self.zoom_min = InkGeom.fitZoom(v)
     -- Cover the whole area (no letterbox), exactly like a flat canvas; this keeps a
     -- notebook filling the device -- and, if its page shape differs from the screen
