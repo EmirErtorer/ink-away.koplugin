@@ -53,6 +53,15 @@ function InkAway:onInkAwayOpen()
 end
 
 function InkAway:openCanvas()
+    -- Never stack a second canvas on top of one that is already open (e.g. the
+    -- open gesture or the Tools menu entry re-invoked while Ink Away is already
+    -- up). A buried InkAwayView stays in UIManager's window stack: it keeps being
+    -- painted and keeps running its timers on every frame, so Ink Away gets slower
+    -- with each extra copy and only a KOReader restart (which resets the window
+    -- stack + task queue) clears them. If one is already shown, leave it as-is.
+    for _, w in ipairs(UIManager._window_stack or {}) do
+        if w.widget and w.widget.name == "inkaway_view" then return end
+    end
     local InkAwayView = require("ink/view")
     UIManager:show(InkAwayView:new{})
 end
