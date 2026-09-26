@@ -139,6 +139,64 @@ local function bbToRGBA(bb, W, H)
     return buf
 end
 
+-- Remove a plain background from a decoded picture by brightness (a first-pass
+-- "smart" cutout for making transparent PNGs). The border is sampled to decide
+-- whether the background is light (white/cream paper) or dark (black, common on
+-- Openverse), then every pixel close to that background brightness is made
+-- transparent while the subject stays opaque and keeps its colour; a soft ramp at
+-- the boundary avoids a hard, jagged edge. One tight pass over the raw bytes, so it
+-- is fast even on a slow reader. `src` is a BBRGB32; returns a packed RGBA
+-- (r,g,b,a) FFI buffer ready for ffi/png.encodeToFile, or nil.
+--
+-- This is deliberately simple: it shines on line art, engravings and solid-colour
+-- backgrounds (the bulk of what ornament-makers pull from Wikimedia/Openverse). It
+-- can eat light parts of a light subject on a light background -- a lasso to bound
+-- the subject is the planned next step for those harder cases.
+local BG_NEAR = 48   -- within this brightness of the background => background
+local BG_RAMP = 72   -- soft edge width above that, from transparent to opaque
+local function bgRemovedRGBA(src)
+    if not src then return nil end
+    local w, h = src:getWidth(), src:getHeight()
+    if w < 2 or h < 2 then return nil end
+    local out = ffi.new("uint8_t[?]", w * h * 4)
+    local ok = pcall(function()
+        local rgba = rgb32IsRGBA()
+        local ri = rgba and 0 or 2      -- byte offset of R (B when the panel is BGRA)
+        local bi = rgba and 2 or 0      -- byte offset of B; G is always 1, alpha 3
+        local sp = ffi.cast("uint8_t*", src.data)
+        local ss = src.stride or (w * 4)
+        local function lum(o) return (sp[o + ri] * 77 + sp[o + 1] * 150 + sp[o + bi] * 29) / 256 end
+        -- sample the four borders for the background's mean brightness
+        local sum, cnt = 0, 0
+        for x = 0, w - 1 do
+            sum = sum + lum(x * 4) + lum((h - 1) * ss + x * 4); cnt = cnt + 2
+        end
+        for y = 0, h - 1 do
+            sum = sum + lum(y * ss) + lum(y * ss + (w - 1) * 4); cnt = cnt + 2
+        end
+        local bg = sum / math.max(1, cnt)
+        local light = bg >= 128
+        local i = 0
+        for y = 0, h - 1 do
+            local so = y * ss
+            for x = 0, w - 1 do
+                local o = so + x * 4
+                local r, g, b = sp[o + ri], sp[o + 1], sp[o + bi]
+                local L = (r * 77 + g * 150 + b * 29) / 256
+                local dist = light and (bg - L) or (L - bg)   -- distance toward the subject
+                local a
+                if dist <= BG_NEAR then a = 0
+                elseif dist >= BG_NEAR + BG_RAMP then a = 255
+                else a = math.floor((dist - BG_NEAR) / BG_RAMP * 255 + 0.5) end
+                out[i] = r; out[i + 1] = g; out[i + 2] = b; out[i + 3] = a
+                i = i + 4
+            end
+        end
+    end)
+    if not ok then return nil end
+    return out
+end
+
 -- Even-odd ray cast: is point (px,py) inside the polygon `poly` (flat x,y list)?
 local function pointInPoly(px, py, poly)
     local n = #poly / 2
@@ -504,9 +562,15 @@ function InkAwayView:reshapeIfEmpty()
     if self.notebook then
         -- a PDF-backed notebook is tied to its source pages: never reshape it
         if self.notebook.template and self.notebook.template.pdf_path then return false end
-        empty = true
-        for _, pg in ipairs(self.notebook.pages) do
-            if pg.ops and #pg.ops > 0 then empty = false; break end
+        -- The page being drawn on lives in the live canvas (self.canvas.ops) and is
+        -- only copied back into notebook.pages on a page turn/save, so check it FIRST
+        -- -- otherwise a shape just drawn (not yet synced) is missed and the page is
+        -- wrongly reshaped, clipping that shape at the new (shorter) page edge.
+        empty = self.canvas:isEmpty()
+        if empty then
+            for _, pg in ipairs(self.notebook.pages) do
+                if pg.ops and #pg.ops > 0 then empty = false; break end
+            end
         end
     else
         empty = self.canvas:isEmpty() and not self.bg_bb
@@ -5245,33 +5309,41 @@ end
 -- decode (a high-megapixel photo is tens of MB in RGBA) would only waste memory.
 -- We downscale once, preserving aspect, and never upscale. Returns the buffer or
 -- nil. A `false` entry caches a decode failure so we do not retry every frame.
+-- Decode a picture file into a BBRGB32 (keeping alpha), capped to the canvas size
+-- (an image is never shown or exported larger than the page, and a full-resolution
+-- decode of a big photo would waste memory). Returns the buffer or nil. Not cached
+-- -- imageSrc caches per op.path; the background remover uses this directly on the
+-- original file.
+function InkAwayView:decodeCapped(path)
+    if not path then return nil end
+    local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
+    if not (ok and img) then return nil end
+    local iw, ih = img:getWidth(), img:getHeight()
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local cap = math.min(1, W / iw, H / ih)          -- <=1: only ever shrink
+    local sw = math.max(1, math.floor(iw * cap + 0.5))
+    local sh = math.max(1, math.floor(ih * cap + 0.5))
+    local source = img
+    if sw ~= iw or sh ~= ih then
+        local sok, s = pcall(function() return RenderImage:scaleBlitBuffer(img, sw, sh, false) end)
+        if sok and s then source = s end
+    end
+    -- Normalise to a BBRGB32 with a transparent ground, so the on-screen alpha-blit
+    -- and the raw-bytes export both see a uniform r,g,b,a layout.
+    local n = Blitbuffer.new(sw, sh, Blitbuffer.TYPE_BBRGB32)
+    n:fill(Blitbuffer.ColorRGB32(0, 0, 0, 0))
+    pcall(function() n:blitFrom(source, 0, 0, 0, 0, sw, sh) end)
+    if source ~= img and source.free then source:free() end
+    if img.free then img:free() end
+    return n
+end
+
 function InkAwayView:imageSrc(op)
     if not op or not op.path then return nil end
     self._img_bb = self._img_bb or {}
     local c = self._img_bb[op.path]
     if c ~= nil then return c or nil end
-    local ok, img = pcall(function() return RenderImage:renderImageFile(op.path, false) end)
-    local norm = false
-    if ok and img then
-        local iw, ih = img:getWidth(), img:getHeight()
-        local W, H = self.view.canvas_w, self.view.canvas_h
-        local cap = math.min(1, W / iw, H / ih)          -- <=1: only ever shrink
-        local sw = math.max(1, math.floor(iw * cap + 0.5))
-        local sh = math.max(1, math.floor(ih * cap + 0.5))
-        local source = img
-        if sw ~= iw or sh ~= ih then
-            local sok, s = pcall(function() return RenderImage:scaleBlitBuffer(img, sw, sh, false) end)
-            if sok and s then source = s end
-        end
-        -- Normalise to a BBRGB32 with a transparent ground, so the on-screen
-        -- alpha-blit and the raw-bytes export both see a uniform r,g,b,a layout.
-        local n = Blitbuffer.new(sw, sh, Blitbuffer.TYPE_BBRGB32)
-        n:fill(Blitbuffer.ColorRGB32(0, 0, 0, 0))
-        pcall(function() n:blitFrom(source, 0, 0, 0, 0, sw, sh) end)
-        if source ~= img and source.free then source:free() end
-        if img.free then img:free() end
-        norm = n
-    end
+    local norm = self:decodeCapped(op.path) or false
     self._img_bb[op.path] = norm
     return norm or nil
 end
@@ -5646,6 +5718,72 @@ function InkAwayView:duplicateImage(sel)
     self:openImageMenu(self.active_image)
 end
 
+-- Folder for pictures Ink Away has processed (e.g. background removed), kept beside
+-- the online-images folder so they are easy to find and never overwrite an original.
+function InkAwayView:processedImagesDir()
+    local ok, DataStorage = pcall(require, "datastorage")
+    if not (ok and DataStorage) then return nil end
+    local parent = DataStorage:getDataDir() .. "/ink away"
+    local dir = parent .. "/processed images"
+    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if lok and lfs then
+        if lfs.attributes(parent, "mode") ~= "directory" then pcall(lfs.mkdir, parent) end
+        if lfs.attributes(dir, "mode") ~= "directory" then pcall(lfs.mkdir, dir) end
+        if lfs.attributes(dir, "mode") == "directory" then return dir end
+    end
+    return nil
+end
+
+-- Remove a placed image's background (first-pass, brightness based -- see
+-- bgRemovedRGBA). The cut-out is written as a transparent PNG and the op is
+-- repointed at it (keeping the original path in op.src_path so a re-run works from
+-- the original and nothing is lost), which reuses the whole decode/export path with
+-- no special cases. It is a copy-on-write op edit, so Undo brings the original back.
+function InkAwayView:removeImageBackground(sel)
+    local op = sel and sel.op
+    if not op then return end
+    local src_path = op.src_path or op.path
+    local src = self:decodeCapped(src_path)
+    if not src then
+        UIManager:show(InfoMessage:new{ text = _("Couldn't read that image."), icon = "notice-warning" })
+        return
+    end
+    local w, h = src:getWidth(), src:getHeight()
+    local rgba = bgRemovedRGBA(src)
+    if src.free then pcall(function() src:free() end) end
+    if not rgba then
+        UIManager:show(InfoMessage:new{ text = _("Couldn't process that image."), icon = "notice-warning" })
+        return
+    end
+    local dir = self:processedImagesDir()
+    if not dir then
+        UIManager:show(InfoMessage:new{ text = _("Couldn't prepare a folder for the image."), icon = "notice-warning" })
+        return
+    end
+    self._img_proc_seq = (self._img_proc_seq or 0) + 1
+    local path = string.format("%s/nobg-%d-%d.png", dir, os.time(), self._img_proc_seq)
+    local wok = pcall(function() require("ffi/png").encodeToFile(path, rgba, w, h, 4) end)
+    if not wok then
+        UIManager:show(InfoMessage:new{ text = _("Couldn't save the processed image."), icon = "notice-warning" })
+        return
+    end
+    -- copy-on-write: repoint at the cut-out, remember the original for a re-run
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(op)
+    clone.src_path = src_path
+    clone.path = path
+    clone.natw, clone.nath = w, h
+    self.canvas:replaceOp(sel.idx, clone)
+    sel.op = clone
+    self.active_image = sel
+    self._img_drag = nil
+    self:freeImageCache()   -- the path changed: drop the old decode, decode the cut-out
+    self.dirty = true
+    self:composeCanvas(); self:renderView()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:openImageMenu(sel)
+end
+
 -- Free rotation: like the shape rotate, drag anywhere to spin the picture to any
 -- angle; a live preview follows the finger, and the angle is committed on lift.
 function InkAwayView:beginImageRotate(sel)
@@ -5716,6 +5854,9 @@ function InkAwayView:openImageMenu(sel)
             {
                 { text = "\u{25B2} " .. _("To front"),  callback = function() close(); self:imageToFront(sel) end },
                 { text = "\u{29C9} " .. _("Duplicate"), callback = function() close(); self:duplicateImage(sel) end },
+            },
+            {
+                { text = "\u{2702} " .. _("Remove background"), callback = function() close(); self:removeImageBackground(sel) end },
             },
             {
                 { text = "\u{2715} " .. _("Delete"), callback = function() close(); self:deleteActiveImage() end },
@@ -9815,5 +9956,7 @@ end
 
 -- Expose the internal sheet widgets for headless tests (they are file-locals).
 InkAwayView._SliderRow, InkAwayView._ToggleRow = SliderRow, ToggleRow
+-- Expose the background remover for headless tests (a file-local pure function).
+InkAwayView._bgRemovedRGBA = bgRemovedRGBA
 
 return InkAwayView
