@@ -404,10 +404,143 @@ function InkAwayView:colorScreen()
 end
 
 ------------------------------------------------------------------------------
+-- Orientation (portrait / landscape)
+--
+-- KOReader rotates the whole screen: a rotation mode is 0 (upright portrait),
+-- 1 (clockwise landscape), 2 (upside-down portrait) or 3 (counter-clockwise
+-- landscape) -- the odd modes are the two landscapes. Ink Away can run either
+-- way up. It remembers the reader's own rotation when it opens and puts it back
+-- on close, and it remembers the orientation you last drew in so a fresh launch
+-- comes up the same way. Opening while the device is already held in landscape
+-- works too, since the very first launch simply adopts whatever the screen is.
+--
+-- The canvas is created at the screen size, so a landscape session gets a wide
+-- canvas and its PNG/JPEG/PDF export comes out landscape with no extra work. A
+-- drawing already on screen keeps its size and is just shown rotated (you pan to
+-- reach it); only a still-blank page is reshaped to the new orientation.
+------------------------------------------------------------------------------
+
+local function modeIsLandscape(mode) return mode ~= nil and (mode % 2 == 1) end
+
+-- Is screen rotation available at all (it is on real devices and the emulator;
+-- guard so the headless tests, which stub Screen, never call a missing method).
+function InkAwayView:orientationSupported()
+    return (Screen.setRotationMode and Screen.getRotationMode) and true or false
+end
+
+function InkAwayView:currentRotation()
+    return (Screen.getRotationMode and Screen:getRotationMode()) or 0
+end
+
+-- The "portrait" / "landscape" class of a rotation mode (the current one if none
+-- is given).
+function InkAwayView:orientationClass(mode)
+    if mode == nil then mode = self:currentRotation() end
+    return modeIsLandscape(mode) and "landscape" or "portrait"
+end
+
+-- Which rotation mode to use for a requested orientation. Prefer the reader's own
+-- rotation when it already matches the class (so we keep the exact way up the
+-- device is held), else a sensible default: upright for portrait, and
+-- counter-clockwise for landscape (so the device's bottom bezel ends up on the
+-- right, matching how most readers turn a device for landscape).
+function InkAwayView:rotationForClass(class)
+    local orig = self.orig_rotation
+    if class == "landscape" then
+        if modeIsLandscape(orig) then return orig end
+        return Screen.DEVICE_ROTATED_COUNTER_CLOCKWISE or 3
+    else
+        if orig ~= nil and not modeIsLandscape(orig) then return orig end
+        return Screen.DEVICE_ROTATED_UPRIGHT or 0
+    end
+end
+
+-- Apply the orientation Ink Away should open in, called once at init BEFORE the
+-- canvas and buffers are sized. Uses the remembered choice if there is one, else
+-- adopts (and remembers) however the device is currently held.
+function InkAwayView:applyStartupOrientation()
+    if not self:orientationSupported() then
+        self.orientation = self:orientationClass()
+        return
+    end
+    local pref = self:getSetting("inkaway_orientation", nil)
+    if pref ~= "portrait" and pref ~= "landscape" then
+        self.orientation = self:orientationClass()
+        self:setSetting("inkaway_orientation", self.orientation)
+        return
+    end
+    self.orientation = pref
+    local target = self:rotationForClass(pref)
+    if target ~= self:currentRotation() then
+        pcall(function() Screen:setRotationMode(target) end)
+    end
+end
+
+-- Switch orientation from the Settings sheet. Rotates the screen, remembers the
+-- choice, then re-lays-out (and reshapes a blank page to the new orientation).
+function InkAwayView:setOrientation(class)
+    if not self:orientationSupported() then return end
+    if self:orientationClass() == class then return end   -- already that way up
+    pcall(function() Screen:setRotationMode(self:rotationForClass(class)) end)
+    self.orientation = class
+    self:setSetting("inkaway_orientation", class)
+    self:handleScreenResize()
+    -- a full refresh both draws the new orientation and clears the panel, which is
+    -- exactly when a full refresh earns its cost
+    UIManager:setDirty(self, "full")
+end
+
+-- If nothing has been drawn yet, reshape the blank page to match the screen's
+-- current size, so a fresh drawing or notebook fills the whole screen in the new
+-- orientation. A page with work on it is left at its own size (shown rotated).
+-- Returns true if it reshaped. Recomposes the master buffer so the caller's
+-- renderView shows the reshaped (blank) page.
+function InkAwayView:reshapeIfEmpty()
+    local W, H = Screen:getWidth(), Screen:getHeight()
+    local v = self.view
+    if not v then return false end
+    if v.canvas_w == W and v.canvas_h == H then return false end   -- already that shape
+    local empty
+    if self.notebook then
+        -- a PDF-backed notebook is tied to its source pages: never reshape it
+        if self.notebook.template and self.notebook.template.pdf_path then return false end
+        empty = true
+        for _, pg in ipairs(self.notebook.pages) do
+            if pg.ops and #pg.ops > 0 then empty = false; break end
+        end
+    else
+        empty = self.canvas:isEmpty() and not self.bg_bb
+    end
+    if not empty then return false end
+    v.canvas_w, v.canvas_h = W, H
+    self.canvas.w, self.canvas.h = W, H
+    if self.notebook then self.notebook.w, self.notebook.h = W, H end
+    if self.canvas_bb then self.canvas_bb:free() end
+    self.canvas_bb = Blitbuffer.new(W, H, Screen.bb:getType())
+    self:composeCanvas()   -- fill the fresh master (paper/ruling for a notebook)
+    return true
+end
+
+-- Re-lay-out after the screen size changed -- from our own orientation toggle, or
+-- the device being physically turned (onSetDimensions). Reshape a blank page to
+-- the new orientation first, then rebuild the toolbar/area and refit the view.
+function InkAwayView:handleScreenResize()
+    self:reshapeIfEmpty()
+    self:relayout()
+    self.orientation = self:orientationClass()
+end
+
+------------------------------------------------------------------------------
 -- Lifecycle
 ------------------------------------------------------------------------------
 
 function InkAwayView:init()
+    -- Remember the reader's own rotation (restored on close) and apply the
+    -- orientation Ink Away should open in, BEFORE the canvas and buffers below are
+    -- sized to the screen -- so a landscape session gets a wide canvas from the
+    -- start and its export comes out landscape automatically.
+    self.orig_rotation = self:currentRotation()
+    self:applyStartupOrientation()
     local W, H = Screen:getWidth(), Screen:getHeight()
     self.screen_w, self.screen_h = W, H
     self.dimen = GeomUI:new{ x = 0, y = 0, w = W, h = H }
@@ -617,6 +750,12 @@ function InkAwayView:init()
     self:renderView()
     self:scheduleAutosave()
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
+    -- Dev hook (emulator only): force an orientation at launch so the landscape
+    -- layout can be screenshotted without driving the settings menu. No-op on device.
+    local autoorient = os.getenv("INKAWAY_AUTOORIENT")
+    if autoorient == "landscape" or autoorient == "portrait" then
+        UIManager:scheduleIn(0.4, function() self:setOrientation(autoorient) end)
+    end
     -- Dev hook (emulator only): auto-open a named options sheet so UI work can be
     -- screenshotted without driving the mouse. No-op on device.
     local autosheet = os.getenv("INKAWAY_AUTOSHEET")
@@ -631,6 +770,7 @@ function InkAwayView:init()
             elseif autosheet == "shape" then self:openShapePicker()
             elseif autosheet == "shapeline" then self:openShapePicker(); self:openShapeLineMenu()
             elseif autosheet == "fill" then self:openFillColor()
+            elseif autosheet == "notebook" then self:startNotebook({ style = "lines", size = self.grid_size or 40, strength = self.grid_strength or 45 })
             end
         end)
     end
@@ -744,7 +884,7 @@ function InkAwayView:relayout()
 end
 
 function InkAwayView:onSetDimensions()
-    self:relayout()
+    self:handleScreenResize()
     UIManager:setDirty(self, "full")
 end
 
@@ -785,6 +925,16 @@ function InkAwayView:onCloseWidget()
     -- Reclaim our large buffers and ops now, so the next session starts clean
     -- rather than inheriting the heap pressure (which shows up as slowdown).
     collectgarbage("collect")
+    -- Remember the orientation we were drawing in (so the next launch opens the
+    -- same way up), then put the device back the way it was before Ink Away opened.
+    -- The full refresh below leaves the panel clean and, where landscape uses
+    -- software rotation, the reader back on its native fast path.
+    if self:orientationSupported() then
+        self:setSetting("inkaway_orientation", self:orientationClass())
+        if self.orig_rotation ~= nil and self:currentRotation() ~= self.orig_rotation then
+            pcall(function() Screen:setRotationMode(self.orig_rotation) end)
+        end
+    end
     -- Leave the screen clean underneath.
     UIManager:setDirty(nil, "full")
 end
@@ -4471,6 +4621,21 @@ function InkAwayView:openSettings()
         add(vspan(8))
         add(act(_("Background image"), content_w, function() self:openBackground() end))
         add(vspan(16))
+
+        -- orientation: portrait vs landscape. Switches the whole app (and the shape
+        -- of new canvases and notebooks) the chosen way up. Closes the sheet on pick
+        -- because the screen size changes; reopen it to see the new highlight.
+        if self:orientationSupported() then
+            add(header(_("Orientation")))
+            add(vspan(6))
+            local cur = self:orientationClass()
+            add(row2(
+                self:actionButton(_("Portrait"), halfW, function()
+                    closeSelf(); self:setOrientation("portrait") end, cur == "portrait"),
+                self:actionButton(_("Landscape"), halfW, function()
+                    closeSelf(); self:setOrientation("landscape") end, cur == "landscape")))
+            add(vspan(16))
+        end
 
         -- grid (canvas) or paper (notebook)
         if self.notebook then

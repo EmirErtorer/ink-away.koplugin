@@ -126,6 +126,12 @@ Autosave and projects are separate from the image export: a project keeps your e
 
 The canvas is a fixed image the size of your screen, for example 1072 × 1448 on some Kindles. Zooming in just lets you work on fine detail. The image underneath stays the same size, and each stroke keeps the thickness and position it had no matter what zoom you drew it at. Zooming to 200% does not give you a double sized export. The export is always the fixed canvas size.
 
+### Portrait and landscape
+
+Ink Away works either way up. Switch it in the gear menu under **Orientation**, or just open it while your device is already held in landscape and it comes up wide. Either way it remembers your choice, so if you close it in landscape it opens in landscape next time (and back to portrait the same way). When you leave Ink Away, your reader goes back to whichever way it was before.
+
+In landscape you get a wide canvas, a wide notebook page, and a toolbar and grid to match, and the PNG, JPEG or PDF you export comes out wide too, at the landscape size. Switching orientation reshapes a blank page to fill the screen the new way round. A drawing you have already started keeps its own size and is simply shown turned, so nothing you have drawn is ever cut off; start a new drawing (or notebook) after switching if you want it the full landscape size.
+
 ## Transparency (PNG)
 
 The PNG has a real alpha channel. Every pixel you did not draw on is fully transparent (alpha 0), and the ink is opaque. It is not a white image pretending to be transparent. The untouched areas are genuinely empty, so the PNG sits straight on top of a sleep screen or any other background.
@@ -148,7 +154,7 @@ If you are upgrading from an earlier version, your existing projects are sorted 
 
 ## Device compatibility
 
-Ink Away asks KOReader for the current screen size and makes the canvas match, so no device model is written into the code and the export always matches your screen. If you rotate the device while the canvas is open, the view rearranges itself for the new orientation, and the export keeps the pixel size it had when you first opened the canvas.
+Ink Away asks KOReader for the current screen size and makes the canvas match, so no device model is written into the code and the export always matches your screen. It runs in portrait or landscape (see "Portrait and landscape" above): a fresh canvas fills the screen whichever way up you are, and the export comes out that shape. If you turn the device while a drawing is already open, the view rearranges for the new orientation and that drawing keeps the pixel size it had when you opened it.
 
 ## Known limitations
 
