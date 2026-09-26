@@ -139,25 +139,27 @@ local function bbToRGBA(bb, W, H)
     return buf
 end
 
--- Remove a plain background from a decoded picture by brightness (a first-pass
--- "smart" cutout for making transparent PNGs). The border is sampled to decide
--- whether the background is light (white/cream paper) or dark (black, common on
--- Openverse), then every pixel close to that background brightness is made
--- transparent while the subject stays opaque and keeps its colour; a soft ramp at
--- the boundary avoids a hard, jagged edge. One tight pass over the raw bytes, so it
--- is fast even on a slow reader. `src` is a BBRGB32; returns a packed RGBA
--- (r,g,b,a) FFI buffer ready for ffi/png.encodeToFile, or nil.
+-- Remove the background from a decoded picture (a first-pass "smart" cutout for
+-- making transparent PNGs). It floods inward FROM THE BORDERS through pixels whose
+-- colour is close to the sampled background colour, and only those connected-to-the-
+-- edge pixels are made transparent -- so dark (or light) parts of the SUBJECT that
+-- are not joined to the border stay solid. This is what a plain global threshold
+-- cannot do: on a photo it would fade the whole subject wherever it matched the
+-- background's brightness (a grey cat on a dark background went translucent). The
+-- background colour is sampled from the four borders, the tolerance adapts to how
+-- noisy that border is, and the mask edge is softened so it isn't jagged. One
+-- scan-line flood over the raw bytes, so it stays fast on a slow reader. `src` is a
+-- BBRGB32; returns a packed RGBA (r,g,b,a) FFI buffer for ffi/png.encodeToFile, or nil.
 --
--- This is deliberately simple: it shines on line art, engravings and solid-colour
--- backgrounds (the bulk of what ornament-makers pull from Wikimedia/Openverse). It
--- can eat light parts of a light subject on a light background -- a lasso to bound
--- the subject is the planned next step for those harder cases.
-local BG_NEAR = 48   -- within this brightness of the background => background
-local BG_RAMP = 72   -- soft edge width above that, from transparent to opaque
+-- Works on any background colour (white paper, black, a solid colour), keeping the
+-- subject's own colour. Limits: it needs a background that actually reaches the
+-- edges and is reasonably distinct from the subject; a subject touching all four
+-- borders, or one the same colour as the background, is where a lasso (planned
+-- next) will bound the region.
 local function bgRemovedRGBA(src)
     if not src then return nil end
     local w, h = src:getWidth(), src:getHeight()
-    if w < 2 or h < 2 then return nil end
+    if w < 3 or h < 3 then return nil end
     local out = ffi.new("uint8_t[?]", w * h * 4)
     local ok = pcall(function()
         local rgba = rgb32IsRGBA()
@@ -165,30 +167,84 @@ local function bgRemovedRGBA(src)
         local bi = rgba and 2 or 0      -- byte offset of B; G is always 1, alpha 3
         local sp = ffi.cast("uint8_t*", src.data)
         local ss = src.stride or (w * 4)
-        local function lum(o) return (sp[o + ri] * 77 + sp[o + 1] * 150 + sp[o + bi] * 29) / 256 end
-        -- sample the four borders for the background's mean brightness
-        local sum, cnt = 0, 0
+        -- background reference colour = mean of the four borders
+        local sr, sg, sb, cnt = 0, 0, 0, 0
+        local function accum(o) sr = sr + sp[o + ri]; sg = sg + sp[o + 1]; sb = sb + sp[o + bi]; cnt = cnt + 1 end
+        for x = 0, w - 1 do accum(x * 4); accum((h - 1) * ss + x * 4) end
+        for y = 0, h - 1 do accum(y * ss); accum(y * ss + (w - 1) * 4) end
+        local br, bgc, bbc = sr / cnt, sg / cnt, sb / cnt
+        -- colour distance (Manhattan) from that reference
+        local function distO(o)
+            local dr = sp[o + ri] - br; if dr < 0 then dr = -dr end
+            local dg = sp[o + 1] - bgc; if dg < 0 then dg = -dg end
+            local db = sp[o + bi] - bbc; if db < 0 then db = -db end
+            return dr + dg + db
+        end
+        -- adapt the tolerance to how varied the border is (a clean border gets a
+        -- tight tolerance so little of the subject is caught; a noisy one gets more)
+        local mad, m2 = 0, 0
+        for x = 0, w - 1 do mad = mad + distO(x * 4) + distO((h - 1) * ss + x * 4); m2 = m2 + 2 end
+        for y = 0, h - 1 do mad = mad + distO(y * ss) + distO(y * ss + (w - 1) * 4); m2 = m2 + 2 end
+        mad = mad / math.max(1, m2)
+        local tol = math.max(80, math.min(260, 2.5 * mad + 60))
+        local feather = tol * 0.5      -- reached pixels this close to the tol edge fade in
+        local core = tol - feather
+        -- scan-line flood from the borders through pixels within tol of the bg
+        local seen = ffi.new("uint8_t[?]", w * h)   -- 0 unknown, 1 background
+        local stack, sn = {}, 0
+        local function push(x, y) sn = sn + 1; stack[sn] = x; sn = sn + 1; stack[sn] = y end
+        local function free_at(x, y) return seen[y * w + x] == 0 and distO(y * ss + x * 4) <= tol end
         for x = 0, w - 1 do
-            sum = sum + lum(x * 4) + lum((h - 1) * ss + x * 4); cnt = cnt + 2
+            if free_at(x, 0) then push(x, 0) end
+            if free_at(x, h - 1) then push(x, h - 1) end
         end
         for y = 0, h - 1 do
-            sum = sum + lum(y * ss) + lum(y * ss + (w - 1) * 4); cnt = cnt + 2
+            if free_at(0, y) then push(0, y) end
+            if free_at(w - 1, y) then push(w - 1, y) end
         end
-        local bg = sum / math.max(1, cnt)
-        local light = bg >= 128
+        while sn > 0 do
+            local y = stack[sn]; sn = sn - 1
+            local x = stack[sn]; sn = sn - 1
+            if free_at(x, y) then
+                local row, so = y * w, y * ss
+                local xl = x
+                while xl > 0 and free_at(xl - 1, y) do xl = xl - 1 end
+                local xr = x
+                while xr < w - 1 and free_at(xr + 1, y) do xr = xr + 1 end
+                for xx = xl, xr do seen[row + xx] = 1 end
+                if y > 0 then
+                    local xx = xl
+                    while xx <= xr do
+                        if free_at(xx, y - 1) then push(xx, y - 1)
+                            while xx <= xr and free_at(xx, y - 1) do xx = xx + 1 end
+                        else xx = xx + 1 end
+                    end
+                end
+                if y < h - 1 then
+                    local xx = xl
+                    while xx <= xr do
+                        if free_at(xx, y + 1) then push(xx, y + 1)
+                            while xx <= xr and free_at(xx, y + 1) do xx = xx + 1 end
+                        else xx = xx + 1 end
+                    end
+                end
+            end
+        end
+        -- build RGBA: subject opaque; background transparent, fading in near the edge
         local i = 0
         for y = 0, h - 1 do
-            local so = y * ss
+            local so, row = y * ss, y * w
             for x = 0, w - 1 do
                 local o = so + x * 4
-                local r, g, b = sp[o + ri], sp[o + 1], sp[o + bi]
-                local L = (r * 77 + g * 150 + b * 29) / 256
-                local dist = light and (bg - L) or (L - bg)   -- distance toward the subject
                 local a
-                if dist <= BG_NEAR then a = 0
-                elseif dist >= BG_NEAR + BG_RAMP then a = 255
-                else a = math.floor((dist - BG_NEAR) / BG_RAMP * 255 + 0.5) end
-                out[i] = r; out[i + 1] = g; out[i + 2] = b; out[i + 3] = a
+                if seen[row + x] == 1 then
+                    local d = distO(o)
+                    if d <= core then a = 0
+                    else a = math.floor((d - core) / feather * 255 + 0.5); if a > 255 then a = 255 end end
+                else
+                    a = 255
+                end
+                out[i] = sp[o + ri]; out[i + 1] = sp[o + 1]; out[i + 2] = sp[o + bi]; out[i + 3] = a
                 i = i + 4
             end
         end
