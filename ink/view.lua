@@ -105,6 +105,11 @@ local CARET_BG  = Blitbuffer.ColorRGB32(0xB0, 0xB0, 0xB0, 0xFF)   -- line-tile c
 -- Sheet widgets are defined further down but used by menu functions above them;
 -- forward-declare so those closures capture the right upvalues.
 local IconMenu, ToggleRow, SliderRow, TRACK_OFF, KNOB_EDGE
+-- DIAGNOSTIC BUILD: a module-level count of live InkAwayView instances (bumped in
+-- init, dropped in onCloseWidget), so an on-screen readout can reveal on-device
+-- whether views/work are leaking. Module-level so it survives (and exposes) a
+-- reopen -- if this climbs above 1, buried instances are the cause.
+local IA_LIVE_INSTANCES = 0
 -- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
 -- (it paints opaque), so instead of a see-through charcoal box we use a light,
 -- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
@@ -645,6 +650,7 @@ end
 ------------------------------------------------------------------------------
 
 function InkAwayView:init()
+    IA_LIVE_INSTANCES = IA_LIVE_INSTANCES + 1   -- DIAGNOSTIC BUILD (see readout in paintTo)
     -- Remember the reader's own rotation (restored on close) and apply the
     -- orientation Ink Away should open in, BEFORE the canvas and buffers below are
     -- sized to the screen -- so a landscape session gets a wide canvas from the
@@ -1015,21 +1021,33 @@ function InkAwayView:matchAreaTarget()
     end
 end
 
--- Copy the whole area_bb onto the screen at (dstx, dsty). Unrotated: a plain blit.
--- Software-rotated: area_bb already holds panel-order bytes, so it goes in through
--- an unrotated view of the screen memory at the area's physical position -- row
--- copies, exactly the pixels the rotated blit would have produced.
-function InkAwayView:blitAreaFull(bb, dstx, dsty)
-    local area, v = self.area_bb, self.view
+-- Copy a sub-rect of area_bb -- logical (sx,sy,w,h) -- onto the screen so its
+-- logical (sx,sy) lands at screen (dstx,dsty). Unrotated: a plain blit. Software-
+-- rotated (landscape): go through UNROTATED views of BOTH buffers at their physical
+-- positions, so it is a row-copy memcpy instead of a per-pixel rotated blit. That
+-- rotated blit is ~40-60x slower and its cost grows with the rect, so using it for a
+-- live stroke's (growing) changed region made the pen "trail behind" in landscape.
+-- Byte-identical to the naive rotated blit in all rotations (verified against the
+-- real C blitter).
+function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
+    local area = self.area_bb
     if self._area_rot == 0 then
-        bb:blitFrom(area, dstx, dsty, 0, 0, v.area_w, v.area_h)
+        bb:blitFrom(area, dstx, dsty, sx, sy, w, h)
         return
     end
-    local dpx, dpy = bb:getPhysicalRect(dstx, dsty, v.area_w, v.area_h)
+    local dpx, dpy, dpw, dph = bb:getPhysicalRect(dstx, dsty, w, h)
+    local apx, apy = area:getPhysicalRect(sx, sy, w, h)
     local sphys = Blitbuffer.new(bb.w, bb.h, bb:getType(), bb.data, bb.stride, bb.pixel_stride)
     local aphys = Blitbuffer.new(area.w, area.h, area:getType(), area.data, area.stride, area.pixel_stride)
     if sphys.setInverse then sphys:setInverse(bb:getInverse()) end
-    sphys:blitFrom(aphys, dpx, dpy, 0, 0, area.w, area.h)
+    if aphys.setInverse then aphys:setInverse(area:getInverse()) end
+    sphys:blitFrom(aphys, dpx, dpy, apx, apy, dpw, dph)
+end
+
+-- Copy the whole area_bb onto the screen at (dstx, dsty).
+function InkAwayView:blitAreaFull(bb, dstx, dsty)
+    local v = self.view
+    self:blitAreaRect(bb, dstx, dsty, 0, 0, v.area_w, v.area_h)
 end
 
 function InkAwayView:onShow()
@@ -1062,6 +1080,7 @@ function InkAwayView:relayout()
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
     self:renderView()
+    self._area_only = false   -- layout/chrome changed: the next paint must be full
 end
 
 function InkAwayView:onSetDimensions()
@@ -1071,6 +1090,7 @@ end
 
 function InkAwayView:onCloseWidget()
     self.closing = true
+    IA_LIVE_INSTANCES = math.max(0, IA_LIVE_INSTANCES - 1)   -- DIAGNOSTIC BUILD
     if self._stylus_cb then
         pcall(function() Device.input:unregisterStylusCallback() end)
         self._stylus_cb = nil
@@ -1365,6 +1385,10 @@ function InkAwayView:setTool(tool)
     self.pan_last = nil
     self.tool = tool
     self:refreshToolLabels()
+    -- This refreshes the TOOLBAR strip (the active pill moves), so the next paint
+    -- must repaint the chrome -- clear any area-only flag a nested clearSelection/
+    -- deselect set via areaScreenRect, or the pill move would be skipped.
+    self._area_only = false
     UIManager:setDirty(self, "ui", GeomUI:new{
         x = 0, y = 0, w = self.screen_w, h = self.view.area_y })
 end
@@ -2814,6 +2838,7 @@ function InkAwayView:setToolbarHidden(hidden)
     if (self._toolbar_hidden or false) == hidden then return end
     self:flushPending()
     self._toolbar_hidden = hidden
+    self._area_only = false   -- toolbar shown/hidden: the next paint must be full
     local v = self.view
     local th = self.toolbar:getSize().h
     v.area_y = hidden and 0 or th
@@ -2870,6 +2895,13 @@ end
 -- keeps the region by reference rather than copying it.
 function InkAwayView:areaScreenRect()
     local v = self.view
+    -- Every caller passes this as a setDirty region, i.e. "refresh only the drawing
+    -- area" -- which never covers the toolbar strip (above) or the notebook bar
+    -- (below). Flag it so the next paintTo can skip repainting that chrome (see
+    -- paintTo): the expensive part on a software-rotated landscape screen. Chrome
+    -- changes (setTool/relayout/hide) clear this so a pending chrome refresh is
+    -- never skipped.
+    self._area_only = true
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
 
@@ -8838,6 +8870,7 @@ function InkAwayView:lineContentW(ln)
 end
 
 function InkAwayView:paintTo(bb, x, y)
+    local _diag_t0 = os.clock()   -- DIAGNOSTIC BUILD: time this paint
     local v = self.view
     -- Keep area_bb in the screen's current pixel order (rebuilds it if the screen
     -- was rotated the other way with no relayout); the fast landscape blit below
@@ -8853,7 +8886,18 @@ function InkAwayView:paintTo(bb, x, y)
     -- touch point was a big per-point cost -- this is what made landscape drawing,
     -- and shape creation especially, feel sluggish. A full paint (br nil) does it all.
     local br = self._blit_rect
-    if not br then
+    -- An area-only refresh (areaScreenRect -- the 39 stroke-commit / shape / fill /
+    -- selection / preview paths) covers ONLY the drawing area, never the toolbar
+    -- strip above it or the notebook bar below it. On those paints we can skip
+    -- repainting that chrome: its pixels are not in the refresh region, so last
+    -- frame's are still correct on screen. This is the cost that made landscape feel
+    -- slow on every commit/preview -- the toolbar's ~11 icons blit through the
+    -- software-rotated framebuffer (a per-pixel turn) each full paint. A GENUINE
+    -- full paint (first show, orientation change, tool/pill change, a sheet closing
+    -- over the bar) leaves _area_only false and repaints the chrome as before.
+    local paint_chrome = not br and not self._area_only
+    self._area_only = false
+    if paint_chrome then
         -- White background OUTSIDE the drawing area: the toolbar strip above and any
         -- notebook bar (or letterbox) below/around it. The area itself is repainted
         -- from area_bb below, so clearing it here would just be overwritten.
@@ -8877,9 +8921,12 @@ function InkAwayView:paintTo(bb, x, y)
         local rx0 = math.max(0, math.floor(br.x0)); local ry0 = math.max(0, math.floor(br.y0))
         local rx1 = math.min(v.area_w, math.ceil(br.x1)); local ry1 = math.min(v.area_h, math.ceil(br.y1))
         if rx1 > rx0 and ry1 > ry0 then
-            -- small changed region while drawing: an ordinary blit (area_bb shares the
-            -- screen's rotation, so a same-rotation copy is correct and cheap here)
-            bb:blitFrom(self.area_bb, x + v.area_x + rx0, y + v.area_y + ry0, rx0, ry0, rx1 - rx0, ry1 - ry0)
+            -- changed region while drawing: use the panel-order copy (memcpy), NOT a
+            -- naive bb:blitFrom of the rotated area_bb -- the latter is ~40-60x slower
+            -- in landscape and its cost grows with the region, so a lengthening pen
+            -- stroke lagged further and further behind. blitAreaRect handles both
+            -- orientations (plain blit when unrotated).
+            self:blitAreaRect(bb, x + v.area_x + rx0, y + v.area_y + ry0, rx0, ry0, rx1 - rx0, ry1 - ry0)
         end
     else
         -- whole surface: the fast panel-order copy (a memcpy when the screen is
@@ -9021,10 +9068,10 @@ function InkAwayView:paintTo(bb, x, y)
     -- notebook page-nav strip along the bottom (only in notebook mode). Styled to
     -- match the top toolbar exactly: same bar height, the same icon size, and real
     -- icon glyphs (not ad-hoc chevrons) so the two bars read as one consistent UI.
-    -- Skipped during a region blit (a live stroke/shape): the strip sits below the
-    -- drawing area, never overlaps the changed rect, and does not change mid-drag --
-    -- re-blitting its icons every touch point was pure cost on a rotated screen.
-    if not br and self.notebook and self.nb_bar_h > 0 then
+    -- Skipped during a region blit (a live stroke/shape) AND on area-only paints:
+    -- the strip sits below the drawing area, never overlaps an area refresh, and does
+    -- not change then -- re-blitting its icons was pure cost on a rotated screen.
+    if paint_chrome and self.notebook and self.nb_bar_h > 0 then
         local Font = require("ui/font")
         local TextWidget = require("ui/widget/textwidget")
         local nb = self.notebook
@@ -9100,6 +9147,37 @@ function InkAwayView:paintTo(bb, x, y)
 
     -- the floating immersive controls (zoom pill + toolbar toggle), on top
     self:drawFabs(bb, x, y)
+    -- DIAGNOSTIC BUILD: on-screen readout of the leak signals. Shows the PREVIOUS
+    -- paint's duration (measuring this frame here would exclude the readout itself).
+    self:drawDiag(bb, x, y)
+    self._diag_last_ms = (os.clock() - _diag_t0) * 1000
+end
+
+-- DIAGNOSTIC BUILD ONLY: a tiny readout so we can see on the device what climbs
+-- during the "new drawing in landscape" repro -- live view instances, UIManager
+-- window-stack size, Lua heap, and last paint time. If instances or the stack grow
+-- per launch/new-drawing, that is the leak; if only paint time climbs, it is the
+-- render path; if nothing climbs, it is e-ink refresh state. Remove before release.
+function InkAwayView:drawDiag(bb, x, y)
+    local ok = pcall(function()
+        local TextWidget = require("ui/widget/textwidget")
+        local Font = require("ui/font")
+        local ws = (UIManager._window_stack and #UIManager._window_stack) or 0
+        self._diag_max = math.max(self._diag_max or 0, self._diag_last_ms or 0)
+        local rot = self:screenBBRot()
+        local txt = string.format("IA inst:%d  win:%d  paint:%.0fms max:%.0f  mem:%dk  rot:%d",
+            IA_LIVE_INSTANCES, ws, self._diag_last_ms or 0, self._diag_max or 0,
+            math.floor(collectgarbage("count")), rot)
+        local tw = TextWidget:new{ text = txt, face = Font:getFace("cfont", 16),
+            fgcolor = Blitbuffer.COLOR_BLACK }
+        local sz = tw:getSize()
+        local px, py = x + self.view.area_x + 6, y + self.view.area_y + 4
+        bb:paintRect(px - 3, py - 2, sz.w + 6, sz.h + 4, WHITE)   -- legible backing
+        bb:paintRect(px - 3, py - 2, sz.w + 6, 1, Blitbuffer.COLOR_BLACK)
+        tw:paintTo(bb, px, py)
+        tw:free()
+    end)
+    return ok
 end
 
 -- A nav-strip icon rendered from ink/icons onto an opaque white tile (the strip
