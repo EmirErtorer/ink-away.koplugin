@@ -105,11 +105,6 @@ local CARET_BG  = Blitbuffer.ColorRGB32(0xB0, 0xB0, 0xB0, 0xFF)   -- line-tile c
 -- Sheet widgets are defined further down but used by menu functions above them;
 -- forward-declare so those closures capture the right upvalues.
 local IconMenu, ToggleRow, SliderRow, TRACK_OFF, KNOB_EDGE
--- DIAGNOSTIC BUILD: a module-level count of live InkAwayView instances (bumped in
--- init, dropped in onCloseWidget), so an on-screen readout can reveal on-device
--- whether views/work are leaking. Module-level so it survives (and exposes) a
--- reopen -- if this climbs above 1, buried instances are the cause.
-local IA_LIVE_INSTANCES = 0
 -- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
 -- (it paints opaque), so instead of a see-through charcoal box we use a light,
 -- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
@@ -650,7 +645,6 @@ end
 ------------------------------------------------------------------------------
 
 function InkAwayView:init()
-    IA_LIVE_INSTANCES = IA_LIVE_INSTANCES + 1   -- DIAGNOSTIC BUILD (see readout in paintTo)
     -- Remember the reader's own rotation (restored on close) and apply the
     -- orientation Ink Away should open in, BEFORE the canvas and buffers below are
     -- sized to the screen -- so a landscape session gets a wide canvas from the
@@ -964,6 +958,7 @@ function InkAwayView:free()
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
     if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
     self._pre_stroke_valid = false
+    if self._zoom_pill and self._zoom_pill.bb then self._zoom_pill.bb:free(); self._zoom_pill = nil end
     if self._nav_img then
         for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
         self._nav_img = nil
@@ -1090,7 +1085,6 @@ end
 
 function InkAwayView:onCloseWidget()
     self.closing = true
-    IA_LIVE_INSTANCES = math.max(0, IA_LIVE_INSTANCES - 1)   -- DIAGNOSTIC BUILD
     if self._stylus_cb then
         pcall(function() Device.input:unregisterStylusCallback() end)
         self._stylus_cb = nil
@@ -2784,28 +2778,47 @@ local function fabChevron(bb, cx, cy, half, dir, tk)
     seg(cx, yTip, cx + half, yEnd)
 end
 
+-- The zoom pill is a fixed grey rounded control. Its rounded-corner COLOUR fill is
+-- a slow per-pixel path (the README's warning), and it was being redrawn on every
+-- paint. Build it ONCE into a transparent-cornered alpha sprite and stamp that with
+-- a cheap C alpha-blit each paint instead. Rebuilt only when its size, the screen
+-- buffer type, or night-mode inversion changes -- i.e. essentially never.
+function InkAwayView:zoomPillSprite(w, h)
+    local typ = Screen.bb:getType()
+    local inv = (Screen.bb.getInverse and Screen.bb:getInverse()) or 0
+    local c = self._zoom_pill
+    if c and c.w == w and c.h == h and c.type == typ and c.inv == inv then return c.bb end
+    if c and c.bb then c.bb:free() end
+    local S1 = math.max(1, Screen:scaleBySize(1))
+    local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8A or typ)   -- alpha: starts transparent
+    if bb.setInverse then bb:setInverse(inv) end   -- so software night mode still blits in C
+    local rad = math.floor(w / 2)
+    bb:paintRoundedRect(0, 0, w, h, FAB_FILL, rad)      -- fills only the rounded shape;
+    bb:paintBorder(0, 0, w, h, S1, FAB_BORDER, rad)     -- corners stay transparent
+    local midy = math.floor(h / 2)
+    bb:paintRect(Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
+    local gw = math.floor(w * 0.34)
+    local gt = math.max(2, Screen:scaleBySize(2))
+    local cx = math.floor(w / 2)
+    local cyTop, cyBot = math.floor(h / 4), math.floor(3 * h / 4)
+    bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+    bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
+    bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+    self._zoom_pill = { bb = bb, w = w, h = h, type = typ, inv = inv }
+    return bb
+end
+
 -- Paint the floating controls onto the screen buffer (called last in paintTo so
 -- they float on top). A light, airy pill so it never reads as a solid box.
 function InkAwayView:drawFabs(bb, ox, oy)
     if self.selecting_crop then return end
-    local S1 = math.max(1, Screen:scaleBySize(1))
-    -- zoom pill (+ over -)
+    -- zoom pill (+ over -): stamp the cached sprite (the pricey rounded draw is done
+    -- once, in zoomPillSprite, not per paint)
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
         if r then
-            local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
-            local rad = math.floor(w / 2)
-            bb:paintRoundedRect(x, y, w, h, FAB_FILL, rad)
-            bb:paintBorder(x, y, w, h, S1, FAB_BORDER, rad)
-            local midy = y + math.floor(h / 2)
-            bb:paintRect(x + Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
-            local gw = math.floor(w * 0.34)
-            local gt = math.max(2, Screen:scaleBySize(2))
-            local cx = x + math.floor(w / 2)
-            local cyTop, cyBot = y + math.floor(h / 4), y + math.floor(3 * h / 4)
-            bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
-            bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
-            bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+            local sprite = self:zoomPillSprite(r.w, r.h)
+            bb:alphablitFrom(sprite, ox + r.x, oy + r.y, 0, 0, r.w, r.h)
         end
     end
     -- toolbar toggle: a bare chevron (no pill) -- up to collapse, down to expand
@@ -8870,7 +8883,6 @@ function InkAwayView:lineContentW(ln)
 end
 
 function InkAwayView:paintTo(bb, x, y)
-    local _diag_t0 = os.clock()   -- DIAGNOSTIC BUILD: time this paint
     local v = self.view
     -- Keep area_bb in the screen's current pixel order (rebuilds it if the screen
     -- was rotated the other way with no relayout); the fast landscape blit below
@@ -9146,38 +9158,12 @@ function InkAwayView:paintTo(bb, x, y)
     end
 
     -- the floating immersive controls (zoom pill + toolbar toggle), on top
-    self:drawFabs(bb, x, y)
-    -- DIAGNOSTIC BUILD: on-screen readout of the leak signals. Shows the PREVIOUS
-    -- paint's duration (measuring this frame here would exclude the readout itself).
-    self:drawDiag(bb, x, y)
-    self._diag_last_ms = (os.clock() - _diag_t0) * 1000
-end
-
--- DIAGNOSTIC BUILD ONLY: a tiny readout so we can see on the device what climbs
--- during the "new drawing in landscape" repro -- live view instances, UIManager
--- window-stack size, Lua heap, and last paint time. If instances or the stack grow
--- per launch/new-drawing, that is the leak; if only paint time climbs, it is the
--- render path; if nothing climbs, it is e-ink refresh state. Remove before release.
-function InkAwayView:drawDiag(bb, x, y)
-    local ok = pcall(function()
-        local TextWidget = require("ui/widget/textwidget")
-        local Font = require("ui/font")
-        local ws = (UIManager._window_stack and #UIManager._window_stack) or 0
-        self._diag_max = math.max(self._diag_max or 0, self._diag_last_ms or 0)
-        local rot = self:screenBBRot()
-        local txt = string.format("IA inst:%d  win:%d  paint:%.0fms max:%.0f  mem:%dk  rot:%d",
-            IA_LIVE_INSTANCES, ws, self._diag_last_ms or 0, self._diag_max or 0,
-            math.floor(collectgarbage("count")), rot)
-        local tw = TextWidget:new{ text = txt, face = Font:getFace("cfont", 16),
-            fgcolor = Blitbuffer.COLOR_BLACK }
-        local sz = tw:getSize()
-        local px, py = x + self.view.area_x + 6, y + self.view.area_y + 4
-        bb:paintRect(px - 3, py - 2, sz.w + 6, sz.h + 4, WHITE)   -- legible backing
-        bb:paintRect(px - 3, py - 2, sz.w + 6, 1, Blitbuffer.COLOR_BLACK)
-        tw:paintTo(bb, px, py)
-        tw:free()
-    end)
-    return ok
+    -- the floating controls (zoom pill + toolbar toggle) float in a corner over the
+    -- drawing. A full/area-only paint re-blits the whole area (erasing them), so they
+    -- must be redrawn; a region blit only touches the small stroke rect (which does
+    -- not reach the corner), so the fabs are still intact -- skip redrawing them and
+    -- their rounded-rect corners every touch point.
+    if not br then self:drawFabs(bb, x, y) end
 end
 
 -- A nav-strip icon rendered from ink/icons onto an opaque white tile (the strip
