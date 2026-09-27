@@ -4498,6 +4498,33 @@ function InkAwayView:decorateShapeOp(op, snap)
     end
 end
 
+-- After a committed op is stamped into canvas_bb, get it onto the on-screen area_bb.
+-- A full renderView rebuilds the WHOLE area (a full-area rotated blit into the
+-- panel-order area_bb -- tens of ms in landscape), but only the op's rectangle
+-- changed, so re-render just that region. Mirrored (symmetry) ops land in several
+-- places, so fall back to a full render there. sx0..sy1 are the op's SCREEN bounds.
+function InkAwayView:renderCommittedOp(op, sx0, sy0, sx1, sy1)
+    if op and op.sym and op.sym ~= "off" then
+        self:renderView()
+        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        return
+    end
+    local v = self.view
+    local pad = (op and op.width or 1) + (op and op.head or 0) + 6
+    local ax0 = math.min(sx0, sx1) - v.area_x - pad
+    local ay0 = math.min(sy0, sy1) - v.area_y - pad
+    local ax1 = math.max(sx0, sx1) - v.area_x + pad
+    local ay1 = math.max(sy0, sy1) - v.area_y + pad
+    self:renderViewRect(ax0, ay0, ax1, ay1)   -- small rotated write, not the whole area
+    local rx0 = math.max(v.area_x, v.area_x + ax0)
+    local ry0 = math.max(v.area_y, v.area_y + ay0)
+    local rx1 = math.min(v.area_x + v.area_w, v.area_x + ax1)
+    local ry1 = math.min(v.area_y + v.area_h, v.area_y + ay1)
+    if rx1 > rx0 and ry1 > ry0 then
+        UIManager:setDirty(self, "ui", GeomUI:new{ x = rx0, y = ry0, w = rx1 - rx0, h = ry1 - ry0 })
+    end
+end
+
 function InkAwayView:commitShape()
     local d = self.shape_drag
     local c0x, c0y = self:toCanvasClamped(d.x0, d.y0)
@@ -4513,11 +4540,11 @@ function InkAwayView:commitShape()
     self:decorateShapeOp(op, d)
     self:stampOpIntoCanvas(op)
     self.dirty = true
+    local sx0, sy0, sx1, sy1 = d.x0, d.y0, d.x1, d.y1
     self.shape_drag = nil
     self.shape_preview = nil
     self._preview_rect = nil
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:renderCommittedOp(op, sx0, sy0, sx1, sy1)   -- re-render only the shape's rect
     self:afterCommit()
 end
 
@@ -4532,13 +4559,17 @@ function InkAwayView:commitCurve()
     self:decorateShapeOp(op, snap)
     self:stampOpIntoCanvas(op)
     self.dirty = true
+    -- the curve's screen extent = its two ends + control point (before they're cleared)
+    local sx0 = math.min(self.curve_p0.x, self.curve_p1.x, self.curve_ctrl.x)
+    local sy0 = math.min(self.curve_p0.y, self.curve_p1.y, self.curve_ctrl.y)
+    local sx1 = math.max(self.curve_p0.x, self.curve_p1.x, self.curve_ctrl.x)
+    local sy1 = math.max(self.curve_p0.y, self.curve_p1.y, self.curve_ctrl.y)
     self.curve_stage = nil
     self.curve_snap = nil
     self.curve_p0, self.curve_p1, self.curve_ctrl = nil, nil, nil
     self.shape_preview = nil
     self._preview_rect = nil
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:renderCommittedOp(op, sx0, sy0, sx1, sy1)   -- re-render only the curve's rect
     self:afterCommit()
 end
 
