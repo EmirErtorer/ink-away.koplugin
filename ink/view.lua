@@ -952,6 +952,8 @@ end
 function InkAwayView:free()
     if self.area_bb then self.area_bb:free(); self.area_bb = nil end
     if self.canvas_bb then self.canvas_bb:free(); self.canvas_bb = nil end
+    if self.canvas_panel_bb then self.canvas_panel_bb:free(); self.canvas_panel_bb = nil end
+    self._cpanel_dirty = nil
     if self.bg_bb then self.bg_bb:free(); self.bg_bb = nil end
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
@@ -1043,6 +1045,149 @@ end
 function InkAwayView:blitAreaFull(bb, dstx, dsty)
     local v = self.view
     self:blitAreaRect(bb, dstx, dsty, 0, 0, v.area_w, v.area_h)
+end
+
+------------------------------------------------------------------------------
+-- Panel-order master mirror (landscape render without a per-frame rotation)
+--
+-- On a software-rotated (landscape) screen, the per-frame cost used to be
+-- renderView scaling the logical master canvas_bb and blitting it into the
+-- panel-order area_bb: that final blit is a per-pixel rotated write, redone on
+-- every pan / zoom / redraw. canvas_panel_bb is a mirror of canvas_bb stored in
+-- the SCREEN's pixel order, so renderView can scale a crop of IT through
+-- unrotated physical views straight into area_bb -- a memcpy, no rotation. The
+-- rotation is paid only when the mirror is (re)synced from canvas_bb, which is
+-- sparse: once on a full compose / rotation flip, and only over a changed op's
+-- rectangle on a commit. In portrait (rotation 0) no mirror is kept and
+-- rendering sources canvas_bb directly, exactly as before -- zero change there.
+--
+-- The master (canvas_bb) and the export path stay in logical coordinates, so
+-- input mapping and the saved PNG/JPEG/PDF are untouched. The mirror is a
+-- display buffer only; a downscale in landscape can differ from the old render
+-- by at most ~1 grey level on a few pixels (mupdf's scaler rounds slightly
+-- differently on a transposed image) -- invisible, and never in the export.
+------------------------------------------------------------------------------
+
+-- A rotation-0 view over another buffer's raw bytes (same trick as blitAreaRect),
+-- so a blit through it is a plain row copy rather than a rotated per-pixel one.
+function InkAwayView:physView(bb)
+    local p = Blitbuffer.new(bb.w, bb.h, bb:getType(), bb.data, bb.stride, bb.pixel_stride)
+    if p.setInverse then p:setInverse(bb:getInverse()) end
+    return p
+end
+
+-- Allocate the panel-order mirror at the CANVAS size, matching area_bb's rotation /
+-- inversion / type (they must agree for the physical-view copy to line up).
+function InkAwayView:newCanvasPanelBuffer()
+    local v = self.view
+    local cw, ch = v.canvas_w, v.canvas_h
+    local rot = self._area_rot or 0
+    local typ = self._area_type or Screen.bb:getType()
+    -- The mirror holds the SAME (non-inverted) bytes as canvas_bb, just in panel
+    -- order: it matches area_bb's ROTATION (for the physical-view alignment) but
+    -- NOT its inverse. Screen inverse (e.g. night mode) is applied only by the
+    -- final copy into area_bb -- exactly as the old scaled->area_bb blit did -- so
+    -- copying canvas_bb (inverse 0) in here must not flip the bytes.
+    local inv = (self.canvas_bb and self.canvas_bb.getInverse and self.canvas_bb:getInverse()) or 0
+    local pw, ph = cw, ch
+    if rot % 2 == 1 then pw, ph = ch, cw end
+    local bb = Blitbuffer.new(pw, ph, typ)
+    if bb.setRotation then bb:setRotation(rot) end
+    if bb.setInverse then bb:setInverse(inv) end
+    self._cpanel_rot, self._cpanel_type = rot, typ
+    self._cpanel_cw, self._cpanel_ch = cw, ch
+    return bb
+end
+
+-- Ensure the mirror exists and matches the current rotation / size. In portrait
+-- (even rotation) there is no mirror. When it must be (re)built, do one full
+-- rotated copy from canvas_bb, which resyncs it completely.
+function InkAwayView:ensureCanvasPanel()
+    if not self.canvas_bb then return end
+    local rot = self._area_rot or 0
+    if rot % 2 == 0 then
+        if self.canvas_panel_bb then self.canvas_panel_bb:free(); self.canvas_panel_bb = nil end
+        self._cpanel_dirty = nil
+        return
+    end
+    local v = self.view
+    local typ = self._area_type or Screen.bb:getType()
+    -- inverse is deliberately NOT part of the match: the mirror mirrors canvas_bb's
+    -- bytes (never inverted), and a screen-inverse change only rebuilds area_bb.
+    local stale = (not self.canvas_panel_bb)
+        or self._cpanel_rot ~= rot or self._cpanel_type ~= typ
+        or self._cpanel_cw ~= v.canvas_w or self._cpanel_ch ~= v.canvas_h
+    if stale then
+        if self.canvas_panel_bb then self.canvas_panel_bb:free() end
+        self.canvas_panel_bb = self:newCanvasPanelBuffer()
+        self.canvas_panel_bb:blitFrom(self.canvas_bb, 0, 0, 0, 0, v.canvas_w, v.canvas_h)
+        self._cpanel_dirty = nil   -- a full copy just synced everything
+    end
+end
+
+-- Note a canvas-space rectangle whose pixels changed in canvas_bb, so the next
+-- render resyncs just that region of the mirror instead of the whole buffer.
+function InkAwayView:markCanvasDirty(x0, y0, x1, y1)
+    if x1 <= x0 or y1 <= y0 then return end
+    local d = self._cpanel_dirty
+    if not d then
+        self._cpanel_dirty = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+    else
+        if x0 < d.x0 then d.x0 = x0 end
+        if y0 < d.y0 then d.y0 = y0 end
+        if x1 > d.x1 then d.x1 = x1 end
+        if y1 > d.y1 then d.y1 = y1 end
+    end
+end
+
+-- Same, from a spanWriter acc table ({x0,y0,x1,y1}, empty when x1 < x0).
+function InkAwayView:markCanvasDirtyAcc(acc)
+    if acc and acc.x1 >= acc.x0 and acc.y1 >= acc.y0 then
+        self:markCanvasDirty(acc.x0, acc.y0, acc.x1, acc.y1)
+    end
+end
+
+-- Copy the pending dirty rectangle from canvas_bb into the mirror (a small rotated
+-- copy), clearing it. Called right before any render reads the mirror.
+function InkAwayView:flushCanvasPanel()
+    local d = self._cpanel_dirty
+    if not (d and self.canvas_panel_bb and self.canvas_bb) then self._cpanel_dirty = nil; return end
+    self._cpanel_dirty = nil
+    local v = self.view
+    local x0 = math.max(0, math.floor(d.x0)); local y0 = math.max(0, math.floor(d.y0))
+    local x1 = math.min(v.canvas_w, math.ceil(d.x1)); local y1 = math.min(v.canvas_h, math.ceil(d.y1))
+    local w, h = x1 - x0, y1 - y0
+    if w < 1 or h < 1 then return end
+    self.canvas_panel_bb:blitFrom(self.canvas_bb, x0, y0, x0, y0, w, h)
+end
+
+-- Scale a canvas-space crop (scx,scy,sw,sh) up/down to dw x dh and place it into
+-- area_bb at (dx,dy), copying bw x bh. In portrait this is exactly the old scale +
+-- blit from canvas_bb. In landscape it scales a physical view of the panel-order
+-- mirror and copies into area_bb's physical bytes -- no per-pixel rotation.
+function InkAwayView:blitScaledPanel(scx, scy, sw, sh, dw, dh, dx, dy, bw, bh)
+    if bw < 1 or bh < 1 or sw < 1 or sh < 1 then return end
+    local area = self.area_bb
+    local rot = self._area_rot or 0
+    if rot == 0 then
+        local sub = self.canvas_bb:viewport(scx, scy, sw, sh)
+        local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
+        area:blitFrom(scaled, dx, dy, 0, 0, bw, bh)
+        if scaled ~= sub and scaled.free then scaled:free() end
+        return
+    end
+    local cp = self.canvas_panel_bb
+    if not cp then return end
+    local px, py, pw, ph = cp:getPhysicalRect(scx, scy, sw, sh)
+    local sub = self:physView(cp):viewport(px, py, pw, ph)
+    local fdw, fdh = dw, dh
+    if rot % 2 == 1 then fdw, fdh = dh, dw end
+    local scaled = RenderImage:scaleBlitBuffer(sub, fdw, fdh, false)
+    if scaled.setRotation then scaled:setRotation(rot) end
+    local sx2, sy2 = scaled:getPhysicalRect(0, 0, bw, bh)
+    local ax, ay, aw2, ah2 = area:getPhysicalRect(dx, dy, bw, bh)
+    self:physView(area):blitFrom(self:physView(scaled), ax, ay, sx2, sy2, aw2, ah2)
+    if scaled ~= sub and scaled.free then scaled:free() end
 end
 
 function InkAwayView:onShow()
@@ -3623,6 +3768,8 @@ function InkAwayView:composeCanvas()
         self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil,
             self._reveal_text_bb, self._reveal_pic_bb, true)   -- reveal buffers already resolved
     end
+    -- the whole master was rebuilt: resync the panel-order mirror on the next render
+    self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
 end
 
 -- Rebuild what is on screen from the master bitmap: take the visible crop of
@@ -3634,6 +3781,10 @@ function InkAwayView:renderView()
     self._blit_rect = nil   -- the whole area_bb is rebuilt; paintTo must blit it all
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
+    -- keep the panel-order mirror allocated and in sync with canvas_bb before we
+    -- scale a crop of it (a no-op in portrait, where we source canvas_bb directly)
+    self:ensureCanvasPanel()
+    self:flushCanvasPanel()
 
     -- visible crop of the canvas, clamped inside it
     local sx = math.max(0, math.min(W - 1, math.floor(v.pan_x)))
@@ -3659,10 +3810,7 @@ function InkAwayView:renderView()
     end
     if bw < 1 or bh < 1 then return end
 
-    local sub = self.canvas_bb:viewport(sx, sy, sw, sh)     -- shares memory
-    local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
-    self.area_bb:blitFrom(scaled, ox, oy, 0, 0, bw, bh)
-    if scaled ~= sub and scaled.free then scaled:free() end
+    self:blitScaledPanel(sx, sy, sw, sh, dw, dh, ox, oy, bw, bh)
     -- The grid is NOT drawn here: it is a paint-time overlay (see drawGrid), so
     -- it never lives in area_bb, the eraser can never rub it out, and it never
     -- reaches the export (which is rebuilt from the ops, not from any buffer).
@@ -3676,6 +3824,8 @@ function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
     if not (self.area_bb and self.canvas_bb) then return end
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
+    self:ensureCanvasPanel()
+    self:flushCanvasPanel()
     cx0 = math.max(0, math.floor(cx0)); cy0 = math.max(0, math.floor(cy0))
     cx1 = math.min(v.area_w, math.ceil(cx1)); cy1 = math.min(v.area_h, math.ceil(cy1))
     if cx1 <= cx0 or cy1 <= cy0 then return end
@@ -3700,10 +3850,7 @@ function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
     local bh = math.min(dh, v.area_h - dy)
     if bw < 1 or bh < 1 then return end
     self.area_bb:paintRect(dx, dy, bw, bh, WHITE)
-    local sub = self.canvas_bb:viewport(scx0, scy0, sw, sh)
-    local scaled = RenderImage:scaleBlitBuffer(sub, dw, dh, false)
-    self.area_bb:blitFrom(scaled, dx, dy, 0, 0, bw, bh)
-    if scaled ~= sub and scaled.free then scaled:free() end
+    self:blitScaledPanel(scx0, scy0, sw, sh, dw, dh, dx, dy, bw, bh)
 end
 
 -- A thin line into `bb` at screen offset (ox,oy), clipped to the drawing area.
@@ -3870,6 +4017,9 @@ function InkAwayView:setupLiveWriters()
     -- would poke a freed buffer)
     self._lw_area_bb, self._lw_canvas_bb = self.area_bb, self.canvas_bb
     self._lw_acc = self._lw_acc or { x0 = 0, y0 = 0, x1 = 0, y1 = 0 }
+    -- canvas-space bbox of everything this stroke writes into the master, so the
+    -- panel-order mirror can be resynced over just that rect when the stroke ends
+    self._lw_cacc = self._lw_cacc or { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
     -- reused 4-slot segment tables (master + on-screen), so a continuing stroke
     -- allocates no per-point segment garbage; Raster.path reads them synchronously
     self._lw_seg_c = self._lw_seg_c or { 0, 0, 0, 0 }
@@ -3877,7 +4027,7 @@ function InkAwayView:setupLiveWriters()
     local sym = self.symmetry
     -- master (1:1) writer
     local v = self.view
-    local cput = spanWriter(self.canvas_bb, v.canvas_w, v.canvas_h, color, nil)
+    local cput = spanWriter(self.canvas_bb, v.canvas_w, v.canvas_h, color, self._lw_cacc)
     if sym and sym ~= "off" then
         local crefx, crefy = Symmetry.canvasRefs(v.canvas_w, v.canvas_h)
         cput = Symmetry.wrap(cput, sym, crefx, crefy)
@@ -3914,7 +4064,8 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local r = self.eraser_width / 2
     local px, py = self.last_cx, self.last_cy
-    local put = bgSpanWriter(self.canvas_bb, self:eraseRevealBB(), W, H, nil)
+    local cacc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
+    local put = bgSpanWriter(self.canvas_bb, self:eraseRevealBB(), W, H, cacc)
     if self.symmetry ~= "off" then
         local rx, ry = Symmetry.canvasRefs(W, H)
         put = Symmetry.wrap(put, self.symmetry, rx, ry)
@@ -3924,6 +4075,8 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh)
     else
         Raster.path({ cx, cy }, r, put)
     end
+    -- mirror the just-restored region before renderViewRect (below) reads the mirror
+    self:markCanvasDirtyAcc(cacc)
     self.last_cx, self.last_cy = cx, cy
     local zr = r * self.view.zoom + 2
     local ax0, ay0 = self:toAreaLocal(px or cx, py or cy)
@@ -4062,6 +4215,10 @@ function InkAwayView:beginStroke(sx, sy)
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     self._stroke_rect = nil
+    if self._lw_cacc then
+        self._lw_cacc.x0, self._lw_cacc.y0 = math.huge, math.huge
+        self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
+    end
     -- Shape assist may rewrite this stroke into a clean shape on lift, which means
     -- rebuilding the master. Snapshot the pre-stroke master now so beautify can
     -- restore just the stroke's footprint instead of replaying every op (which got
@@ -4189,6 +4346,7 @@ function InkAwayView:beautifyRecompose(raw, committed)
         local w, h = r.x1 - r.x0, r.y1 - r.y0
         if w > 0 and h > 0 then
             self.canvas_bb:blitFrom(self._pre_stroke_bb, r.x0, r.y0, r.x0, r.y0, w, h)
+            self:markCanvasDirty(r.x0, r.y0, r.x1, r.y1)   -- resync mirror over the restored footprint
         end
     end
     self:stampOpIntoCanvas(committed)   -- draw the clean op (all mirrors) back on top
@@ -4201,6 +4359,8 @@ function InkAwayView:finalizeStroke()
     UIManager:unschedule(self._finalize)
     self.pending_lift = nil
     self.capturing = false
+    -- the live stroke wrote canvas_bb directly; resync the mirror over its footprint
+    self:markCanvasDirtyAcc(self._lw_cacc)
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     local was_erase = self.tool == "erase"
@@ -4466,13 +4626,22 @@ end
 -- Stamp a committed op into the 1:1 master.
 function InkAwayView:stampOpIntoCanvas(op)
     if not self.canvas_bb then return end
-    if op.kind == "text" then self:stampTextInto(self.canvas_bb, op); return end
+    if op.kind == "text" then
+        self:stampTextInto(self.canvas_bb, op)
+        -- glyph blits do not report a span bbox; resync the whole mirror (text is
+        -- committed rarely, so the one full copy on the next render is cheap)
+        self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
+        return
+    end
+    -- shared acc grows over every span written (base AND symmetry mirrors), so the
+    -- panel-order mirror is resynced over exactly the op's footprint
+    local cacc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
     local put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
-        self:opColor(op), nil)
+        self:opColor(op), cacc)
     local fill_put
     if op.kind == "shape" and op.fill_color and not op.fill then
         fill_put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
-            displayColor(op.fill_color, op.fill_alpha or 255), nil)
+            displayColor(op.fill_color, op.fill_alpha or 255), cacc)
     end
     if op.sym and op.sym ~= "off" then
         local refx, refy = Symmetry.canvasRefs(self.view.canvas_w, self.view.canvas_h)
@@ -4480,6 +4649,7 @@ function InkAwayView:stampOpIntoCanvas(op)
         if fill_put then fill_put = Symmetry.wrap(fill_put, op.sym, refx, refy) end
     end
     Export.paintGeom(op, put, fill_put)
+    self:markCanvasDirtyAcc(cacc)
 end
 
 -- Give a freshly placed shape op its symmetry mode and, for a line or curve,
