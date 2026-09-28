@@ -5,9 +5,18 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 ## Screenshots
 
 <table>
-<tr><td><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" width="32%" alt="Pen settings"></a></td><td><a href="assets/screenshots/brush-maker.png"><img src="assets/screenshots/brush-maker.png" width="32%" alt="Brush maker"></a></td><td><a href="assets/screenshots/shapes-menu.png"><img src="assets/screenshots/shapes-menu.png" width="32%" alt="Shapes menu"></a></td></tr>
-<tr><td><a href="assets/screenshots/text-settings.png"><img src="assets/screenshots/text-settings.png" width="32%" alt="Text settings"></a></td><td><a href="assets/screenshots/settings-menu.png"><img src="assets/screenshots/settings-menu.png" width="32%" alt="Settings"></a></td><td><a href="assets/screenshots/notebook.png"><img src="assets/screenshots/notebook.png" width="32%" alt="Notebook page"></a></td></tr>
+  <tr>
+    <td width="33%" valign="top"><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" alt="Pen settings"></a><br><sub>The pen: size, opacity, brush style and shade, with palm rejection.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/brush-maker.png"><img src="assets/screenshots/brush-maker.png" alt="Brush maker"></a><br><sub>Design your own brush while a sample stroke redraws live.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/shapes-menu.png"><img src="assets/screenshots/shapes-menu.png" alt="Shapes menu"></a><br><sub>Shapes and arrows, a fill toggle, snapping, paint bucket and lasso.</sub></td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><a href="assets/screenshots/text-settings.png"><img src="assets/screenshots/text-settings.png" alt="Text settings"></a><br><sub>Typed text with any installed font, sizing and ruling snap.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/settings-menu.png"><img src="assets/screenshots/settings-menu.png" alt="Settings"></a><br><sub>Notebooks, open a PDF to annotate, grid, symmetry and autosave.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/notebook.png"><img src="assets/screenshots/notebook.png" alt="Notebook page"></a><br><sub>A notebook page with handwritten notes, an image and shapes.</sub></td>
+  </tr>
 </table>
+
 
 ## Features
 
