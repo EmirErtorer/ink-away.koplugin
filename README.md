@@ -1,183 +1,46 @@
 # Ink Away
 
-A complete **drawing** and **note-taking** app for KOReader, built for e-ink readers and with **palm rejection** support for stylus users!
-
-Draw or write with your finger OR stylus, add typed text boxes, sketch and take notes across a multi page notebook, or open any PDF and annotate it by hand. Save a drawing as a PNG with a real transparent background, or a JPEG on white, at the exact pixel size of your screen, which is handy for making your own sleep screen covers and overlays that sit cleanly on top of anything, or export a whole notebook back to an ordinary paged PDF.
-
-It is one of the most capable drawing tools you can add to KOReader, bringing together an adjustable pen, brushes you make yourself, shapes and arrows, a paint bucket, lasso select, text boxes with rich formatting, a symmetry mode for drawing complex patterns, background images, palm rejection, and full notebook and PDF annotation, with save for the whole page or just a chosen area. Everything stays on your device: there are no accounts and no networking.
+A **drawing** & **note-taking** app for KOReader, with **palm rejection** for stylus users. Draw or write with finger or stylus, take notes across a notebook, or annotate any PDF. You can export to a transparent PNG, a white JPEG or a paged PDF at your exact screen size. 
 
 ## Screenshots
 
 <table>
-  <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" alt="Pen settings"></a><br><sub>The pen: size, opacity, brush style and shade, with palm rejection.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/brush-maker.png"><img src="assets/screenshots/brush-maker.png" alt="Brush maker"></a><br><sub>Design your own brush while a sample stroke redraws live.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/shapes-menu.png"><img src="assets/screenshots/shapes-menu.png" alt="Shapes menu"></a><br><sub>Shapes and arrows, a fill toggle, snapping, paint bucket and lasso.</sub></td>
-  </tr>
-  <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/text-settings.png"><img src="assets/screenshots/text-settings.png" alt="Text settings"></a><br><sub>Typed text with any installed font, sizing and ruling snap.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/settings-menu.png"><img src="assets/screenshots/settings-menu.png" alt="Settings"></a><br><sub>Notebooks, open a PDF to annotate, grid, symmetry and autosave.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/notebook.png"><img src="assets/screenshots/notebook.png" alt="Notebook page"></a><br><sub>A notebook page with handwritten notes, an image and shapes.</sub></td>
-  </tr>
+<tr><td><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" width="32%" alt="Pen settings"></a></td><td><a href="assets/screenshots/brush-maker.png"><img src="assets/screenshots/brush-maker.png" width="32%" alt="Brush maker"></a></td><td><a href="assets/screenshots/shapes-menu.png"><img src="assets/screenshots/shapes-menu.png" width="32%" alt="Shapes menu"></a></td></tr>
+<tr><td><a href="assets/screenshots/text-settings.png"><img src="assets/screenshots/text-settings.png" width="32%" alt="Text settings"></a></td><td><a href="assets/screenshots/settings-menu.png"><img src="assets/screenshots/settings-menu.png" width="32%" alt="Settings"></a></td><td><a href="assets/screenshots/notebook.png"><img src="assets/screenshots/notebook.png" width="32%" alt="Notebook page"></a></td></tr>
 </table>
-
-<sub>Tap any screenshot to open it full size.</sub>
-
-It is also a full note taking tool. Open a **notebook** and write across many pages by hand or with **typed text boxes**, or open **any PDF as a notebook** and write straight on top of it, then export the whole thing back to a normal paged PDF. A **lasso** lets you loop around part of a drawing or a page and move, duplicate or delete it as one piece.
 
 ## Features
 
-- **Palm rejection**: on a reader with a pen, rest your hand on the screen while you write and only the pen marks the page. It is on automatically for pen devices like the Kindle Scribe and reMarkable, and a switch in the pen menu for everyone else.
-- A **notebook mode**: a multi page notebook you can write, sketch and annotate across. Start blank, or **open any PDF as a notebook** and write on every page. Paper styles include lined, grid, dotted, left margin, and Cornell, with adjustable line spacing and strength. Flip pages, tap the page number to jump anywhere, or open a thumbnail overview grid, and add, duplicate, reorder or delete pages. Export the whole notebook to a real paged PDF (white or warm sandpaper paper, optional page numbers, all pages or only the ones you wrote on or a range). It opens as a fixed page document on any device.
-- A **lasso select**, on the canvas and on notebook pages: draw a loop around ink, shapes or a filled area and it becomes one selection you can drag freely, duplicate, or delete.
-- **Text notes**: drop a text box anywhere and type with the on screen keyboard. Format the word under the cursor or a whole selection as bold, italic, underline, strikethrough or highlight, step its size up or down, or turn a paragraph into a bullet or numbered list. Choose any installed font, previewed in its own typeface, and a default size. On a ruled notebook page an optional setting snaps every line onto the ruling and sizes the text to the line spacing, so your writing lands on the lines. Long words wrap instead of spilling out, the box grows to fit, and you can move, resize and re-edit a box, place the caret with a tap, or drag to select. An option keeps text safe from the eraser, so rubbing out ink leaves your words untouched. Text saves in projects and comes through in PNG, JPEG and PDF exports.
-- A blank fullscreen canvas at your screen's resolution.
-- Finger drawing with smooth, continuous lines. It copes with the brief moments when a touch panel loses contact, so your lines don't break apart.
-- A pen with adjustable thickness, opacity, and colour (grey shades on every device, full colour on colour screens), plus a **style**: ink, pencil, acrylic, hatch, or stipple. On a colour screen you also get a **colour wheel** for mixing any colour you like and saving your favourites as swatches, and your ink now draws in colour on screen, not just in the export.
-- **Make your own brushes**. A brush maker lets you tune the feel with sliders (ink, grain, soft edge, spread, tooth) while a sample stroke redraws live. Name it and it joins the pen menu, and it stays there across restarts and updates. Hold a made brush in the menu to delete it.
-- A **symmetry mode**: draw on one side and it mirrors as you go, vertical, horizontal, or four way. It works with the pen, the eraser, shapes, the paint bucket, and even rotating or duplicating a shape.
-- **Arrows**: straight or curved, single or double headed, with an adjustable arrowhead size.
-- An **open image as background**: pick a PNG or JPEG and draw over it. Your drawing (and the grid) sit on top. When you save you decide whether the picture goes with it or you export just your drawing.
-- **Export the whole page or just a part**: choose an area with a quick drag so a signature in the middle of the screen comes out on its own, at its own size.
-- **Ghosting cleanup** (optional): e-ink leaves faint ghosts behind the fast refreshes used while drawing, so you can have it do one full refresh every so many strokes to wipe them. Off by default.
-- A **stabilizer** that smooths finger wobble into clean lines, with an adjustable strength so you can tune it to your hand.
-- Re-openable **projects**: save an editable drawing and come back to it later. Optional **autosave** (off, on exit, or every few minutes) restores your last session when you reopen.
-- **Undo and redo**.
-- An optional **grid** (square, dots, ruled lines, isometric, or rule of thirds) with snapping, and a snap-to-45° for straight lines. You can set how strong it looks, from a faint guide up to solid like drawn ink. It is a guide on screen only: the eraser leaves it alone and it never shows up in a saved image.
-- Add **Shapes**: straight line, curve, rectangle, ellipse, and triangle, each filled or outline, using the pen's size, opacity, and colour. You place a shape by dragging, and it stretches to follow your finger like a paint program. Hold a placed shape to rotate, recolour, resize, restyle its opacity, or delete it.
-- A **paint bucket** that fills an enclosed area with one tap, in the current shade or colour and opacity.
-- An eraser with an adjustable size that takes ink away rather than painting white over it (see Transparency below). When a background picture is loaded it leaves the picture alone by default, and its menu has a toggle to erase the background too.
-- Undo, one step for each time you lift your finger.
-- Smooth zoom, in even steps from "whole page" up to 8x, with panning for close work.
-- Save as a transparent PNG or a white JPEG, always at the exact canvas size.
-- Pick the folder and file name with KOReader's own file browser.
+- **Pen**: size, opacity, color (greys everywhere, full color + a wheel on color screens) and brusg styles (you can make your own brushes too).
+- **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline): hold one in Pan mode to edit; plus a **paint bucket** for one-tap fills.
+- **Eraser** that removes ink (back to transparent) instead of painting white.
+- **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
+- **Lasso select**, four-way **symmetry**, and a **background image** to draw over.
+- **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable).
+- **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF.
+- **Projects & autosave**, undo/redo, zoom & pan, and an optional grid.
+- And more!
 
-## Requirements
+Toolbar: Pen, Shapes, Eraser, Pan, Zoom, Text, Undo/Redo, and Settings for more detailed customization.
 
-KOReader, any reasonably recent build. Ink Away only uses KOReader's own APIs and the image encoders that already ship with it, so there is nothing else to install on the device.
-* "Palm Rejection" feature requires Koreader version 2026.07 "Sailing Walrus" or above
 
 ## Installation
 
-1. Get the `ink-away.koplugin` folder, either from a release archive or from this repository.
-2. Copy the whole `ink-away.koplugin` folder into KOReader's `plugins` directory, so the path ends up like this:
-   - Kindle: `koreader/plugins/ink-away.koplugin/`
-   - Kobo: `.adds/koreader/plugins/ink-away.koplugin/`
-   - Android: `koreader/plugins/ink-away.koplugin/` in app storage
-   - Desktop: `plugins/ink-away.koplugin/` next to the binary
+Copy the whole `ink-away.koplugin` folder into KOReader's `plugins` directory:
 
-   The folder needs to hold `main.lua` and `_meta.lua` directly. Make sure it is not nested inside a second `ink-away.koplugin` folder.
-3. Restart KOReader.
+- Kindle: `koreader/plugins/ink-away.koplugin/`
+- Kobo: `.adds/koreader/plugins/ink-away.koplugin/`
+- Android: `koreader/plugins/ink-away.koplugin/` in app storage
 
-## Opening it
+Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawing canvas)" near the top. You can also map it to a gesture in KOReader's gesture manager; the action is "Open Ink Away". 
 
-Open the top menu, go to the Tools tab, and tap "Ink Away (drawing canvas)" near the top of the list. You can also assign it to a gesture in KOReader's gesture manager; the action is called "Open Ink Away".
 
-## Using it
+## Notes
 
-A thin toolbar runs across the top and the rest of the screen is your canvas. A faint frame shows exactly what will be exported.
+- Palm rejection needs KOReader 2026.07+.
+- Files go in an "ink away" folder; saving keeps an editable project automatically.
+- On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.
 
-- **Pen**: draw with your finger. Tap for a dot, drag for a line. Tap Pen again while it is already the active tool to open its settings: size, opacity, the brush style, a row of grey shades, and, on colour screens, a row of colours. The style row also has a **Create brush** button that opens the brush maker (see below). On a colour screen the colour section also has a **Custom colour (wheel)** button: it opens a hue and saturation wheel with a brightness slider so you can pick any colour, use it once, or save it. Saved colours appear in their own rows below the presets (up to three rows); hold a saved swatch to delete it.
-- **Create brush**: sliders set how much ink the brush lays down, how coarse its grain is, how soft its edge is, how far it spreads, and how much the paper tooth breaks it up, and a sample stroke redraws as you drag so you tune by eye. Give it a name and it appears in the pen menu from then on. It is kept with your KOReader settings, so it survives restarts and plugin updates. To remove one, hold it in the pen menu.
-- **Shapes and arrows**: tap Shapes to choose a shape (line, curve, rectangle, ellipse, or triangle, filled or outline) or an arrow (straight or curved, single or double headed, with an arrowhead size you can set). Then drag on the canvas: the first touch is one corner, and the shape stretches to follow your finger until you lift. For the curve, drag once to set the line, then drag again to bend it. Shapes use the pen's current size, opacity, and colour. To edit a shape you have already drawn, switch to the **Pan** tool and hold on the shape: a small menu opens beside it where you can rotate it (drag to spin it freely), recolour it, change its size or opacity, or delete it. This only works in Pan mode, so a hold never clashes with drawing in the pen or shape tools.
-- **Fill (paint bucket)**: in the Shapes menu, choose "Fill area", then tap inside an enclosed region and it fills up to the surrounding lines. If the outline has a gap the fill spreads through it, the same as a paint program. The bucket keeps its own colour and opacity: hold "Fill area" in the Shapes menu to set them, so you do not have to change the pen each time.
-- **Eraser**: the same gesture, but it removes ink. Tap Eraser again while it is active for its menu: size, and whether it also erases the background picture (off by default, so erasing reveals the background rather than a white hole).
-- **Pan**: drag with one finger to move around, which helps when you are zoomed in. You can also pan with two fingers at any time, whatever tool is selected. The canvas follows your finger, so dragging right moves the drawing right.
-- **Zoom**: each press changes the zoom by a fixed factor (1.5×), between the level where the whole page fits and 8×. Zooming only changes what you see. It never changes the size of the exported image.
-- **Text**: tap Text, then tap where you want a box and type. A small keyboard opens with a **Format** button for bold, italic, underline, strikethrough, highlight, size and lists, and you can also just select a word to format it. Drag the top left handle to move the box and the bottom right handle to resize it. Tap an existing box to edit it again, tap Done or tap away to finish. The default font and size, grid line snapping, and whether the eraser may touch text all live under the gear, then **Text**.
-- **Undo and Redo**: the two arrow buttons step backward and forward through your changes, one step for each time you lifted your finger. Undoing an eraser stroke brings back the ink it had removed.
-- **Save**: one compact dialog. Pick the format (PNG or JPEG), leave the area as the whole page or tap to drag a box around just the part you want, and, if a background picture is loaded, choose whether to include it. Then Save, pick a folder, and name the file.
-- **Exit**: leave the canvas. If you have unsaved work it asks first.
+## License
 
-- **Lasso select**: in the Shapes menu choose "Lasso select", then draw a loop around anything (ink, shapes, or a filled area). What you circle becomes a selection with a box around it. Drag inside the box to move the whole group, or tap the box for options to duplicate, delete or deselect it. It works the same on the plain canvas and on a notebook page.
-- **Settings (gear)**: the gear button opens New drawing and New notebook, project actions (open and save), **Open PDF as notebook**, **symmetry**, the grid or (in a notebook) the paper, a **Text** menu (font, size, line snapping, and eraser protection), a **background image**, **ghosting cleanup**, and the autosave mode. Undo and redo are on the toolbar itself. The fiddlier toggles (snap to grid, snap to 45°, stabilizer) sit one tap away under "Guides and aids" so the first screen stays calm.
-
-### Notebook mode
-
-Open a notebook from the gear menu with **New notebook** and pick the paper: lined, grid, dotted, left margin, Cornell, or blank. You can change the line spacing and how strong the ruling looks at any time, and every drawing tool (pen, shapes, arrows, fill, eraser, lasso, symmetry) works on a page exactly as it does on the plain canvas.
-
-A strip along the bottom holds the page controls. The arrows turn pages, the add page button beside the page number adds one, and the page number in the middle opens the page menu. From there you can jump straight to any page number, open a **thumbnail overview** of the whole notebook and tap a page to land on it, or duplicate, reorder and delete pages.
-
-**Open a PDF as a notebook** from the gear menu and each page of the PDF becomes a page you can write straight on top of. Bring in a textbook, a paper, a worksheet or a form and mark it up by hand. Pages are drawn only as you reach them, the same way the reader itself works, so even a long document opens quickly.
-
-**Export to a PDF** with Save. Choose white or a warm sandpaper paper tint, turn page numbers on or off, and export the whole notebook, only the pages you actually wrote on, or a page range. The result is an ordinary paged PDF that opens on any device. When it saves it offers to open it right away, and it also keeps an editable copy so you can come back and keep writing.
-
-### Text notes
-
-Pick the **Text** tool and tap the page to start a box, then type on the on screen keyboard. The box word wraps and grows as you write, and a long unbroken word wraps too rather than running off the edge. Tap **Format**, or select a word first, for bold, italic, underline, strikethrough, highlight, a size step up or down, and bullet or numbered lists. The top left handle moves the box, the bottom right handle sets its width, and tapping an existing box reopens it for editing. Undo and redo work word by word while a box is open.
-
-Under the gear, **Text** sets the font, shown in its own typeface so you can see what you are choosing, a default size, and two toggles. **Snap lines to ruling** lines every row up with a notebook's ruling and sizes the text from the line spacing, so on lined or Cornell paper your typing sits on the lines like handwriting. **Protect text from eraser** keeps your words when you rub over them, so the eraser clears ink but never the text. Text is kept in your projects and is drawn into every PNG, JPEG and PDF export.
-
-### Symmetry
-
-Turn symmetry on in the gear menu and everything you draw is mirrored as you go: vertical mirrors left and right, horizontal mirrors top and bottom, and four way does both. It works with the pen, the eraser, shapes, the paint bucket, and even rotating or duplicating a placed shape, and it is fast because the mirroring happens deep in the drawing pipeline, not by drawing everything twice by hand. It is off by default, and each stroke remembers the mode it was drawn with, so turning it off later leaves the mirrored strokes you already made in place.
-
-### Background image
-
-From the gear menu, "Background" lets you open a PNG or JPEG (a transparent PNG works too). It fills the canvas, and your drawing and the grid sit on top of it. When you save you decide, in the save dialog, whether the picture is included or you export just your drawing. The grid is never part of a saved image either way. Choosing "Remove background" clears it.
-
-A handy trick for sleep screens: take a screenshot of your own home screen, open it as the background, and draw right on top of it. Every mark lands pixel perfect over the real thing, so your art lines up exactly with your clock, covers and shelves. Then export just your drawing and it drops onto the real screen in the spots you planned.
-
-To edit a placed shape, switch to **Pan** and hold it (see Shapes above). Hold **Fill area** in the Shapes menu to set the bucket's own colour and opacity.
-
-Autosave and projects are separate from the image export: a project keeps your editable strokes so you can keep drawing later, while Save writes a finished PNG or JPEG. Autosave defaults to saving once when you leave (gentle on battery); set it to off or to an interval of a few minutes in the gear menu.
-
-### Zoom, pan, and the canvas size
-
-The canvas is a fixed image the size of your screen, for example 1072 × 1448 on some Kindles. Zooming in just lets you work on fine detail. The image underneath stays the same size, and each stroke keeps the thickness and position it had no matter what zoom you drew it at. Zooming to 200% does not give you a double sized export. The export is always the fixed canvas size.
-
-### Portrait and landscape
-
-Ink Away works either way up. Switch it in the gear menu under **Orientation**, or just open it while your device is already held in landscape and it comes up wide. Either way it remembers your choice, so if you close it in landscape it opens in landscape next time (and back to portrait the same way). When you leave Ink Away, your reader goes back to whichever way it was before.
-
-In landscape you get a wide canvas, a wide notebook page, and a toolbar and grid to match, and the PNG, JPEG or PDF you export comes out wide too, at the landscape size. Switching orientation reshapes a blank page to fill the screen the new way round. A drawing you have already started keeps its own size and is simply shown turned, so nothing you have drawn is ever cut off; start a new drawing (or notebook) after switching if you want it the full landscape size.
-
-## Transparency (PNG)
-
-The PNG has a real alpha channel. Every pixel you did not draw on is fully transparent (alpha 0), and the ink is opaque. It is not a white image pretending to be transparent. The untouched areas are genuinely empty, so the PNG sits straight on top of a sleep screen or any other background.
-
-This is also why the eraser removes ink instead of painting over it: erased spots go back to being transparent, just as if you had never drawn there.
-
-If you turn the pen's opacity down, that ink is saved partly transparent (a stroke at 40% opacity ends up around alpha 102), which is handy for faint, ghosted overlays. The opacity is even across a whole stroke, so a stroke that crosses itself will not go darker where it overlaps.
-
-## JPEG
-
-JPEG cannot store transparency, so a JPEG export lays your ink over a solid white background. Like the PNG, it is saved at the exact canvas size. Reach for JPEG when you want an ordinary opaque image, and PNG when you want an overlay.
-
-## Where files go
-
-Ink Away keeps its files in an "ink away" folder inside your KOReader folder, sorted into four clearly named folders: "drawings" for the images you export, "drawing projects" for the editable drawing files, "notebooks" for the PDFs you export from a notebook, and "notebook projects" for the editable notebook files. Each save dialog starts in the right folder and remembers the last one you used, and you can still pick any destination.
-
-To make sure nothing is ever a dead end, an editable copy is kept for you automatically: when you save a drawing image, a matching drawing project is saved under the same name, and when you export a notebook to PDF, a matching notebook project is saved too. So even if you never open "Save project" yourself, you can always come back and keep working. You can of course still save a project by hand from the gear menu.
-
-If you are upgrading from an earlier version, your existing projects are sorted into the new folders once, automatically, the first time you open Ink Away, and nothing is deleted.
-
-## Device compatibility
-
-Ink Away asks KOReader for the current screen size and makes the canvas match, so no device model is written into the code and the export always matches your screen. It runs in portrait or landscape (see "Portrait and landscape" above): a fresh canvas fills the screen whichever way up you are, and the export comes out that shape. If you turn the device while a drawing is already open, the view rearranges for the new orientation and that drawing keeps the pixel size it had when you opened it.
-
-## Known limitations
-
-- Black ink draws and refreshes noticeably faster on screen than greys or white. E-ink panels switch between pure black and white in a single quick pass, while a grey (or a low opacity, which shows as grey) needs extra waveform passes to settle, so it is slower and can leave a little ghosting. This is only about on-screen speed; the exported image is unaffected.
-- On a grey e-ink screen the colour row is hidden, since the panel cannot show colour; you get the grey shades instead. A colour you pick on a colour device still exports in colour.
-- A white pen is invisible on the white working canvas. It only makes sense for the exported overlay.
-- While you draw, the screen uses a fast refresh that flashes very little, which can leave a little ghosting behind. It is tidied up when you lift your finger, and some ghosting over a long session is just how e-ink behaves; a full refresh clears it.
-- To keep a line in one piece when the touch panel drops contact for a moment, a finished stroke stays open for a fraction of a second. A fresh touch very close by within that moment counts as the same stroke.
-- Panning a heavily drawn canvas at high zoom has to repaint the visible ink, so it can feel a little slow on weaker devices.
-- If you rotate while drawing, the export keeps its original size and existing strokes are not rescaled to the new orientation.
-
-## Credits and license
-
-Ink Away is released under the MIT License (see [`LICENSE`](LICENSE)).
-
-PNG and JPEG encoding rely on the image libraries that ship with KOReader (lodepng and libjpeg-turbo). KOReader provides them, and they are not bundled with this plugin.
-
-## Development
-
-The drawing logic lives in `ink/` and, apart from the view layer, does not depend on KOReader, so you can test it on your computer with LuaJIT:
-
-```
-luajit tests/run.lua
-```
-
-`tests/core.lua` covers the geometry, the rasterizer, the canvas model, and, with real FFI, the transparent and opaque export buffers. `tests/text.lua` covers the text model, the edit operations and the word wrap and layout. `tests/view.lua` runs the view against a small mock KOReader environment and checks that nothing paints outside the buffers at several screen sizes. `tests/preview.lua` writes sample PNGs so you can look at the export without a device.
+MIT (see [`LICENSE`](LICENSE)). PNG/JPEG use KOReader's bundled lodepng and libjpeg-turbo.
