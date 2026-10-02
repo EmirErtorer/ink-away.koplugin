@@ -7704,8 +7704,9 @@ function InkAwayView:finishPenInputTest()
     local f = self:stylusFacts()
     local lines = {
         string.format("Stylus events: %d    Finger touches: %d", cap.styl, cap.fingers),
-        string.format("wacom=%s  pen_slot=%s  timev=%s",
-            tostring(f.wacom), tostring(f.pen_slot), tostring(cap.has_timev)),
+        string.format("wacom=%s  pen_slot=%s  timev=%s  bridge=%s",
+            tostring(f.wacom), tostring(f.pen_slot), tostring(cap.has_timev),
+            self._pen_bridge and "on" or "off"),
     }
     if cap.styl > 0 then
         lines[#lines + 1] = "Seen (tool / slot):"
