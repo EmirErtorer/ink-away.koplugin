@@ -101,7 +101,12 @@ function InkAwayView:selMoveCommit(sdx, sdy)
     self.canvas:pushHistory()
     for _, idx in ipairs(self.selection.idxs) do
         local op = self.canvas.ops[idx]
-        if op then translateOp(op, dx, dy) end
+        if op then
+            -- move a copy, so the undo snapshot keeps the op where it was
+            local moved = self.canvas:cloneOp(op)
+            translateOp(moved, dx, dy)
+            self.canvas:replaceOp(idx, moved)
+        end
     end
     self.dirty = true
     self:recomputeSelectionBBox()

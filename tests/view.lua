@@ -429,6 +429,12 @@ for _, wh in ipairs(SIZES) do
         view:onIaPanRelease(nil, pos(sx + d, sy + d))
         ok(math.abs((view.canvas.ops[1].pts[1] - px0) - 50) < 2, tag .. ": dragging the selection moves its ops")
         ok(view.canvas.ops[2].pts[1] == 400, tag .. ": the unselected op stays put")
+        view:undo()
+        ok(view.canvas.ops[1].pts[1] == px0, tag .. ": undo puts a moved selection back")
+        view:redo()
+        ok(math.abs((view.canvas.ops[1].pts[1] - px0) - 50) < 2, tag .. ": redo moves it again")
+        view.selection = { idxs = { 1 } }
+        view:recomputeSelectionBBox()
         view:selDelete()
         ok(view.canvas:opCount() == 1 and not view.selection, tag .. ": deleting the selection removes its ops")
 
