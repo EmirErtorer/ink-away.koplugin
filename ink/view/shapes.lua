@@ -14,12 +14,15 @@ local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Fill = require("ink/fill")
 local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Shapes = require("ink/shapes")
+local Symmetry = require("ink/symmetry")
 
 local SHADES = Palette.SHADES
 local COLORS = Palette.COLORS
 local translateOp = Canvas.translateOp
+local displayColor = Paint.displayColor
 
 local InkAwayView = {}
 
@@ -665,6 +668,41 @@ function InkAwayView:rotateEnd()
     end
     self:recompose()
     return true
+end
+
+-- The shape being placed, over the drawing and clipped to the area.
+function InkAwayView:paintShapePreview(bb, x, y)
+    local v = self.view
+    local sw = self.screen_w
+    local cy0, cy1 = y + v.area_y, y + v.area_y + v.area_h
+    local mirror = self.symmetry ~= "off"
+    local axsx, axsy
+    if mirror then
+        axsx = v.area_x + (v.canvas_w / 2 - v.pan_x) * v.zoom
+        axsy = v.area_y + (v.canvas_h / 2 - v.pan_y) * v.zoom
+    end
+    local function makePut(color)
+        local put = function(px, py, len)
+            py = py + y
+            if py < cy0 or py >= cy1 then return end
+            px = px + x
+            if px < x then len = len + (px - x); px = x end
+            if px + len > x + sw then len = x + sw - px end
+            if len > 0 then bb:paintRect(px, py, len, 1, color) end
+        end
+        -- mirror the preview too, so a symmetric shape shows before it is placed
+        if mirror then
+            put = Symmetry.wrap(put, self.symmetry,
+                function(px, len) return 2 * axsx - px - len end,
+                function(py) return 2 * axsy - py end)
+        end
+        return put
+    end
+    local sp = self.shape_preview
+    if sp.fill_color and not sp.fill then
+        Shapes.fill(sp, makePut(displayColor(sp.fill_color, sp.fill_alpha)))
+    end
+    Shapes.render(sp, makePut(displayColor(sp.color, sp.alpha)))
 end
 
 return InkAwayView

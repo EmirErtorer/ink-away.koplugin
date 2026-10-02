@@ -16,6 +16,7 @@ local Symmetry = require("ink/symmetry")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
+local FRAME = Blitbuffer.COLOR_GRAY
 local strengthToLevel = Paint.strengthToLevel
 local growRect = InkGeom.growRect
 
@@ -643,6 +644,26 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
             cy = cy + g
         end
     end
+end
+
+-- The page edges that fall inside the drawing area (only when zoomed out
+-- further than cover).
+function InkAwayView:paintPageEdges(bb, x, y)
+    local v = self.view
+    local ax0, ay0 = x + v.area_x, y + v.area_y
+    local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
+    local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
+    local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
+    fx0, fy0 = math.floor(fx0 + x), math.floor(fy0 + y)
+    fx1, fy1 = math.floor(fx1 + x), math.floor(fy1 + y)
+    local top = math.max(fy0, ay0)
+    local bot = math.min(fy1, ay1)
+    if fx0 > ax0 and fx0 < ax1 and bot > top then bb:paintRect(fx0, top, 1, bot - top, FRAME) end
+    if fx1 < ax1 and fx1 > ax0 and bot > top then bb:paintRect(fx1, top, 1, bot - top, FRAME) end
+    local lft = math.max(fx0, ax0)
+    local rgt = math.min(fx1, ax1)
+    if fy0 > ay0 and fy0 < ay1 and rgt > lft then bb:paintRect(lft, fy0, rgt - lft, 1, FRAME) end
+    if fy1 < ay1 and fy1 > ay0 and rgt > lft then bb:paintRect(lft, fy1, rgt - lft, 1, FRAME) end
 end
 
 return InkAwayView

@@ -21,6 +21,8 @@ local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
 
 local Screen = Device.screen
+local WHITE = Blitbuffer.COLOR_WHITE
+local FRAME = Blitbuffer.COLOR_GRAY
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
@@ -568,6 +570,74 @@ end
 function InkAwayView:notebookStyles()
     return { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
         { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
+end
+
+-- The notebook's bottom bar, matching the toolbar's height and icons.
+function InkAwayView:paintNotebookBar(bb, x, y)
+    local v = self.view
+    local nb = self.notebook
+    local h = self.nb_bar_h
+    local w = self.screen_w
+    local sy0 = y + v.area_y + v.area_h
+    local cy = sy0 + math.floor(h / 2)
+    local BLACKC = Blitbuffer.COLOR_BLACK
+    bb:paintRect(x, sy0, w, h, WHITE)
+    bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
+    local isz = self._icon_sz or math.max(20, math.floor(h * 0.66))
+    -- one nav icon (toolbar size) centred at cx
+    local function icon(name, cx)
+        local im = self:navImage(name, isz)
+        if not im then return end
+        local iw, ih = im:getWidth(), im:getHeight()
+        bb:blitFrom(im, math.floor(cx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
+    end
+    local pad = math.floor(isz * 0.4)              -- comfort padding around each tap zone
+    local zone = isz + 2 * pad
+    -- Prev (far left) and Next (far right)
+    local prev_cx = x + math.floor(zone / 2)
+    local next_cx = x + w - math.floor(zone / 2)
+    icon("nav_prev", prev_cx)
+    icon("nav_next", next_cx)
+    self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
+    self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
+    -- The page counter "index / count", centred. The slash is drawn (the font's is
+    -- taller than the digits), and the digits are centred on their measured ink,
+    -- not their text box, so they line up with the icons.
+    local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
+    local idxw = TextWidget:new{ text = tostring(nb.index), face = face, fgcolor = BLACKC }
+    local cntw = TextWidget:new{ text = tostring(nb:count()), face = face, fgcolor = BLACKC }
+    local iw, ih = idxw:getSize().w, idxw:getSize().h
+    local ink = self:digitInkMetric(face, isz, ih)
+    local ty = math.floor(cy - ink.mid)                -- centre the digits' ink on cy
+    local slh = ink.h                                  -- slash spans the digit ink height
+    local cw = cntw:getSize().w
+    local slw = math.max(2, math.floor(slh * 0.42))    -- slash horizontal span
+    local stk = math.max(2, math.floor(isz * 0.09))    -- slash thickness
+    local g = math.floor(isz * 0.30)
+    local counter_w = iw + g + slw + g + cw
+    local x0 = math.floor(x + w / 2 - counter_w / 2)
+    idxw:paintTo(bb, x0, ty); idxw:free()
+    local sx = x0 + iw + g
+    do  -- diagonal slash, bottom-left to top-right, centred on cy
+        local steps = math.max(slw, slh)
+        for i = 0, steps do
+            local t = i / steps
+            bb:paintRect(math.floor(sx + t * slw) - math.floor(stk / 2),
+                math.floor(cy + slh / 2 - t * slh) - math.floor(stk / 2), stk, stk, BLACKC)
+        end
+    end
+    cntw:paintTo(bb, sx + slw + g, ty); cntw:free()
+    -- add-page icon, just right of the counter, clamped clear of Next
+    local margin = math.floor(isz * 0.5)
+    local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
+    local max_icx = (next_cx - math.floor(zone / 2)) - margin - math.floor(isz / 2)
+    if icx > max_icx then icx = max_icx end
+    icon("newpage", icx)
+    self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
+    -- the counter opens the page menu; its tap zone spans the gap between Prev
+    -- and the add-page icon
+    local count_x = self._nb_prev.x + self._nb_prev.w
+    self._nb_count = { x = count_x, y = sy0, w = math.max(1, self._nb_plus.x - count_x), h = h }
 end
 
 return InkAwayView

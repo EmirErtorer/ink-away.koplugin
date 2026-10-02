@@ -15,23 +15,17 @@ local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
-local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Brushes = require("ink/brushes")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local InkGeom = require("ink/geom")
-local Paint = require("ink/paint")
 local Raster = require("ink/raster")
-local Shapes = require("ink/shapes")
 local Stylus = require("ink/stylus")
-local Symmetry = require("ink/symmetry")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
-local FRAME = Blitbuffer.COLOR_GRAY
-local displayColor = Paint.displayColor
 
 -- A full garbage collection, run shortly after the canvas closes.
 local function deferredCollect() collectgarbage("collect") end
@@ -819,115 +813,11 @@ function InkAwayView:paintTo(bb, x, y)
         -- during a region blit only that region is redrawn
         self:drawGrid(bb, x + v.area_x, y + v.area_y, br)
     end
-    -- page edges that fall inside the drawing area (only when zoomed out further
-    -- than cover); unchanged during a region blit
-    if not br then
-        local ax0, ay0 = x + v.area_x, y + v.area_y
-        local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
-        local fx0, fy0 = InkGeom.toScreen(v, 0, 0)
-        local fx1, fy1 = InkGeom.toScreen(v, v.canvas_w, v.canvas_h)
-        fx0, fy0 = math.floor(fx0 + x), math.floor(fy0 + y)
-        fx1, fy1 = math.floor(fx1 + x), math.floor(fy1 + y)
-        local top = math.max(fy0, ay0)
-        local bot = math.min(fy1, ay1)
-        if fx0 > ax0 and fx0 < ax1 and bot > top then bb:paintRect(fx0, top, 1, bot - top, FRAME) end
-        if fx1 < ax1 and fx1 > ax0 and bot > top then bb:paintRect(fx1, top, 1, bot - top, FRAME) end
-        local lft = math.max(fx0, ax0)
-        local rgt = math.min(fx1, ax1)
-        if fy0 > ay0 and fy0 < ay1 and rgt > lft then bb:paintRect(lft, fy0, rgt - lft, 1, FRAME) end
-        if fy1 < ay1 and fy1 > ay0 and rgt > lft then bb:paintRect(lft, fy1, rgt - lft, 1, FRAME) end
-    end
-
-    -- the shape being placed, over the drawing and clipped to the area
-    if self.shape_preview then
-        local sw = self.screen_w
-        local cy0, cy1 = y + v.area_y, y + v.area_y + v.area_h
-        local mirror = self.symmetry ~= "off"
-        local axsx, axsy
-        if mirror then
-            axsx = v.area_x + (v.canvas_w / 2 - v.pan_x) * v.zoom
-            axsy = v.area_y + (v.canvas_h / 2 - v.pan_y) * v.zoom
-        end
-        local function makePut(color)
-            local put = function(px, py, len)
-                py = py + y
-                if py < cy0 or py >= cy1 then return end
-                px = px + x
-                if px < x then len = len + (px - x); px = x end
-                if px + len > x + sw then len = x + sw - px end
-                if len > 0 then bb:paintRect(px, py, len, 1, color) end
-            end
-            -- mirror the preview too, so a symmetric shape shows before it is placed
-            if mirror then
-                put = Symmetry.wrap(put, self.symmetry,
-                    function(px, len) return 2 * axsx - px - len end,
-                    function(py) return 2 * axsy - py end)
-            end
-            return put
-        end
-        local sp = self.shape_preview
-        if sp.fill_color and not sp.fill then
-            Shapes.fill(sp, makePut(displayColor(sp.fill_color, sp.fill_alpha)))
-        end
-        Shapes.render(sp, makePut(displayColor(sp.color, sp.alpha)))
-    end
-
-    -- the export area being chosen
-    if self.selecting_crop and self._crop_screen then
-        local c = self._crop_screen
-        local cx0 = math.max(x + v.area_x, math.min(x + v.area_x + v.area_w, c.x0))
-        local cy0 = math.max(y + v.area_y, math.min(y + v.area_y + v.area_h, c.y0))
-        local cx1 = math.max(x + v.area_x, math.min(x + v.area_x + v.area_w, c.x1))
-        local cy1 = math.max(y + v.area_y, math.min(y + v.area_y + v.area_h, c.y1))
-        if cx1 < cx0 then cx0, cx1 = cx1, cx0 end
-        if cy1 < cy0 then cy0, cy1 = cy1, cy0 end
-        local BLACKC = Blitbuffer.COLOR_BLACK
-        bb:paintRect(cx0, cy0, cx1 - cx0, 2, BLACKC)
-        bb:paintRect(cx0, cy1 - 2, cx1 - cx0, 2, BLACKC)
-        bb:paintRect(cx0, cy0, 2, cy1 - cy0, BLACKC)
-        bb:paintRect(cx1 - 2, cy0, 2, cy1 - cy0, BLACKC)
-    end
-
-    -- lasso overlay: the loop being drawn, and the box around a live selection
-    if self.lassoing or (self.selection and self.selection.bbox) then
-        local BLACKC = Blitbuffer.COLOR_BLACK
-        local ax0, ay0 = x + v.area_x, y + v.area_y
-        local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
-        if self.lassoing and self.lasso_scr then
-            local pts = self.lasso_scr
-            local function dot(px, py)
-                if px >= ax0 and px < ax1 - 3 and py >= ay0 and py < ay1 - 3 then
-                    bb:paintRect(px, py, 3, 3, BLACKC)
-                end
-            end
-            dot(pts[1], pts[2])
-            for i = 3, #pts, 2 do           -- draw each segment as a connected line
-                local x0s, y0s = pts[i - 2], pts[i - 1]
-                local dxs, dys = pts[i] - x0s, pts[i + 1] - y0s
-                local steps = math.max(1, math.floor(math.max(math.abs(dxs), math.abs(dys)) / 3))
-                for s = 1, steps do
-                    dot(math.floor(x0s + dxs * s / steps), math.floor(y0s + dys * s / steps))
-                end
-            end
-        end
-        if self.selection and self.selection.bbox then
-            local b = self.selection.bbox
-            local odx = (self.sel_press and self.sel_press.dx) or 0
-            local ody = (self.sel_press and self.sel_press.dy) or 0
-            local s0x, s0y = InkGeom.toScreen(v, b.x0, b.y0)
-            local s1x, s1y = InkGeom.toScreen(v, b.x1, b.y1)
-            local bx0 = math.max(ax0, math.min(ax1, x + s0x + odx))
-            local by0 = math.max(ay0, math.min(ay1, y + s0y + ody))
-            local bx1 = math.max(ax0, math.min(ax1, x + s1x + odx))
-            local by1 = math.max(ay0, math.min(ay1, y + s1y + ody))
-            if bx1 > bx0 and by1 > by0 then
-                bb:paintRect(bx0, by0, bx1 - bx0, 2, BLACKC)
-                bb:paintRect(bx0, by1 - 2, bx1 - bx0, 2, BLACKC)
-                bb:paintRect(bx0, by0, 2, by1 - by0, BLACKC)
-                bb:paintRect(bx1 - 2, by0, 2, by1 - by0, BLACKC)
-            end
-        end
-    end
+    -- page edges that fall inside the drawing area; unchanged during a region blit
+    if not br then self:paintPageEdges(bb, x, y) end
+    if self.shape_preview then self:paintShapePreview(bb, x, y) end
+    if self.selecting_crop and self._crop_screen then self:paintCropOverlay(bb, x, y) end
+    if self.lassoing or (self.selection and self.selection.bbox) then self:paintLassoOverlay(bb, x, y) end
 
     -- the text box being edited: glyphs, frame, caret and selection
     if self.editing_text then self:paintTextOverlay(bb, x, y) end
@@ -939,73 +829,9 @@ function InkAwayView:paintTo(bb, x, y)
     -- the selected image: frame, handles, and the picture itself while dragged
     if self.active_image then self:paintImageOverlay(bb, x, y) end
 
-    -- The notebook's bottom bar, matching the toolbar's height and icons. It is
-    -- chrome, so it is skipped on region blits and area-only paints like the toolbar.
-    if paint_chrome and self.notebook and self.nb_bar_h > 0 then
-        local nb = self.notebook
-        local h = self.nb_bar_h
-        local w = self.screen_w
-        local sy0 = y + v.area_y + v.area_h
-        local cy = sy0 + math.floor(h / 2)
-        local BLACKC = Blitbuffer.COLOR_BLACK
-        bb:paintRect(x, sy0, w, h, WHITE)
-        bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
-        local isz = self._icon_sz or math.max(20, math.floor(h * 0.66))
-        -- one nav icon (toolbar size) centred at cx
-        local function icon(name, cx)
-            local im = self:navImage(name, isz)
-            if not im then return end
-            local iw, ih = im:getWidth(), im:getHeight()
-            bb:blitFrom(im, math.floor(cx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
-        end
-        local pad = math.floor(isz * 0.4)              -- comfort padding around each tap zone
-        local zone = isz + 2 * pad
-        -- Prev (far left) and Next (far right)
-        local prev_cx = x + math.floor(zone / 2)
-        local next_cx = x + w - math.floor(zone / 2)
-        icon("nav_prev", prev_cx)
-        icon("nav_next", next_cx)
-        self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
-        self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
-        -- The page counter "index / count", centred. The slash is drawn (the font's is
-        -- taller than the digits), and the digits are centred on their measured ink,
-        -- not their text box, so they line up with the icons.
-        local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
-        local idxw = TextWidget:new{ text = tostring(nb.index), face = face, fgcolor = BLACKC }
-        local cntw = TextWidget:new{ text = tostring(nb:count()), face = face, fgcolor = BLACKC }
-        local iw, ih = idxw:getSize().w, idxw:getSize().h
-        local ink = self:digitInkMetric(face, isz, ih)
-        local ty = math.floor(cy - ink.mid)                -- centre the digits' ink on cy
-        local slh = ink.h                                  -- slash spans the digit ink height
-        local cw = cntw:getSize().w
-        local slw = math.max(2, math.floor(slh * 0.42))    -- slash horizontal span
-        local stk = math.max(2, math.floor(isz * 0.09))    -- slash thickness
-        local g = math.floor(isz * 0.30)
-        local counter_w = iw + g + slw + g + cw
-        local x0 = math.floor(x + w / 2 - counter_w / 2)
-        idxw:paintTo(bb, x0, ty); idxw:free()
-        local sx = x0 + iw + g
-        do  -- diagonal slash, bottom-left to top-right, centred on cy
-            local steps = math.max(slw, slh)
-            for i = 0, steps do
-                local t = i / steps
-                bb:paintRect(math.floor(sx + t * slw) - math.floor(stk / 2),
-                    math.floor(cy + slh / 2 - t * slh) - math.floor(stk / 2), stk, stk, BLACKC)
-            end
-        end
-        cntw:paintTo(bb, sx + slw + g, ty); cntw:free()
-        -- add-page icon, just right of the counter, clamped clear of Next
-        local margin = math.floor(isz * 0.5)
-        local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
-        local max_icx = (next_cx - math.floor(zone / 2)) - margin - math.floor(isz / 2)
-        if icx > max_icx then icx = max_icx end
-        icon("newpage", icx)
-        self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
-        -- the counter opens the page menu; its tap zone spans the gap between Prev
-        -- and the add-page icon
-        local count_x = self._nb_prev.x + self._nb_prev.w
-        self._nb_count = { x = count_x, y = sy0, w = math.max(1, self._nb_plus.x - count_x), h = h }
-    end
+    -- the notebook's bottom bar is chrome, so it is skipped on region blits and
+    -- area-only paints like the toolbar
+    if paint_chrome and self.notebook and self.nb_bar_h > 0 then self:paintNotebookBar(bb, x, y) end
 
     -- the floating controls, on top; a region blit never reaches them
     if not br then self:drawFabs(bb, x, y) end

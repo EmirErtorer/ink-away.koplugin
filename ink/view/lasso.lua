@@ -4,6 +4,7 @@ duplicate or delete the group.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
+local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
@@ -11,6 +12,7 @@ local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Canvas = require("ink/canvas")
 local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 
 local opInPoly = Canvas.opInPoly
 local accumBounds = Canvas.accumBounds
@@ -254,6 +256,43 @@ function InkAwayView:lassoTap(pos)
         else self:clearSelection() end
     end
     return true
+end
+
+-- The lasso loop being drawn, and the box around a live selection.
+function InkAwayView:paintLassoOverlay(bb, x, y)
+    local v = self.view
+    local BLACKC = Blitbuffer.COLOR_BLACK
+    local ax0, ay0 = x + v.area_x, y + v.area_y
+    local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
+    if self.lassoing and self.lasso_scr then
+        local pts = self.lasso_scr
+        local function dot(px, py)
+            if px >= ax0 and px < ax1 - 3 and py >= ay0 and py < ay1 - 3 then
+                bb:paintRect(px, py, 3, 3, BLACKC)
+            end
+        end
+        dot(pts[1], pts[2])
+        for i = 3, #pts, 2 do           -- draw each segment as a connected line
+            local x0s, y0s = pts[i - 2], pts[i - 1]
+            local dxs, dys = pts[i] - x0s, pts[i + 1] - y0s
+            local steps = math.max(1, math.floor(math.max(math.abs(dxs), math.abs(dys)) / 3))
+            for s = 1, steps do
+                dot(math.floor(x0s + dxs * s / steps), math.floor(y0s + dys * s / steps))
+            end
+        end
+    end
+    if self.selection and self.selection.bbox then
+        local b = self.selection.bbox
+        local odx = (self.sel_press and self.sel_press.dx) or 0
+        local ody = (self.sel_press and self.sel_press.dy) or 0
+        local s0x, s0y = InkGeom.toScreen(v, b.x0, b.y0)
+        local s1x, s1y = InkGeom.toScreen(v, b.x1, b.y1)
+        local bx0 = math.max(ax0, math.min(ax1, x + s0x + odx))
+        local by0 = math.max(ay0, math.min(ay1, y + s0y + ody))
+        local bx1 = math.max(ax0, math.min(ax1, x + s1x + odx))
+        local by1 = math.max(ay0, math.min(ay1, y + s1y + ody))
+        if bx1 > bx0 and by1 > by0 then Paint.outline(bb, bx0, by0, bx1 - bx0, by1 - by0, BLACKC, 2) end
+    end
 end
 
 return InkAwayView

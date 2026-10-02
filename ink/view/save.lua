@@ -4,6 +4,7 @@ ornaments, and exporting a notebook to PDF.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
+local Blitbuffer = require("ffi/blitbuffer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
@@ -568,6 +569,19 @@ function InkAwayView:autoSaveDrawingProject(image_name)
     local proj = Storage.join(dir, base .. "." .. Project.EXT)
     local ok = Project.save(self.canvas, proj)
     return ok and proj or nil
+end
+
+-- The export area being chosen.
+function InkAwayView:paintCropOverlay(bb, x, y)
+    local v = self.view
+    local c = self._crop_screen
+    local cx0 = math.max(x + v.area_x, math.min(x + v.area_x + v.area_w, c.x0))
+    local cy0 = math.max(y + v.area_y, math.min(y + v.area_y + v.area_h, c.y0))
+    local cx1 = math.max(x + v.area_x, math.min(x + v.area_x + v.area_w, c.x1))
+    local cy1 = math.max(y + v.area_y, math.min(y + v.area_y + v.area_h, c.y1))
+    if cx1 < cx0 then cx0, cx1 = cx1, cx0 end
+    if cy1 < cy0 then cy0, cy1 = cy1, cy0 end
+    Paint.outline(bb, cx0, cy0, cx1 - cx0, cy1 - cy0, Blitbuffer.COLOR_BLACK, 2)
 end
 
 return InkAwayView
