@@ -188,8 +188,9 @@ run("S6", "4 short strokes with a resting palm (finger tool) jittering; then a f
 end)
 
 ---------------------------------------------------------------------------
--- Pen UI: a pen contact that lands on the toolbar, a floating control,
--- the notebook bar or a shown menu goes to the gesture detector like a finger.
+-- Pen taps menus and buttons: a pen contact that lands on the toolbar, a
+-- floating control, the notebook bar or a shown menu goes to the gesture
+-- detector like a finger.
 ---------------------------------------------------------------------------
 local uichecks = {}
 local function uiok(c, what) uichecks[#uichecks + 1] = { c, what } end
@@ -239,7 +240,7 @@ uirun("U2", "pen taps the zoom pill", function(w)
     uiok(v.canvas:opCount() == 0, "U2: nothing drawn")
 end)
 
-uirun("U3", "Pen UI off: the pen on the toolbar stays with Ink Away", function(w)
+uirun("U3", "toggle off: the pen on the toolbar stays with Ink Away", function(w)
     local v = w.view
     tapAt(w, 300, math.floor(v.view.area_y / 2))
     uiok(#w.ges_log == 0, "U3: the gesture detector saw nothing from the pen")

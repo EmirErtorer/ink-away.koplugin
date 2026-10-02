@@ -1018,14 +1018,14 @@ do
     ok(pen(0, zr.x + 4, zr.y + 4) == false, "pen ui: the zoom pill takes the pen")
     pen(-1, zr.x + 4, zr.y + 4)
     UIManager.fireScheduled()
-    -- with Pen UI off the pen never reaches the toolbar
+    -- with the toggle off the pen never reaches the toolbar
     view.pen_ui = false
     ok(pen(0, 100, tb_y) == true and not view._pen_ui_contact, "pen ui: off, the pen stays with Ink Away")
     pen(-1, 100, tb_y)
     view.pen_ui = true
     UIManager.fireScheduled()
     ok(view.canvas:opCount() == q + 1 and not view:fingerRejected(), "pen ui: nothing drawn, nothing stuck")
-    -- the pen sheet's Pen UI toggle switches it and remembers it
+    -- the pen sheet's toggle switches it and remembers it
     local function findToggle(root, label)
         local seen = { [view] = true }
         local function walk(t)
@@ -1042,7 +1042,7 @@ do
         return walk(root)
     end
     view:openPenSettings()
-    local tg = findToggle(view._pen_dialog, "Pen UI")
+    local tg = findToggle(view._pen_dialog, "Pen taps menus and buttons")
     ok(tg ~= nil and tg.is_on == true, "pen ui: the pen sheet has the toggle, on")
     if tg then tg:onTap() end
     ok(view.pen_ui == false and _G.G_reader_settings.data.inkaway_pen_ui == false,
@@ -1050,11 +1050,12 @@ do
     if tg then tg:onTap() end
     ok(view.pen_ui == true, "pen ui: and back on")
     view:closeSheet("_pen_dialog")
-    -- on a sheet too narrow for three toggles, Pen UI moves to a second row
+    -- a narrow sheet still lays them all out
     local sw = view.sheetWidth
     view.sheetWidth = function() return 120, 12, 27 end
     view:openPenSettings()
-    ok(findToggle(view._pen_dialog, "Pen UI") ~= nil and findToggle(view._pen_dialog, "Palm rejection") ~= nil,
+    ok(findToggle(view._pen_dialog, "Pen taps menus and buttons") ~= nil
+        and findToggle(view._pen_dialog, "Palm rejection") ~= nil,
         "pen ui: a narrow sheet still has every toggle")
     view:closeSheet("_pen_dialog")
     view.sheetWidth = sw

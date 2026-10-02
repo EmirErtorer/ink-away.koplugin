@@ -362,8 +362,9 @@ function InkAwayView:onStylusSlot(inp, slot)
     end
     -- ROLE_PEN: a trusted pen drives our own touch, pan and release. Palms are
     -- filtered out above, so an eraser tool here is the pen's own rear eraser or a
-    -- held barrel button. With Pen UI on, a contact that lands on the UI is handed
-    -- to the gesture detector instead, decided on its first point.
+    -- held barrel button. When the pen may tap the UI (pen_ui), a contact that
+    -- lands on it is handed to the gesture detector instead, decided on its first
+    -- point.
     if self.pen_ui and not self._pen_started and slot.id ~= nil and slot.id >= 0
             and slot.x and slot.y then
         local x, y = self:penScreenXY(slot)
@@ -494,7 +495,7 @@ function InkAwayView:penUp()
 end
 
 ------------------------------------------------------------------------------
--- The pen on the UI (the Pen UI toggle)
+-- The pen on the UI (Pen taps menus and buttons)
 --
 -- A pen contact that lands on the toolbar, a floating control, the notebook bar,
 -- or anything shown over the canvas (a menu, a dialog, the keyboard) is left to

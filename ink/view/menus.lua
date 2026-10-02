@@ -154,26 +154,13 @@ function InkAwayView:openPenSettings()
                     "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
             end
         end)
-        local penui = toggle(_("Pen UI"), self.pen_ui, function(on)
-            self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end)
-        -- three compact toggles spread across one row; if they cannot fit (larger
-        -- fonts from a DPI override), Pen UI goes to the right of a second row
-        local min_gap = Screen:scaleBySize(16)
-        local free = content_w - assist.width - palm.width - penui.width
-        if free >= 2 * min_gap then
-            local slack = math.floor(free / 2)
-            table.insert(tail, HorizontalGroup:new{ align = "center",
-                assist, HorizontalSpan:new{ width = slack },
-                palm, HorizontalSpan:new{ width = slack },
-                penui })
-        else
-            table.insert(tail, HorizontalGroup:new{ align = "center",
-                assist, HorizontalSpan:new{ width = math.max(min_gap, content_w - assist.width - palm.width) },
-                palm })
-            table.insert(tail, vspan(10))
-            table.insert(tail, HorizontalGroup:new{ align = "center",
-                HorizontalSpan:new{ width = math.max(0, content_w - penui.width) }, penui })
-        end
+        table.insert(tail, HorizontalGroup:new{ align = "center", assist,
+            HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - assist.width - palm.width) },
+            palm })
+        table.insert(tail, vspan(10))
+        table.insert(tail, ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
+            width = content_w, parent = menu,
+            callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
         -- Debug: the pen input test, hidden unless show_pen_test is set.
         if self.show_pen_test and self:penCapable() then
             table.insert(tail, vspan(10))

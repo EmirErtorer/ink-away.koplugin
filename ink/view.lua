@@ -173,9 +173,9 @@ function InkAwayView:init()
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
     -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua.
     self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus()) and true or false
-    -- Pen UI: the pen also taps the toolbar, menus and dialogs. Off keeps it for
-    -- drawing and leaves the UI to fingers. Only matters with palm rejection on;
-    -- without it the pen already arrives as a finger.
+    -- Pen taps menus and buttons: the pen also works the toolbar, menus and
+    -- dialogs. Off keeps it for drawing and leaves the UI to fingers. Only matters
+    -- with palm rejection on; without it the pen already arrives as a finger.
     self.pen_ui = self:getSetting("inkaway_pen_ui", true) and true or false
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot drawing the current pen stroke
