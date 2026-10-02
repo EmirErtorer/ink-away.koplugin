@@ -173,6 +173,10 @@ function InkAwayView:init()
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
     -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua.
     self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus()) and true or false
+    -- Pen UI: the pen also taps the toolbar, menus and dialogs. Off keeps it for
+    -- drawing and leaves the UI to fingers. Only matters with palm rejection on;
+    -- without it the pen already arrives as a finger.
+    self.pen_ui = self:getSetting("inkaway_pen_ui", true) and true or false
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot drawing the current pen stroke
     self._palm_slots = {}         -- slot -> tracking id of each palm being ignored
@@ -185,6 +189,8 @@ function InkAwayView:init()
         self._palm_slots = {}
         self._palm_count = 0
     end
+    -- Ends the pass-through of a pen UI contact's gestures (see penUiFrame).
+    self._pen_ui_end = function() self._pen_ui = nil end
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off | vert | horiz | quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
@@ -361,6 +367,7 @@ function InkAwayView:onCloseWidget()
         self._stylus_cb = nil
     end
     UIManager:unschedule(self._pen_clear)
+    UIManager:unschedule(self._pen_ui_end)
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
     UIManager:unschedule(self._live_flush_cb)
@@ -445,7 +452,7 @@ function InkAwayView:onIaTouch(_, ges)
     -- pen input test: count finger touches
     if self._pen_capture then self._pen_capture.fingers = self._pen_capture.fingers + 1 end
     -- a pen or palm is down: keep fingers out until it lifts
-    if self:fingerRejected() then self:holdReject(); return true end
+    if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
     -- a multi-touch that began as a raw stroke: its per-finger touches never draw
     if not self._pen_feeding and self._raw and self._raw.ignore_slot ~= nil then return true end
     local pos = ges.pos
@@ -507,7 +514,7 @@ function InkAwayView:onIaTouch(_, ges)
 end
 
 function InkAwayView:onIaPan(_, ges)
-    if self:fingerRejected() then self:holdReject(); return true end
+    if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
     if self._clip_press then return true end   -- the release decides (paste or cancel)
     local pos = ges.pos
     if self._fab_press then           -- a drag off a control is a draw, not a tap
@@ -544,7 +551,7 @@ end
 InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -573,7 +580,7 @@ end
 InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
     if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
@@ -602,7 +609,7 @@ end
 InkAwayView.onIaMultiSwipe = InkAwayView.onIaSwipe
 
 function InkAwayView:onIaTap(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -652,7 +659,7 @@ function InkAwayView:onIaTap(_, ges)
 end
 
 function InkAwayView:onIaHold(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
     if self._clip_press then return true end
     if self._fab_press then self._fab_press = nil; return true end
     -- a long press in the text box being edited offers to paste there

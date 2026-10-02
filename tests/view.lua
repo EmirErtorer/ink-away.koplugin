@@ -938,6 +938,85 @@ do
     ok(view.canvas:opCount() == p + 1, "palm: the no-pen-slot pen commits exactly one stroke")
     Device.input.pen_slot = saved_slot
 
+    -- PEN UI: a pen contact that lands on the toolbar is left to the gesture
+    -- detector (not dominated) and never draws; turned off, the pen stays with Ink
+    -- Away there as before.
+    view:setTool("pen")
+    view:resetPenState()
+    UIManager.fireScheduled()
+    local tb_y = math.floor(v.area_y / 2)
+    local q = view.canvas:opCount()
+    ok(view.pen_ui == true, "pen ui: on by default")
+    ok(pen(0, 100, tb_y) == false, "pen ui: a pen landing on the toolbar goes to the gesture detector")
+    ok(not view.capturing and view._pen_ui_contact, "pen ui: it opens no stroke")
+    ok(pen(0, 104, tb_y) == false, "pen ui: its moves go to the detector too")
+    ok(not view:fingerRejected({ x = 104, y = tb_y }), "pen ui: its own gestures get past finger rejection")
+    ok(view:fingerRejected({ x = 400, y = yy + 300 }), "pen ui: a palm elsewhere is still rejected")
+    ok(pen(-1, 104, tb_y) == false, "pen ui: so does the lift")
+    ok(not view._pen_ui_contact and not view:fingerRejected({ x = 104, y = tb_y }),
+        "pen ui: the tap the lift makes still gets through")
+    UIManager.fireScheduled()
+    ok(view._pen_ui == nil and not view:fingerRejected(), "pen ui: the pass-through ends after the tick")
+    ok(view.canvas:opCount() == q, "pen ui: the toolbar tap drew nothing")
+    -- a stroke that starts on the canvas keeps drawing onto the toolbar
+    ok(pen(0, midx, yy) == true, "pen ui: a pen landing on the canvas still draws")
+    pen(0, midx, tb_y)
+    pen(-1, midx, tb_y)
+    ok(view.canvas:opCount() == q + 1, "pen ui: a stroke may run onto the toolbar")
+    UIManager.fireScheduled()
+    -- the rear eraser's first frame has no point yet; its first point is on the toolbar
+    Device.input.stylus_callback(Device.input, { slot = Device.input.pen_slot, id = 0, tool = 2 })
+    ok(view.tool == "erase", "pen ui: the rear eraser swapped the tool in")
+    ok(pen(0, 100, tb_y, 2) == false and view.tool == "pen" and not view._pen_state.down,
+        "pen ui: a first point on the toolbar hands the contact over and puts the tool back")
+    pen(-1, 100, tb_y, 2)
+    UIManager.fireScheduled()
+    -- a floating control (the zoom pill) is UI too
+    local zr = view:fabRect("zoom")
+    ok(pen(0, zr.x + 4, zr.y + 4) == false, "pen ui: the zoom pill takes the pen")
+    pen(-1, zr.x + 4, zr.y + 4)
+    UIManager.fireScheduled()
+    -- with Pen UI off the pen never reaches the toolbar
+    view.pen_ui = false
+    ok(pen(0, 100, tb_y) == true and not view._pen_ui_contact, "pen ui: off, the pen stays with Ink Away")
+    pen(-1, 100, tb_y)
+    view.pen_ui = true
+    UIManager.fireScheduled()
+    ok(view.canvas:opCount() == q + 1 and not view:fingerRejected(), "pen ui: nothing drawn, nothing stuck")
+    -- the pen sheet's Pen UI toggle switches it and remembers it
+    local function findToggle(root, label)
+        local seen = { [view] = true }
+        local function walk(t)
+            if type(t) ~= "table" or seen[t] then return nil end
+            seen[t] = true
+            if t.label == label and t.onTap then return t end
+            for k, c in pairs(t) do
+                if k ~= "parent" and k ~= "show_parent" then
+                    local r = walk(c)
+                    if r then return r end
+                end
+            end
+        end
+        return walk(root)
+    end
+    view:openPenSettings()
+    local tg = findToggle(view._pen_dialog, "Pen UI")
+    ok(tg ~= nil and tg.is_on == true, "pen ui: the pen sheet has the toggle, on")
+    if tg then tg:onTap() end
+    ok(view.pen_ui == false and _G.G_reader_settings.data.inkaway_pen_ui == false,
+        "pen ui: the toggle turns it off and saves it")
+    if tg then tg:onTap() end
+    ok(view.pen_ui == true, "pen ui: and back on")
+    view:closeSheet("_pen_dialog")
+    -- on a sheet too narrow for three toggles, Pen UI moves to a second row
+    local sw = view.sheetWidth
+    view.sheetWidth = function() return 120, 12, 27 end
+    view:openPenSettings()
+    ok(findToggle(view._pen_dialog, "Pen UI") ~= nil and findToggle(view._pen_dialog, "Palm rejection") ~= nil,
+        "pen ui: a narrow sheet still has every toggle")
+    view:closeSheet("_pen_dialog")
+    view.sheetWidth = sw
+
     -- turning it off unregisters the callback
     view.palm_reject = false
     view:applyPalmReject()

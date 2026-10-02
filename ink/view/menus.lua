@@ -140,29 +140,40 @@ function InkAwayView:openPenSettings()
             return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
         end
         local tail = VerticalGroup:new{ align = "left" }
-        local assistRow = HorizontalGroup:new{ align = "center",
-            toggle(_("Shape assist"), self.shape_assist, function(on)
-                self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
-                -- free the pre-stroke snapshot, which only shape assist uses
-                if not on and self._pre_stroke_bb then
-                    self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
-                    self._pre_stroke_valid = false
-                end end),
-        }
-        do
-            local pr = toggle(_("Palm rejection"), self.palm_reject, function(on)
-                self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
-                if on and not self:penCapable() then
-                    UIManager:show(InfoMessage:new{ text = _(
-                        "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
-                end
-            end)
-            local a1w = assistRow[1].width
-            local slack = math.max(Screen:scaleBySize(16), content_w - a1w - pr.width)
-            table.insert(assistRow, HorizontalSpan:new{ width = slack })
-            table.insert(assistRow, pr)
+        local assist = toggle(_("Shape assist"), self.shape_assist, function(on)
+            self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
+            -- free the pre-stroke snapshot, which only shape assist uses
+            if not on and self._pre_stroke_bb then
+                self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
+                self._pre_stroke_valid = false
+            end end)
+        local palm = toggle(_("Palm rejection"), self.palm_reject, function(on)
+            self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
+            if on and not self:penCapable() then
+                UIManager:show(InfoMessage:new{ text = _(
+                    "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+            end
+        end)
+        local penui = toggle(_("Pen UI"), self.pen_ui, function(on)
+            self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end)
+        -- three compact toggles spread across one row; if they cannot fit (larger
+        -- fonts from a DPI override), Pen UI goes to the right of a second row
+        local min_gap = Screen:scaleBySize(16)
+        local free = content_w - assist.width - palm.width - penui.width
+        if free >= 2 * min_gap then
+            local slack = math.floor(free / 2)
+            table.insert(tail, HorizontalGroup:new{ align = "center",
+                assist, HorizontalSpan:new{ width = slack },
+                palm, HorizontalSpan:new{ width = slack },
+                penui })
+        else
+            table.insert(tail, HorizontalGroup:new{ align = "center",
+                assist, HorizontalSpan:new{ width = math.max(min_gap, content_w - assist.width - palm.width) },
+                palm })
+            table.insert(tail, vspan(10))
+            table.insert(tail, HorizontalGroup:new{ align = "center",
+                HorizontalSpan:new{ width = math.max(0, content_w - penui.width) }, penui })
         end
-        table.insert(tail, assistRow)
         -- Debug: the pen input test, hidden unless show_pen_test is set.
         if self.show_pen_test and self:penCapable() then
             table.insert(tail, vspan(10))

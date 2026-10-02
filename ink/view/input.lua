@@ -1,6 +1,7 @@
 --[[
 Touch and pen input that bypasses KOReader's gesture detector: palm rejection
-through the stylus callback, and raw finger tracking for the drawing tools.
+through the stylus callback (handing the pen back to the detector when it works
+the UI), and raw finger tracking for the drawing tools.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -33,6 +34,10 @@ local RAW_HANDOFF_CANCEL_PX = 24
 -- handwriting is never joined up by straight connectors.
 local RAW_BRIDGE_MS = 40
 local timevMs = Stylus.timevMs
+
+-- How far (screen px) a gesture may sit from where the stylus hook last saw the
+-- pen and still count as the pen's own, while it works the UI.
+local PEN_UI_SLOP = 3
 
 local InkAwayView = {}
 
@@ -184,15 +189,19 @@ function InkAwayView:resetPenState()
     self._stylus_input = nil
     self._pen_hold_at = nil
     UIManager:unschedule(self._pen_hold_cb)
+    self._pen_ui_contact, self._pen_ui = false, nil
+    UIManager:unschedule(self._pen_ui_end)
 end
 
 -- True while finger input must be ignored: the pen or a palm is physically down,
 -- the pen hovers in range, or the short grace after everything lifts
 -- (_reject_finger). Latching on physical presence, not the timer alone, means a
 -- stray palm frame's timer can never drop rejection mid-stroke and let a line
--- appear between palm and pen. Pen-fed events set _pen_feeding to pass through.
-function InkAwayView:fingerRejected()
+-- appear between palm and pen. Pen-fed events set _pen_feeding to pass through,
+-- and so does a gesture at `pos` that is the pen itself working the UI.
+function InkAwayView:fingerRejected(pos)
     if self._pen_feeding then return false end
+    if pos and self._pen_ui and self:penUiGesture(pos) then return false end
     return self._pen_state.down or self._palm_count > 0 or self._reject_finger
         or self:penInRange()
 end
@@ -324,6 +333,16 @@ function InkAwayView:onStylusSlot(inp, slot)
     -- to 0) keep drawing once its slotted frames arrive.
     local is_pen_slot = (self._learned_pen_slot ~= nil and sn == self._learned_pen_slot)
                      or (input and input.pen_slot ~= nil and sn == input.pen_slot)
+    -- A pen contact working the UI stays with the gesture detector until it lifts
+    -- or leaves range (see penUiStart). Another pen-like contact meanwhile is a palm.
+    if self._pen_ui_contact then
+        if (sn == self._pen_ui.slot or is_pen_slot)
+                and (role == Stylus.ROLE_PEN or role == Stylus.ROLE_PEN_OUT) then
+            return self:penUiFrame(slot, role == Stylus.ROLE_PEN_OUT)
+        elseif role == Stylus.ROLE_PEN then
+            role = Stylus.ROLE_PALM
+        end
+    end
     if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner
             and not is_pen_slot then
         role = Stylus.ROLE_PALM
@@ -343,7 +362,13 @@ function InkAwayView:onStylusSlot(inp, slot)
     end
     -- ROLE_PEN: a trusted pen drives our own touch, pan and release. Palms are
     -- filtered out above, so an eraser tool here is the pen's own rear eraser or a
-    -- held barrel button.
+    -- held barrel button. With Pen UI on, a contact that lands on the UI is handed
+    -- to the gesture detector instead, decided on its first point.
+    if self.pen_ui and not self._pen_started and slot.id ~= nil and slot.id >= 0
+            and slot.x and slot.y then
+        local x, y = self:penScreenXY(slot)
+        if self:penOnUI(x, y) then return self:penUiStart(sn, x, y) end
+    end
     local action = Stylus.step(self._pen_state, slot.id)
     if action == "down" then
         self._pen_owner = sn        -- this slot owns the stroke until it lifts
@@ -466,6 +491,86 @@ function InkAwayView:penUp()
     -- keep ignoring fingers briefly: a palm often lifts a moment after the pen
     UIManager:unschedule(self._pen_clear)
     UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+end
+
+------------------------------------------------------------------------------
+-- The pen on the UI (the Pen UI toggle)
+--
+-- A pen contact that lands on the toolbar, a floating control, the notebook bar,
+-- or anything shown over the canvas (a menu, a dialog, the keyboard) is left to
+-- KOReader's gesture detector, which treats it as a finger until it lifts. The
+-- choice is made on the contact's first point, so a stroke that starts on the
+-- canvas keeps drawing wherever it goes.
+------------------------------------------------------------------------------
+
+-- The widget a touch reaches first: the topmost one shown, passing over toasts
+-- and messages that close by themselves, which never hold on to a touch.
+function InkAwayView:touchTarget()
+    local stack = UIManager._window_stack
+    if type(stack) ~= "table" then
+        return UIManager.getTopmostVisibleWidget and UIManager:getTopmostVisibleWidget()
+    end
+    for i = #stack, 1, -1 do
+        local w = stack[i] and stack[i].widget
+        if w and not w.invisible and not w.toast and not w.timeout then return w end
+    end
+end
+
+-- Does a pen contact landing at screen (x, y) go to the UI rather than the canvas?
+function InkAwayView:penOnUI(x, y)
+    local top = self:touchTarget()
+    if top and top ~= self then return true end
+    return not self:inArea(x, y) or self:fabHit(x, y) ~= nil
+end
+
+-- Start a UI contact: leave it to the gesture detector and remember where the pen
+-- is, so its own gestures get past the finger rejection while a palm elsewhere is
+-- still kept out (see penUiGesture).
+function InkAwayView:penUiStart(sn, x, y)
+    -- a first frame without coordinates may already have opened a pen stroke; it
+    -- drew nothing, so forget it
+    if self._pen_state.down then
+        self._pen_state = Stylus.new()
+        self._pen_owner, self._pen_kin = nil, nil
+        if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    end
+    self._pen_ui_contact = true
+    self._pen_ui = { slot = sn, x0 = x, y0 = y, x = x, y = y }
+    UIManager:unschedule(self._pen_ui_end)
+    self._reject_finger = true
+    UIManager:unschedule(self._pen_clear)
+    return false
+end
+
+-- One frame of a UI contact, passed on to the gesture detector. The contact ends
+-- on the lift or when the pen leaves range (given a lift there if it never came).
+-- Its tap or release is dispatched after this frame, so the pass-through for its
+-- gestures lasts until the next tick.
+function InkAwayView:penUiFrame(slot, leaving)
+    if slot.id ~= nil and slot.id >= 0 then
+        if not leaving then
+            if slot.x and slot.y then
+                local u = self._pen_ui
+                u.x, u.y = self:penScreenXY(slot)
+            end
+            return false
+        end
+        slot.id = -1
+    end
+    self._pen_ui_contact = false
+    UIManager:nextTick(self._pen_ui_end)
+    UIManager:unschedule(self._pen_clear)
+    UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+    return false
+end
+
+-- Is a gesture at `pos` the pen's own UI contact? The detector reports the pen
+-- where the stylus hook last saw it, or for a swipe where it landed.
+function InkAwayView:penUiGesture(pos)
+    local u = self._pen_ui
+    if not (u and pos.x and pos.y) then return false end
+    return (math.abs(pos.x - u.x) <= PEN_UI_SLOP and math.abs(pos.y - u.y) <= PEN_UI_SLOP)
+        or (math.abs(pos.x - u.x0) <= PEN_UI_SLOP and math.abs(pos.y - u.y0) <= PEN_UI_SLOP)
 end
 
 ------------------------------------------------------------------------------
