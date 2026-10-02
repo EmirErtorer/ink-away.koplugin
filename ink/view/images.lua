@@ -10,7 +10,6 @@ local Device = require("device")
 local Font = require("ui/font")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
-local PathChooser = require("ui/widget/pathchooser")
 local RenderImage = require("ui/renderimage")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
@@ -19,6 +18,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local InkGeom = require("ink/geom")
+local Storage = require("ink/storage")
 
 local Screen = Device.screen
 local bbToRGBA = ImageProc.bbToRGBA
@@ -76,19 +76,20 @@ function InkAwayView:removeBackground()
     UIManager:setDirty(self, "full")
 end
 
+-- Let the reader pick a PNG or JPEG, starting in the image folder.
+function InkAwayView:pickImageFile(on_pick)
+    self:pickFile(self:defaultDir(), function(path)
+        local lower = path:lower()
+        if lower:match("%.png$") or lower:match("%.jpe?g$") then
+            on_pick(path)
+        else
+            UIManager:show(InfoMessage:new{ text = _("Please choose a PNG or JPEG image.") })
+        end
+    end)
+end
+
 function InkAwayView:chooseBackground()
-    UIManager:show(PathChooser:new{
-        select_directory = false, select_file = true, show_files = true,
-        path = self:defaultDir(),
-        onConfirm = function(path)
-            local lower = path:lower()
-            if lower:match("%.png$") or lower:match("%.jpe?g$") then
-                self:loadBackground(path)
-            else
-                UIManager:show(InfoMessage:new{ text = _("Please choose a PNG or JPEG image.") })
-            end
-        end,
-    })
+    self:pickImageFile(function(path) self:loadBackground(path) end)
 end
 
 ------------------------------------------------------------------------------
@@ -491,22 +492,6 @@ function InkAwayView:duplicateImage(sel)
     self:openImageMenu(self.active_image)
 end
 
--- Folder for pictures Ink Away has processed (e.g. background removed), kept beside
--- the online-images folder so they are easy to find and never overwrite an original.
-function InkAwayView:processedImagesDir()
-    local ok, DataStorage = pcall(require, "datastorage")
-    if not (ok and DataStorage) then return nil end
-    local parent = DataStorage:getDataDir() .. "/ink away"
-    local dir = parent .. "/processed images"
-    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-    if lok and lfs then
-        if lfs.attributes(parent, "mode") ~= "directory" then pcall(lfs.mkdir, parent) end
-        if lfs.attributes(dir, "mode") ~= "directory" then pcall(lfs.mkdir, dir) end
-        if lfs.attributes(dir, "mode") == "directory" then return dir end
-    end
-    return nil
-end
-
 -- Remove a placed image's background (first-pass, brightness based -- see
 -- bgRemovedRGBA). The cut-out is written as a transparent PNG and the op is
 -- repointed at it (keeping the original path in op.src_path so a re-run works from
@@ -528,7 +513,8 @@ function InkAwayView:removeImageBackground(sel)
         UIManager:show(InfoMessage:new{ text = _("Couldn't process that image."), icon = "notice-warning" })
         return
     end
-    local dir = self:processedImagesDir()
+    -- the cut-out goes beside the online images, never over the original
+    local dir = Storage.appDir("processed images")
     if not dir then
         UIManager:show(InfoMessage:new{ text = _("Couldn't prepare a folder for the image."), icon = "notice-warning" })
         return
@@ -850,18 +836,7 @@ end
 
 -- The original local-file picker, unchanged in behaviour.
 function InkAwayView:chooseLocalImage()
-    UIManager:show(PathChooser:new{
-        select_directory = false, select_file = true, show_files = true,
-        path = self:defaultDir(),
-        onConfirm = function(path)
-            local lower = path:lower()
-            if lower:match("%.png$") or lower:match("%.jpe?g$") then
-                self:insertImage(path)
-            else
-                UIManager:show(InfoMessage:new{ text = _("Please choose a PNG or JPEG image.") })
-            end
-        end,
-    })
+    self:pickImageFile(function(path) self:insertImage(path) end)
 end
 
 -- Remove any loaded background image (used when switching into notebook mode).

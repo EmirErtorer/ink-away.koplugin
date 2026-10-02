@@ -15,6 +15,8 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
+local InputDialog = require("ui/widget/inputdialog")
+local PathChooser = require("ui/widget/pathchooser")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
@@ -328,6 +330,44 @@ function InkAwayView:renderBrushWave(key, w, h, sel)
     local r = math.max(3, Screen:scaleBySize(5))
     if st.solid then Raster.path(pts, r, put) else Raster.pathTex(pts, r, put, st, 12345) end
     return bb
+end
+
+-- Ask for a line of text in a stock InputDialog with Cancel and an OK button.
+-- `o` holds title, input, hint, description, input_type, ok_text and on_ok(text),
+-- plus optional on_cancel() and `default`, the text on_ok gets when the field is
+-- left empty.
+function InkAwayView:promptText(o)
+    local dialog
+    dialog = InputDialog:new{
+        title = o.title, input = o.input, input_hint = o.hint, input_type = o.input_type,
+        description = o.description,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function()
+                UIManager:close(dialog)
+                if o.on_cancel then o.on_cancel() end
+            end },
+            { text = o.ok_text, is_enter_default = true, callback = function()
+                local text = dialog:getInputText()
+                UIManager:close(dialog)
+                if o.default and (not text or text == "") then text = o.default end
+                o.on_ok(text)
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+-- Let the reader pick a file, starting in folder `path`.
+function InkAwayView:pickFile(path, on_pick)
+    UIManager:show(PathChooser:new{ select_directory = false, select_file = true, show_files = true,
+        path = path, onConfirm = on_pick })
+end
+
+-- Let the reader pick a folder, starting in `path`.
+function InkAwayView:pickFolder(path, on_pick)
+    UIManager:show(PathChooser:new{ select_directory = true, select_file = false, show_files = true,
+        path = path, onConfirm = on_pick })
 end
 
 -- A short, non-blocking message.

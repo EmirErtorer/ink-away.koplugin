@@ -518,7 +518,7 @@ function InkAwayView:deleteSelected(sel)
     self.selected = nil
     self.shape_move = nil
     self:setSelectionActive(false)
-    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+    self:resetLasso()
     self.dirty = true
     self:composeCanvas()
     self:renderView()

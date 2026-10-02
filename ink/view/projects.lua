@@ -6,8 +6,6 @@ Part of InkAwayView (see ink/view.lua).
 
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
-local PathChooser = require("ui/widget/pathchooser")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Project = require("ink/project")
@@ -23,20 +21,23 @@ local InkAwayView = {}
 
 -- Path of the kept "last session" file.
 function InkAwayView:sessionPath()
-    local ok, DataStorage = pcall(require, "datastorage")
-    local dir = (ok and DataStorage and DataStorage:getSettingsDir()) or "/tmp"
-    return dir .. "/inkaway_session." .. Project.EXT
+    return Storage.settingsDir() .. "/inkaway_session." .. Project.EXT
+end
+
+-- Replace the drawing with `ops`, dropping every selection and cached image.
+function InkAwayView:loadOps(ops)
+    self.canvas:setOps(ops)
+    self.selected, self.rotating = nil, nil
+    self.active_image, self._img_drag = nil, nil
+    self:freeImageCache()
+    self:resetLasso()
+    self.dirty = false
 end
 
 -- Load ops from a project into the canvas, if they fit this screen. Returns ok.
 function InkAwayView:loadProjectData(data)
     if not data or not data.ops then return false end
-    self.canvas:setOps(data.ops)
-    self.selected, self.rotating = nil, nil
-    self.active_image, self._img_drag = nil, nil
-    self:freeImageCache()
-    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
-    self.dirty = false
+    self:loadOps(data.ops)
     return true
 end
 
@@ -90,111 +91,69 @@ end
 -- Projects: new / open / save (the editable drawing, not the image export).
 ------------------------------------------------------------------------------
 
+-- Run `fn`, asking first with `text` when there is work it would clear.
+function InkAwayView:confirmDiscard(text, ok_text, fn)
+    if self.canvas:isEmpty() and not self.notebook then fn(); return end
+    UIManager:show(ConfirmBox:new{ text = text, ok_text = ok_text, ok_callback = fn })
+end
+
 function InkAwayView:newDrawing()
-    local function fresh()
+    self:confirmDiscard(_("Start a new drawing? The current one will be cleared."), _("New"), function()
         self:exitNotebook()
-        self.canvas:setOps({})
-        self.selected, self.rotating = nil, nil
-        self.active_image, self._img_drag = nil, nil
-        self:freeImageCache()
-        self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
-        self.dirty = false
+        self:loadOps({})
         os.remove(self:sessionPath())   -- so reopening does not restore the old drawing
         self:composeCanvas(); self:renderView()
         self:resetTransientMemory()     -- reclaim the old drawing's memory now
         UIManager:setDirty(self, "full")
-    end
-    if self.canvas:isEmpty() and not self.notebook then fresh(); return end
-    UIManager:show(ConfirmBox:new{
-        text = _("Start a new drawing? The current one will be cleared."),
-        ok_text = _("New"), ok_callback = fresh,
-    })
+    end)
 end
 
 function InkAwayView:openProject()
-    UIManager:show(PathChooser:new{
-        select_directory = false, select_file = true, show_files = true,
-        path = self:projectDir(),
-        onConfirm = function(path)
-            local data, err = Project.load(path)
-            if data and Project.isNotebook(data) then
-                self:openNotebookData(data)
-            elseif data and self:loadProjectData(data) then
-                self:exitNotebook()
-                self:composeCanvas(); self:renderView()
-                UIManager:setDirty(self, "full")
-            else
-                UIManager:show(InfoMessage:new{
-                    text = _("Could not open that project.\n") .. tostring(err) })
-            end
-        end,
-    })
+    self:pickFile(self:projectDir(), function(path)
+        local data, err = Project.load(path)
+        if data and Project.isNotebook(data) then
+            self:openNotebookData(data)
+        elseif data and self:loadProjectData(data) then
+            self:exitNotebook()
+            self:composeCanvas(); self:renderView()
+            UIManager:setDirty(self, "full")
+        else
+            UIManager:show(InfoMessage:new{
+                text = _("Could not open that project.\n") .. tostring(err) })
+        end
+    end)
 end
 
 function InkAwayView:saveProject()
-    UIManager:show(PathChooser:new{
-        select_directory = true, select_file = false, show_files = true,
-        path = self:projectDir(),
-        onConfirm = function(dir)
-            self:rememberProjectDir(dir)
-            local name = os.date(self.notebook and "notebook-%Y%m%d-%H%M%S" or "ink-%Y%m%d-%H%M%S")
-            local d
-            d = InputDialog:new{
-                title = _("Project name"),
-                input = name,
-                buttons = {{
-                    { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
-                    { text = _("Save"), is_enter_default = true, callback = function()
-                        local n = d:getInputText()
-                        UIManager:close(d)
-                        if not n or n == "" then n = name end
-                        n = n:gsub("[/\\]", "_")
-                        if not n:lower():match("%." .. Project.EXT .. "$") then n = n .. "." .. Project.EXT end
-                        local sep = (dir:sub(-1) == "/") and "" or "/"
-                        local ok, e
-                        if self.notebook then
-                            self:nbSyncOut()
-                            ok, e = Project.saveNotebook(self.notebook, dir .. sep .. n)
-                        else
-                            ok, e = Project.save(self.canvas, dir .. sep .. n)
-                        end
-                        UIManager:show(InfoMessage:new{
-                            text = ok and (_("Project saved:\n") .. dir .. sep .. n)
-                                        or (_("Could not save project.\n") .. tostring(e)) })
-                    end },
-                }},
-            }
-            UIManager:show(d)
-            d:onShowKeyboard()
-        end,
-    })
+    self:pickFolder(self:projectDir(), function(dir)
+        self:rememberProjectDir(dir)
+        local name = os.date(self.notebook and "notebook-%Y%m%d-%H%M%S" or "ink-%Y%m%d-%H%M%S")
+        self:promptText{ title = _("Project name"), input = name, default = name, ok_text = _("Save"),
+            on_ok = function(text)
+                local path = Storage.join(dir, Storage.fileName(text, Project.EXT))
+                local ok, e
+                if self.notebook then
+                    self:nbSyncOut()
+                    ok, e = Project.saveNotebook(self.notebook, path)
+                else
+                    ok, e = Project.save(self.canvas, path)
+                end
+                UIManager:show(InfoMessage:new{
+                    text = ok and (_("Project saved:\n") .. path)
+                                or (_("Could not save project.\n") .. tostring(e)) })
+            end }
+    end)
 end
 
 -- Four folders under "ink away/": drawings (PNG/JPEG images), drawing projects
 -- (editable .inkaway canvases), notebooks (exported PDFs) and notebook projects
 -- (editable .inkaway notebooks). Returns the images path.
 function InkAwayView:ensureDefaultDir()
-    local ok, DataStorage = pcall(require, "datastorage")
-    local base = (ok and DataStorage and DataStorage:getDataDir()) or "/"
-    local parent    = base .. "/ink away"
-    local drawings  = parent .. "/drawings"
-    local dproj     = parent .. "/drawing projects"
-    local notebooks = parent .. "/notebooks"
-    local nproj     = parent .. "/notebook projects"
-    self.dproj_dir, self.nproj_dir, self.notebooks_dir = base, base, base
-    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-    if lok and lfs then
-        local function mk(d)
-            if lfs.attributes(d, "mode") ~= "directory" then pcall(lfs.mkdir, d) end
-            return lfs.attributes(d, "mode") == "directory"
-        end
-        mk(parent); mk(drawings)
-        if mk(dproj) then self.dproj_dir = dproj end
-        if mk(nproj) then self.nproj_dir = nproj end
-        if mk(notebooks) then self.notebooks_dir = notebooks end
-        if lfs.attributes(drawings, "mode") == "directory" then return drawings end
-    end
-    return base
+    local base = Storage.dataDir() or "/"
+    self.dproj_dir = Storage.appDir("drawing projects") or base
+    self.nproj_dir = Storage.appDir("notebook projects") or base
+    self.notebooks_dir = Storage.appDir("notebooks") or base
+    return Storage.appDir("drawings") or base
 end
 
 -- Where the image save dialog starts: last image folder used, else drawings.

@@ -11,8 +11,6 @@ local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
-local PathChooser = require("ui/widget/pathchooser")
 local RenderImage = require("ui/renderimage")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -148,7 +146,7 @@ function InkAwayView:nbLoad()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
     self.selected, self.rotating = nil, nil
-    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+    self:resetLasso()
     self:composeCanvas(); self:renderView()
     -- A page turn does not flash the whole screen every time (on a colour panel a
     -- flash costs ~1-2s even for a blank page, and on grey it is what made turning
@@ -275,17 +273,9 @@ function InkAwayView:freePdfCache()
     end
 end
 
--- Step to another page (delta -1/+1). Syncs the current page out first.
+-- Step to another page (delta -1/+1).
 function InkAwayView:nbGo(delta)
-    if not self.notebook then return end
-    if self.active_image then self:finishImageEdit() end   -- bake it onto this page first
-    local nb = self.notebook
-    local target = nb.index + delta
-    if target < 1 or target > nb:count() then return end
-    self:nbSyncOut()
-    nb:gotoPage(target)
-    self:nbLoad()
-    self.dirty = true
+    if self.notebook then self:nbGoTo(self.notebook.index + delta) end
 end
 
 -- Jump to an absolute page number (1-based).
@@ -337,22 +327,14 @@ end
 function InkAwayView:promptGotoNumber()
     local nb = self.notebook
     if not nb then return end
-    local d
-    d = InputDialog:new{
+    self:promptText{
         title = string.format(_("Go to page (1\u{2013}%d)"), nb:count()),
-        input = tostring(nb.index),
-        input_type = "number",
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
-            { text = _("Go"), is_enter_default = true, callback = function()
-                local n = tonumber(d:getInputText())
-                UIManager:close(d)
-                if n then self:nbGoTo(n) end
-            end },
-        }},
+        input = tostring(nb.index), input_type = "number", ok_text = _("Go"),
+        on_ok = function(text)
+            local n = tonumber(text)
+            if n then self:nbGoTo(n) end
+        end,
     }
-    UIManager:show(d)
-    d:onShowKeyboard()
 end
 
 -- Duplicate the current page.
@@ -465,20 +447,25 @@ function InkAwayView:nbDeletePage()
     })
 end
 
--- Enter notebook mode with a fresh notebook using `template`
--- ({ style = "lines"|"grid"|"dots"|"blank", size = px }).
-function InkAwayView:startNotebook(template)
-    self:clearBackground()
-    self.save_area = nil
-    self.notebook = Notebook.new(self.screen_w, self.screen_h, template)
+-- Make `nb` the open notebook and show its current page. `keep` saves it to the
+-- session at once, so a close before the next autosave still reopens it as a
+-- notebook rather than the old drawing.
+function InkAwayView:enterNotebook(nb, keep)
+    self.notebook = nb
     self.nb_bar_h = self:nbBarHeight()
     self:recomputeArea()
     self:nbLoad()
     self.dirty = false
     self:resetTransientMemory()     -- reclaim the previous work's memory now
-    -- persist the fresh notebook straight away so a close before the next
-    -- autosave tick still brings it back as a notebook, not the old drawing
-    if self.autosave ~= "off" then self:saveSession() end
+    if keep and self.autosave ~= "off" then self:saveSession() end
+end
+
+-- Enter notebook mode with a fresh notebook using `template`
+-- ({ style = "lines"|"grid"|"dots"|"blank", size = px }).
+function InkAwayView:startNotebook(template)
+    self:clearBackground()
+    self.save_area = nil
+    self:enterNotebook(Notebook.new(self.screen_w, self.screen_h, template), true)
 end
 
 -- Rebuild notebook mode from a loaded v2 project.
@@ -486,14 +473,10 @@ function InkAwayView:openNotebookData(data)
     self:closeNotebookPDF()
     self:clearBackground()
     self.save_area = nil
-    self.notebook = Notebook.fromData(data)
+    local nb = Notebook.fromData(data)
     -- pages were drawn at their own screen size; treat them at this screen size
-    self.notebook.w, self.notebook.h = self.screen_w, self.screen_h
-    self.nb_bar_h = self:nbBarHeight()
-    self:recomputeArea()
-    self:nbLoad()
-    self.dirty = false
-    self:resetTransientMemory()     -- reclaim the previous work's memory now
+    nb.w, nb.h = self.screen_w, self.screen_h
+    self:enterNotebook(nb)
     -- warn clearly if this was a PDF-backed notebook but the source PDF is gone
     -- (the ink is safe; only the page images are missing until it is restored)
     if self.notebook.template.pdf_path and not self._nb_pdf_doc then
@@ -527,42 +510,25 @@ function InkAwayView:startPdfNotebook(path)
     self._nb_pdf_doc, self._nb_pdf_path = doc, path
     self:clearBackground()
     self.save_area = nil
-    self.notebook = Notebook.new(self.screen_w, self.screen_h, {
+    local nb = Notebook.new(self.screen_w, self.screen_h, {
         style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
     })
     local list = {}
     for i = 1, pages do list[i] = { ops = {}, src = i } end   -- one ink layer per PDF page
-    self.notebook.pages = list
-    self.notebook.index = 1
-    self.nb_bar_h = self:nbBarHeight()
-    self:recomputeArea()
-    self:nbLoad()
-    self.dirty = false
-    self:resetTransientMemory()     -- reclaim the previous work's memory now
-    if self.autosave ~= "off" then self:saveSession() end
+    nb.pages, nb.index = list, 1
+    self:enterNotebook(nb, true)
 end
 
 -- Pick a PDF and open it as a notebook (confirming first if there is work open).
 function InkAwayView:openPdfAsNotebook()
-    UIManager:show(PathChooser:new{
-        select_directory = false, select_file = true, show_files = true,
-        path = self:defaultDir(),
-        onConfirm = function(path)
-            if not path:lower():match("%.pdf$") then
-                UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
-                return
-            end
-            local function go() self:startPdfNotebook(path) end
-            if self.notebook or not self.canvas:isEmpty() then
-                UIManager:show(ConfirmBox:new{
-                    text = _("Open this PDF as a notebook? The current work will be cleared."),
-                    ok_text = _("Open"), ok_callback = go,
-                })
-            else
-                go()
-            end
-        end,
-    })
+    self:pickFile(self:defaultDir(), function(path)
+        if not path:lower():match("%.pdf$") then
+            UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
+            return
+        end
+        self:confirmDiscard(_("Open this PDF as a notebook? The current work will be cleared."), _("Open"),
+            function() self:startPdfNotebook(path) end)
+    end)
 end
 
 -- Start a new notebook: ask which ruling to use, then enter notebook mode.
@@ -577,14 +543,8 @@ function InkAwayView:newNotebook()
             strength = self.nb_strength or self.grid_strength or 45 })
     end
     local function go(style)
-        if self.notebook or not self.canvas:isEmpty() then
-            UIManager:show(ConfirmBox:new{
-                text = _("Start a new notebook? The current work will be cleared."),
-                ok_text = _("New"), ok_callback = function() begin(style) end,
-            })
-        else
-            begin(style)
-        end
+        self:confirmDiscard(_("Start a new notebook? The current work will be cleared."), _("New"),
+            function() begin(style) end)
     end
     self:closeSheet("_chooser_dialog")
     local content_w = self:sheetWidth()

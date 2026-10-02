@@ -8,8 +8,6 @@ local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
-local PathChooser = require("ui/widget/pathchooser")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -225,59 +223,36 @@ end
 -- Ask for the first and last page of the export range.
 function InkAwayView:promptExportRange()
     local nb = self.notebook
-    local d
-    d = InputDialog:new{
+    self:promptText{
         title = string.format(_("Page range (1\u{2013}%d), e.g. 3-8"), nb:count()),
         input = string.format("%d-%d", self.nb_range.from or 1, self.nb_range.to or nb:count()),
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d); self:exportNotebookPDF() end },
-            { text = _("Set"), is_enter_default = true, callback = function()
-                local s = d:getInputText() or ""
-                local a, b = s:match("(%d+)%s*[%-\u{2013}to,%s]+(%d+)")
-                if not a then a = s:match("(%d+)"); b = a end
-                if a then self.nb_range = { from = tonumber(a), to = tonumber(b) } end
-                UIManager:close(d)
-                self:exportNotebookPDF()
-            end },
-        }},
+        ok_text = _("Set"),
+        on_ok = function(text)
+            local s = text or ""
+            local a, b = s:match("(%d+)%s*[%-\u{2013}to,%s]+(%d+)")
+            if not a then a = s:match("(%d+)"); b = a end
+            if a then self.nb_range = { from = tonumber(a), to = tonumber(b) } end
+            self:exportNotebookPDF()
+        end,
+        on_cancel = function() self:exportNotebookPDF() end,
     }
-    UIManager:show(d)
-    d:onShowKeyboard()
 end
 
 function InkAwayView:chooseNotebookDestination()
-    UIManager:show(PathChooser:new{
-        select_directory = true, select_file = false, show_files = true,
-        path = existingDir(self:getSetting("inkaway_last_notebook_dir"))
-            or self.notebooks_dir or self.default_dir or "/",
-        onConfirm = function(dir)
-            self:setSetting("inkaway_last_notebook_dir", dir)
-            self:promptNotebookFilename(dir)
-        end,
-    })
+    local start = existingDir(self:getSetting("inkaway_last_notebook_dir"))
+        or self.notebooks_dir or self.default_dir or "/"
+    self:pickFolder(start, function(dir)
+        self:setSetting("inkaway_last_notebook_dir", dir)
+        self:promptNotebookFilename(dir)
+    end)
 end
 
 function InkAwayView:promptNotebookFilename(dir)
     local name = os.date("notebook-%Y%m%d-%H%M%S")
-    local d
-    d = InputDialog:new{
-        title = _("PDF name"),
-        input = name,
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
-            { text = _("Export"), is_enter_default = true, callback = function()
-                local n = d:getInputText()
-                UIManager:close(d)
-                if not n or n == "" then n = name end
-                n = n:gsub("[/\\]", "_")
-                if not n:lower():match("%.pdf$") then n = n .. ".pdf" end
-                local sep = (dir:sub(-1) == "/") and "" or "/"
-                self:doNotebookExport(dir .. sep .. n)
-            end },
-        }},
-    }
-    UIManager:show(d)
-    d:onShowKeyboard()
+    self:promptText{ title = _("PDF name"), input = name, default = name, ok_text = _("Export"),
+        on_ok = function(text)
+            self:doNotebookExport(Storage.join(dir, Storage.fileName(text, "pdf")))
+        end }
 end
 
 function InkAwayView:doNotebookExport(path)
@@ -289,8 +264,7 @@ function InkAwayView:doNotebookExport(path)
     for k, v in pairs(nb.template) do template[k] = v end
     template.paper = PAPERS[self.nb_paper or "white"] or PAPERS.white
     template.gray = strengthToLevel(template.strength)
-    local ok, DataStorage = pcall(require, "datastorage")
-    local tmp_dir = (ok and DataStorage and DataStorage:getSettingsDir()) or "/tmp"
+    local tmp_dir = Storage.settingsDir()
 
     -- resolve the export scope to a concrete list of notebook pages
     local sel = self:selectedNotebookPages()
@@ -413,8 +387,7 @@ function InkAwayView:autoSaveNotebookProject(pdf_path)
     local base = pdf_path:match("([^/\\]+)%.[Pp][Dd][Ff]$") or pdf_path:match("([^/\\]+)$") or "notebook"
     local dir = self.nproj_dir or self.default_dir
     if not dir then return nil end
-    local sep = (dir:sub(-1) == "/") and "" or "/"
-    local proj = dir .. sep .. base .. "." .. Project.EXT
+    local proj = Storage.join(dir, base .. "." .. Project.EXT)
     self:nbSyncOut()
     local ok = Project.saveNotebook(self.notebook, proj)
     return ok and proj or nil
@@ -450,55 +423,26 @@ function InkAwayView:openExportedPDF(path)
 end
 
 function InkAwayView:chooseDestination(fmt)
-    local chooser
-    chooser = PathChooser:new{
-        select_directory = true,
-        select_file = false,
-        show_files = true,
-        path = self:defaultDir(),
-        onConfirm = function(dir)
-            self:rememberDir(dir)
-            self:promptFilename(fmt, dir)
-        end,
-    }
-    UIManager:show(chooser)
+    self:pickFolder(self:defaultDir(), function(dir)
+        self:rememberDir(dir)
+        self:promptFilename(fmt, dir)
+    end)
 end
 
 function InkAwayView:promptFilename(fmt, dir)
     local ext = (fmt == "png") and "png" or "jpg"
     local default_name = os.date("ink-%Y%m%d-%H%M%S")
-    local dialog
-    dialog = InputDialog:new{
-        title = _("File name"),
-        input = default_name,
-        input_hint = default_name,
+    self:promptText{
+        title = _("File name"), input = default_name, hint = default_name, default = default_name,
         description = string.format(_("Saving to:\n%s\n\nExtension .%s will be added."), dir, ext),
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
-            {
-                text = _("Save"),
-                is_enter_default = true,
-                callback = function()
-                    local name = dialog:getInputText()
-                    UIManager:close(dialog)
-                    if not name or name == "" then name = default_name end
-                    self:writeFile(fmt, dir, name, ext)
-                end,
-            },
-        }},
+        ok_text = _("Save"),
+        on_ok = function(name) self:writeFile(fmt, dir, name, ext) end,
     }
-    UIManager:show(dialog)
-    dialog:onShowKeyboard()
 end
 
 function InkAwayView:writeFile(fmt, dir, name, ext)
-    -- strip any path separators the user typed, keep it a simple filename
-    name = name:gsub("[/\\]", "_")
-    if not name:lower():match("%." .. ext .. "$") then
-        name = name .. "." .. ext
-    end
-    local sep = (dir:sub(-1) == "/") and "" or "/"
-    local path = dir .. sep .. name
+    name = Storage.fileName(name, ext)
+    local path = Storage.join(dir, name)
 
     local opts = {
         rect = self.save_area,
@@ -550,17 +494,12 @@ function InkAwayView:bookshelfInstalled()
         end
     end)
     if not seen then
-        pcall(function()
-            local lfs = require("libs/libkoreader-lfs")
-            local cand = { self:pluginDir() .. "../bookshelf.koplugin" }
-            local ok, DataStorage = pcall(require, "datastorage")
-            if ok and DataStorage then
-                cand[#cand + 1] = DataStorage:getDataDir() .. "/plugins/bookshelf.koplugin"
-            end
-            for _, d in ipairs(cand) do
-                if lfs.attributes(d, "mode") == "directory" then seen = true; break end
-            end
-        end)
+        local cand = { self:pluginDir() .. "../bookshelf.koplugin" }
+        local data = Storage.dataDir()
+        if data then cand[#cand + 1] = data .. "/plugins/bookshelf.koplugin" end
+        for _, d in ipairs(cand) do
+            if Storage.isDir(d) then seen = true; break end
+        end
     end
     self._bookshelf_seen = seen
     return seen
@@ -574,12 +513,10 @@ end
 -- the bookshelf plugin is installed, so the option also shows before the first
 -- ornament is saved.
 function InkAwayView:ornamentsDir()
-    local ok, DataStorage = pcall(require, "datastorage")
-    if not (ok and DataStorage) then return nil end
-    local dir = DataStorage:getDataDir() .. "/icons/bookshelf.ornaments"
-    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-    if lok and lfs and lfs.attributes(dir, "mode") == "directory" then return dir end
-    if self:bookshelfInstalled() then return dir end
+    local data = Storage.dataDir()
+    if not data then return nil end
+    local dir = data .. "/icons/bookshelf.ornaments"
+    if Storage.isDir(dir) or self:bookshelfInstalled() then return dir end
     return nil
 end
 
@@ -589,15 +526,8 @@ end
 function InkAwayView:saveOrnament()
     local dir = self:ornamentsDir()
     if not dir then return end
-    pcall(function()
-        local lfs = require("libs/libkoreader-lfs")
-        local DataStorage = require("datastorage")
-        local icons = DataStorage:getDataDir() .. "/icons"
-        if lfs.attributes(icons, "mode") ~= "directory" then lfs.mkdir(icons) end
-        if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
-    end)
-    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-    if not (lok and lfs and lfs.attributes(dir, "mode") == "directory") then
+    Storage.ensureDir(dir:match("^(.*)/"))   -- icons/
+    if not Storage.ensureDir(dir) then
         UIManager:show(InfoMessage:new{
             text = _("Could not create the bookshelf ornaments folder."),
             icon = "notice-warning" })
@@ -611,35 +541,16 @@ end
 -- extension is added when the name doesn't already end in it.
 function InkAwayView:promptOrnamentName(dir)
     local default_name = os.date("ornament-%Y%m%d-%H%M%S")
-    local dialog
-    dialog = InputDialog:new{
-        title = _("Ornament name"),
-        input = default_name,
-        input_hint = default_name,
+    self:promptText{
+        title = _("Ornament name"), input = default_name, hint = default_name, default = default_name,
         description = _("Saved as a transparent PNG in the bookshelf ornaments folder.\nEnd the name with .invert for a dark-mode version."),
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
-            {
-                text = _("Save"),
-                is_enter_default = true,
-                callback = function()
-                    local name = dialog:getInputText()
-                    UIManager:close(dialog)
-                    if not name or name == "" then name = default_name end
-                    self:writeOrnament(dir, name)
-                end,
-            },
-        }},
+        ok_text = _("Save"),
+        on_ok = function(name) self:writeOrnament(dir, name) end,
     }
-    UIManager:show(dialog)
-    dialog:onShowKeyboard()
 end
 
 function InkAwayView:writeOrnament(dir, name)
-    name = name:gsub("[/\\]", "_")               -- keep it a plain filename
-    if not name:lower():match("%.png$") then name = name .. ".png" end
-    local sep = (dir:sub(-1) == "/") and "" or "/"
-    local path = dir .. sep .. name
+    local path = Storage.join(dir, Storage.fileName(name, "png"))
     local opts = { rect = self.save_area, bg = (self.export_bg and self.bg_rgba) or nil }
     local ok, err = Export.savePNG(self.canvas, path, opts)
     if ok then
@@ -661,8 +572,7 @@ function InkAwayView:autoSaveDrawingProject(image_name)
     if base == "" then base = "ink" end
     local dir = self.dproj_dir or self.default_dir
     if not dir then return nil end
-    local sep = (dir:sub(-1) == "/") and "" or "/"
-    local proj = dir .. sep .. base .. "." .. Project.EXT
+    local proj = Storage.join(dir, base .. "." .. Project.EXT)
     local ok = Project.save(self.canvas, proj)
     return ok and proj or nil
 end

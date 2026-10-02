@@ -749,7 +749,7 @@ function InkAwayView:undo()
         return
     end
     self.selected = nil
-    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+    self:resetLasso()
     self.dirty = true
     self:composeCanvas()   -- rebuild the master from the restored ops
     self:renderView()
@@ -773,7 +773,7 @@ function InkAwayView:redo()
         return
     end
     self.selected = nil
-    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+    self:resetLasso()
     self.dirty = true
     self:composeCanvas()
     self:renderView()

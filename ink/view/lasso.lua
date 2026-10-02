@@ -24,9 +24,14 @@ local InkAwayView = {}
 -- and on a notebook page (both are just ops lists).
 ------------------------------------------------------------------------------
 
+-- Forget the selection and any loop in progress, without repainting.
+function InkAwayView:resetLasso()
+    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+end
+
 function InkAwayView:clearSelection()
     if self._sel_refresh_tick then self:stopSelRefresh() end
-    self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
+    self:resetLasso()
     self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end

@@ -24,6 +24,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
 local Paint = require("ink/paint")
+local Storage = require("ink/storage")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
@@ -39,23 +40,6 @@ local InkAwayView = {}
 -- pills, sliding toggles), paged with Prev/Next rather than scrolling, and
 -- entirely optional -- see ink/imagesearch.lua for the network/parse pieces.
 ------------------------------------------------------------------------------
-
--- A writable folder to keep added online images. Projects reference images by
--- path, so these must persist (unlike the thumbnail cache below). Returns nil if
--- it can't be made (then the caller reports it and does nothing).
-function InkAwayView:onlineImagesDir()
-    local ok, DataStorage = pcall(require, "datastorage")
-    if not (ok and DataStorage) then return nil end
-    local parent = DataStorage:getDataDir() .. "/ink away"
-    local dir = parent .. "/online images"
-    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-    if lok and lfs then
-        if lfs.attributes(parent, "mode") ~= "directory" then pcall(lfs.mkdir, parent) end
-        if lfs.attributes(dir, "mode") ~= "directory" then pcall(lfs.mkdir, dir) end
-        if lfs.attributes(dir, "mode") == "directory" then return dir end
-    end
-    return nil
-end
 
 -- Free the decoded thumbnail buffers (called on refetch and on close).
 function InkAwayView:freeThumbs()
@@ -462,7 +446,8 @@ function InkAwayView:imageBrowserDownloadAndInsert(r)
     local ImageSearch = require("ink/imagesearch")
     local Trapper = require("ui/trapper")
     local full_res = self._image_browser and self._image_browser.full_res
-    local dir = self:onlineImagesDir()
+    -- kept for good (unlike the thumbnails): projects refer to images by path
+    local dir = Storage.appDir("online images")
     if not dir then
         UIManager:show(InfoMessage:new{ text = _("Couldn't prepare a folder for the image."),
             icon = "notice-warning" })
