@@ -100,10 +100,13 @@ local WHITE = Blitbuffer.COLOR_WHITE
 local PREVIEW_INK = Blitbuffer.COLOR_BLACK   -- live preview of non-black ink on colour panels
 local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
 -- Flagship UI greys (e-ink grayscale): a soft selection pill and a hairline.
-local PILL_GREY = Blitbuffer.ColorRGB32(0xD6, 0xD6, 0xD6, 0xFF)
-local HAIRLINE  = Blitbuffer.ColorRGB32(0xCC, 0xCC, 0xCC, 0xFF)
-local TILE_BG   = Blitbuffer.ColorRGB32(0xE6, 0xE6, 0xE6, 0xFF)   -- shape-menu tile fill
-local CARET_BG  = Blitbuffer.ColorRGB32(0xB0, 0xB0, 0xB0, 0xFF)   -- line-tile corner caret chip
+-- These are plain greys, so they are Color8: KOReader draws a rounded corner in C
+-- only for a Color8, and walks it pixel by pixel in Lua for an RGB32 colour (about
+-- 20x slower on grey screens and 200x on colour ones -- the bulk of a menu's paint).
+local PILL_GREY = Blitbuffer.Color8(0xD6)
+local HAIRLINE  = Blitbuffer.Color8(0xCC)
+local TILE_BG   = Blitbuffer.Color8(0xE6)   -- shape-menu tile fill
+local CARET_BG  = Blitbuffer.Color8(0xB0)   -- line-tile corner caret chip
 -- Sheet widgets are defined further down but used by menu functions above them;
 -- forward-declare so those closures capture the right upvalues.
 local IconMenu, ToggleRow, SliderRow, TRACK_OFF, KNOB_EDGE
@@ -413,6 +416,15 @@ local function displayColor(rgb, alpha)
     local b = rgb and rgb[3] or 0
     local function over(c) return math.floor(255 - a * (255 - c) / 255 + 0.5) end
     return Blitbuffer.ColorRGB32(over(r), over(g), over(b), 0xFF)
+end
+
+-- A swatch/tile fill for an {r,g,b}. A grey becomes a Color8 so KOReader draws its
+-- rounded corners in C (an RGB32 colour takes a per-pixel Lua path); a real colour
+-- has to stay RGB32 to keep its hue.
+local function uiFill(rgb)
+    local r, g, b = rgb[1], rgb[2], rgb[3]
+    if r == g and g == b then return Blitbuffer.Color8(r) end
+    return Blitbuffer.ColorRGB32(r, g, b, 0xFF)
 end
 
 -- Is this a real colour (not black/white/grey)?
@@ -1027,6 +1039,7 @@ function InkAwayView:free()
     if self.bg_bb then self.bg_bb:free(); self.bg_bb = nil end
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
+    self:freeWaveCache()
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
     if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
@@ -1627,7 +1640,7 @@ function InkAwayView:swatchRowFor(entries, current, onpick)
         local selected = sameColor(current, e.rgb)
         row[#row + 1] = {
             text = "",
-            background = Blitbuffer.ColorRGB32(e.rgb[1], e.rgb[2], e.rgb[3], 0xFF),
+            background = uiFill(e.rgb),
             width = sw,
             bordersize = selected and Size.border.thick or Size.border.default,
             radius = 0,
@@ -2152,8 +2165,8 @@ end
 ToggleRow = InputContainer:extend{
     label = "", is_on = false, width = nil, callback = nil, parent = nil,
 }
-TRACK_OFF = Blitbuffer.ColorRGB32(0xCF, 0xCF, 0xCF, 0xFF)
-KNOB_EDGE = Blitbuffer.ColorRGB32(0x99, 0x99, 0x99, 0xFF)
+TRACK_OFF = Blitbuffer.Color8(0xCF)   -- greys as Color8: rounded corners drawn in C
+KNOB_EDGE = Blitbuffer.Color8(0x99)
 function ToggleRow:init()
     self.sw_h = Screen:scaleBySize(30)
     self.sw_w = Screen:scaleBySize(54)
@@ -2416,6 +2429,48 @@ function InkAwayView:actionButton(label, w, cb, dark, big)
     return b
 end
 
+-- A tappable rounded tile filled with `rgb`. A grey uses a Color8 fill (rounded in
+-- C). A real colour cannot: KOReader rounds an RGB32 fill pixel by pixel in Lua,
+-- which made the colour rows the slowest part of opening the pen menu on colour
+-- screens. So the rounded colour tile is drawn once into an image (white corners,
+-- like the sheet) and reused for every later opening and repaint.
+function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
+    local fill = uiFill(rgb)
+    if not isChromatic(fill) then
+        return Button:new{ text = "", width = w, height = h, background = fill,
+            radius = radius, bordersize = 0, margin = 0, padding = 0,
+            callback = cb, hold_callback = hold_cb, show_parent = self }
+    end
+    -- white Color8 frame behind the image: the tap highlight inverts it (a nil
+    -- background would crash the highlight)
+    local b = Button:new{ text = "", width = w, height = h, background = WHITE,
+        radius = radius, bordersize = 0, margin = 0, padding = 0,
+        callback = cb, hold_callback = hold_cb, show_parent = self }
+    local ok, img_bb = pcall(function() return self:cachedColourTile(rgb, w, h, radius) end)
+    if ok and img_bb and b.label_container then
+        local ImageWidget = require("ui/widget/imagewidget")
+        local img = ImageWidget:new{ image = img_bb, width = w, height = h,
+            image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
+        b.label_widget = img; b.label_container[1] = img
+    else
+        b.frame.background = fill   -- fall back to the plain (slow) colour fill
+    end
+    return b
+end
+
+function InkAwayView:cachedColourTile(rgb, w, h, radius)
+    local cache = self._wave_cache
+    if not cache then cache = {}; self._wave_cache = cache end
+    local id = table.concat({ "tile", rgb[1], rgb[2], rgb[3], w, h, radius, Screen.bb:getType() }, "|")
+    local e = cache[id]
+    if e then return e.bb end
+    local bb = Blitbuffer.new(w, h, Screen.bb:getType())
+    bb:paintRect(0, 0, w, h, WHITE)
+    bb:paintRoundedRectRGB32(0, 0, w, h, Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF), radius)
+    cache[id] = { bb = bb }
+    return bb
+end
+
 -- A colour swatch tile: a colour-filled rounded square with a thin black border
 -- (thicker when selected, so white/light swatches stay visible). Optional
 -- hold_cb for deleting a saved custom colour.
@@ -2423,10 +2478,7 @@ function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb, h)
     local BLACK = Blitbuffer.COLOR_BLACK
     local inner = w - Screen:scaleBySize(8)
     local inner_h = (h or w) - Screen:scaleBySize(8)
-    local btn = Button:new{ text = "", width = inner, height = inner_h,
-        background = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF),
-        radius = Screen:scaleBySize(11), bordersize = 0, margin = 0, padding = 0,
-        callback = cb, hold_callback = hold_cb, show_parent = self }
+    local btn = self:colourTileButton(rgb, inner, inner_h, Screen:scaleBySize(11), cb, hold_cb)
     return FrameContainer:new{
         bordersize = selected and Screen:scaleBySize(3) or Screen:scaleBySize(1),
         color = BLACK, radius = Screen:scaleBySize(14),
@@ -2445,21 +2497,45 @@ function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
     -- render the sample wave into a bb sized to the inner tile
     local iw = w - Screen:scaleBySize(16)
     local ih = h - Screen:scaleBySize(16)
-    local ok, wave = pcall(function() return self:renderBrushWave(key, iw, ih, sel) end)
+    local ok, wave = pcall(function() return self:cachedBrushWave(key, iw, ih, sel) end)
     if ok and wave and b.label_container then
         local ImageWidget = require("ui/widget/imagewidget")
         -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
         -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it must be
-        -- a real colour or the highlight crashes indexing a nil field.
+        -- a real colour or the highlight crashes indexing a nil field. The sample
+        -- belongs to the view's cache, so the widget must not free it.
         local img = ImageWidget:new{ image = wave, width = iw, height = ih,
-            fgcolor = Blitbuffer.COLOR_BLACK }
+            image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
         b.label_widget = img; b.label_container[1] = img
     end
     return b
 end
 
--- Render a sample stroke for brush `key` into a fresh blitbuffer (caller frees via
--- the ImageWidget). White wave on a dark tile when selected, black on grey else.
+-- The brush samples never change while the canvas is open (a textured one costs a
+-- few ms to rasterize), so the pen menu reuses them instead of redrawing every one
+-- on each opening. Keyed by style table, so an edited custom brush redraws.
+function InkAwayView:cachedBrushWave(key, w, h, sel)
+    local cache = self._wave_cache
+    if not cache then cache = {}; self._wave_cache = cache end
+    local st = Raster.STYLES[key] or Raster.STYLES.solid
+    local id = table.concat({ key, w, h, sel and 1 or 0, Screen.bb:getType() }, "|")
+    local e = cache[id]
+    if e and e.st == st then return e.bb end
+    if e then e.bb:free() end
+    local bb = self:renderBrushWave(key, w, h, sel)
+    cache[id] = { bb = bb, st = st }
+    return bb
+end
+
+function InkAwayView:freeWaveCache()
+    if self._wave_cache then
+        for _, e in pairs(self._wave_cache) do e.bb:free() end
+        self._wave_cache = nil
+    end
+end
+
+-- Render a sample stroke for brush `key` into a fresh blitbuffer. White wave on a
+-- dark tile when selected, black on grey else.
 function InkAwayView:renderBrushWave(key, w, h, sel)
     local st = Raster.STYLES[key] or Raster.STYLES.solid
     local bg = sel and Blitbuffer.COLOR_BLACK or TILE_BG
@@ -2752,11 +2828,8 @@ function InkAwayView:openFillColor()
     local function swatch(e)
         local selected = sameColor(self.fill_color, e.rgb)
         local inner = sw - Screen:scaleBySize(8)
-        local btn = Button:new{ text = "", width = inner, height = inner,
-            background = Blitbuffer.ColorRGB32(e.rgb[1], e.rgb[2], e.rgb[3], 0xFF),
-            radius = Screen:scaleBySize(12), bordersize = 0, margin = 0, padding = 0,
-            show_parent = self,
-            callback = function() self.fill_color = { e.rgb[1], e.rgb[2], e.rgb[3] }; self:openFillColor() end }
+        local btn = self:colourTileButton(e.rgb, inner, inner, Screen:scaleBySize(12),
+            function() self.fill_color = { e.rgb[1], e.rgb[2], e.rgb[3] }; self:openFillColor() end)
         return FrameContainer:new{
             bordersize = selected and Screen:scaleBySize(3) or Screen:scaleBySize(1),
             color = selected and BLACK or HAIRLINE,

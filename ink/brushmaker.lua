@@ -38,9 +38,11 @@ local BrushMaker = InputContainer:extend{
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
 local GREY  = Blitbuffer.COLOR_GRAY
-local TILE  = Blitbuffer.ColorRGB32(0xE6, 0xE6, 0xE6, 0xFF)   -- secondary button fill
-local TRACK = Blitbuffer.ColorRGB32(0xCF, 0xCF, 0xCF, 0xFF)   -- slider track
-local KNOB  = Blitbuffer.ColorRGB32(0x99, 0x99, 0x99, 0xFF)   -- slider knob edge
+-- Greys as Color8, so their rounded corners are drawn in C (an RGB32 colour takes
+-- KOReader's per-pixel Lua corner path, many times slower).
+local TILE  = Blitbuffer.Color8(0xE6)   -- secondary button fill
+local TRACK = Blitbuffer.Color8(0xCF)   -- slider track
+local KNOB  = Blitbuffer.Color8(0x99)   -- slider knob edge
 
 function BrushMaker:init()
     self.params = self.params or Brushes.defaults()
