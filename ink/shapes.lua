@@ -196,6 +196,46 @@ function Shapes.bounds(op)
     return x0, y0, x1, y1
 end
 
+-- Does a stroke of radius r along `pts` (flat) reach the shape as drawn: its
+-- outline, or its inside when filled? Tells whether an erase stroke touched it.
+function Shapes.reachedBy(op, pts, r)
+    local poly, closed = boundary(op)
+    local filled = closed and (op.fill or op.fill_color)
+    local reach = r + ((op.fill and closed) and 0 or (op.width or 2) / 2)
+    local r2 = reach * reach
+    local segs = arrowSegs(op, poly)
+    local n = floor(#poly / 2)
+    local last = closed and n or (n - 1)
+    local bx0, by0, bx1, by1 = Shapes.bounds(op)
+    local function near(x, y)
+        if filled and Geom.pointInPoly(x, y, poly) then return true end
+        for i = 1, last do
+            local j = (i % n) + 1
+            if Geom.segDist2(x, y, poly[2 * i - 1], poly[2 * i], poly[2 * j - 1], poly[2 * j]) <= r2 then
+                return true
+            end
+        end
+        for _, s in ipairs(segs) do
+            if Geom.segDist2(x, y, s[1], s[2], s[3], s[4]) <= r2 then return true end
+        end
+        return false
+    end
+    if #pts < 4 then return #pts >= 2 and near(pts[1], pts[2]) end
+    -- walk each stroke segment that comes near the shape in 2 px steps
+    for i = 1, #pts - 3, 2 do
+        local ax, ay, bx, by = pts[i], pts[i + 1], pts[i + 2], pts[i + 3]
+        if min(ax, bx) - reach <= bx1 and max(ax, bx) + reach >= bx0
+                and min(ay, by) - reach <= by1 and max(ay, by) + reach >= by0 then
+            local steps = math.max(1, math.ceil(sqrt((bx - ax) ^ 2 + (by - ay) ^ 2) / 2))
+            for k = 0, steps do
+                local t = k / steps
+                if near(ax + (bx - ax) * t, ay + (by - ay) * t) then return true end
+            end
+        end
+    end
+    return false
+end
+
 -- Is point (px, py) on or inside the shape, for picking it by touch? A closed
 -- shape can be grabbed anywhere inside, filled or not, as a bare outline is too
 -- thin a target; an open line, curve or arrow is picked within `tol` of its

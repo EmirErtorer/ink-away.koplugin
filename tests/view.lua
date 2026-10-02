@@ -730,6 +730,42 @@ do
     view:deselectShape()
     ok(view.selected == nil and view.is_always_active == false,
         "shape: deselect clears the selection and restores the active flag")
+
+    -- erased shapes are left alone by the move tool; untouched ones are not
+    local function rectOp() return { kind = "shape", shape = "rect", fill = false, width = 6,
+        alpha = 255, pts = { 200, 300, 400, 500 } } end
+    local function picked() return view:hitTestShape(InkGeom.toScreen(v, 300, 400)) ~= nil end
+    local function erase(pts, sym) return { kind = "erase", width = 20, pts = pts, sym = sym } end
+    view.canvas:setOps({ rectOp() })
+    ok(picked(), "erased shapes: a shape with no erasing is picked up")
+    view.canvas:setOps({ rectOp(), erase({ 600, 100, 700, 200 }) })
+    ok(picked(), "erased shapes: erasing elsewhere on the page changes nothing")
+    view.canvas:setOps({ rectOp(), erase({ 260, 520, 340, 540 }) })
+    ok(picked(), "erased shapes: erasing that passes close by does not count")
+    view.canvas:setOps({ erase({ 180, 400, 220, 400 }), rectOp() })
+    ok(picked(), "erased shapes: erasing from before the shape was drawn does not count")
+    view.canvas:setOps({ rectOp(), erase({ 180, 400, 220, 400 }) })
+    ok(not picked(), "erased shapes: a partly erased shape is left alone")
+    view:onIaHold(nil, pos(InkGeom.toScreen(v, 300, 400)))
+    ok(view.selected == nil, "erased shapes: holding it opens no menu")
+    view.canvas:setOps({ rectOp(), erase({ 200, 300, 400, 300, 400, 500, 200, 500, 200, 300 }, nil) })
+    ok(not picked(), "erased shapes: a wholly erased shape is left alone")
+    -- a symmetric erase reaches it through its mirror copy
+    local mx = v.canvas_w - 1 - 200
+    view.canvas:setOps({ rectOp(), erase({ mx - 20, 400, mx + 20, 400 }, "vert") })
+    ok(not picked(), "erased shapes: a mirrored erase counts")
+    -- undoing the erase frees it again
+    view.canvas:setOps({ rectOp() })
+    view.canvas:pushHistory()
+    view.canvas.ops[2] = erase({ 180, 400, 220, 400 })
+    ok(not picked(), "erased shapes: erased")
+    view.canvas:undo()
+    ok(picked(), "erased shapes: undoing the erase lets it move again")
+    -- and an untouched shape still drags as before
+    view:onIaTouch(nil, pos(cxs, cys))
+    view:onIaPan(nil, pos(cxs + 50, cys))
+    view:onIaPanRelease(nil, pos(cxs + 50, cys))
+    ok(view.canvas.ops[1].pts[1] > 200, "erased shapes: an untouched shape still moves")
     view:onCloseWidget()
 end
 

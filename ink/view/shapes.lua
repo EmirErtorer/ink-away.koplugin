@@ -4,6 +4,7 @@ shape from its menu, and the paint bucket.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
+local bit = require("bit")
 local ButtonDialog = require("ui/widget/buttondialog")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
@@ -25,6 +26,9 @@ local translateOp = Canvas.translateOp
 local displayColor = Paint.displayColor
 
 local InkAwayView = {}
+
+-- The mirror copies a symmetry mode draws, as flip codes: 1 mirrors x, 2 y.
+local FLIPS = { off = { 0 }, vert = { 0, 1 }, horiz = { 0, 2 }, quad = { 0, 1, 2, 3 } }
 
 ------------------------------------------------------------------------------
 -- Placing a shape: drag to stretch it. The master is untouched while stretching;
@@ -348,17 +352,49 @@ function InkAwayView:duplicateOp(sel)
     return { op = clone, idx = #self.canvas.ops }
 end
 
--- Find the topmost shape op under a screen point. Returns {op, idx} or nil.
+-- Find the topmost shape op under a screen point. Returns {op, idx} or nil. A
+-- shape with any part erased is left alone: moving it would leave the erased
+-- part behind.
 function InkAwayView:hitTestShape(sx, sy)
     local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
         if op.kind == "shape" then
             local tol = (op.width or 6) / 2 + 8 / self.view.zoom
-            if Shapes.hit(op, cx, cy, tol) then return { op = op, idx = i } end
+            if Shapes.hit(op, cx, cy, tol) and not self:shapeErased(i) then
+                return { op = op, idx = i }
+            end
         end
     end
     return nil
+end
+
+-- Has an erase stroke made after shape ops[idx] touched any of it, on any
+-- mirror copy of either?
+function InkAwayView:shapeErased(idx)
+    local ops, W, H = self.canvas.ops, self.view.canvas_w, self.view.canvas_h
+    local op = ops[idx]
+    for j = idx + 1, #ops do
+        local e = ops[j]
+        if e.kind == "erase" and e.pts and #e.pts >= 2 then
+            for _, a in ipairs(FLIPS[e.sym or "off"] or FLIPS.off) do
+                for _, b in ipairs(FLIPS[op.sym or "off"] or FLIPS.off) do
+                    -- erase copy a against shape copy b: flip both by b
+                    local f = bit.bxor(a, b)
+                    local pts = e.pts
+                    if f ~= 0 then
+                        pts = {}
+                        for k = 1, #e.pts - 1, 2 do
+                            pts[k] = (f % 2 == 1) and (W - 1 - e.pts[k]) or e.pts[k]
+                            pts[k + 1] = (f >= 2) and (H - 1 - e.pts[k + 1]) or e.pts[k + 1]
+                        end
+                    end
+                    if Shapes.reachedBy(op, pts, (e.width or 1) / 2) then return true end
+                end
+            end
+        end
+    end
+    return false
 end
 
 -- A screen-coordinate copy of a shape op (for the rotate preview overlay).
