@@ -27,9 +27,6 @@ local displayColor = Paint.displayColor
 
 local InkAwayView = {}
 
--- The mirror copies a symmetry mode draws, as flip codes: 1 mirrors x, 2 y.
-local FLIPS = { off = { 0 }, vert = { 0, 1 }, horiz = { 0, 2 }, quad = { 0, 1, 2, 3 } }
-
 ------------------------------------------------------------------------------
 -- Placing a shape: drag to stretch it. The master is untouched while stretching;
 -- the shape is drawn on top in paintTo and only its changed rectangle refreshes.
@@ -377,18 +374,10 @@ function InkAwayView:shapeErased(idx)
     for j = idx + 1, #ops do
         local e = ops[j]
         if e.kind == "erase" and e.pts and #e.pts >= 2 then
-            for _, a in ipairs(FLIPS[e.sym or "off"] or FLIPS.off) do
-                for _, b in ipairs(FLIPS[op.sym or "off"] or FLIPS.off) do
+            for _, a in ipairs(Symmetry.flips(e.sym)) do
+                for _, b in ipairs(Symmetry.flips(op.sym)) do
                     -- erase copy a against shape copy b: flip both by b
-                    local f = bit.bxor(a, b)
-                    local pts = e.pts
-                    if f ~= 0 then
-                        pts = {}
-                        for k = 1, #e.pts - 1, 2 do
-                            pts[k] = (f % 2 == 1) and (W - 1 - e.pts[k]) or e.pts[k]
-                            pts[k + 1] = (f >= 2) and (H - 1 - e.pts[k + 1]) or e.pts[k + 1]
-                        end
-                    end
+                    local pts = Symmetry.flipPoints(e.pts, bit.bxor(a, b), W, H)
                     if Shapes.reachedBy(op, pts, (e.width or 1) / 2) then return true end
                 end
             end

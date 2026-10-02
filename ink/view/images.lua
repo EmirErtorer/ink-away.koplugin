@@ -266,21 +266,17 @@ function InkAwayView:exportImageRaster(op)
 end
 
 -- Blit an image op into the canvas-space master `dst`, at its (rotated) top-left,
--- clipped to the canvas.
-function InkAwayView:blitImageInto(dst, op)
+-- clipped to the canvas, or to `region` (a canvas rect) when given.
+function InkAwayView:blitImageInto(dst, op, region)
     local bb, ox, oy = self:imageRendered(op)
     if not bb then return end
-    local W, H = self.view.canvas_w, self.view.canvas_h
-    local sw, sh = bb:getWidth(), bb:getHeight()
+    local r = region or { x0 = 0, y0 = 0, x1 = self.view.canvas_w, y1 = self.view.canvas_h }
     local dx, dy = math.floor(ox + 0.5), math.floor(oy + 0.5)
-    local sx0 = dx < 0 and -dx or 0
-    local sy0 = dy < 0 and -dy or 0
-    local cx0 = math.max(0, dx)
-    local cy0 = math.max(0, dy)
-    local cw = math.min(sw - sx0, W - cx0)
-    local ch = math.min(sh - sy0, H - cy0)
+    local cx0, cy0 = math.max(r.x0, dx), math.max(r.y0, dy)
+    local cw = math.min(dx + bb:getWidth(), r.x1) - cx0
+    local ch = math.min(dy + bb:getHeight(), r.y1) - cy0
     if cw > 0 and ch > 0 then
-        pcall(function() dst:alphablitFrom(bb, cx0, cy0, sx0, sy0, cw, ch) end)
+        pcall(function() dst:alphablitFrom(bb, cx0, cy0, cx0 - dx, cy0 - dy, cw, ch) end)
     end
 end
 

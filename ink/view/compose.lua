@@ -25,17 +25,44 @@ function InkAwayView:opColor(op)
     return displayColor(op.color, op.alpha or 255)
 end
 
+-- A span writer clipped to `region` (a canvas rect {x0, y0, x1, y1}), or put
+-- itself without one.
+local function inRegion(put, region)
+    if not region then return put end
+    local x0, y0, x1, y1 = region.x0, region.y0, region.x1, region.y1
+    return function(x, y, len)
+        if y < y0 or y >= y1 then return end
+        if x < x0 then len = len - (x0 - x); x = x0 end
+        if x + len > x1 then len = x1 - x end
+        if len > 0 then put(x, y, len) end
+    end
+end
+
+-- Can op draw anything inside `region`? Symmetric ops and text not yet laid out
+-- are always taken.
+local function meets(op, region)
+    if op.sym and op.sym ~= "off" then return true end
+    local x0, y0, x1, y1 = Canvas.opBox(op)
+    if not x0 then return op.kind == "text" end
+    return x0 < region.x1 and region.x0 < x1 and y0 < region.y1 and region.y0 < y1
+end
+
 -- Compose a page into `dst` (a canvas-sized bitmap): white paper, optional
 -- background picture, notebook ruling, then the ops. The master and the page
 -- thumbnails both use it, so a thumbnail always matches its page.
 -- `reveal_resolved` means the caller already built the reveal buffers (see
 -- composeCanvas) and the reveal_pic and reveal_text it passed are final (nil when
--- not needed); otherwise composeInto builds its own, as the thumbnails do.
-function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare)
+-- not needed); otherwise composeInto builds its own, as the thumbnails do. With
+-- `region` only that rect of dst is rebuilt (see composeRegion).
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare, region)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local found = Canvas.scanOps(ops)
     local page_copy, owns_bare = nil, false
-    if template then
+    if region then
+        local rw, rh = region.x1 - region.x0, region.y1 - region.y0
+        dst:paintRect(region.x0, region.y0, rw, rh, WHITE)
+        if bg_bb then dst:blitFrom(bg_bb, region.x0, region.y0, region.x0, region.y0, rw, rh) end
+    elseif template then
         -- a notebook page composed on its own (a thumbnail): paper colour or the
         -- PDF page, then the ruling, as on the live page
         local pic = bg_bb
@@ -90,11 +117,12 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     local dragging = (self._img_drag and self._img_drag.began) or self.image_rotating
     local skip = dragging and self.active_image and self.active_image.op or nil
     for _, op in ipairs(ops) do
-        if not op.hidden and op ~= skip then   -- a shape being rotated is a preview
+        -- (a shape being rotated is hidden: it is a preview)
+        if not op.hidden and op ~= skip and (not region or meets(op, region)) then
             if op.kind == "text" then
-                self:stampTextInto(dst, op)   -- glyphs, drawn straight into dst (z-order)
+                self:stampTextInto(dst, op, region)   -- glyphs, drawn straight into dst (z-order)
             elseif op.kind == "image" then
-                self:blitImageInto(dst, op)   -- placed picture, alpha-blended (z-order)
+                self:blitImageInto(dst, op, region)   -- placed picture, alpha-blended (z-order)
             else
                 local put, fill_put
                 if op.kind == "erase" and op.spare_text and reveal_text then
@@ -107,11 +135,11 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                     put = spanWriter(dst, W, H, self:opColor(op), nil)
                 end
                 if op.kind == "shape" and op.fill_color and not op.fill then
-                    fill_put = Symmetry.wrap(
-                        spanWriter(dst, W, H, displayColor(op.fill_color, op.fill_alpha or 255), nil),
+                    fill_put = Symmetry.wrap(inRegion(
+                        spanWriter(dst, W, H, displayColor(op.fill_color, op.fill_alpha or 255), nil), region),
                         op.sym, refx, refy)
                 end
-                Export.paintGeom(op, Symmetry.wrap(put, op.sym, refx, refy), fill_put)
+                Export.paintGeom(op, Symmetry.wrap(inRegion(put, region), op.sym, refx, refy), fill_put)
             end
         end
     end
@@ -223,6 +251,26 @@ function InkAwayView:composeCanvas()
         self._reveal_text_bb, self._reveal_pic_bb, true, bare)   -- reveal buffers already resolved
     -- the whole master was rebuilt: resync the panel-order mirror on the next render
     self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
+end
+
+-- Rebuild only the canvas rect (x0, y0)-(x1, y1) of the master, from the ops
+-- that reach it. It reuses composeCanvas's paper and reveal buffers, so it is
+-- not for changes to pictures or text.
+function InkAwayView:composeRegion(x0, y0, x1, y1)
+    if not self.canvas_bb then return end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    x0, y0 = math.max(0, math.floor(x0)), math.max(0, math.floor(y0))
+    x1, y1 = math.min(W, math.ceil(x1)), math.min(H, math.ceil(y1))
+    if x1 <= x0 or y1 <= y0 then return end
+    local base, bare = self.bg_bb, nil
+    if self.notebook then
+        if not self._paper_bb then return self:composeCanvas() end
+        base = self._paper_bb
+        if Canvas.scanOps(self.canvas.ops).hard_erase then bare = self:barePaperBB() end
+    end
+    self:composeInto(self.canvas_bb, self.canvas.ops, base, nil, self._reveal_text_bb,
+        self._reveal_pic_bb, true, bare, { x0 = x0, y0 = y0, x1 = x1, y1 = y1 })
+    self:markCanvasDirty(x0, y0, x1, y1)
 end
 
 -- Stamp a committed op into the 1:1 master.

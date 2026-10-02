@@ -205,11 +205,17 @@ function InkAwayView:layoutText(op, scale)
     return lay, ctx
 end
 
--- Render a text op into a canvas-space bitmap at its own position.
-function InkAwayView:stampTextInto(dst, op)
+-- Render a text op into a canvas-space bitmap at its own position; with
+-- `region` (a canvas rect) only into that part of it.
+function InkAwayView:stampTextInto(dst, op, region)
     local lay, ctx = self:layoutText(op, 1)
     if op.auto_h then op.h = lay.height end
-    Text.render(op, lay, dst, op.x, op.y, ctx, { color = Blitbuffer.COLOR_BLACK })
+    local x, y = op.x, op.y
+    if region then
+        dst = dst:viewport(region.x0, region.y0, region.x1 - region.x0, region.y1 - region.y0)
+        x, y = x - region.x0, y - region.y0
+    end
+    Text.render(op, lay, dst, x, y, ctx, { color = Blitbuffer.COLOR_BLACK })
 end
 
 -- Rasterise a text op at 1:1 into an 8-bit level buffer (255 is untouched white,

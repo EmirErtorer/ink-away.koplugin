@@ -769,6 +769,105 @@ do
     view:onCloseWidget()
 end
 
+-- ---- erase whole strokes: the eraser removes what it touches --------------------
+do
+    Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    local v = view.view
+    local InkGeom = require("ink/geom")
+    local function at(cx, cy) return pos(InkGeom.toScreen(v, cx, cy)) end
+    local function stroke(y) return { kind = "ink", width = 6, alpha = 255, pts = { 100, y, 400, y } } end
+    local function wipe(x0, y0, x1, y1)
+        view:onIaTouch(nil, at(x0, y0))
+        view:onIaPan(nil, at(x1, y1))
+        view:onIaPanRelease(nil, at(x1, y1))
+        UIManager.fireScheduled()
+    end
+    view.erase_whole = true
+    view:setTool("erase")
+    view.eraser_width = 20
+    view.canvas:setOps({ stroke(200), stroke(300), stroke(400) })
+    view:onIaTouch(nil, at(250, 150))
+    view:onIaPan(nil, at(250, 320))
+    ok(view.canvas:opCount() == 1, "wipe: strokes go as the eraser reaches them")
+    view:onIaPanRelease(nil, at(250, 320))
+    UIManager.fireScheduled()
+    ok(view.canvas:opCount() == 1 and view.canvas.ops[1].pts[2] == 400, "wipe: an untouched stroke stays")
+    view:undo()
+    ok(view.canvas:opCount() == 3, "wipe: one undo brings the whole eraser stroke back")
+    view:redo()
+    ok(view.canvas:opCount() == 1, "wipe: redo takes them again")
+
+    -- writing on a filled box: the writing goes and the box stays; the box goes alone
+    local box = { kind = "shape", shape = "rect", fill = true, width = 4, alpha = 255, pts = { 100, 500, 500, 800 } }
+    view.canvas:setOps({ box, stroke(650) })
+    wipe(300, 620, 300, 680)
+    ok(view.canvas:opCount() == 1 and view.canvas.ops[1] == box, "wipe: rubbing writing on a filled box keeps the box")
+    wipe(300, 700, 320, 720)
+    ok(view.canvas:opCount() == 0, "wipe: rubbing the box alone removes it")
+    wipe(300, 700, 320, 720)
+    ok(not view.canvas:canRedo() and view.canvas:opCount() == 0, "wipe: rubbing nothing changes nothing")
+
+    -- a palm that started the eraser stroke: everything comes back
+    view.canvas:setOps({ stroke(200), stroke(300) })
+    view:onIaTouch(nil, at(250, 150))
+    view:onIaPan(nil, at(250, 320))
+    ok(view.canvas:opCount() == 0, "wipe: (a palm took both)")
+    view:penDropFingerOps()
+    ok(view.canvas:opCount() == 2 and not view.canvas:canUndo() and not view.capturing,
+        "wipe: dropping a palm's stroke puts back what it took")
+
+    -- the pen's rear eraser wipes too, and the pen tool comes back
+    view:setTool("pen")
+    view.palm_reject = true
+    view:applyPalmReject()
+    local function pen(id, cx, cy)
+        local x, y = InkGeom.toScreen(v, cx, cy)
+        return Device.input.stylus_callback(Device.input, { slot = Device.input.pen_slot, id = id, x = x, y = y, tool = 2 })
+    end
+    pen(0, 250, 150); pen(0, 250, 320); pen(-1, 250, 320)
+    UIManager.fireScheduled()
+    ok(view.canvas:opCount() == 0 and view.tool == "pen", "wipe: the pen's eraser end removes whole strokes")
+    view.palm_reject = false
+    view:applyPalmReject()
+
+    -- off, the eraser rubs out pixels as before
+    view.erase_whole = false
+    view:setTool("erase")
+    view.canvas:setOps({ stroke(200) })
+    wipe(250, 150, 250, 250)
+    ok(view.canvas:opCount() == 2 and view.canvas.ops[2].kind == "erase", "wipe: off, an erase stroke is added")
+
+    -- the eraser sheet's toggle sits beside Erase pictures and saves the setting
+    local function findToggle(root, label)
+        local seen = { [view] = true }
+        local function walk(t)
+            if type(t) ~= "table" or seen[t] then return nil end
+            seen[t] = true
+            if t.label == label and t.onTap then return t end
+            for k, c in pairs(t) do
+                if k ~= "parent" and k ~= "show_parent" then
+                    local r = walk(c)
+                    if r then return r end
+                end
+            end
+        end
+        return walk(root)
+    end
+    view:openEraserSettings()
+    local tg = findToggle(view._eraser_dialog, "Erase whole strokes")
+    ok(tg ~= nil and tg.is_on == false and findToggle(view._eraser_dialog, "Erase pictures") ~= nil,
+        "wipe: the eraser sheet has both toggles, whole strokes off")
+    if tg then tg:onTap() end
+    ok(view.erase_whole == true and _G.G_reader_settings.data.inkaway_erase_whole == true,
+        "wipe: the toggle turns it on and saves it")
+    view:closeSheet("_eraser_dialog")
+    _G.G_reader_settings.data.inkaway_erase_whole = nil
+    view:onCloseWidget()
+end
+
 -- ---- palm rejection: the pen draws, a resting palm (finger) is ignored -------
 do
     Screen:setSize(1072, 1448)

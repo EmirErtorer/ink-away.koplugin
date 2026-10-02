@@ -17,6 +17,7 @@ Plain Lua, so the headless tests drive it directly.
 ]]
 
 local Geom = require("ink/geom")
+local Shapes = require("ink/shapes")
 
 local pointInPoly = Geom.pointInPoly
 
@@ -236,6 +237,35 @@ function Canvas:opRect(op, extra)
         w = (x1 - x0) + 2 * pad,
         h = (y1 - y0) + 2 * pad,
     }
+end
+
+-- The box x0, y0, x1, y1 (canvas px) around everything an op draws, before any
+-- symmetry copies, or nil when it draws nothing (or is text not laid out yet).
+function Canvas.opBox(op)
+    local k = op.kind
+    if k == "text" then
+        if not ((op.h or 0) > 0) then return nil end
+        return op.x, op.y, op.x + (op.w or 0), op.y + op.h
+    elseif k == "image" then
+        -- a turned picture stays inside the circle around its box
+        local h = math.sqrt(op.w * op.w + op.h * op.h) / 2 + 1
+        local cx, cy = op.x + op.w / 2, op.y + op.h / 2
+        return cx - h, cy - h, cx + h, cy + h
+    elseif k == "fill" then
+        local r = op.runs
+        if not r or #r < 3 then return nil end
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for i = 1, #r - 2, 3 do
+            x0, x1 = math.min(x0, r[i]), math.max(x1, r[i] + r[i + 2])
+            y0, y1 = math.min(y0, r[i + 1]), math.max(y1, r[i + 1] + 1)
+        end
+        return x0, y0, x1, y1
+    end
+    if not op.pts or #op.pts < 2 or (k == "shape" and #op.pts < 4) then return nil end
+    local x0, y0, x1, y1
+    if k == "shape" then x0, y0, x1, y1 = Shapes.bounds(op) else x0, y0, x1, y1 = Geom.bounds(op.pts) end
+    local pad = (op.width or 1) * 0.75 + 2   -- half the width, and room for a brush's grain
+    return x0 - pad, y0 - pad, x1 + pad, y1 + pad
 end
 
 -- Average point of an op's geometry (canvas coords), or nil if it has none.

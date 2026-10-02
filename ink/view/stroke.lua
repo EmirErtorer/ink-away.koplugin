@@ -195,6 +195,7 @@ end
 -- The stabilizer pulls the point towards the previous one, turning wobble into a
 -- clean line; strength 0 draws the raw point.
 function InkAwayView:addScreenPoint(sx, sy, fresh)
+    if self._wipe then return self:wipeTo(sx, sy) end   -- the whole-stroke eraser
     local cx, cy = self:toCanvasClamped(sx, sy)
     if fresh then
         self.sm_x, self.sm_y = cx, cy
@@ -217,6 +218,7 @@ function InkAwayView:pureBlackPen()
 end
 
 function InkAwayView:beginStroke(sx, sy)
+    if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
     local is_erase = self.tool == "erase"
     self.live_seed = math.random(1, 1000000)
     local style = nil
@@ -372,6 +374,7 @@ function InkAwayView:finalizeStroke()
     UIManager:unschedule(self._finalize)
     self.pending_lift = nil
     self.capturing = false
+    if self._wipe then return self:wipeEnd() end
     -- the live stroke wrote canvas_bb directly; resync the mirror over it
     self:markCanvasDirtyAcc(self._lw_cacc)
     self.last_ax, self.last_ay = nil, nil

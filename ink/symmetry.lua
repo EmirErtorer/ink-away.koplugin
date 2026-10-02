@@ -68,6 +68,23 @@ function Symmetry.wrap(put, mode, refx, refy, mirror)
     end
 end
 
+-- The copies a mode draws, as flip codes: 0 the original, 1 mirrored across the
+-- vertical axis, 2 across the horizontal one, 3 both.
+local FLIPS = { off = { 0 }, vert = { 0, 1 }, horiz = { 0, 2 }, quad = { 0, 1, 2, 3 } }
+function Symmetry.flips(mode) return FLIPS[mode or "off"] or FLIPS.off end
+
+-- A flat point list as it lands in copy `f` on a W x H page (a new list; the
+-- same one for f = 0). Column x mirrors to W - 1 - x, as canvasRefs does.
+function Symmetry.flipPoints(pts, f, W, H)
+    if f == 0 then return pts end
+    local out = {}
+    for i = 1, #pts - 1, 2 do
+        out[i] = (f % 2 == 1) and (W - 1 - pts[i]) or pts[i]
+        out[i + 1] = (f >= 2) and (H - 1 - pts[i + 1]) or pts[i + 1]
+    end
+    return out
+end
+
 local function setRect(out, n, x0, y0, x1, y1)
     local r = out[n]
     if not r then r = {}; out[n] = r end

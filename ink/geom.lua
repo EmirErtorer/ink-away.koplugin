@@ -150,6 +150,21 @@ function Geom.segDist2(px, py, ax, ay, bx, by)
     return ex * ex + ey * ey
 end
 
+-- Which side of the line p-q point r lies on (the sign of the cross product).
+local function side(px, py, qx, qy, rx, ry)
+    return (qx - px) * (ry - py) - (qy - py) * (rx - px)
+end
+
+-- Squared distance between segments (ax, ay)-(bx, by) and (cx, cy)-(dx, dy): 0
+-- when they cross, otherwise the nearest endpoint-to-segment distance.
+function Geom.segSegDist2(ax, ay, bx, by, cx, cy, dx, dy)
+    local d1, d2 = side(cx, cy, dx, dy, ax, ay), side(cx, cy, dx, dy, bx, by)
+    local d3, d4 = side(ax, ay, bx, by, cx, cy), side(ax, ay, bx, by, dx, dy)
+    if d1 * d2 < 0 and d3 * d4 < 0 then return 0 end
+    return math.min(Geom.segDist2(ax, ay, cx, cy, dx, dy), Geom.segDist2(bx, by, cx, cy, dx, dy),
+        Geom.segDist2(cx, cy, ax, ay, bx, by), Geom.segDist2(dx, dy, ax, ay, bx, by))
+end
+
 ------------------------------------------------------------------------------
 -- Stroke simplification
 ------------------------------------------------------------------------------

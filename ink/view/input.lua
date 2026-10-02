@@ -402,6 +402,7 @@ function InkAwayView:penDropFingerOps()
         UIManager:unschedule(self._finalize)
         self.pending_lift = nil
         self.capturing = false
+        if self._wipe then self:wipeCancel() end
         self.canvas:cancelStroke()
         self.last_cx, self.last_cy = nil, nil
         self:recompose()

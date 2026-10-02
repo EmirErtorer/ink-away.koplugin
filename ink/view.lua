@@ -194,6 +194,7 @@ function InkAwayView:init()
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off | vert | horiz | quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
+    self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes
     self._strokes_since_full = 0
     self.autosave    = self:getSetting("inkaway_autosave", "exit")     -- off | exit | periodic
     self.dirty = false
@@ -847,7 +848,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "save", "projects", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting" }
+    "settings", "sheetkit", "handwriting", "wipe" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

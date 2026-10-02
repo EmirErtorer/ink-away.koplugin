@@ -197,10 +197,11 @@ function Shapes.bounds(op)
 end
 
 -- Does a stroke of radius r along `pts` (flat) reach the shape as drawn: its
--- outline, or its inside when filled? Tells whether an erase stroke touched it.
-function Shapes.reachedBy(op, pts, r)
+-- outline, or its inside when filled (unless `edge_only`)? Tells whether an
+-- eraser touched it.
+function Shapes.reachedBy(op, pts, r, edge_only)
     local poly, closed = boundary(op)
-    local filled = closed and (op.fill or op.fill_color)
+    local filled = closed and (op.fill or op.fill_color) and not edge_only
     local reach = r + ((op.fill and closed) and 0 or (op.width or 2) / 2)
     local r2 = reach * reach
     local segs = arrowSegs(op, poly)

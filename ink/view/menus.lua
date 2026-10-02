@@ -296,7 +296,8 @@ function InkAwayView:confirmDeleteBrush(key, label)
     })
 end
 
--- The eraser sheet: a size slider and the Erase pictures toggle.
+-- The eraser sheet: a size slider, and the Erase pictures and Erase whole
+-- strokes toggles.
 function InkAwayView:openEraserSettings()
     if self:rebuildSheet("_eraser_dialog") then return end
     self:ensureUserIcons()
@@ -311,9 +312,15 @@ function InkAwayView:openEraserSettings()
             width = content_w, parent = menu, format = pxfmt,
             on_set = function(v) self.eraser_width = math.max(1, v) end })
         add(vspan(14))
-        add(ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
-            width = content_w, parent = menu,
-            callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end })
+        local pictures = ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
+            compact = true, parent = menu,
+            callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end }
+        local whole = ToggleRow:new{ label = _("Erase whole strokes"), is_on = self.erase_whole,
+            compact = true, parent = menu,
+            callback = function(on) self.erase_whole = on; self:setSetting("inkaway_erase_whole", on) end }
+        add(HorizontalGroup:new{ align = "center", pictures,
+            HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
+            whole })
         return content
     end
     self:showSheet("_eraser_dialog", build)
