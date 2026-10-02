@@ -400,6 +400,9 @@ local RAW_HANDOFF_CANCEL_PX = 24
 -- longer gap is a real lift between letters: commit, so quick handwriting is never
 -- joined up by straight connectors.
 local RAW_BRIDGE_MS = 40
+-- The "Test pen input" diagnostic (startPenInputTest) stays in the code for future
+-- device debugging; set this to true to show its button in the pen menu again.
+local SHOW_PEN_TEST = false
 local ZOOM_RATIO = 1.5    -- one zoom press multiplies by this, for even steps
 local ZOOM_MAX = 8.0
 
@@ -1817,7 +1820,7 @@ function InkAwayView:openPenSettings()
         -- palm rejection is available (the stylus API exists) -- next to its toggle
         -- above -- so it can be found and run on any modern-KOReader reader, not just
         -- a device that flags a Wacom pen.
-        if self:penCapable() then
+        if SHOW_PEN_TEST and self:penCapable() then
             table.insert(tail, vspan(10))
             table.insert(tail, self:actionButton(_("Test pen input"), content_w,
                 function() closeSelf(); self:startPenInputTest() end))
@@ -9221,6 +9224,11 @@ function InkAwayView:finishTextEdit(commit)
     if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
     self.dirty = true
     self:hideTextKeyboard()
+    -- While typing, the page may have been scrolled past its normal end so the line
+    -- stayed above the keyboard (see ensureCaretVisible). The keyboard is gone now,
+    -- so bring the view back inside the page, as a pan would; otherwise the page's
+    -- edge and the empty space beyond it stay on screen.
+    InkGeom.clampPan(self.view)
     self:composeCanvas()
     self:renderView()
     self:refresh("all", "full")
