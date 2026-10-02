@@ -1,0 +1,3 @@
+# The test suite is for development only. Keep it out of GitHub's "Source code"
+# downloads; the release zip from tools/build-release.sh leaves it out too.
+/tests export-ignore
