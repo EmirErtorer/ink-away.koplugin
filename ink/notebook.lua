@@ -59,7 +59,6 @@ function Notebook.fromData(data)
 end
 
 function Notebook:count() return #self.pages end
-function Notebook:currentPage() return self.pages[self.index] end
 function Notebook:currentOps() return self.pages[self.index].ops end
 function Notebook:setCurrentOps(ops) self.pages[self.index].ops = ops or {} end
 function Notebook:currentSrc() return self.pages[self.index].src end

@@ -25,7 +25,6 @@ local _ = require("gettext")
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
-local GREY  = Blitbuffer.COLOR_GRAY
 
 local floor, sqrt, atan2, cos, sin, pi = math.floor, math.sqrt, math.atan2, math.cos, math.sin, math.pi
 

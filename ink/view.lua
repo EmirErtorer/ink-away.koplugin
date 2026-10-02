@@ -77,9 +77,6 @@ local PAPERS = {
 
 local Screen = Device.screen
 
--- Remembered across saves within a KOReader session (module scope).
-local last_save_dir = nil
-
 -- Worked out once: are a BBRGB32 buffer's bytes laid out R,G,B,A (so they can be
 -- copied straight into an RGBA export buffer) or B,G,R,A (so R and B must swap)?
 local rgb32_is_rgba = nil
@@ -103,7 +100,6 @@ local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
 -- These are plain greys, so they are Color8: KOReader draws a rounded corner in C
 -- only for a Color8, and walks it pixel by pixel in Lua for an RGB32 colour (about
 -- 20x slower on grey screens and 200x on colour ones -- the bulk of a menu's paint).
-local PILL_GREY = Blitbuffer.Color8(0xD6)
 local HAIRLINE  = Blitbuffer.Color8(0xCC)
 local TILE_BG   = Blitbuffer.Color8(0xE6)   -- shape-menu tile fill
 local CARET_BG  = Blitbuffer.Color8(0xB0)   -- line-tile corner caret chip
@@ -400,9 +396,6 @@ local RAW_HANDOFF_CANCEL_PX = 24
 -- longer gap is a real lift between letters: commit, so quick handwriting is never
 -- joined up by straight connectors.
 local RAW_BRIDGE_MS = 40
--- The "Test pen input" diagnostic (startPenInputTest) stays in the code for future
--- device debugging; set this to true to show its button in the pen menu again.
-local SHOW_PEN_TEST = false
 local ZOOM_RATIO = 1.5    -- one zoom press multiplies by this, for even steps
 local ZOOM_MAX = 8.0
 
@@ -526,6 +519,9 @@ local InkAwayView = InputContainer:extend{
     -- double tap enabled would otherwise get it back after any dialog closes, which
     -- merges two quick small strokes (the second reuses the first's contact).
     disable_double_tap = true,
+    -- Hidden features, kept for development. Set to true to show them in the pen menu.
+    show_pen_test = false,      -- debug: the pen input test (startPenInputTest)
+    show_handwriting = false,   -- unfinished: handwriting to text (hwr*)
 }
 
 ------------------------------------------------------------------------------
@@ -776,10 +772,9 @@ function InkAwayView:init()
     -- line/rectangle/ellipse/triangle (or an L, for x/y axes) is replaced with a
     -- clean shape. Unrecognised strokes are left exactly as drawn.
     self.shape_assist = self:getSetting("inkaway_shape_assist", false)
-    -- Handwriting to text (beta): when on, printed pen strokes are recognised on a
-    -- pause and replaced with a text box using the current text settings. Offline
-    -- and best-effort (see ink/hwr.lua). Off by default; a no-op unless enabled.
-    self.hwr_enabled = self:getSetting("inkaway_hwr", false) and true or false
+    -- Handwriting to text: printed pen strokes become a text box after a pause.
+    -- Unfinished, so it stays off unless the hidden feature is switched on.
+    self.hwr_enabled = self.show_handwriting and self:getSetting("inkaway_hwr", false) and true or false
     -- Palm rejection: on a device with a pen, take the pen over (draw from its raw
     -- events) and ignore finger touches while the pen is down, so a resting palm
     -- never marks the page. Defaults ON on pen devices (Kindle Scribe, reMarkable)
@@ -1700,22 +1695,15 @@ function InkAwayView:removeCustomColor(rgb)
     self:setSetting("inkaway_custom_colors", list)
 end
 
--- Open the colour wheel to pick (and optionally save) an exact colour.
-function InkAwayView:openColorPicker(target)
+-- Open the colour wheel to pick (and optionally save) an exact pen colour.
+function InkAwayView:openColorPicker()
     local ok, ColorPicker = pcall(require, "ink/colorpicker")
     if not ok then return end
-    local isFill = target == "fill"
-    local function apply(rgb)
-        if isFill then self.fill_color = { rgb[1], rgb[2], rgb[3] }
-        else self.pen_color = { rgb[1], rgb[2], rgb[3] } end
-    end
-    local function reopen()
-        if isFill then self:openFillSettings() else self:openPenSettings() end
-    end
+    local function apply(rgb) self.pen_color = { rgb[1], rgb[2], rgb[3] } end
     UIManager:show(ColorPicker:new{
-        color = isFill and self.fill_color or self.pen_color,
-        on_pick = function(rgb) apply(rgb); reopen() end,
-        on_save = function(rgb) apply(rgb); self:addCustomColor(rgb); reopen() end,
+        color = self.pen_color,
+        on_pick = function(rgb) apply(rgb); self:openPenSettings() end,
+        on_save = function(rgb) apply(rgb); self:addCustomColor(rgb); self:openPenSettings() end,
     })
 end
 
@@ -1819,13 +1807,8 @@ function InkAwayView:openPenSettings()
             table.insert(assistRow, pr)
         end
         table.insert(tail, assistRow)
-        -- A quick self-test: it reports whether the pen reaches the plugin AS a pen
-        -- or as an ordinary finger, so palm-rejection problems on devices we can't
-        -- test (a Kindle Scribe report) can be diagnosed from afar. Shown wherever
-        -- palm rejection is available (the stylus API exists) -- next to its toggle
-        -- above -- so it can be found and run on any modern-KOReader reader, not just
-        -- a device that flags a Wacom pen.
-        if SHOW_PEN_TEST and self:penCapable() then
+        -- Debug: the pen input test, hidden unless show_pen_test is set.
+        if self.show_pen_test and self:penCapable() then
             table.insert(tail, vspan(10))
             table.insert(tail, self:actionButton(_("Test pen input"), content_w,
                 function() closeSelf(); self:startPenInputTest() end))
@@ -1838,12 +1821,8 @@ function InkAwayView:openPenSettings()
         table.insert(tail, TextBoxWidget:new{
             text = _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."),
             face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
-        -- Handwriting to text (beta) is hidden from the pen menu for now, while the
-        -- feature is still being worked on. All of its code is left in place (the
-        -- hwr_enabled setting, hwrCapture/hwrRecognizePending, ink/hwr.lua, and the
-        -- finalizeStroke hook); flip this guard back to `true` to show the toggle
-        -- again. hwr_enabled defaults off, so with the toggle hidden it stays dormant.
-        if false then
+        -- Unfinished: handwriting to text, hidden unless show_handwriting is set.
+        if self.show_handwriting then
             table.insert(tail, vspan(10))
             table.insert(tail, ToggleRow:new{ label = _("Handwriting to text (beta)"), is_on = self.hwr_enabled,
                 width = content_w, parent = menu, callback = function(on)
@@ -3003,12 +2982,6 @@ function InkAwayView:fabRect(which)
     end
 end
 
-function InkAwayView:fabHidden(which)
-    if which == "zoom" then return self._zoom_hidden
-    elseif which == "nbbar" then return self._nbbar_toggle_hidden
-    else return self._bar_toggle_hidden end
-end
-
 -- Repaint just a control's footprint (plus a margin): hiding reveals the canvas,
 -- showing draws the control, both without a full redraw.
 function InkAwayView:refreshFabRegion(r)
@@ -3620,30 +3593,6 @@ function InkAwayView:openTextFont()
         close_callback = function() UIManager:close(menu) end,
     }
     UIManager:show(menu)
-end
-
--- Toggle grid-line snapping for new boxes (and the one being edited). It only has
--- a visible effect on a ruled notebook page.
-function InkAwayView:toggleTextGridSnap()
-    self.text_grid_snap = not self.text_grid_snap
-    self:setSetting("inkaway_text_grid_snap", self.text_grid_snap)
-    if self.editing_text then
-        self.editing_text.grid_snap = self.text_grid_snap
-        if self.text_grid_snap then self:snapTextBoxToGrid(self.editing_text) end
-        self:invalidateLayout()
-        self:refreshTextBox("flashui")
-    else
-        self:openTextSettings()   -- reopen so the checkmark reflects the change
-    end
-end
-
--- Toggle whether the eraser may rub out typed text. Recompose so the change is
--- visible immediately on committed boxes.
-function InkAwayView:toggleTextEraseProtect()
-    self.text_erase_protect = not self.text_erase_protect
-    self:setSetting("inkaway_text_erase_protect", self.text_erase_protect)
-    self:composeCanvas(); self:renderView(); UIManager:setDirty(self, "ui")
-    if not self.editing_text then self:openTextSettings() end   -- reopen to show the tick
 end
 
 -- Snap a text box's top edge onto the notebook ruling so its lines line up with
@@ -5210,41 +5159,6 @@ end
 -- Paint bucket: flood fill an enclosed area on tap.
 ------------------------------------------------------------------------------
 
--- The paint bucket's own colour/opacity, so it need not share the pen's.
-function InkAwayView:openFillSettings()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dlg
-    local function pick(rgb)
-        self.fill_color = { rgb[1], rgb[2], rgb[3] }
-        UIManager:close(dlg)
-        self:openFillSettings()
-    end
-    local pct = math.floor(self.fill_alpha / 255 * 100 + 0.5)
-    local buttons = {}
-    buttons[#buttons + 1] = {{
-        text = string.format(_("Opacity %d%%"), pct),
-        callback = function()
-            UIManager:close(dlg)
-            local SpinWidget = require("ui/widget/spinwidget")
-            UIManager:show(SpinWidget:new{
-                title_text = _("Fill opacity"), value = pct,
-                value_min = 5, value_max = 100, value_step = 5, unit = "%",
-                callback = function(s)
-                    self.fill_alpha = math.max(1, math.min(255, math.floor(s.value / 100 * 255 + 0.5)))
-                    self:openFillSettings()
-                end,
-            })
-        end,
-    }}
-    buttons[#buttons + 1] = self:swatchRowFor(SHADES, self.fill_color, pick)
-    if self:colorScreen() then
-        buttons[#buttons + 1] = self:swatchRowFor(COLORS, self.fill_color, pick)
-    end
-    buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
-    dlg = ButtonDialog:new{ title = _("Fill colour and opacity"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
-end
-
 -- The top-most CLOSED shape whose interior contains a canvas point, or nil.
 function InkAwayView:shapeUnderPoint(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
@@ -6034,15 +5948,6 @@ function InkAwayView:shapeToFront(sel)
     self:openShapeMenu(sel)
 end
 
--- Nudge the selected shape by (dx,dy) canvas px (a grid step, or a few px).
-function InkAwayView:nudgeSelected(sel, dirx, diry)
-    local step = self.grid_on and self.grid_size or 6
-    self:applyEdit(sel, function(o)
-        for i = 1, #o.pts, 2 do o.pts[i] = o.pts[i] + dirx * step; o.pts[i + 1] = o.pts[i + 1] + diry * step end
-    end)
-    self:openShapeMenu(sel)   -- keep the menu up for repeated nudges
-end
-
 function InkAwayView:editSelectedColour(sel)
     local ButtonDialog = require("ui/widget/buttondialog")
     local dlg
@@ -6525,7 +6430,6 @@ function InkAwayView:finishImageEdit()
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
-InkAwayView.flushImage = InkAwayView.finishImageEdit
 
 function InkAwayView:deleteActiveImage()
     local sel = self.active_image
@@ -6955,7 +6859,7 @@ end
 -- entirely optional -- Ink Away never needs a connection -- so the local path is
 -- the dark (primary) button and stays exactly as it always was.
 function InkAwayView:chooseImage()
-    self:flushImage()
+    self:finishImageEdit()
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -8985,16 +8889,6 @@ function InkAwayView:textBoxScreenRect()
     return { x = sx, y = sy, w = op.w * v.zoom, h = op.h * v.zoom }
 end
 
--- The Format and Done pills (top-right of the drawing area), always visible
--- while editing. Sized to the label they hold so text never spills over the
--- border. Font sizes are logical (Font:getFace scales by DPI), so 18 is normal.
-function InkAwayView:labelWidget(text)
-    local Font = require("ui/font")
-    local TextWidget = require("ui/widget/textwidget")
-    return TextWidget:new{ text = text, face = Font:getFace("cfont", 18),
-        fgcolor = Blitbuffer.COLOR_BLACK }
-end
-
 -- Lay out the two edit buttons: [ Format ][ ✓ Done ] pinned to the top-right.
 -- The label sizes depend only on the (constant) labels and DPI, so measure them
 -- once and cache: this method runs on every overlay paint and every touch, and
@@ -9027,8 +8921,6 @@ function InkAwayView:textEditButtons()
         format = { x = fx, y = y, w = m.fwid, h = m.h },
     }
 end
-
-function InkAwayView:textDoneRect() return self:textEditButtons().done end
 
 -- Which part of the box a screen point falls on: "resize", "move", "inside" or
 -- "outside".
@@ -10339,14 +10231,9 @@ function InkAwayView:beginCropSelect()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 
--- Set up koreader/ink away/{drawings,projects} once and remember both paths:
--- drawings holds the exported PNG/JPEG images, projects holds the editable
--- .inkaway files. Returns the drawings path (the image default), or a fallback.
--- Also tidies away the old flat "ink away drawings" folder from earlier
--- versions, but only if it is empty, so nothing you saved there is ever removed.
--- Four clearly separated folders under "ink away/": drawings (PNG/JPEG images),
--- drawing projects (editable .inkaway canvases), notebooks (exported PDFs), and
--- notebook projects (editable .inkaway notebooks). Returns the images path.
+-- Four folders under "ink away/": drawings (PNG/JPEG images), drawing projects
+-- (editable .inkaway canvases), notebooks (exported PDFs) and notebook projects
+-- (editable .inkaway notebooks). Returns the images path.
 function InkAwayView:ensureDefaultDir()
     local ok, DataStorage = pcall(require, "datastorage")
     local base = (ok and DataStorage and DataStorage:getDataDir()) or "/"
@@ -10366,68 +10253,9 @@ function InkAwayView:ensureDefaultDir()
         if mk(dproj) then self.dproj_dir = dproj end
         if mk(nproj) then self.nproj_dir = nproj end
         if mk(notebooks) then self.notebooks_dir = notebooks end
-        -- remove the very old flat folder if it is now empty (never if it holds files)
-        local oldflat = base .. "/ink away drawings"
-        if lfs.attributes(oldflat, "mode") == "directory" then pcall(lfs.rmdir, oldflat) end
-        if self:getSetting("inkaway_last_dir") == oldflat then self:setSetting("inkaway_last_dir", drawings) end
-        -- One-time: sort the old mixed "projects/" folder into the two new ones.
-        -- Deferred to the next tick so opening the plugin is never blocked by it.
-        if not self:getSetting("inkaway_folders_v2") then
-            UIManager:nextTick(function() self:migrateProjectFolders(parent) end)
-        end
         if lfs.attributes(drawings, "mode") == "directory" then return drawings end
     end
     return base
-end
-
--- Move each .inkaway in the old "projects/" folder into "drawing projects/" or
--- "notebook projects/" by type. Non-destructive: os.rename (atomic on the same
--- drive, never deletes), everything pcall-guarded, unreadable files left alone,
--- and it runs off the open path so there is no startup slowdown. Runs once.
-function InkAwayView:migrateProjectFolders(parent)
-    if self:getSetting("inkaway_folders_v2") then return end
-    self:setSetting("inkaway_folders_v2", true)   -- set first, so a fault never re-runs it
-    local lok, lfs = pcall(require, "libs/libkoreader-lfs")
-    if not (lok and lfs) then return end
-    local old = parent .. "/projects"
-    if lfs.attributes(old, "mode") ~= "directory" then return end
-    local dproj, nproj = parent .. "/drawing projects", parent .. "/notebook projects"
-    local moved = 0
-    pcall(function()
-        for entry in lfs.dir(old) do
-            if entry ~= "." and entry ~= ".." and entry:lower():match("%.inkaway$") then
-                local src = old .. "/" .. entry
-                if lfs.attributes(src, "mode") == "file" then
-                    -- classify cheaply: a notebook (v2) carries a "pages" key; a
-                    -- drawing (v1) does not. Read a bounded head so a huge file
-                    -- can never stall this. Default to drawing (v1.4 had only those).
-                    local dest_dir = dproj
-                    local f = io.open(src, "rb")
-                    if f then
-                        local head = f:read(256 * 1024) or ""
-                        f:close()
-                        if head:find('"pages"', 1, true) then dest_dir = nproj end
-                    end
-                    local dest = dest_dir .. "/" .. entry
-                    if lfs.attributes(dest, "mode") then    -- never clobber a same-named file
-                        local stem = entry:gsub("%.[^.]+$", "")
-                        local i = 1
-                        repeat
-                            dest = dest_dir .. "/" .. stem .. "-" .. i .. "." .. Project.EXT
-                            i = i + 1
-                        until not lfs.attributes(dest, "mode")
-                    end
-                    if os.rename(src, dest) then moved = moved + 1 end
-                end
-            end
-        end
-    end)
-    pcall(function() lfs.rmdir(old) end)   -- succeeds only if it is now empty
-    if moved > 0 then
-        UIManager:show(InfoMessage:new{ timeout = 5, text = string.format(
-            _("Ink Away tidied your saved work:\n%d project(s) sorted into 'drawing projects' and 'notebook projects'."),
-            moved) })
-    end
 end
 
 -- Return `p` if it is an existing directory, else nil.
@@ -10457,7 +10285,6 @@ end
 
 -- Remember the last image folder used, for next time.
 function InkAwayView:rememberDir(dir)
-    last_save_dir = dir
     self:setSetting("inkaway_last_dir", dir)
 end
 
@@ -10738,19 +10565,11 @@ function InkAwayView:promptGotoNumber()
     d:onShowKeyboard()
 end
 
--- Duplicate / reorder the current page.
+-- Duplicate the current page.
 function InkAwayView:nbDuplicatePage()
     if not self.notebook then return end
     self:nbSyncOut()
     self.notebook:duplicatePage()
-    self:nbLoad()
-    self.dirty = true
-end
-
-function InkAwayView:nbMovePage(dir)
-    if not self.notebook then return end
-    self:nbSyncOut()
-    self.notebook:movePage(dir)
     self:nbLoad()
     self.dirty = true
 end
@@ -10983,7 +10802,6 @@ end
 -- Start a new notebook: ask which ruling to use, then enter notebook mode.
 function InkAwayView:newNotebook()
     local function begin(style)
-        self.notebook_template_style = style
         self.nb_style = style
         self:setSetting("inkaway_nb_style", style)
         -- start from the ruling the user last set on a notebook (falling back to
