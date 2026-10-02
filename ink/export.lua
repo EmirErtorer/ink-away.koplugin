@@ -602,7 +602,7 @@ end
 function Export.saveJPEG(canvas, path, quality, opts)
     opts = opts or {}
     local Jpeg = require("ffi/jpeg")
-    local ow, oh, rgb
+    local ow, oh, rgb, _
     if opts.bg then
         -- composite ink over the background, then flatten the result onto white
         ow, oh = dims(canvas, opts.rect)

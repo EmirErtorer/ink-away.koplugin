@@ -97,6 +97,7 @@ local function rgb32IsRGBA()
 end
 
 local WHITE = Blitbuffer.COLOR_WHITE
+local PREVIEW_INK = Blitbuffer.COLOR_BLACK   -- live preview of non-black ink on colour panels
 local FRAME = Blitbuffer.COLOR_GRAY   -- colour of the frame around the page
 -- Flagship UI greys (e-ink grayscale): a soft selection pill and a hairline.
 local PILL_GREY = Blitbuffer.ColorRGB32(0xD6, 0xD6, 0xD6, 0xFF)
@@ -371,6 +372,16 @@ end
 -- of a line, and this is what keeps one lift as one undo step, keeps exported
 -- strokes whole, and fills the gap a dropped contact would otherwise leave.
 local COALESCE_SEC = 0.15
+-- Live-ink pacing on colour (Kaleido) panels, where every refresh costs the driver
+-- a lot more than on grey e-ink: the fast (black/white) waveform at most every
+-- LIVE_FAST_MS, the grey-capable one -- which blocks until the driver has taken it
+-- -- at most every LIVE_UI_MS, and the last samples of a burst still within
+-- LIVE_TAIL_MS. The real colours and greys settle in ONE refresh RECONCILE_SEC
+-- after the pen rests, instead of a blocking refresh on every lift.
+local LIVE_FAST_MS = 20
+local LIVE_UI_MS = 80
+local LIVE_TAIL_MS = 35
+local RECONCILE_SEC = 0.8
 -- After the pen lifts, keep ignoring finger touches this long: a resting palm
 -- usually lifts a fraction of a second after the pen, so this stops it landing a
 -- stray mark or tap in the gap.
@@ -404,31 +415,42 @@ local function displayColor(rgb, alpha)
     return Blitbuffer.ColorRGB32(over(r), over(g), over(b), 0xFF)
 end
 
+-- Is this a real colour (not black/white/grey)?
+local function isChromatic(color)
+    if not (color and color.getColorRGB32) then return false end
+    local c = color:getColorRGB32()
+    return (c.r ~= c.g) or (c.g ~= c.b)
+end
+
+-- Fill a rectangle with `color`, keeping it a colour on a colour buffer.
+-- KOReader's paintRect flattens any fill colour to grey (it takes getColor8()
+-- first), even into an RGB32 buffer; paintRectRGB32 is its C colour fill. Older
+-- builds without it fall back to setPixel, which keeps the colour too.
+local function fillRect(bb, x, y, w, h, color, chromatic)
+    if not chromatic then
+        bb:paintRect(x, y, w, h, color)
+    elseif bb.paintRectRGB32 then
+        bb:paintRectRGB32(x, y, w, h, color)
+    else
+        for j = y, y + h - 1 do
+            for i = x, x + w - 1 do bb:setPixel(i, j, color) end
+        end
+    end
+end
+
 -- A span writer that paints horizontal runs into `bb`, clipped to w x h, and
 -- (optionally) grows `acc` to cover everything it touched. Shared by the 1:1
 -- master bitmap and the on-screen buffer so both are stamped the same way.
---
--- KOReader's paintRect flattens any fill colour to grey (it takes getColor8()
--- first), even into an RGB32 buffer, so a coloured pen would show grey on a
--- colour screen. For a chromatic colour we therefore fill pixel by pixel with
--- setPixel, which keeps the colour. This only happens when a colour was actually
--- picked (colour screens only); black and grey ink keep the fast paintRect path.
+-- Black and grey ink use paintRect; a picked colour uses the C colour fill (it
+-- used to be a per-pixel loop, which made coloured pens slower the wider they got).
 local function spanWriter(bb, w, h, color, acc)
-    local chromatic = false
-    if color and color.getColorRGB32 then
-        local c = color:getColorRGB32()
-        chromatic = (c.r ~= c.g) or (c.g ~= c.b)
-    end
+    local chromatic = isChromatic(color)
     return function(x, y, len)
         if y < 0 or y >= h then return end
         if x < 0 then len = len + x; x = 0 end
         if x + len > w then len = w - x end
         if len <= 0 then return end
-        if chromatic then
-            for i = 0, len - 1 do bb:setPixel(x + i, y, color) end
-        else
-            bb:paintRect(x, y, len, 1, color)
-        end
+        fillRect(bb, x, y, len, 1, color, chromatic)
         if acc then
             if x < acc.x0 then acc.x0 = x end
             if x + len > acc.x1 then acc.x1 = x + len end
@@ -457,12 +479,33 @@ local function bgSpanWriter(bb, bg, w, h, acc)
     end
 end
 
+-- Paint a notebook page's paper into `dst`: the background picture / PDF page if
+-- there is one (else the paper colour), then the ruling on top.
+local function paintPaper(dst, W, H, tmpl, bg)
+    if bg then
+        dst:blitFrom(bg, 0, 0, 0, 0, W, H)
+    else
+        local paper = tmpl and tmpl.paper
+        local col = paper and Blitbuffer.ColorRGB32(paper[1], paper[2], paper[3], 0xFF) or WHITE
+        fillRect(dst, 0, 0, W, H, col, isChromatic(col))
+    end
+    if tmpl and tmpl.style and tmpl.style ~= "blank" then
+        local lvl = strengthToLevel(tmpl.strength)
+        local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
+        Template.render(tmpl.style, W, H, tmpl.size or 40, put)
+    end
+end
+
+-- A full garbage collection, run shortly after the canvas closes.
+local function deferredCollect() collectgarbage("collect") end
+
 local InkAwayView = InputContainer:extend{
     name = "inkaway_view",
     covers_fullscreen = true,
     -- The canvas is modal: swallow any gesture a toolbar button did not take
     -- (pinch, double tap, multiswipe, and so on) so the view under it stays put.
     stop_events_propagation = true,
+    deferredCollect = deferredCollect,   -- exposed so tests can tell it apart (holds no view)
     -- Keep double tap off while the canvas is anywhere in the stack: UIManager:close
     -- recomputes Input.disable_double_tap from the stacked widgets, and a reader with
     -- double tap enabled would otherwise get it back after any dialog closes, which
@@ -791,6 +834,8 @@ function InkAwayView:init()
 
     -- Bound once so it can be scheduled and unscheduled by identity.
     self._finalize = function() self:finalizeStroke() end
+    self._live_flush_cb = function() self:liveFlush() end
+    self._reconcile_cb = function() self:runReconcile() end
     -- Coalesced refresh while dragging a lasso selection: many pan events collapse
     -- into at most one small refresh per interval, so the e-ink panel is never
     -- flooded (which on device froze it mid-refresh).
@@ -964,6 +1009,12 @@ end
 
 function InkAwayView:autosaveTick()
     if self.closing then return end
+    -- never stall a stroke that is being drawn: try again shortly
+    if self.capturing or (self._pen_state and self._pen_state.down) then
+        UIManager:unschedule(self._autosave_tick)
+        UIManager:scheduleIn(5, self._autosave_tick)
+        return
+    end
     if self.dirty then self:saveSession(); self.dirty = false end
     self:scheduleAutosave()
 end
@@ -975,6 +1026,7 @@ function InkAwayView:free()
     self._cpanel_dirty = nil
     if self.bg_bb then self.bg_bb:free(); self.bg_bb = nil end
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
+    if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
     if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
@@ -1259,6 +1311,8 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._pen_clear)
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
+    UIManager:unschedule(self._live_flush_cb)
+    UIManager:unschedule(self._reconcile_cb)
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     if self._show_zoom_fab then UIManager:unschedule(self._show_zoom_fab) end
     if self._show_bar_toggle then UIManager:unschedule(self._show_bar_toggle) end
@@ -1286,9 +1340,11 @@ function InkAwayView:onCloseWidget()
     if self.canvas then
         self.canvas.ops, self.canvas.undo_stack, self.canvas.redo_stack = {}, {}, {}
     end
-    -- Reclaim our large buffers and ops now, so the next session starts clean
-    -- rather than inheriting the heap pressure (which shows up as slowdown).
-    collectgarbage("collect")
+    -- Reclaim our large buffers and ops so the next session starts clean rather
+    -- than inheriting the heap pressure (which shows up as slowdown). Done just
+    -- after the close instead of inside it: with a big drawing the full collection
+    -- is a noticeable pause, and on a slow colour panel it made closing feel frozen.
+    UIManager:scheduleIn(0.5, deferredCollect)
     -- Remember the orientation we were drawing in (so the next launch opens the
     -- same way up), then put the device back the way it was before Ink Away opened.
     -- The full refresh below leaves the panel clean and, where landscape uses
@@ -1299,8 +1355,10 @@ function InkAwayView:onCloseWidget()
             pcall(function() Screen:setRotationMode(self.orig_rotation) end)
         end
     end
-    -- Leave the screen clean underneath.
-    UIManager:setDirty(nil, "full")
+    -- Leave the screen clean underneath. On a colour panel a full-screen flash
+    -- blocks for a second or more, so it uses the non-flashing update there (see
+    -- refresh); grey e-ink keeps the full flash.
+    self:refresh(nil, "full")
 end
 
 function InkAwayView:onIaClose()
@@ -3168,6 +3226,108 @@ function InkAwayView:dirtyAreaRect(mode, r, pad)
         x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
 end
 
+-- Milliseconds on a monotonic clock (KOReader's ui/time), for refresh pacing.
+local TimeMod
+function InkAwayView:nowMs()
+    if TimeMod == nil then
+        local ok, t = pcall(require, "ui/time")
+        TimeMod = ok and t or false
+    end
+    if TimeMod then return TimeMod.to_ms(TimeMod.now()) end
+    return os.time() * 1000
+end
+
+-- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect, exactly as
+-- before. On a colour panel the rect is merged with the pending ones and sent at a
+-- bounded pace (see LIVE_*_MS): the first sample shows at once, later ones ride
+-- along with the next update. paintTo blits the union (_blit_rect) either way.
+function InkAwayView:liveDirty(mode, r, pad)
+    if not self:colourPanel() then return self:dirtyAreaRect(mode, r, pad) end
+    pad = pad or 0
+    local v = self.view
+    local x0 = math.max(0, math.floor(r.x0) - pad)
+    local y0 = math.max(0, math.floor(r.y0) - pad)
+    local x1 = math.min(v.area_w, math.ceil(r.x1) + pad)
+    local y1 = math.min(v.area_h, math.ceil(r.y1) + pad)
+    if x1 <= x0 or y1 <= y0 then return end
+    if self.capturing then
+        local br = self._blit_rect
+        if not br then self._blit_rect = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+        else
+            if x0 < br.x0 then br.x0 = x0 end
+            if y0 < br.y0 then br.y0 = y0 end
+            if x1 > br.x1 then br.x1 = x1 end
+            if y1 > br.y1 then br.y1 = y1 end
+        end
+    end
+    local p = self._live_pend
+    if not p then
+        self._live_pend = { x0 = x0, y0 = y0, x1 = x1, y1 = y1, mode = mode }
+    else
+        if x0 < p.x0 then p.x0 = x0 end
+        if y0 < p.y0 then p.y0 = y0 end
+        if x1 > p.x1 then p.x1 = x1 end
+        if y1 > p.y1 then p.y1 = y1 end
+        if mode ~= "fast" then p.mode = mode end
+    end
+    local gap = (self._live_pend.mode == "fast") and LIVE_FAST_MS or LIVE_UI_MS
+    local elapsed = self:nowMs() - (self._live_last or -math.huge)
+    if elapsed >= gap then
+        self:liveFlush()
+    elseif not self._live_flush_armed then
+        self._live_flush_armed = true
+        UIManager:scheduleIn(math.max(LIVE_TAIL_MS, gap - elapsed) / 1000, self._live_flush_cb)
+    end
+end
+
+-- Send the pending live rect now (if any).
+function InkAwayView:liveFlush()
+    if self._live_flush_armed then
+        UIManager:unschedule(self._live_flush_cb)
+        self._live_flush_armed = false
+    end
+    local p = self._live_pend
+    if not p or self.closing then self._live_pend = nil; return end
+    self._live_pend = nil
+    self._live_last = self:nowMs()
+    local v = self.view
+    UIManager:setDirty(self, p.mode, GeomUI:new{
+        x = v.area_x + p.x0, y = v.area_y + p.y0, w = p.x1 - p.x0, h = p.y1 - p.y0 })
+end
+
+-- Colour panels: remember an area-local rect whose true colours/greys still need
+-- a grey-capable refresh, and (re)start the settle timer. Each new stroke pushes
+-- it back, so handwriting never has a slow refresh running under the next letter.
+function InkAwayView:queueReconcile(r, pad)
+    pad = pad or 0
+    local q = self._reconcile
+    local x0, y0, x1, y1 = r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad
+    if not q then self._reconcile = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+    else
+        if x0 < q.x0 then q.x0 = x0 end
+        if y0 < q.y0 then q.y0 = y0 end
+        if x1 > q.x1 then q.x1 = x1 end
+        if y1 > q.y1 then q.y1 = y1 end
+    end
+    UIManager:unschedule(self._reconcile_cb)
+    UIManager:scheduleIn(RECONCILE_SEC, self._reconcile_cb)
+end
+
+function InkAwayView:runReconcile()
+    UIManager:unschedule(self._reconcile_cb)
+    if self.closing then self._reconcile = nil; return end
+    if self.capturing or (self._pen_state and self._pen_state.down) then
+        UIManager:scheduleIn(RECONCILE_SEC, self._reconcile_cb)   -- still writing
+        return
+    end
+    local q = self._reconcile
+    self._reconcile = nil
+    if q then
+        self._area_only = true          -- only drawing-area pixels changed
+        self:dirtyAreaRect("ui", q, 0)
+    end
+end
+
 -- The colour a committed op is drawn with on screen (ink shade at its opacity,
 -- or the background for an eraser).
 function InkAwayView:opColor(op)
@@ -3580,14 +3740,42 @@ end
 -- authoritative (nil means "not needed"). composeCanvas sets it so composeInto
 -- skips two redundant full-ops scans; the thumbnail path leaves it off so
 -- composeInto detects and builds its own reveal buffers.
-function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved)
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare)
     local W, H = self.view.canvas_w, self.view.canvas_h
-    dst:paintRect(0, 0, W, H, WHITE)
-    if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
-    if template and template.style and template.style ~= "blank" then
-        local lvl = strengthToLevel(template.strength)
-        local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
-        Template.render(template.style, W, H, template.size or 40, put)
+    local page_copy, owns_bare = nil, false
+    if template then
+        -- a notebook page composed on its own (page thumbnails): paper colour or the
+        -- PDF page, then the ruling -- the same paper the live page shows
+        local pic = bg_bb
+        paintPaper(dst, W, H, template, pic)
+        local has_soft, has_hard = false, false
+        for _, op in ipairs(ops) do
+            if op.kind == "erase" and not op.hidden then
+                if op.ebg then has_hard = true else has_soft = true end
+            end
+        end
+        local function pageCopy()
+            if not page_copy then
+                page_copy = Blitbuffer.new(W, H, dst:getType())
+                page_copy:blitFrom(dst, 0, 0, 0, 0, W, H)
+            end
+            return page_copy
+        end
+        -- erasing reveals that paper (ruling included), never plain white; a hard
+        -- erase reveals the bare paper, without the picture/PDF page
+        if has_soft and not reveal_pic then bg_bb = pageCopy() end
+        if has_hard and not bare then
+            if pic then
+                bare = Blitbuffer.new(W, H, dst:getType())
+                paintPaper(bare, W, H, template, nil)
+                owns_bare = true
+            else
+                bare = pageCopy()
+            end
+        end
+    else
+        dst:paintRect(0, 0, W, H, WHITE)
+        if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
     end
     -- reveal_pic = the plain page with placed images stamped on it, so a soft erase
     -- keeps the images (like it keeps the background). Built here from these ops
@@ -3654,6 +3842,8 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                     put = bgSpanWriter(dst, reveal_text, W, H, nil)  -- reveal page + text (+ images)
                 elseif op.kind == "erase" and not op.ebg and (reveal_pic or bg_bb) then
                     put = bgSpanWriter(dst, reveal_pic or bg_bb, W, H, nil)  -- reveal page (+ images)
+                elseif op.kind == "erase" and op.ebg and bare then
+                    put = bgSpanWriter(dst, bare, W, H, nil)  -- notebook: bare paper, ruling kept
                 else
                     put = spanWriter(dst, W, H, self:opColor(op), nil)
                 end
@@ -3668,6 +3858,8 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     end
     if owns_rt then reveal_text:free() end
     if owns_rp then reveal_pic:free() end
+    if page_copy then page_copy:free() end
+    if owns_bare then bare:free() end
 end
 
 -- The buffer the eraser reveals under the ink: in a notebook that is the paper
@@ -3742,6 +3934,29 @@ function InkAwayView:buildRevealPic(base_bb)
     end
 end
 
+-- What a "hard" erase (Erase pictures on) reveals in a notebook: the bare paper,
+-- colour and ruling, without the picture or PDF page. The ruling belongs to the
+-- paper, so no eraser ever removes it. Without a picture that is just the paper
+-- buffer; with one, a second buffer is built on first use.
+function InkAwayView:barePaperBB()
+    if not (self.notebook and self.canvas_bb) then return nil end
+    if not self.bg_bb then
+        if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
+        return self._paper_bb
+    end
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local bp = self._bare_paper_bb
+    if bp and (bp:getWidth() ~= W or bp:getHeight() ~= H or self._bare_paper_for ~= self.notebook.template) then
+        bp:free(); bp = nil
+    end
+    if not bp then
+        bp = Blitbuffer.new(W, H, self.canvas_bb:getType())
+        paintPaper(bp, W, H, self.notebook.template, nil)
+        self._bare_paper_bb, self._bare_paper_for = bp, self.notebook.template
+    end
+    return bp
+end
+
 -- Build (once per compose) the notebook paper: paper colour or PDF page, then the
 -- ruling on top. Kept as its own buffer so the eraser can restore it.
 function InkAwayView:buildNotebookPaper()
@@ -3756,20 +3971,9 @@ function InkAwayView:buildNotebookPaper()
     if not self._paper_bb then
         self._paper_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
     end
-    local pb, tmpl = self._paper_bb, self.notebook.template
-    if self.bg_bb then
-        pb:blitFrom(self.bg_bb, 0, 0, 0, 0, W, H)
-    else
-        local col = WHITE
-        local paper = tmpl and tmpl.paper
-        if paper then col = Blitbuffer.ColorRGB32(paper[1], paper[2], paper[3], 0xFF) end
-        pb:paintRect(0, 0, W, H, col)
-    end
-    if tmpl and tmpl.style and tmpl.style ~= "blank" then
-        local lvl = strengthToLevel(tmpl.strength)
-        local put = spanWriter(pb, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
-        Template.render(tmpl.style, W, H, tmpl.size or 40, put)
-    end
+    paintPaper(self._paper_bb, W, H, self.notebook.template, self.bg_bb)
+    -- a template/paper change rebuilds the bare paper on next use
+    if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
 end
 
 -- Rebuild the 1:1 master bitmap from the committed ops. Cost is proportional to
@@ -3782,8 +3986,12 @@ function InkAwayView:composeCanvas()
         self:buildNotebookPaper()
         self:buildRevealPic(self._paper_bb)
         self:buildRevealText(self._reveal_pic_bb or self._paper_bb)   -- text reveal keeps images too
+        local bare
+        for _, op in ipairs(self.canvas.ops) do
+            if op.kind == "erase" and op.ebg and not op.hidden then bare = self:barePaperBB(); break end
+        end
         self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil,
-            self._reveal_text_bb, self._reveal_pic_bb, true)   -- reveal buffers already resolved
+            self._reveal_text_bb, self._reveal_pic_bb, true, bare)   -- reveal buffers already resolved
     else
         self:buildRevealPic(self.bg_bb)
         self:buildRevealText(self._reveal_pic_bb or self.bg_bb)
@@ -4047,6 +4255,17 @@ function InkAwayView:setupLiveWriters()
     self._lw_seg_c = self._lw_seg_c or { 0, 0, 0, 0 }
     self._lw_seg_a = self._lw_seg_a or { 0, 0, 0, 0 }
     local sym = self.symmetry
+    -- On a colour panel the live ink is shown with the fast black/white waveform
+    -- (the grey/colour one blocks on every sample there), which cannot show colour,
+    -- grey or a light tint: those would vanish or look wrong while drawing. So the
+    -- on-screen copy is drawn in black and the master keeps the real colour; the
+    -- true pixels are put back on lift and settle in one refresh (queueReconcile).
+    local area_color = color
+    self._live_preview = false
+    if self:colourPanel() and self.tool ~= "erase" and self._live_mode == "fast"
+            and not self:pureBlackPen() then
+        area_color, self._live_preview = PREVIEW_INK, true
+    end
     -- master (1:1) writer
     local v = self.view
     local cput = spanWriter(self.canvas_bb, v.canvas_w, v.canvas_h, color, self._lw_cacc)
@@ -4058,11 +4277,11 @@ function InkAwayView:setupLiveWriters()
     -- on-screen writer, accumulating the base bbox into the reused acc table; the
     -- mirror images are painted through a writer that does NOT grow acc, so the
     -- refresh stays a few small rects (one per image) rather than one giant box.
-    local baseput = spanWriter(self.area_bb, v.area_w, v.area_h, color, self._lw_acc)
+    local baseput = spanWriter(self.area_bb, v.area_w, v.area_h, area_color, self._lw_acc)
     local aput = baseput
     if sym and sym ~= "off" then
         local arefx, arefy = Symmetry.areaRefs(v)
-        local mirror = spanWriter(self.area_bb, v.area_w, v.area_h, color, nil)
+        local mirror = spanWriter(self.area_bb, v.area_w, v.area_h, area_color, nil)
         local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
         aput = function(x, y, len)
             baseput(x, y, len)
@@ -4082,12 +4301,12 @@ end
 -- along its path in the master and re-renders the affected area, so erasing
 -- takes away your ink but the picture underneath shows through (matching what a
 -- background-keeping export produces).
-function InkAwayView:stampEraseRestore(cx, cy, fresh)
+function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local r = self.eraser_width / 2
     local px, py = self.last_cx, self.last_cy
     local cacc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
-    local put = bgSpanWriter(self.canvas_bb, self:eraseRevealBB(), W, H, cacc)
+    local put = bgSpanWriter(self.canvas_bb, reveal or self:eraseRevealBB(), W, H, cacc)
     if self.symmetry ~= "off" then
         local rx, ry = Symmetry.canvasRefs(W, H)
         put = Symmetry.wrap(put, self.symmetry, rx, ry)
@@ -4122,13 +4341,18 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh)
     for i = 1, nr do
         local rr = rects[i]
         self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
-        self:dirtyAreaRect(self._live_mode or "fast", rr, 1)
+        self:liveDirty(self._live_mode or "fast", rr, 1)
     end
 end
 
 function InkAwayView:stampLive(cx, cy, fresh)
-    if self.tool == "erase" and not self.erase_bg and self:eraseRevealBB() then
-        return self:stampEraseRestore(cx, cy, fresh)
+    if self.tool == "erase" then
+        -- soft erase reveals the page; in a notebook even a hard erase reveals the
+        -- bare paper, so the ruling can never be rubbed out
+        local reveal
+        if self.erase_bg then reveal = self.notebook and self:barePaperBB() or nil
+        else reveal = self:eraseRevealBB() end
+        if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
     -- writers were built once in beginStroke (setupLiveWriters); rebuild them if
     -- missing or if a buffer was reallocated since (relayout/rotation), so we never
@@ -4179,7 +4403,7 @@ function InkAwayView:stampLive(cx, cy, fresh)
         end
         local rects, nr = self:symAreaRects(acc)
         for i = 1, nr do
-            self:dirtyAreaRect(self._live_mode or "fast", rects[i], 1)
+            self:liveDirty(self._live_mode or "fast", rects[i], 1)
         end
     end
 end
@@ -4198,6 +4422,15 @@ function InkAwayView:addScreenPoint(sx, sy, fresh)
     end
     self.canvas:addPoint(cx, cy)
     self:stampLive(cx, cy, fresh)
+end
+
+-- Is the pen solid, fully opaque, pure black (what the fast waveform shows as is)?
+function InkAwayView:pureBlackPen()
+    local style = self.pen_style
+    local solid = (style == nil) or (Raster.STYLES[style] and Raster.STYLES[style].solid)
+    local c = self.pen_color
+    return (self.pen_alpha or 255) >= 255 and solid and (c == nil
+        or (c[1] == 0 and c[2] == 0 and c[3] == 0)) and true or false
 end
 
 function InkAwayView:beginStroke(sx, sy)
@@ -4220,13 +4453,16 @@ function InkAwayView:beginStroke(sx, sy)
         -- to white and (on colour panels especially) does not settle back to the
         -- revealed shade. Use the grey-capable "ui" waveform whenever the reveal is
         -- non-white; keep the snappy "fast" erase only for the blank-white case.
-        self._live_mode = self:eraseRevealBB() and "ui" or "fast"
+        local reveal = self.erase_bg and (self.notebook and self:barePaperBB()) or self:eraseRevealBB()
+        self._live_mode = reveal and "ui" or "fast"
     else
-        local c = self.pen_color
-        local solid = (style == nil) or (Raster.STYLES[style] and Raster.STYLES[style].solid)
-        self._live_mode = (self.pen_alpha >= 255 and solid and c
-            and c[1] == 0 and c[2] == 0 and c[3] == 0) and "fast" or "ui"
+        -- On a colour panel every pen draws live with "fast" (a black preview for
+        -- anything that is not pure black, see setupLiveWriters): the grey/colour
+        -- waveform there blocks on each refresh.
+        self._live_mode = (self:pureBlackPen() or self:colourPanel()) and "fast" or "ui"
     end
+    -- a new stroke pushes back the pending colour settle (see queueReconcile)
+    if self._reconcile then UIManager:unschedule(self._reconcile_cb) end
     self.canvas:startStroke(is_erase and "erase" or "ink",
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
@@ -4408,11 +4644,36 @@ function InkAwayView:finalizeStroke()
         return
     end
     self.dirty = true
+    local sr = self._stroke_rect
+    if self:colourPanel() then
+        -- Show the last samples now, put the real colours back where a black
+        -- preview was drawn, and let one grey/colour refresh settle the stroke once
+        -- the pen rests -- no blocking refresh (or flash) on every lift.
+        self:liveFlush()
+        if sr then
+            local rects, nr = self:symAreaRects(sr)
+            for i = 1, nr do
+                local rr = rects[i]
+                if self._live_preview then self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1) end
+                self:queueReconcile(rr, 2)
+            end
+        else
+            local v = self.view
+            if self._live_preview then self:renderView() end
+            self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0)
+        end
+        self._live_preview = false
+        self._stroke_rect = nil
+        if self.hwr_enabled and self.tool == "pen" and committed and committed.kind == "ink" then
+            self:hwrCapture(committed)
+        end
+        self:afterCommit()
+        return
+    end
     -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
     -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
     -- (which fully repaints black/white) to clear them.
     local mode = was_erase and "flashui" or "ui"
-    local sr = self._stroke_rect
     if sr then
         -- refresh the base rect and each mirror rect separately, so an erase
         -- under symmetry flashes a few small areas rather than the whole screen
