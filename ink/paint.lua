@@ -114,6 +114,15 @@ local function bgSpanWriter(bb, bg, w, h, acc)
     end
 end
 
+-- A rectangle outline `t` pixels thick (1 by default), inside x, y, w, h.
+local function outline(bb, x, y, w, h, color, t)
+    t = t or 1
+    bb:paintRect(x, y, w, t, color)
+    bb:paintRect(x, y + h - t, w, t, color)
+    bb:paintRect(x, y, t, h, color)
+    bb:paintRect(x + w - t, y, t, h, color)
+end
+
 -- Paint a notebook page's paper into `dst`: the background picture / PDF page if
 -- there is one (else the paper colour), then the ruling on top.
 local function paintPaper(dst, W, H, tmpl, bg)
@@ -139,6 +148,7 @@ Paint.displayColor = displayColor
 Paint.uiFill = uiFill
 Paint.isChromatic = isChromatic
 Paint.fillRect = fillRect
+Paint.outline = outline
 Paint.spanWriter = spanWriter
 Paint.bgSpanWriter = bgSpanWriter
 Paint.paintPaper = paintPaper

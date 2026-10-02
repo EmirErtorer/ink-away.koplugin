@@ -247,25 +247,7 @@ function InkAwayView:init()
     -- Throttled refresh while dragging a lasso selection, so pan events never flood
     -- the panel.
     self._sel_refresh_tick = function() self:selRefreshNow() end
-    -- Bring the floating controls back once drawing near them has stopped.
-    self._show_zoom_fab = function()
-        if self._zoom_hidden then
-            self._zoom_hidden = false
-            self:refreshFabRegion(self:fabRect("zoom"))
-        end
-    end
-    self._show_bar_toggle = function()
-        if self._bar_toggle_hidden then
-            self._bar_toggle_hidden = false
-            self:refreshFabRegion(self:fabRect("bar"))
-        end
-    end
-    self._show_nbbar_toggle = function()
-        if self._nbbar_toggle_hidden then
-            self._nbbar_toggle_hidden = false
-            self:refreshFabRegion(self:fabRect("nbbar"))
-        end
-    end
+    self:initFabs()
     -- The exporter has no fonts or image decoder; it renders text and pictures
     -- through these.
     Export.text_raster = function(op) return self:exportTextRaster(op) end
@@ -403,9 +385,7 @@ function InkAwayView:onCloseWidget()
         self._clip_widget = nil
     end
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
-    if self._show_zoom_fab then UIManager:unschedule(self._show_zoom_fab) end
-    if self._show_bar_toggle then UIManager:unschedule(self._show_bar_toggle) end
-    if self._show_nbbar_toggle then UIManager:unschedule(self._show_nbbar_toggle) end
+    self:cancelFabs()
     if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
     self._pen_capture = nil
     self:hwrCancel()   -- drop any pending handwriting recognition

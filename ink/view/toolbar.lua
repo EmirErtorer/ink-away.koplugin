@@ -283,6 +283,34 @@ end
 -- toolbar hides and the paper grows.
 ------------------------------------------------------------------------------
 
+-- The floating controls: the fabRect name, the flag set while one has melted
+-- away, and the callback (made by initFabs) that brings it back.
+local FABS = {
+    { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
+    { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
+    { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
+}
+
+-- Make the callbacks that bring each control back once drawing near it has
+-- stopped (bound once, so they can be unscheduled).
+function InkAwayView:initFabs()
+    for _, f in ipairs(FABS) do
+        self[f.show] = function()
+            if self[f.hidden] then
+                self[f.hidden] = false
+                self:refreshFabRegion(self:fabRect(f.rect))
+            end
+        end
+    end
+end
+
+-- Cancel any control's pending return (on close).
+function InkAwayView:cancelFabs()
+    for _, f in ipairs(FABS) do
+        if self[f.show] then UIManager:unschedule(self[f.show]) end
+    end
+end
+
 -- Screen rect of a named control ("zoom" pill or "bar" toggle), or nil.
 function InkAwayView:fabRect(which)
     if not self.view then return nil end
@@ -358,33 +386,20 @@ end
 -- Called from the drawing handlers: if the active point comes near a control,
 -- fade it out and keep pushing back its return until drawing there stops.
 function InkAwayView:fabProximity(px, py)
-    local function near(r) local m = r.w
-        return px >= r.x - m and px <= r.x + r.w + m and py >= r.y - m and py <= r.y + r.h + m end
-    local rz = self:fabRect("zoom")
-    if rz and not self._zoom_hidden and near(rz) then
-        self._zoom_hidden = true; self:refreshFabRegion(rz)
-    end
-    if rz and self._zoom_hidden and near(rz) then
-        UIManager:unschedule(self._show_zoom_fab); UIManager:scheduleIn(0.6, self._show_zoom_fab)
-    end
-    local rb = self:fabRect("bar")
-    if rb and not self._bar_toggle_hidden and near(rb) then
-        self._bar_toggle_hidden = true; self:refreshFabRegion(rb)
-    end
-    if rb and self._bar_toggle_hidden and near(rb) then
-        UIManager:unschedule(self._show_bar_toggle); UIManager:scheduleIn(0.6, self._show_bar_toggle)
-    end
-    local rn = self.notebook and self:fabRect("nbbar")
-    if rn and not self._nbbar_toggle_hidden and near(rn) then
-        self._nbbar_toggle_hidden = true; self:refreshFabRegion(rn)
-    end
-    if rn and self._nbbar_toggle_hidden and near(rn) then
-        UIManager:unschedule(self._show_nbbar_toggle); UIManager:scheduleIn(0.6, self._show_nbbar_toggle)
+    for _, f in ipairs(FABS) do
+        local r = self:fabRect(f.rect)   -- nil for the notebook bar outside a notebook
+        local m = r and r.w              -- "near" = within one control width
+        if r and px >= r.x - m and px <= r.x + r.w + m and py >= r.y - m and py <= r.y + r.h + m then
+            if not self[f.hidden] then self[f.hidden] = true; self:refreshFabRegion(r) end
+            UIManager:unschedule(self[f.show]); UIManager:scheduleIn(0.6, self[f.show])
+        end
     end
 end
 
--- A small chevron centred at (cx, cy): up = -1 (collapse), down = 1 (expand).
-local function fabChevron(bb, cx, cy, half, dir, tk)
+-- A small chevron centred in rect r (drawn at offset ox, oy): up = -1, down = 1.
+local function fabChevron(bb, r, ox, oy, dir)
+    local cx, cy = ox + r.x + math.floor(r.w / 2), oy + r.y + math.floor(r.h / 2)
+    local half, tk = math.floor(r.w * 0.28), math.max(2, Screen:scaleBySize(2))
     local function seg(x0, y0, x1, y1)
         local dx, dy = math.abs(x1 - x0), -math.abs(y1 - y0)
         local sx, sy = x0 < x1 and 1 or -1, y0 < y1 and 1 or -1
@@ -451,23 +466,13 @@ function InkAwayView:drawFabs(bb, ox, oy)
     -- Hidden while a text box is being edited, whose Done button sits in that corner.
     if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
-        if r then
-            local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
-            local dir = self._toolbar_hidden and 1 or -1   -- down = expand, up = collapse
-            fabChevron(bb, x + math.floor(w / 2), y + math.floor(h / 2),
-                math.floor(w * 0.28), dir, math.max(2, Screen:scaleBySize(2)))
-        end
+        if r then fabChevron(bb, r, ox, oy, self._toolbar_hidden and 1 or -1) end   -- down = expand, up = collapse
     end
     -- notebook bottom-bar toggle: the same bare chevron at the bar's top-left. Bar
     -- shown -> down (collapse it away); collapsed -> up (bring it back).
     if self.notebook and not self._nbbar_toggle_hidden then
         local r = self:fabRect("nbbar")
-        if r then
-            local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
-            local dir = self._nb_collapsed and -1 or 1     -- up = expand, down = collapse
-            fabChevron(bb, x + math.floor(w / 2), y + math.floor(h / 2),
-                math.floor(w * 0.28), dir, math.max(2, Screen:scaleBySize(2)))
-        end
+        if r then fabChevron(bb, r, ox, oy, self._nb_collapsed and -1 or 1) end   -- up = expand, down = collapse
     end
 end
 

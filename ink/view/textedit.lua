@@ -655,8 +655,8 @@ function InkAwayView:paintTextOverlay(bb, x, y)
             local lo = (ln.para > a.p or (ln.para == a.p and ln.o_end >= a.o)) and true or false
             local hi = (ln.para < b.p or (ln.para == b.p and ln.o_start <= b.o)) and true or false
             if lo and hi and ln.para >= a.p and ln.para <= b.p then
-                local xa = (ln.para == a.p) and math.max(ln.text_x, self:caretXHelper(ctx, ln, a)) or ln.text_x
-                local xb = (ln.para == b.p) and self:caretXHelper(ctx, ln, b) or (ln.text_x + self:lineContentW(ln))
+                local xa = (ln.para == a.p) and math.max(ln.text_x, Text.caretX(ln, a.o, ctx)) or ln.text_x
+                local xb = (ln.para == b.p) and Text.caretX(ln, b.o, ctx) or (ln.text_x + Text.lineContentWidth(ln))
                 if xb > xa then
                     bb:paintRect(math.floor(ox + xa), math.floor(oy + ln.top),
                         math.ceil(xb - xa), math.ceil(ln.height), Blitbuffer.COLOR_LIGHT_GRAY)
@@ -668,8 +668,7 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC })
     -- the frame
     local fx, fy, fw, fh = math.floor(ox), math.floor(oy), math.ceil(r.w), math.ceil(r.h)
-    bb:paintRect(fx, fy, fw, 1, BLACKC); bb:paintRect(fx, fy + fh - 1, fw, 1, BLACKC)
-    bb:paintRect(fx, fy, 1, fh, BLACKC); bb:paintRect(fx + fw - 1, fy, 1, fh, BLACKC)
+    Paint.outline(bb, fx, fy, fw, fh, BLACKC)
     -- handles: move (top-left), resize (bottom-right)
     bb:paintRect(fx - 6, fy - 6, 12, 12, BLACKC)
     bb:paintRect(fx + fw - 6, fy + fh - 6, 12, 12, BLACKC)
@@ -690,25 +689,6 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     end
     drawBtn(btns.format, m.fw)
     drawBtn(btns.done, m.dw)
-end
-
--- helpers used by the selection highlight above (ctx passed in to avoid
--- rebuilding the measuring context once per selected line)
-function InkAwayView:caretXHelper(ctx, ln, cur)
-    local x = ln.text_x
-    for _, sg in ipairs(ln.segs) do
-        local segEnd = sg.o0 + Text.ulen(sg.t)
-        if cur.o >= segEnd then x = sg.x + sg.w
-        elseif cur.o <= sg.o0 then return x
-        else return sg.x + ctx.measure(Text.usub(sg.t, 0, cur.o - sg.o0), sg.style) end
-    end
-    return x
-end
-
-function InkAwayView:lineContentW(ln)
-    local w = 0
-    for _, sg in ipairs(ln.segs) do w = w + sg.w end
-    return w
 end
 
 return InkAwayView

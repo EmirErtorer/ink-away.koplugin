@@ -18,6 +18,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 local Storage = require("ink/storage")
 
 local Screen = Device.screen
@@ -381,6 +382,13 @@ end
 -- (e.g. the menu's tap-outside close and a Done both route here).
 function InkAwayView:finishImageEdit()
     if not (self.active_image or self.image_rotating or self._image_menu) then return end
+    self:clearImageSelection()
+    self:recompose()
+end
+
+-- Drop the image selection: close its menu, release the gesture grab and forget
+-- any drag or rotation, without repainting.
+function InkAwayView:clearImageSelection()
     local menu = self._image_menu; self._image_menu = nil
     if menu then pcall(function() UIManager:close(menu) end) end
     self:setSelectionActive(false)
@@ -388,19 +396,12 @@ function InkAwayView:finishImageEdit()
     self._img_drag = nil
     self.image_rotating = nil
     self:freeImageDisplay()
-    self:recompose()
 end
 
 function InkAwayView:deleteActiveImage()
     local sel = self.active_image
     if not sel then return end
-    local menu = self._image_menu; self._image_menu = nil
-    if menu then pcall(function() UIManager:close(menu) end) end
-    self:setSelectionActive(false)
-    self.active_image = nil
-    self._img_drag = nil
-    self.image_rotating = nil
-    self:freeImageDisplay()
+    self:clearImageSelection()
     self.canvas:pushHistory()
     self.canvas:removeOp(sel.idx)
     self.dirty = true
@@ -411,24 +412,15 @@ end
 -- state stays in the undo snapshot (older snapshots keep the original op). Call
 -- once at the start of a change; returns the editable clone.
 function InkAwayView:beginImageEdit()
-    self.canvas:pushHistory()
     local sel = self.active_image
-    local clone = self.canvas:cloneOp(sel.op)
-    self.canvas:replaceOp(sel.idx, clone)
-    sel.op = clone
-    self.dirty = true
-    return clone
+    sel.op = self:editOp(sel.idx, sel.op)
+    return sel.op
 end
 
 -- Apply one discrete edit (rotate / flip / etc.) to the selected image through
 -- copy-on-write, then recompose. Undo/redo restore the previous op.
 function InkAwayView:applyImageEdit(sel, mutate)
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(sel.op)
-    mutate(clone)
-    self.canvas:replaceOp(sel.idx, clone)
-    sel.op = clone
-    self.dirty = true
+    sel.op = self:editOp(sel.idx, sel.op, mutate)
     self:freeImageDisplay()   -- size / orientation may have changed
     self:recompose()
 end
@@ -451,14 +443,7 @@ end
 -- Move the image to the top of the stack, so later strokes/images no longer cover
 -- it. Reordering the array is safe against snapshots (the op itself is untouched).
 function InkAwayView:imageToFront(sel)
-    local ops = self.canvas.ops
-    if sel.idx >= #ops then self:openImageMenu(sel); return end
-    self.canvas:pushHistory()
-    local op = table.remove(ops, sel.idx)
-    ops[#ops + 1] = op
-    sel.idx = #ops
-    self.dirty = true
-    self:recompose()
+    self:opToFront(sel)
     self:openImageMenu(sel)
 end
 
@@ -466,15 +451,9 @@ end
 -- shape Duplicate). The pixels are shared by path -- only the box is copied -- so a
 -- duplicate costs no extra image memory.
 function InkAwayView:duplicateImage(sel)
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(sel.op)
-    local d = self.grid_on and self.grid_size or 14
-    clone.x = clone.x + d; clone.y = clone.y + d
-    self.canvas.ops[#self.canvas.ops + 1] = clone
-    self.active_image = { op = clone, idx = #self.canvas.ops }
+    self.active_image = self:duplicateOp(sel)
     self._img_drag = nil
     self:freeImageDisplay()
-    self.dirty = true
     self:recompose()
     self:openImageMenu(self.active_image)
 end
@@ -514,17 +493,14 @@ function InkAwayView:removeImageBackground(sel)
         return
     end
     -- copy-on-write: repoint at the cut-out, remember the original for a re-run
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(op)
-    clone.src_path = src_path
-    clone.path = path
-    clone.natw, clone.nath = w, h
-    self.canvas:replaceOp(sel.idx, clone)
-    sel.op = clone
+    sel.op = self:editOp(sel.idx, op, function(o)
+        o.src_path = src_path
+        o.path = path
+        o.natw, o.nath = w, h
+    end)
     self.active_image = sel
     self._img_drag = nil
     self:freeImageCache()   -- the path changed: drop the old decode, decode the cut-out
-    self.dirty = true
     self:recompose()
     self:openImageMenu(sel)
 end
@@ -690,6 +666,15 @@ function InkAwayView:imageRelease()
     return true
 end
 
+-- Alpha-blit `src` with its top-left at (ox, oy), clipped to the box (x0, y0)-(x1, y1).
+local function blitClipped(bb, src, ox, oy, x0, y0, x1, y1)
+    local dx0, dy0 = math.max(ox, x0), math.max(oy, y0)
+    local dx1, dy1 = math.min(ox + src:getWidth(), x1), math.min(oy + src:getHeight(), y1)
+    if dx1 > dx0 and dy1 > dy0 then
+        bb:alphablitFrom(src, dx0, dy0, dx0 - ox, dy0 - oy, dx1 - dx0, dy1 - dy0)
+    end
+end
+
 -- Draw the selected image as a live overlay (it is skipped from the master while
 -- selected), at its true on-screen size, plus its frame and corner handles. While
 -- free-rotating, a rotated preview follows the finger instead.
@@ -711,14 +696,8 @@ function InkAwayView:paintImageOverlay(bb, x, y)
                 if su ~= scaled and su.free then su:free() end
                 if prev then
                     local ccx, ccy = InkGeom.toScreen(v, op.x + op.w / 2, op.y + op.h / 2)
-                    local pw, ph = prev:getWidth(), prev:getHeight()
-                    local ox = math.floor(ccx + x - pw / 2)
-                    local oy = math.floor(ccy + y - ph / 2)
-                    local dx0 = math.max(ox, ax0); local dy0 = math.max(oy, ay0)
-                    local dx1 = math.min(ox + pw, ax1); local dy1 = math.min(oy + ph, ay1)
-                    if dx1 > dx0 and dy1 > dy0 then
-                        bb:alphablitFrom(prev, dx0, dy0, dx0 - ox, dy0 - oy, dx1 - dx0, dy1 - dy0)
-                    end
+                    blitClipped(bb, prev, math.floor(ccx + x - prev:getWidth() / 2),
+                        math.floor(ccy + y - prev:getHeight() / 2), ax0, ay0, ax1, ay1)
                     if prev.free then prev:free() end
                 end
             end)
@@ -733,22 +712,12 @@ function InkAwayView:paintImageOverlay(bb, x, y)
     -- frame and handles over it -- picking or dropping never nudges it.
     if self._img_drag and self._img_drag.began then
         local scaled = self:imageDisplayScaled(op)
-        if scaled then
-            local sw, sh = scaled:getWidth(), scaled:getHeight()
-            local dx0 = math.max(ox, ax0); local dy0 = math.max(oy, ay0)
-            local dx1 = math.min(ox + sw, ax1); local dy1 = math.min(oy + sh, ay1)
-            if dx1 > dx0 and dy1 > dy0 then
-                pcall(function() bb:alphablitFrom(scaled, dx0, dy0, dx0 - ox, dy0 - oy, dx1 - dx0, dy1 - dy0) end)
-            end
-        end
+        if scaled then pcall(blitClipped, bb, scaled, ox, oy, ax0, ay0, ax1, ay1) end
     end
     local fx, fy = math.floor(math.max(ox, ax0)), math.floor(math.max(oy, ay0))
     local fw = math.floor(math.min(ox + r.w, ax1)) - fx
     local fh = math.floor(math.min(oy + r.h, ay1)) - fy
-    if fw > 0 and fh > 0 then
-        bb:paintRect(fx, fy, fw, 1, BLACKC); bb:paintRect(fx, fy + fh - 1, fw, 1, BLACKC)
-        bb:paintRect(fx, fy, 1, fh, BLACKC); bb:paintRect(fx + fw - 1, fy, 1, fh, BLACKC)
-    end
+    if fw > 0 and fh > 0 then Paint.outline(bb, fx, fy, fw, fh, BLACKC) end
     -- corner handles (clamped into the area so they never draw over the toolbar)
     local hs = 12
     local function handle(hx, hy)

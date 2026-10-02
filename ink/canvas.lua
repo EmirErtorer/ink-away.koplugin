@@ -320,6 +320,7 @@ end
 local function translateOp(op, dx, dy)
     if op.pts then for i = 1, #op.pts, 2 do op.pts[i] = op.pts[i] + dx; op.pts[i + 1] = op.pts[i + 1] + dy end end
     if op.runs then for i = 1, #op.runs, 3 do op.runs[i] = op.runs[i] + dx; op.runs[i + 1] = op.runs[i + 1] + dy end end
+    if op.x then op.x, op.y = op.x + dx, op.y + dy end   -- an image or a text box
 end
 
 Canvas.opInPoly = opInPoly

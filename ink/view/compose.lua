@@ -5,6 +5,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
@@ -28,25 +29,18 @@ end
 -- background picture, notebook ruling, then the ink ops. Shared by the live
 -- master bitmap and by the page-overview thumbnails, so a thumbnail always
 -- matches exactly what the page looks like.
--- `reveal_resolved` = the caller already ran the reveal-buffer detection (via
--- buildRevealPic/buildRevealText) and the reveal_pic/reveal_text it passed are
--- authoritative (nil means "not needed"). composeCanvas sets it so composeInto
--- skips two redundant full-ops scans; the thumbnail path leaves it off so
--- composeInto detects and builds its own reveal buffers.
+-- `reveal_resolved` means the caller already built the reveal buffers (see
+-- composeCanvas), so the reveal_pic/reveal_text it passed are final (nil = not
+-- needed); without it, composeInto builds its own (the page thumbnails do this).
 function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare)
     local W, H = self.view.canvas_w, self.view.canvas_h
+    local found = Canvas.scanOps(ops)
     local page_copy, owns_bare = nil, false
     if template then
         -- a notebook page composed on its own (page thumbnails): paper colour or the
         -- PDF page, then the ruling -- the same paper the live page shows
         local pic = bg_bb
         paintPaper(dst, W, H, template, pic)
-        local has_soft, has_hard = false, false
-        for _, op in ipairs(ops) do
-            if op.kind == "erase" and not op.hidden then
-                if op.ebg then has_hard = true else has_soft = true end
-            end
-        end
         local function pageCopy()
             if not page_copy then
                 page_copy = Blitbuffer.new(W, H, dst:getType())
@@ -56,8 +50,8 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         end
         -- erasing reveals that paper (ruling included), never plain white; a hard
         -- erase reveals the bare paper, without the picture/PDF page
-        if has_soft and not reveal_pic then bg_bb = pageCopy() end
-        if has_hard and not bare then
+        if found.soft_erase and not reveal_pic then bg_bb = pageCopy() end
+        if found.hard_erase and not bare then
             if pic then
                 bare = Blitbuffer.new(W, H, dst:getType())
                 paintPaper(bare, W, H, template, nil)
@@ -75,22 +69,11 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     -- when the caller did not pass one (e.g. page thumbnails), so it is always
     -- correct for whatever is being composed. dst currently holds the plain base.
     local owns_rp = false
-    if not reveal_resolved and not reveal_pic then
-        local has_img, has_soft = false, false
-        for _, op in ipairs(ops) do
-            if not op.hidden then
-                if op.kind == "image" then has_img = true
-                elseif op.kind == "erase" and not op.ebg then has_soft = true end
-            end
-        end
-        if has_img and has_soft then
-            reveal_pic = Blitbuffer.new(W, H, dst:getType())
-            reveal_pic:blitFrom(dst, 0, 0, 0, 0, W, H)
-            for _, op in ipairs(ops) do
-                if not op.hidden and op.kind == "image" then self:blitImageInto(reveal_pic, op) end
-            end
-            owns_rp = true
-        end
+    if not reveal_resolved and not reveal_pic and found.image and found.soft_erase then
+        reveal_pic = Blitbuffer.new(W, H, dst:getType())
+        reveal_pic:blitFrom(dst, 0, 0, 0, 0, W, H)
+        self:stampOps(reveal_pic, ops, "image")
+        owns_rp = true
     end
     -- A text-protecting erase op (op.spare_text) reveals a copy of the page that
     -- INCLUDES the text (built once here if the caller didn't pass it), so it rubs
@@ -99,22 +82,11 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     -- setting is never retroactive. dst currently holds the plain base (paper /
     -- background / ruling), so a copy of it now is exactly the plain reveal.
     local owns_rt = false
-    if not reveal_resolved and not reveal_text then
-        local has_text, has_spare = false, false
-        for _, op in ipairs(ops) do
-            if not op.hidden then
-                if op.kind == "text" then has_text = true
-                elseif op.kind == "erase" and op.spare_text then has_spare = true end
-            end
-        end
-        if has_text and has_spare then
-            reveal_text = Blitbuffer.new(W, H, dst:getType())
-            reveal_text:blitFrom(reveal_pic or dst, 0, 0, 0, 0, W, H)   -- keep images under it too
-            for _, op in ipairs(ops) do
-                if not op.hidden and op.kind == "text" then self:stampTextInto(reveal_text, op) end
-            end
-            owns_rt = true
-        end
+    if not reveal_resolved and not reveal_text and found.text and found.spare_text then
+        reveal_text = Blitbuffer.new(W, H, dst:getType())
+        reveal_text:blitFrom(reveal_pic or dst, 0, 0, 0, 0, W, H)   -- keep images under it too
+        self:stampOps(reveal_text, ops, "text")
+        owns_rt = true
     end
     local refx, refy = Symmetry.canvasRefs(W, H)
     -- Only skip the selected image from the master while it is actively being
@@ -168,63 +140,31 @@ function InkAwayView:eraseRevealBB()
     return self.bg_bb
 end
 
--- Keep `_reveal_text_bb` (the plain page with the committed text stamped on top)
--- for the eraser to reveal when it must spare text -- for the live stroke and for
--- protecting erase ops. Built only when some erase spares text (or protection is
--- on, so the next stroke will) and text exists; freed otherwise.
-function InkAwayView:buildRevealText(base_bb)
-    if not self.canvas_bb then return end
-    local has_text, has_spare = false, false
-    for _, op in ipairs(self.canvas.ops) do
-        if not op.hidden then
-            if op.kind == "text" then has_text = true
-            elseif op.kind == "erase" and op.spare_text then has_spare = true end
+-- Draw the visible ops of one kind ("image" or "text") into `bb`.
+function InkAwayView:stampOps(bb, ops, kind)
+    for _, op in ipairs(ops) do
+        if not op.hidden and op.kind == kind then
+            if kind == "text" then self:stampTextInto(bb, op) else self:blitImageInto(bb, op) end
         end
-    end
-    if not (has_text and (self.text_erase_protect or has_spare)) then
-        if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
-        return
-    end
-    local W, H = self.view.canvas_w, self.view.canvas_h
-    if self._reveal_text_bb and (self._reveal_text_bb:getWidth() ~= W or self._reveal_text_bb:getHeight() ~= H) then
-        self._reveal_text_bb:free(); self._reveal_text_bb = nil
-    end
-    if not self._reveal_text_bb then
-        self._reveal_text_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
-    end
-    local rt = self._reveal_text_bb
-    if base_bb then rt:blitFrom(base_bb, 0, 0, 0, 0, W, H) else rt:paintRect(0, 0, W, H, WHITE) end
-    for _, op in ipairs(self.canvas.ops) do
-        if not op.hidden and op.kind == "text" then self:stampTextInto(rt, op) end
     end
 end
 
--- Keep `_reveal_pic_bb` = the plain page (background / paper) with the placed
--- images stamped on it, so a soft eraser (the "Erase pictures" toggle off) rubs
--- out ink but reveals the images beneath instead of whitening them. Built only
--- when an image exists; freed otherwise.
-function InkAwayView:buildRevealPic(base_bb)
-    if not self.canvas_bb then return end
-    local has_img = false
-    for _, op in ipairs(self.canvas.ops) do
-        if not op.hidden and op.kind == "image" then has_img = true; break end
-    end
-    if not has_img then
-        if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
+-- Keep self[field] as a canvas-sized copy of `base` (white when nil) with the
+-- visible ops of `kind` drawn on it, or free it when it is not `needed`.
+function InkAwayView:buildRevealBuffer(field, needed, base, kind)
+    local bb = self[field]
+    if not needed then
+        if bb then bb:free(); self[field] = nil end
         return
     end
     local W, H = self.view.canvas_w, self.view.canvas_h
-    if self._reveal_pic_bb and (self._reveal_pic_bb:getWidth() ~= W or self._reveal_pic_bb:getHeight() ~= H) then
-        self._reveal_pic_bb:free(); self._reveal_pic_bb = nil
+    if bb and (bb:getWidth() ~= W or bb:getHeight() ~= H) then bb:free(); bb = nil end
+    if not bb then
+        bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
+        self[field] = bb
     end
-    if not self._reveal_pic_bb then
-        self._reveal_pic_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
-    end
-    local rp = self._reveal_pic_bb
-    if base_bb then rp:blitFrom(base_bb, 0, 0, 0, 0, W, H) else rp:paintRect(0, 0, W, H, WHITE) end
-    for _, op in ipairs(self.canvas.ops) do
-        if not op.hidden and op.kind == "image" then self:blitImageInto(rp, op) end
-    end
+    if base then bb:blitFrom(base, 0, 0, 0, 0, W, H) else bb:paintRect(0, 0, W, H, WHITE) end
+    self:stampOps(bb, self.canvas.ops, kind)
 end
 
 -- What a "hard" erase (Erase pictures on) reveals in a notebook: the bare paper,
@@ -273,24 +213,23 @@ end
 -- the ink drawn, not the zoom, and it only runs on open, undo, clear, or resize.
 function InkAwayView:composeCanvas()
     if not self.canvas_bb then return end
+    local found = Canvas.scanOps(self.canvas.ops)
+    local base, bare = self.bg_bb, nil
     if self.notebook then
         -- paper (with ruling) is the base AND the erase-reveal source, so ruling
         -- lives under the ink and the eraser restores it instead of whitening it
         self:buildNotebookPaper()
-        self:buildRevealPic(self._paper_bb)
-        self:buildRevealText(self._reveal_pic_bb or self._paper_bb)   -- text reveal keeps images too
-        local bare
-        for _, op in ipairs(self.canvas.ops) do
-            if op.kind == "erase" and op.ebg and not op.hidden then bare = self:barePaperBB(); break end
-        end
-        self:composeInto(self.canvas_bb, self.canvas.ops, self._paper_bb, nil,
-            self._reveal_text_bb, self._reveal_pic_bb, true, bare)   -- reveal buffers already resolved
-    else
-        self:buildRevealPic(self.bg_bb)
-        self:buildRevealText(self._reveal_pic_bb or self.bg_bb)
-        self:composeInto(self.canvas_bb, self.canvas.ops, self.bg_bb, nil,
-            self._reveal_text_bb, self._reveal_pic_bb, true)   -- reveal buffers already resolved
+        base = self._paper_bb
+        if found.hard_erase then bare = self:barePaperBB() end
     end
+    -- What the eraser reveals: _reveal_pic_bb is the page with the placed images,
+    -- so a soft erase keeps them; _reveal_text_bb adds the text, for an erase that
+    -- spares it (protection is on now, or was when an erase was made).
+    self:buildRevealBuffer("_reveal_pic_bb", found.image, base, "image")
+    self:buildRevealBuffer("_reveal_text_bb", found.text and (self.text_erase_protect or found.spare_text),
+        self._reveal_pic_bb or base, "text")   -- text reveal keeps images too
+    self:composeInto(self.canvas_bb, self.canvas.ops, base, nil,
+        self._reveal_text_bb, self._reveal_pic_bb, true, bare)   -- reveal buffers already resolved
     -- the whole master was rebuilt: resync the panel-order mirror on the next render
     self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
 end

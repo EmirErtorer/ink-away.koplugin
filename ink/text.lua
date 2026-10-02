@@ -564,6 +564,16 @@ local function lineOfCursor(layout, cur)
     return fallback or 1
 end
 
+-- Width of a laid-out line's text.
+local function lineContentWidth(line)
+    local w = 0
+    for _, sg in ipairs(line.segs) do w = w + sg.w end
+    return w
+end
+
+Text.caretX = caretXOnLine
+Text.lineContentWidth = lineContentWidth
+
 -- Caret geometry {x, y, h} in op-local pixels for the cursor.
 function Text.caret(op, layout, cur, ctx)
     local i = lineOfCursor(layout, cur)

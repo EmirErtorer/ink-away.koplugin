@@ -45,6 +45,13 @@ local function screenShapeOp(self, shape, fill, x0, y0, x1, y1, cx, cy)
     }
 end
 
+-- Show the curve bending towards its control point.
+local function previewCurve(self)
+    local p0, p1, c = self.curve_p0, self.curve_p1, self.curve_ctrl
+    self.shape_preview = screenShapeOp(self, "curve", false, p0.x, p0.y, p1.x, p1.y, c.x, c.y)
+    self:refreshPreview()
+end
+
 -- Padded screen rect touched by a preview op.
 function InkAwayView:previewRect(op)
     local x0, y0, x1, y1 = Shapes.bounds(op)
@@ -89,10 +96,7 @@ end
 function InkAwayView:shapeTouch(pos)
     if self.curve_stage == "bend" then
         self.curve_ctrl = { x = pos.x, y = pos.y }
-        self.shape_preview = screenShapeOp(self, "curve", false,
-            self.curve_p0.x, self.curve_p0.y, self.curve_p1.x, self.curve_p1.y,
-            self.curve_ctrl.x, self.curve_ctrl.y)
-        self:refreshPreview()
+        previewCurve(self)
         return true
     end
     -- If a previous shape never got its release (a dropped lift event), place it
@@ -118,10 +122,7 @@ function InkAwayView:shapeMove(pos)
         local c = self.curve_ctrl
         if c and c.x == pos.x and c.y == pos.y then return true end   -- no change, skip
         self.curve_ctrl = { x = pos.x, y = pos.y }
-        self.shape_preview = screenShapeOp(self, "curve", false,
-            self.curve_p0.x, self.curve_p0.y, self.curve_p1.x, self.curve_p1.y,
-            self.curve_ctrl.x, self.curve_ctrl.y)
-        self:refreshPreview()
+        previewCurve(self)
         return true
     end
     if not self.shape_drag then return false end
@@ -291,12 +292,10 @@ function InkAwayView:doFill(pos)
     -- single Undo right after lifts just the fill and restores the empty shape.
     local shp = self:shapeUnderPoint(cx, cy)
     if shp then
-        self.canvas:pushHistory()
-        local clone = self.canvas:cloneOp(shp.op)
-        clone.fill_color = { self.fill_color[1], self.fill_color[2], self.fill_color[3] }
-        clone.fill_alpha = self.fill_alpha
-        self.canvas:replaceOp(shp.idx, clone)
-        self.dirty = true
+        self:editOp(shp.idx, shp.op, function(o)
+            o.fill_color = { self.fill_color[1], self.fill_color[2], self.fill_color[3] }
+            o.fill_alpha = self.fill_alpha
+        end)
         self:recompose()
         self:afterCommit()
         return
@@ -317,6 +316,43 @@ end
 -- Editing a placed shape: hold one to pick it, then rotate / recolour / resize
 -- / delete it from a small menu anchored beside it.
 ------------------------------------------------------------------------------
+
+-- Edit the op at `idx` as one undo step: it is copied, mutate(copy) changes the
+-- copy, and the copy takes its place, so history snapshots keep the original.
+-- Returns the copy.
+function InkAwayView:editOp(idx, op, mutate)
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(op)
+    if mutate then mutate(clone) end
+    self.canvas:replaceOp(idx, clone)
+    self.dirty = true
+    return clone
+end
+
+-- Move the op in `sel` to the top of the stack, so later marks no longer cover
+-- it. Reordering the list is safe for history snapshots (the op is untouched).
+function InkAwayView:opToFront(sel)
+    local ops = self.canvas.ops
+    if sel.idx >= #ops then return end
+    self.canvas:pushHistory()
+    local op = table.remove(ops, sel.idx)
+    ops[#ops + 1] = op
+    sel.idx = #ops
+    self.dirty = true
+    self:recompose()
+end
+
+-- Add a copy of the op in `sel`, offset a little down and right (a grid step
+-- when the grid is on). Returns the selection for the copy.
+function InkAwayView:duplicateOp(sel)
+    self.canvas:pushHistory()
+    local clone = self.canvas:cloneOp(sel.op)
+    local d = self.grid_on and self.grid_size or 14
+    translateOp(clone, d, d)
+    self.canvas.ops[#self.canvas.ops + 1] = clone
+    self.dirty = true
+    return { op = clone, idx = #self.canvas.ops }
+end
 
 -- Find the top-most shape op under a screen point. Returns {op, idx} or nil.
 function InkAwayView:hitTestShape(sx, sy)
@@ -444,14 +480,9 @@ function InkAwayView:shapeMovePan(pos)
         -- master ONCE. From here the drag is a cheap screen-space preview (a single
         -- Shapes.render into the changed rect), so recomposing every ops in the
         -- canvas per frame -- the old, frozen path -- never happens.
-        self.canvas:pushHistory()
-        local clone = self.canvas:cloneOp(sel.op)
-        self.canvas:replaceOp(sel.idx, clone)
-        sel.op = clone
-        clone.hidden = true
+        sel.op = self:editOp(sel.idx, sel.op, function(o) o.hidden = true end)
         d.began = true
         d.lastx, d.lasty = d.sx, d.sy
-        self.dirty = true
         self:composeCanvas(); self:renderView()   -- once: the master, minus the shape
         self._preview_rect = nil
     end
@@ -484,13 +515,9 @@ end
 
 -- Apply an edit to the selected op through copy-on-write, so undo/redo work.
 function InkAwayView:applyEdit(sel, mutate)
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(sel.op)
-    mutate(clone)
-    self.canvas:replaceOp(sel.idx, clone)
+    local clone = self:editOp(sel.idx, sel.op, mutate)
     sel.op = clone
     if self.selected then self.selected.op = clone end
-    self.dirty = true
     self:recompose()
 end
 
@@ -507,13 +534,7 @@ end
 
 -- Duplicate the selected shape, offset a little, and select the copy.
 function InkAwayView:duplicateSelected(sel)
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(sel.op)
-    local d = self.grid_on and self.grid_size or 14
-    for i = 1, #clone.pts, 2 do clone.pts[i] = clone.pts[i] + d; clone.pts[i + 1] = clone.pts[i + 1] + d end
-    self.canvas.ops[#self.canvas.ops + 1] = clone
-    self.selected = { op = clone, idx = #self.canvas.ops }
-    self.dirty = true
+    self.selected = self:duplicateOp(sel)
     self:recompose()
     self:openShapeMenu(self.selected)
 end
@@ -539,14 +560,7 @@ end
 -- Move the selected shape to the top of the stack, so later marks no longer cover
 -- it (mirrors the image To front). Reordering the array is snapshot-safe.
 function InkAwayView:shapeToFront(sel)
-    local ops = self.canvas.ops
-    if sel.idx >= #ops then self:openShapeMenu(sel); return end
-    self.canvas:pushHistory()
-    local op = table.remove(ops, sel.idx)
-    ops[#ops + 1] = op
-    sel.idx = #ops
-    self.dirty = true
-    self:recompose()
+    self:opToFront(sel)
     self:openShapeMenu(sel)
 end
 
@@ -612,12 +626,7 @@ end
 
 function InkAwayView:rotateCentreScreen(op)
     if op.shape == "poly" then
-        local p = op.pts
-        local minx, miny, maxx, maxy = p[1], p[2], p[1], p[2]
-        for i = 1, #p, 2 do
-            if p[i] < minx then minx = p[i] elseif p[i] > maxx then maxx = p[i] end
-            if p[i + 1] < miny then miny = p[i + 1] elseif p[i + 1] > maxy then maxy = p[i + 1] end
-        end
+        local minx, miny, maxx, maxy = InkGeom.bounds(op.pts)
         return InkGeom.toScreen(self.view, (minx + maxx) / 2, (miny + maxy) / 2)
     end
     local x0, y0, x1, y1 = op.pts[1], op.pts[2], op.pts[3], op.pts[4]
@@ -651,12 +660,8 @@ function InkAwayView:rotateEnd()
     self._preview_rect = nil
     if math.abs((r.cur or r.base) - r.base) > 1e-4 then
         -- commit the new angle through copy-on-write so it can be undone
-        self.canvas:pushHistory()
-        local clone = self.canvas:cloneOp(r.op)
-        clone.angle = r.cur
-        self.canvas:replaceOp(r.idx, clone)
+        local clone = self:editOp(r.idx, r.op, function(o) o.angle = r.cur end)
         if self.selected then self.selected.op = clone end
-        self.dirty = true
     end
     self:recompose()
     return true
