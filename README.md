@@ -22,10 +22,10 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 
 - **Pen**: size, opacity, color (greys everywhere, full color + a wheel on color screens) and brush styles (you can make your own brushes too).
 - **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline): hold one in Pan mode to edit; plus a **paint bucket** for one-tap fills.
-- **Eraser** that removes ink (back to transparent) instead of painting white.
+- **Eraser** that removes ink (back to transparent) instead of painting white, or whole strokes at a time.
 - **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
 - **Lasso select**, four-way **symmetry**, and a **background image** to draw over.
-- **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable).
+- **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
 - **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF.
 - **Projects & autosave**, undo/redo, zoom & pan, and an optional grid.
 - And more!
