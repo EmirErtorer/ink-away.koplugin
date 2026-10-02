@@ -14,23 +14,26 @@ local Stylus = require("ink/stylus")
 
 local Screen = Device.screen
 
-local InkAwayView = {}
-
 -- After the pen lifts, keep ignoring finger touches this long: a resting palm
 -- usually lifts a fraction of a second after the pen, so this stops it landing a
 -- stray mark or tap in the gap.
 local PEN_LIFT_DEBOUNCE = 0.35
+
 -- Raw finger tracking (see installRawFinger): the tools drawn straight from touch
 -- frames, and how young/short a raw stroke may be for a second finger landing to
 -- CANCEL it (the first finger of a two-finger pan/pinch) rather than commit a dot.
 local RAW_TOOLS = { pen = true, erase = true }
 local RAW_HANDOFF_CANCEL_MS = 250
 local RAW_HANDOFF_CANCEL_PX = 24
+
 -- A raw lift followed by a new contact this soon (kernel event time) is the panel
 -- dropping the contact for a frame or two, so the stroke is bridged as before. A
 -- longer gap is a real lift between letters: commit, so quick handwriting is never
 -- joined up by straight connectors.
 local RAW_BRIDGE_MS = 40
+local timevMs = Stylus.timevMs
+
+local InkAwayView = {}
 
 ------------------------------------------------------------------------------
 -- Palm rejection: on a device with a pen, KOReader can hand us the raw stylus
@@ -496,8 +499,6 @@ end
 -- finger, dialogs) stays on the gesture path. Pen devices with palm rejection on
 -- keep their own stylus path.
 ------------------------------------------------------------------------------
-
-local timevMs = Stylus.timevMs
 
 function InkAwayView:installRawFinger()
     local gd = Device.input and Device.input.gesture_detector

@@ -17,6 +17,10 @@ local Screen = Device.screen
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 local function pxfmt(v) return v .. _(" px") end
 
+-- Friendly names for the notebook paper (ruling) styles.
+local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"),
+    margin = _("margin"), cornell = _("Cornell"), blank = _("blank") }
+
 local InkAwayView = {}
 
 function InkAwayView:openBackground()
@@ -44,10 +48,6 @@ function InkAwayView:openBackground()
     end
     self:showSheet("_bg_dialog", build)
 end
-
--- Friendly names for the notebook paper (ruling) styles.
-local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"),
-    margin = _("margin"), cornell = _("Cornell"), blank = _("blank") }
 
 -- A generic "pick one of a list" sub-sheet in the shapes-menu style: a vertical
 -- stack of full-width buttons, the current one filled black. `options` is a list

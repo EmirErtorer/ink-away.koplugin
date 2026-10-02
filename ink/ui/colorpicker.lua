@@ -6,9 +6,9 @@ centre) with a separate brightness slider and a live preview. Pick a spot on the
 wheel, set the brightness, and either use the colour once or save it so it joins
 your own swatch rows in the pen menu.
 
-Like the brush maker it paints itself and reads its own touches. Everything on
-the wheel and the swatch is drawn with setPixel, because KOReader's paintRect
-flattens a fill colour to grey; setPixel keeps the colour.
+Like the brush maker it paints itself and reads its own touches. The wheel is
+drawn pixel by pixel and the swatches with Paint.fillRect, because KOReader's
+paintRect flattens a fill colour to grey.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -21,6 +21,8 @@ local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local Device = require("device")
 local _ = require("gettext")
+local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -166,12 +168,9 @@ function ColorPicker:buttonRects()
            { x = x0 + (third + self.pad) * 2, y = y, w = w - (third + self.pad) * 2, h = self.btn_h }
 end
 
--- fill a rectangle with a colour (setPixel, so the colour is kept)
+-- Fill a rectangle with a colour (Paint.fillRect keeps it a colour).
 local function fillColor(bb, x, y, w, h, r, g, b)
-    local col = Blitbuffer.ColorRGB32(r, g, b, 0xFF)
-    for yy = y, y + h - 1 do
-        for xx = x, x + w - 1 do bb:setPixel(xx, yy, col) end
-    end
+    Paint.fillRect(bb, x, y, w, h, Blitbuffer.ColorRGB32(r, g, b, 0xFF), true)
 end
 
 function ColorPicker:paintTo(bb, x, y)
@@ -264,7 +263,7 @@ function ColorPicker:onCpTap(_, ges)
     if self:setFromWheel(p.x, p.y) then return true end
     if self:setFromSlider(p.x, p.y) then return true end
     local use, save, cancel = self:buttonRects()
-    local function hit(r) return p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
+    local function hit(r) return InkGeom.inRect(p.x, p.y, r) end
     if hit(use) then
         UIManager:close(self); if self.on_pick then self.on_pick({ self:selectedRGB() }) end; return true
     elseif hit(save) then

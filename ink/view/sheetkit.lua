@@ -310,25 +310,10 @@ end
 -- dark tile when selected, black on grey else.
 function InkAwayView:renderBrushWave(key, w, h, sel)
     local st = Raster.STYLES[key] or Raster.STYLES.solid
-    local bg = sel and Blitbuffer.COLOR_BLACK or TILE_BG
-    local ink = sel and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
     local bb = Blitbuffer.new(w, h, Screen.bb:getType())
-    bb:paintRect(0, 0, w, h, bg)
-    local pad = Screen:scaleBySize(6)
-    local function put(x, y, len)
-        if y < 0 or y >= h then return end
-        if x < 0 then len = len + x; x = 0 end
-        if x + len > w then len = w - x end
-        if len > 0 then bb:paintRect(x, y, len, 1, ink) end
-    end
-    local pts, n = {}, 36
-    for i = 0, n do
-        local u = i / n
-        pts[#pts + 1] = pad + u * (w - pad * 2)
-        pts[#pts + 1] = h / 2 + math.sin(u * math.pi * 2) * (h * 0.26)
-    end
-    local r = math.max(3, Screen:scaleBySize(5))
-    if st.solid then Raster.path(pts, r, put) else Raster.pathTex(pts, r, put, st, 12345) end
+    bb:paintRect(0, 0, w, h, sel and BLACK or TILE_BG)
+    Paint.brushSample(bb, st, sel and WHITE or BLACK,
+        Screen:scaleBySize(6), math.max(3, Screen:scaleBySize(5)), 0.26, 36)
     return bb
 end
 

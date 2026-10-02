@@ -26,6 +26,8 @@ local WHITE = Blitbuffer.COLOR_WHITE
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
+local CLIP_MAX = 5000   -- longest paste, in characters (a huge one would stall the layout)
+
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
@@ -390,7 +392,6 @@ end
 -- the caret, replacing any selection. The format menu (a selection, or the Aa
 -- button) also has Copy / Cut / Paste. The bubble is drawn by the canvas itself,
 -- so the keyboard below keeps working while it shows.
-local CLIP_MAX = 5000   -- longest paste, in characters (a huge one would stall the layout)
 
 -- KOReader's clipboard text cleaned up for a text box (line breaks unified, tabs
 -- as spaces, other control characters dropped, capped at CLIP_MAX characters).

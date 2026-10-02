@@ -21,8 +21,6 @@ local Paint = require("ink/paint")
 local Screen = Device.screen
 local HAIRLINE = Paint.HAIRLINE
 
-local InkAwayView = {}
-
 -- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
 -- (it paints opaque), so instead of a see-through charcoal box we use a light,
 -- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
@@ -31,6 +29,16 @@ local InkAwayView = {}
 local FAB_FILL   = Blitbuffer.ColorRGB32(0xF0, 0xF0, 0xF0, 0xFF)
 local FAB_BORDER = Blitbuffer.ColorRGB32(0xB4, 0xB4, 0xB4, 0xFF)
 local FAB_GLYPH  = Blitbuffer.ColorRGB32(0x33, 0x34, 0x36, 0xFF)
+
+-- The floating controls: the fabRect name, the flag set while one has melted
+-- away, and the callback (made by initFabs) that brings it back.
+local FABS = {
+    { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
+    { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
+    { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
+}
+
+local InkAwayView = {}
 
 ------------------------------------------------------------------------------
 -- Toolbar
@@ -282,14 +290,6 @@ end
 -- stays reachable. Their geometry follows the drawing area, so they move when the
 -- toolbar hides and the paper grows.
 ------------------------------------------------------------------------------
-
--- The floating controls: the fabRect name, the flag set while one has melted
--- away, and the callback (made by initFabs) that brings it back.
-local FABS = {
-    { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
-    { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
-    { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
-}
 
 -- Make the callbacks that bring each control back once drawing near it has
 -- stopped (bound once, so they can be unscheduled).

@@ -19,8 +19,6 @@ local displayColor = Paint.displayColor
 local spanWriter = Paint.spanWriter
 local bgSpanWriter = Paint.bgSpanWriter
 
-local InkAwayView = {}
-
 local PREVIEW_INK = Blitbuffer.COLOR_BLACK   -- live preview of non-black ink on colour panels
 
 -- When the finger lifts, wait this long before committing the stroke. If a
@@ -29,6 +27,11 @@ local PREVIEW_INK = Blitbuffer.COLOR_BLACK   -- live preview of non-black ink on
 -- of a line, and this is what keeps one lift as one undo step, keeps exported
 -- strokes whole, and fills the gap a dropped contact would otherwise leave.
 local COALESCE_SEC = 0.15
+
+local GC_HEAL_KB = 48 * 1024        -- ~48 MB: far above any legitimate drawing
+local GC_HEAL_EVERY = 96            -- check at most once per this many commits
+
+local InkAwayView = {}
 
 ------------------------------------------------------------------------------
 -- Drawing gesture handlers
@@ -492,8 +495,6 @@ end
 -- delta-history + pooled-hot-path work); this only ever fires if something starts
 -- leaking again. Gated on size so a normal session pays nothing, and it runs
 -- between strokes (never mid-stroke), so the one-off collect is invisible.
-local GC_HEAL_KB = 48 * 1024        -- ~48 MB: far above any legitimate drawing
-local GC_HEAL_EVERY = 96            -- check at most once per this many commits
 function InkAwayView:healMemory()
     self._commits_since_gc = (self._commits_since_gc or 0) + 1
     if self._commits_since_gc < GC_HEAL_EVERY then return end

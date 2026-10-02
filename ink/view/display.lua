@@ -30,8 +30,6 @@ local function panelBuffer(w, h, rot, inv, typ)
     return bb
 end
 
-local InkAwayView = {}
-
 -- Live-ink pacing on colour (Kaleido) panels, where every refresh costs the driver
 -- a lot more than on grey e-ink: the fast (black/white) waveform at most every
 -- LIVE_FAST_MS, the grey-capable one -- which blocks until the driver has taken it
@@ -42,6 +40,8 @@ local LIVE_FAST_MS = 20
 local LIVE_UI_MS = 80
 local LIVE_TAIL_MS = 35
 local RECONCILE_SEC = 0.8
+
+local InkAwayView = {}
 
 ------------------------------------------------------------------------------
 -- On-screen buffer in the screen's panel pixel order (landscape speed)

@@ -16,8 +16,24 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local Paint = require("ink/paint")
 
 local Screen = Device.screen
+local TRACK_BG = Paint.TRACK_BG
+local KNOB_EDGE = Paint.KNOB_EDGE
+
+-- A rounded bar of w x h filled with `color` (a track, or a slider's filled part).
+local function pill(w, h, color)
+    return FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, radius = math.floor(h / 2),
+        background = color, WidgetContainer:new{ dimen = GeomUI:new{ w = w, h = h } } }
+end
+
+-- The round white knob of diameter d, with a thin grey rim.
+local function knob(d)
+    return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = KNOB_EDGE,
+        padding = 0, margin = 0, radius = math.floor(d / 2), background = Blitbuffer.COLOR_WHITE,
+        WidgetContainer:new{ dimen = GeomUI:new{ w = d - Screen:scaleBySize(2), h = d - Screen:scaleBySize(2) } } }
+end
 
 -- A classic sliding on/off toggle row: a label on the left and a pill switch on
 -- the right (grey track + white knob at left when off; black track + knob at
@@ -26,8 +42,6 @@ local Screen = Device.screen
 local ToggleRow = InputContainer:extend{
     label = "", is_on = false, width = nil, callback = nil, parent = nil,
 }
-local TRACK_OFF = Blitbuffer.Color8(0xCF)   -- greys as Color8: rounded corners drawn in C
-local KNOB_EDGE = Blitbuffer.Color8(0x99)
 function ToggleRow:init()
     self.sw_h = Screen:scaleBySize(30)
     self.sw_w = Screen:scaleBySize(54)
@@ -39,16 +53,12 @@ function ToggleRow:init()
 end
 function ToggleRow:_switch()
     local w, h = self.sw_w, self.sw_h
-    local track = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0,
-        radius = math.floor(h / 2), background = self.is_on and Blitbuffer.COLOR_BLACK or TRACK_OFF,
-        WidgetContainer:new{ dimen = GeomUI:new{ w = w, h = h } } }
-    local knob = h - Screen:scaleBySize(6)
+    local track = pill(w, h, self.is_on and Blitbuffer.COLOR_BLACK or TRACK_BG)
+    local d = h - Screen:scaleBySize(6)
     local inset = Screen:scaleBySize(3)
-    local knobFrame = FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = KNOB_EDGE,
-        padding = 0, margin = 0, radius = math.floor(knob / 2), background = Blitbuffer.COLOR_WHITE,
-        WidgetContainer:new{ dimen = GeomUI:new{ w = knob - Screen:scaleBySize(2), h = knob - Screen:scaleBySize(2) } } }
-    knobFrame.overlap_offset = { self.is_on and (w - knob - inset) or inset, math.floor((h - knob) / 2) }
-    return OverlapGroup:new{ dimen = { w = w, h = h }, allow_mirroring = false, track, knobFrame }
+    local thumb = knob(d)
+    thumb.overlap_offset = { self.is_on and (w - d - inset) or inset, math.floor((h - d) / 2) }
+    return OverlapGroup:new{ dimen = { w = w, h = h }, allow_mirroring = false, track, thumb }
 end
 function ToggleRow:_build()
     local label = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
@@ -117,24 +127,19 @@ function SliderRow:_build()
     local th, kn = self.track_h, self.knob
     local ty = math.floor((kn - th) / 2)
     local fillW = math.max(th, math.floor(track_w * frac))
-    local track = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, radius = math.floor(th / 2),
-        background = TRACK_OFF, WidgetContainer:new{ dimen = GeomUI:new{ w = track_w, h = th } } }
+    local track = pill(track_w, th, TRACK_BG)
     track.overlap_offset = { 0, ty }
-    local fill = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, radius = math.floor(th / 2),
-        background = Blitbuffer.COLOR_BLACK, WidgetContainer:new{ dimen = GeomUI:new{ w = fillW, h = th } } }
+    local fill = pill(fillW, th, Blitbuffer.COLOR_BLACK)
     fill.overlap_offset = { 0, ty }
-    local knob = FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = KNOB_EDGE,
-        padding = 0, margin = 0, radius = math.floor(kn / 2), background = Blitbuffer.COLOR_WHITE,
-        WidgetContainer:new{ dimen = GeomUI:new{ w = kn - Screen:scaleBySize(2), h = kn - Screen:scaleBySize(2) } } }
-    local knobX = math.max(0, math.min(track_w - kn, math.floor(track_w * frac) - math.floor(kn / 2)))
-    knob.overlap_offset = { knobX, 0 }
+    local thumb = knob(kn)
+    thumb.overlap_offset = { math.max(0, math.min(track_w - kn, math.floor(track_w * frac) - math.floor(kn / 2))), 0 }
     local trackGroup = OverlapGroup:new{ dimen = { w = track_w, h = kn }, allow_mirroring = false,
-        track, fill, knob }
+        track, fill, thumb }
     self[1] = HorizontalGroup:new{ align = "center",
         labelw, HorizontalSpan:new{ width = gap }, trackGroup, HorizontalSpan:new{ width = gap }, valw }
     -- references so _apply can update the moving parts in place, without rebuilding
     -- the whole row (and re-measuring text) on every drag tick
-    self._fill_wc, self._knob, self._valw = fill[1], knob, valw
+    self._fill_wc, self._knob, self._valw = fill[1], thumb, valw
     local sz = self[1]:getSize()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
 end

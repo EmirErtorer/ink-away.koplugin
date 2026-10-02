@@ -10,6 +10,8 @@ local UIManager = require("ui/uimanager")
 local Notebook = require("ink/notebook")
 local Text = require("ink/text")
 
+local HWR_PAUSE = 1.1   -- idle seconds after the last pen stroke before recognising
+
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
@@ -74,8 +76,6 @@ function InkAwayView:hwrRecognizer(chars)
     if ok and rec:count() > 0 then self._hwr_rec = rec end
     return self._hwr_rec
 end
-
-local HWR_PAUSE = 1.1   -- idle seconds after the last pen stroke before recognising
 
 -- Buffer a just-committed pen stroke and (re)start the pause timer. When the pen
 -- rests for HWR_PAUSE, hwrRecognizePending fires.

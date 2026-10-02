@@ -11,10 +11,10 @@ local InkGeom = require("ink/geom")
 
 local Screen = Device.screen
 
-local InkAwayView = {}
-
 local ZOOM_RATIO = 1.5    -- one zoom press multiplies by this, for even steps
 local ZOOM_MAX = 8.0
+
+local InkAwayView = {}
 
 ------------------------------------------------------------------------------
 -- Small geometry helpers
@@ -203,7 +203,6 @@ function InkAwayView:refitArea()
     self.area_bb = self:newAreaBuffer()
     self:renderView()
 end
-
 
 ------------------------------------------------------------------------------
 -- Zoom  (consistent multiplicative steps between fit and ZOOM_MAX)

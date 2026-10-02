@@ -4,6 +4,7 @@ conversion, and span writers that paint, or restore a background, along runs.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local Raster = require("ink/raster")
 local Template = require("ink/template")
 
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -17,6 +18,8 @@ local Paint = {}
 local HAIRLINE  = Blitbuffer.Color8(0xCC)
 local TILE_BG   = Blitbuffer.Color8(0xE6)   -- shape-menu tile fill
 local CARET_BG  = Blitbuffer.Color8(0xB0)   -- line-tile corner caret chip
+local TRACK_BG  = Blitbuffer.Color8(0xCF)   -- slider and switch track
+local KNOB_EDGE = Blitbuffer.Color8(0x99)   -- slider and switch knob rim
 
 -- Map a grid/ruling strength (1..100) to a grey level: faint at low values,
 -- solid black at 100, so a guide can be a whisper or as dark as drawn ink.
@@ -123,6 +126,26 @@ local function outline(bb, x, y, w, h, color, t)
     bb:paintRect(x + w - t, y, t, h, color)
 end
 
+-- Draw a sample stroke of brush style `st` across bb: one sine wave of `n`
+-- segments with amplitude `amp` (a fraction of the height), inset `pad`, radius
+-- `r`, in `ink`. The pen menu's brush tiles and the brush maker show these.
+local function brushSample(bb, st, ink, pad, r, amp, n)
+    local w, h = bb:getWidth(), bb:getHeight()
+    local function put(x, y, len)
+        if y < 0 or y >= h then return end
+        if x < 0 then len = len + x; x = 0 end
+        if x + len > w then len = w - x end
+        if len > 0 then bb:paintRect(x, y, len, 1, ink) end
+    end
+    local pts = {}
+    for i = 0, n do
+        local u = i / n
+        pts[#pts + 1] = pad + u * (w - pad * 2)
+        pts[#pts + 1] = h / 2 + math.sin(u * math.pi * 2) * (h * amp)
+    end
+    if st.solid then Raster.path(pts, r, put) else Raster.pathTex(pts, r, put, st, 12345) end
+end
+
 -- Paint a notebook page's paper into `dst`: the background picture / PDF page if
 -- there is one (else the paper colour), then the ruling on top.
 local function paintPaper(dst, W, H, tmpl, bg)
@@ -143,12 +166,15 @@ end
 Paint.HAIRLINE = HAIRLINE
 Paint.TILE_BG = TILE_BG
 Paint.CARET_BG = CARET_BG
+Paint.TRACK_BG = TRACK_BG
+Paint.KNOB_EDGE = KNOB_EDGE
 Paint.strengthToLevel = strengthToLevel
 Paint.displayColor = displayColor
 Paint.uiFill = uiFill
 Paint.isChromatic = isChromatic
 Paint.fillRect = fillRect
 Paint.outline = outline
+Paint.brushSample = brushSample
 Paint.spanWriter = spanWriter
 Paint.bgSpanWriter = bgSpanWriter
 Paint.paintPaper = paintPaper

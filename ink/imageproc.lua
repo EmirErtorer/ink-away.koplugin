@@ -6,6 +6,7 @@ rotating and flipping, and fitting a picture onto a page.
 local ffi = require("ffi")
 local Blitbuffer = require("ffi/blitbuffer")
 local RenderImage = require("ui/renderimage")
+local Fill = require("ink/fill")
 
 local WHITE = Blitbuffer.COLOR_WHITE
 
@@ -94,47 +95,19 @@ local function bgRemovedRGBA(src)
         local tol = math.max(80, math.min(260, 2.5 * mad + 60))
         local feather = tol * 0.5      -- reached pixels this close to the tol edge fade in
         local core = tol - feather
-        -- scan-line flood from the borders through pixels within tol of the bg
+        -- flood from the borders through pixels within tol of the bg
         local seen = ffi.new("uint8_t[?]", w * h)   -- 0 unknown, 1 background
-        local stack, sn = {}, 0
-        local function push(x, y) sn = sn + 1; stack[sn] = x; sn = sn + 1; stack[sn] = y end
         local function free_at(x, y) return seen[y * w + x] == 0 and distO(y * ss + x * 4) <= tol end
-        for x = 0, w - 1 do
-            if free_at(x, 0) then push(x, 0) end
-            if free_at(x, h - 1) then push(x, h - 1) end
+        local seeds = {}
+        local function seed(x, y)
+            if free_at(x, y) then seeds[#seeds + 1] = x; seeds[#seeds + 1] = y end
         end
-        for y = 0, h - 1 do
-            if free_at(0, y) then push(0, y) end
-            if free_at(w - 1, y) then push(w - 1, y) end
-        end
-        while sn > 0 do
-            local y = stack[sn]; sn = sn - 1
-            local x = stack[sn]; sn = sn - 1
-            if free_at(x, y) then
-                local row, so = y * w, y * ss
-                local xl = x
-                while xl > 0 and free_at(xl - 1, y) do xl = xl - 1 end
-                local xr = x
-                while xr < w - 1 and free_at(xr + 1, y) do xr = xr + 1 end
-                for xx = xl, xr do seen[row + xx] = 1 end
-                if y > 0 then
-                    local xx = xl
-                    while xx <= xr do
-                        if free_at(xx, y - 1) then push(xx, y - 1)
-                            while xx <= xr and free_at(xx, y - 1) do xx = xx + 1 end
-                        else xx = xx + 1 end
-                    end
-                end
-                if y < h - 1 then
-                    local xx = xl
-                    while xx <= xr do
-                        if free_at(xx, y + 1) then push(xx, y + 1)
-                            while xx <= xr and free_at(xx, y + 1) do xx = xx + 1 end
-                        else xx = xx + 1 end
-                    end
-                end
-            end
-        end
+        for x = 0, w - 1 do seed(x, 0); seed(x, h - 1) end
+        for y = 0, h - 1 do seed(0, y); seed(w - 1, y) end
+        Fill.scan(w, h, seeds, free_at, function(xl, xr, y)
+            local row = y * w
+            for xx = xl, xr do seen[row + xx] = 1 end
+        end)
         -- build RGBA: subject opaque; background transparent, fading in near the edge
         local i = 0
         for y = 0, h - 1 do

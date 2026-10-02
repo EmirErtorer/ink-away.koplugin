@@ -39,6 +39,8 @@ local sameColor = Palette.sameColor
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 local function pxfmt(v) return v .. _(" px") end
 
+local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
+
 local InkAwayView = {}
 
 -- The reader's saved custom colours (a list of {r,g,b}), persisted so they last.
@@ -80,7 +82,6 @@ end
 -- Pen settings sheet (same rounded-sheet style as the Shapes menu): size and
 -- opacity sliders, brush-style wave tiles with a create (+) tile, colour swatch
 -- rows, and the stroke aids. Rebuilt and reshown whenever something changes.
-local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
 function InkAwayView:openPenSettings()
     if self:rebuildSheet("_pen_dialog") then return end
     self:ensureUserIcons()

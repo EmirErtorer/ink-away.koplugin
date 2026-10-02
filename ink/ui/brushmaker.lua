@@ -22,8 +22,9 @@ local UIManager = require("ui/uimanager")
 local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local Device = require("device")
-local Raster = require("ink/raster")
 local Brushes = require("ink/brushes")
+local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -39,11 +40,9 @@ local BrushMaker = InputContainer:extend{
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
 local GREY  = Blitbuffer.COLOR_GRAY
--- Greys as Color8, so their rounded corners are drawn in C (an RGB32 colour takes
--- KOReader's per-pixel Lua corner path, many times slower).
-local TILE  = Blitbuffer.Color8(0xE6)   -- secondary button fill
-local TRACK = Blitbuffer.Color8(0xCF)   -- slider track
-local KNOB  = Blitbuffer.Color8(0x99)   -- slider knob edge
+local TILE  = Paint.TILE_BG     -- secondary button fill
+local TRACK = Paint.TRACK_BG
+local KNOB  = Paint.KNOB_EDGE
 
 function BrushMaker:init()
     self.params = self.params or Brushes.defaults()
@@ -129,30 +128,11 @@ end
 -- Render the sample stroke with the current params into preview_bb.
 function BrushMaker:renderPreview()
     local bb = self.preview_bb
-    local w, h = bb:getWidth(), bb:getHeight()
-    bb:paintRect(0, 0, w, h, WHITE)
+    bb:paintRect(0, 0, bb:getWidth(), bb:getHeight(), WHITE)
     local st = {}
     for k, v in pairs(self.params) do st[k] = v end
-    local function put(x, y, len)
-        if y < 0 or y >= h then return end
-        if x < 0 then len = len + x; x = 0 end
-        if x + len > w then len = w - x end
-        if len > 0 then bb:paintRect(x, y, len, 1, BLACK) end
-    end
     -- a gentle S so the stroke shows body, edge and taper
-    local pts = {}
-    local n = 40
-    for i = 0, n do
-        local u = i / n
-        pts[#pts + 1] = self.pad + u * (w - self.pad * 2)
-        pts[#pts + 1] = h / 2 + math.sin(u * math.pi * 2) * (h * 0.24)
-    end
-    local r = math.max(6, Screen:scaleBySize(9))
-    if st.solid then
-        Raster.path(pts, r, put)
-    else
-        Raster.pathTex(pts, r, put, st, 12345)
-    end
+    Paint.brushSample(bb, st, BLACK, self.pad, math.max(6, Screen:scaleBySize(9)), 0.24, 40)
 end
 
 function BrushMaker:paintTo(bb, x, y)
@@ -247,9 +227,8 @@ function BrushMaker:onBmTap(_, ges)
     if not p then return true end
     if self:setSlider(p.x, p.y) then return true end
     local save, cancel = self:buttonRects()
-    local function hit(r) return p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
-    if hit(save) then self:promptName(); return true end
-    if hit(cancel) then UIManager:close(self); return true end
+    if InkGeom.inRect(p.x, p.y, save) then self:promptName(); return true end
+    if InkGeom.inRect(p.x, p.y, cancel) then UIManager:close(self); return true end
     -- a tap outside the panel dismisses it
     if p.x < self.box_x or p.x > self.box_x + self.box_w
        or p.y < self.box_y or p.y > self.box_y + self.box_h then

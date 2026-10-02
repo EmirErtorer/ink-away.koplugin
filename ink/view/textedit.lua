@@ -19,6 +19,9 @@ local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local TILE_BG = Paint.TILE_BG
 
+local TEXT_HANDLE = 40   -- touch target for the move / resize handles (screen px)
+local TEXT_PAD = TEXT_HANDLE + 4   -- refresh margin around the frame and handles
+
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
@@ -68,9 +71,6 @@ end
 -- On finish it is baked into the master bitmap and added to the ops, so it
 -- saves, undoes and exports exactly like ink.
 ------------------------------------------------------------------------------
-
-local TEXT_HANDLE = 40   -- touch target for the move / resize handles (screen px)
-local TEXT_PAD = TEXT_HANDLE + 4   -- refresh margin around the frame and handles
 
 -- Lay the editing op out at the current zoom (so the overlay is crisp) and grow
 -- an auto-height box to fit. Returns layout, ctx and the width-scaled proxy the

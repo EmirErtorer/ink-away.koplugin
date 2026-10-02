@@ -29,6 +29,10 @@ local resampleOriented = ImageProc.resampleOriented
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
+local IMG_HANDLE = 44   -- touch target for the move / resize handles (screen px)
+local IMG_MIN    = 24   -- smallest image side, in canvas px
+local IMG_PAD    = IMG_HANDLE + 4   -- refresh margin around the frame and handles
+
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
@@ -69,7 +73,6 @@ function InkAwayView:loadBackground(path)
     self:placeBackground(img, path)
 end
 
-
 function InkAwayView:removeBackground()
     if self.bg_bb then self.bg_bb:free() end
     self.bg_bb, self.bg_rgba, self.bg_path, self._bg_src = nil, nil, nil, nil
@@ -106,10 +109,6 @@ end
 -- a stored flag, so undo/redo snapshots stay clean) and drawn as a live overlay,
 -- so moving and resizing never recompose the whole page.
 ------------------------------------------------------------------------------
-
-local IMG_HANDLE = 44   -- touch target for the move / resize handles (screen px)
-local IMG_MIN    = 24   -- smallest image side, in canvas px
-local IMG_PAD    = IMG_HANDLE + 4   -- refresh margin around the frame and handles
 
 -- Free every decoded / scaled / oriented / display image buffer and drop the
 -- caches. Buffers can be shared (a scaled copy may BE its source when sizes
