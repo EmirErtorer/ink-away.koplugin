@@ -8,12 +8,10 @@ local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local Font = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
 local PathChooser = require("ui/widget/pathchooser")
 local RenderImage = require("ui/renderimage")
-local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -21,13 +19,14 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local InkGeom = require("ink/geom")
-local IconMenu = require("ink/ui/iconmenu")
 
 local Screen = Device.screen
 local bbToRGBA = ImageProc.bbToRGBA
 local bgRemovedRGBA = ImageProc.bgRemovedRGBA
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
 local resampleOriented = ImageProc.resampleOriented
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 local InkAwayView = {}
 
@@ -603,7 +602,7 @@ end
 -- and the same delete glyph). The image stays draggable underneath (see
 -- setSelectionActive); a tap outside the menu deselects and bakes it in.
 function InkAwayView:openImageMenu(sel)
-    if self._image_menu then UIManager:close(self._image_menu); self._image_menu = nil end
+    self:closeSheet("_image_menu")
     self:setSelectionActive(true)
     local dlg
     local function close() if dlg then UIManager:close(dlg) end end
@@ -828,16 +827,11 @@ end
 -- the dark (primary) button and stays exactly as it always was.
 function InkAwayView:chooseImage()
     self:finishImageEdit()
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
-    local closeSelf = function()
-        if self._img_src_dialog then UIManager:close(self._img_src_dialog); self._img_src_dialog = nil end
-    end
-    local build = function(menu)
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_img_src_dialog") end
+    local build = function()
         local content = VerticalGroup:new{ align = "left" }
-        local function add(w) content[#content + 1] = w end
+        local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Add image"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
         add(self:actionButton(_("Local file"), content_w, function()
@@ -849,12 +843,9 @@ function InkAwayView:chooseImage()
         add(TextBoxWidget:new{ text = _("Browsing needs Wi-Fi. Ink Away itself never requires a connection."),
             face = Font:getFace("cfont", 13), width = content_w,
             fgcolor = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF) })
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
-    self._img_src_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
-        on_close = function() self._img_src_dialog = nil end }
-    UIManager:show(self._img_src_dialog)
+    self:showSheet("_img_src_dialog", build)
 end
 
 -- The original local-file picker, unchanged in behaviour.

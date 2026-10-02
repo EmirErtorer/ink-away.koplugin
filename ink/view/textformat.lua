@@ -13,17 +13,17 @@ local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
-local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Text = require("ink/text")
-local IconMenu = require("ink/ui/iconmenu")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 local InkAwayView = {}
 
@@ -318,19 +318,14 @@ end
 -- keyboard had its buttons' tap regions in the wrong place).
 function InkAwayView:openTextFormatMenu()
     if not self.editing_text then return end
-    if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
+    self:closeSheet("_text_fmt")
     self:hideClipBubble()
     self:hideTextKeyboard()
     local gap = Screen:scaleBySize(10)
     local content_w = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
     -- close the sheet and bring the keyboard back so the result shows while typing
     local function done()
-        if self._text_fmt then
-            local d = self._text_fmt
-            self._text_fmt = nil
-            UIManager:close(d)
-        end
+        self:closeSheet("_text_fmt")
         if self.editing_text then self:showTextKeyboard() end
     end
     local build = function()
@@ -378,18 +373,13 @@ function InkAwayView:openTextFormatMenu()
         add(row({ { label = _("Copy"), enabled = sel ~= nil, cb = function() self:textCopy(false); done() end },
                   { label = _("Cut"), enabled = sel ~= nil, cb = function() self:textCopy(true); done() end },
                   { label = _("Paste"), enabled = has_clip, cb = function() self:textPaste(); done() end } }))
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
     -- The keyboard is hidden while the sheet is open, so the sheet takes its place
     -- at the bottom of the drawing area, leaving the text box visible above it.
     local v = self.view
-    self._text_fmt = IconMenu:new{ build = build, bottom_y = v.area_y + v.area_h,
-        on_close = function()       -- tapped outside / Back
-            self._text_fmt = nil
-            if self.editing_text then self:showTextKeyboard() end
-        end }
-    UIManager:show(self._text_fmt)
+    self:showSheet("_text_fmt", build, { bottom_y = v.area_y + v.area_h,
+        on_close = function() if self.editing_text then self:showTextKeyboard() end end })
 end
 
 -- ---- clipboard: paste bubble, copy / cut ---------------------------------

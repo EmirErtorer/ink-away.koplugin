@@ -4,19 +4,12 @@ ornaments, and exporting a notebook to PDF.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Blitbuffer = require("ffi/blitbuffer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
-local Font = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local PathChooser = require("ui/widget/pathchooser")
-local Size = require("ui/size")
-local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -28,7 +21,6 @@ local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
-local IconMenu = require("ink/ui/iconmenu")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
@@ -36,6 +28,8 @@ local PAPERS = Palette.PAPERS
 local existingDir = Storage.existingDir
 local strengthToLevel = Paint.strengthToLevel
 local bbToRGBA = ImageProc.bbToRGBA
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 local InkAwayView = {}
 
@@ -103,16 +97,10 @@ function InkAwayView:onSave()
         return
     end
     self.save_fmt = self.save_fmt or "png"
-    if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
+    self:closeSheet("_save_dialog")
     self:ensureUserIcons()
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
-    local halfW = math.floor((content_w - gap) / 2)
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
-    local closeSelf = function()
-        if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
-    end
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_save_dialog") end
     local area_label = self.save_area
         and string.format(_("Area: %d\u{00D7}%d (tap for whole page)"), self.save_area.w, self.save_area.h)
         or _("Area: whole page (tap to choose)")
@@ -121,15 +109,10 @@ function InkAwayView:onSave()
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Save drawing"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
-        add(TextWidget:new{ text = _("Format"), face = Font:getFace("cfont", 15), bold = true,
-            fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) })
+        add(self:sheetLabel(_("Format"), true))
         add(vspan(6))
-        add(HorizontalGroup:new{ align = "center",
-            self:actionButton(_("PNG (transparent)"), halfW, function()
-                self.save_fmt = "png"; self:onSave() end, self.save_fmt == "png"),
-            HorizontalSpan:new{ width = gap },
-            self:actionButton(_("JPEG (white)"), halfW, function()
-                self.save_fmt = "jpg"; self:onSave() end, self.save_fmt == "jpg") })
+        add(self:segmentedRow({ { "png", _("PNG (transparent)") }, { "jpg", _("JPEG (white)") } },
+            self.save_fmt, content_w, function(v) self.save_fmt = v; self:onSave() end))
         add(vspan(12))
         add(self:actionButton(area_label, content_w, function()
             if self.save_area then self.save_area = nil; self:onSave()
@@ -152,12 +135,9 @@ function InkAwayView:onSave()
             add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
                 closeSelf(); self:saveOrnament() end))
         end
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
-    self._save_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
-        on_close = function() self._save_dialog = nil end }
-    UIManager:show(self._save_dialog)
+    self:showSheet("_save_dialog", build)
 end
 
 -- Enter the area-selection mode: the next drag marks the export rectangle.
@@ -196,36 +176,27 @@ function InkAwayView:exportNotebookPDF()
     local is_pdf = nb.template and nb.template.pdf_path
     self.nb_paper = self.nb_paper or "white"
     self.nb_scope = self.nb_scope or "all"
-    if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
-    local halfW = math.floor((content_w - gap) / 2)
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
-    local GREY = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF)
+    self:closeSheet("_save_dialog")
+    local content_w = self:sheetWidth()
     local SCOPE_LABEL = { all = _("All pages"), ink = _("Pages with ink"), range = _("Range") }
-    local closeSelf = function()
-        if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
-    end
+    local closeSelf = function() self:closeSheet("_save_dialog") end
     local reopen = function() self:exportNotebookPDF() end   -- rebuild after a choice changes the layout
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Export notebook"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
-        add(TextWidget:new{ text = _("Paper"), face = Font:getFace("cfont", 15), bold = true, fgcolor = GREY })
+        add(self:sheetLabel(_("Paper"), true))
         add(vspan(6))
-        add(HorizontalGroup:new{ align = "center",
-            self:actionButton(_("White"), halfW, function() self.nb_paper = "white"; reopen() end, self.nb_paper == "white"),
-            HorizontalSpan:new{ width = gap },
-            self:actionButton(_("Sandpaper"), halfW, function() self.nb_paper = "sand"; reopen() end, self.nb_paper == "sand") })
+        add(self:segmentedRow({ { "white", _("White") }, { "sand", _("Sandpaper") } },
+            self.nb_paper, content_w, function(v) self.nb_paper = v; reopen() end))
         if self.bg_bb and not is_pdf then   -- an imported PDF always prints its own pages
             add(vspan(12))
             add(ToggleRow:new{ label = _("Include background"), is_on = self.export_bg,
                 width = content_w, parent = menu, callback = function(on) self.export_bg = on end })
         end
         add(vspan(12))
-        add(TextWidget:new{ text = _("Pages"), face = Font:getFace("cfont", 15), bold = true, fgcolor = GREY })
+        add(self:sheetLabel(_("Pages"), true))
         add(vspan(6))
         add(self:actionButton(_("Pages: ") .. (SCOPE_LABEL[self.nb_scope] or SCOPE_LABEL.all), content_w, function()
             self.nb_scope = (self.nb_scope == "all" and "ink") or (self.nb_scope == "ink" and "range") or "all"
@@ -246,12 +217,9 @@ function InkAwayView:exportNotebookPDF()
         add(self:actionButton(string.format(_("Export %d page(s) to PDF"), n), content_w, function()
             if n > 0 then closeSelf(); self:chooseNotebookDestination() end
         end, true))
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
-    self._save_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
-        on_close = function() self._save_dialog = nil end }
-    UIManager:show(self._save_dialog)
+    self:showSheet("_save_dialog", build)
 end
 
 -- Ask for the first and last page of the export range.

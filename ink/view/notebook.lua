@@ -7,8 +7,6 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
-local Font = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -16,7 +14,6 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local PathChooser = require("ui/widget/pathchooser")
 local RenderImage = require("ui/renderimage")
-local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -24,10 +21,11 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
-local IconMenu = require("ink/ui/iconmenu")
 
 local Screen = Device.screen
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 local InkAwayView = {}
 
@@ -309,22 +307,16 @@ end
 function InkAwayView:nbJumpPrompt()
     local nb = self.notebook
     if not nb then return end
-    if self._goto_dialog then UIManager:close(self._goto_dialog); self._goto_dialog = nil end
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    self:closeSheet("_goto_dialog")
+    local content_w, gap = self:sheetWidth()
     local halfW = math.floor((content_w - gap) / 2)
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
-    local closeSelf = function()
-        if self._goto_dialog then UIManager:close(self._goto_dialog); self._goto_dialog = nil end
-    end
+    local closeSelf = function() self:closeSheet("_goto_dialog") end
     local build = function()
         local content = VerticalGroup:new{ align = "left" }
-        local function add(w) content[#content + 1] = w end
+        local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Go to page"), content_w, _("Close"), closeSelf))
         add(vspan(6))
-        add(TextWidget:new{ text = string.format(_("Page %d of %d"), nb.index, nb:count()),
-            face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) })
+        add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())))
         add(vspan(12))
         add(HorizontalGroup:new{ align = "center",
             self:actionButton(_("First page"), halfW, function() closeSelf(); self:nbGoTo(1) end),
@@ -334,13 +326,10 @@ function InkAwayView:nbJumpPrompt()
         add(vspan(8))
         add(self:actionButton(_("Type a page number\u{2026}"), content_w,
             function() closeSelf(); self:promptGotoNumber() end, true))
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
     local v = self.view
-    self._goto_dialog = IconMenu:new{ build = build, bottom_y = v.area_y + v.area_h,
-        on_close = function() self._goto_dialog = nil end }
-    UIManager:show(self._goto_dialog)
+    self:showSheet("_goto_dialog", build, { bottom_y = v.area_y + v.area_h })
 end
 
 -- The actual page-number entry, reached from the Go-to-page sheet. A stock
@@ -380,24 +369,18 @@ end
 function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
-    if self._page_dialog then UIManager:close(self._page_dialog); self._page_dialog = nil end
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
-    local closeSelf = function()
-        if self._page_dialog then UIManager:close(self._page_dialog); self._page_dialog = nil end
-    end
+    self:closeSheet("_page_dialog")
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_page_dialog") end
     local function act(label, cb)
         return self:actionButton(label, content_w, function() closeSelf(); cb() end)
     end
-    local build = function(menu)
+    local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Page"), content_w, _("Close"), closeSelf))
         add(vspan(6))
-        add(TextWidget:new{ text = string.format(_("Page %d of %d"), nb.index, nb:count()),
-            face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF) })
+        add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())))
         add(vspan(12))
         add(act(_("Go to page\u{2026}"), function() self:nbJumpPrompt() end))
         add(vspan(8))
@@ -406,16 +389,12 @@ function InkAwayView:openPageMenu()
         add(act(_("Duplicate page"), function() self:nbDuplicatePage() end))
         add(vspan(8))
         add(act(_("Delete page"), function() self:nbDeletePage() end))
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
     -- Move earlier / later are omitted: the bottom bar's arrows already do that. The
     -- sheet's bottom is pinned to the top of the notebook bottom bar (bottom_y).
     local v = self.view
-    self._page_dialog = IconMenu:new{ build = build,
-        bottom_y = v.area_y + v.area_h,
-        on_close = function() self._page_dialog = nil end }
-    UIManager:show(self._page_dialog)
+    self:showSheet("_page_dialog", build, { bottom_y = v.area_y + v.area_h })
 end
 
 -- Render one notebook page to a small thumbnail bitmap fitting maxw x maxh,
@@ -607,17 +586,11 @@ function InkAwayView:newNotebook()
             begin(style)
         end
     end
-    if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
-    local closeSelf = function()
-        if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
-    end
-    local styles = { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
-        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
-    local build = function(menu)
+    self:closeSheet("_chooser_dialog")
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_chooser_dialog") end
+    local styles = self:notebookStyles()
+    local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("New notebook"), content_w, _("Cancel"), closeSelf))
@@ -626,12 +599,15 @@ function InkAwayView:newNotebook()
             add(self:actionButton(s[2], content_w, function() closeSelf(); go(s[1]) end))
             if i < #styles then add(vspan(8)) end
         end
-        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+        return content
     end
-    self._chooser_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
-        on_close = function() self._chooser_dialog = nil end }
-    UIManager:show(self._chooser_dialog)
+    self:showSheet("_chooser_dialog", build)
+end
+
+-- The notebook paper styles, as { style, label } pairs for the choosers.
+function InkAwayView:notebookStyles()
+    return { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
+        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
 end
 
 return InkAwayView

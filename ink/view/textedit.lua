@@ -356,7 +356,7 @@ function InkAwayView:finishTextEdit(commit)
     self.text_cur, self.text_sel = nil, nil
     self._text_pending_style = nil
     self._lay_cache = nil
-    if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
+    self:closeSheet("_text_fmt")
     self.dirty = true
     self:hideTextKeyboard()
     -- While typing, the page may have been scrolled past its normal end so the line

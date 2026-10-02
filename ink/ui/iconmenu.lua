@@ -4,23 +4,33 @@ widgets (as ButtonDialog is), pinned under the toolbar or above the notebook bar
 and scrolls when it is taller than the screen.
 ]]
 
+local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local MovableContainer = require("ui/widget/container/movablecontainer")
+local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 
 local Screen = Device.screen
+
+-- The sheet's white rounded panel around the content build() returns.
+local function panel(content)
+    return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+        radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+end
 
 -- Shape chooser. Each entry shows the actual shape glyph next to its name; the
 -- current one gets a checkmark. Shapes are drawn with the pen's size, opacity
 -- and colour.
 -- A lightweight modal composed of stock KOReader widgets, mirroring ButtonDialog's
 -- machinery (CenterContainer > MovableContainer > FrameContainer) so it opens
--- reliably on device. `build(menu)` returns the FrameContainer (built with a
+-- reliably on device. `build(menu)` returns the sheet's content (built with a
 -- reference to the menu, so child CheckButtons can use it as their repaint
--- parent). A tap outside the panel, or Back, closes it.
+-- parent), which is framed in the sheet's panel. A tap outside the panel, or
+-- Back, closes it.
 --
 -- The critical detail: UIManager:show(widget) with no refreshtype only marks the
 -- widget dirty -- it paints into the buffer but schedules NO e-ink refresh, so
@@ -35,7 +45,7 @@ local Screen = Device.screen
 local IconMenu = InputContainer:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath
-    build = nil,               -- function(menu) -> FrameContainer
+    build = nil,               -- function(menu) -> the sheet's content
     on_close = nil,
     top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
                                -- instead of centring it vertically
@@ -72,7 +82,7 @@ function IconMenu:fitFrame()
 end
 
 function IconMenu:init()
-    if self.build then self.frame = self:build(); self:fitFrame() end
+    if self.build then self.frame = panel(self:build()); self:fitFrame() end
     if Device:isTouchDevice() then
         self.ges_events = { TapClose = { GestureRange:new{ ges = "tap",
             range = GeomUI:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() } } } }
@@ -117,7 +127,7 @@ function IconMenu:rebuild()
     if not (self.movable and self.build) then return end
     local old = self.movable.dimen and self.movable.dimen:copy()
     if self.movable.free then self.movable:free() end
-    self.frame = self:build()
+    self.frame = panel(self:build())
     self:fitFrame()
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable

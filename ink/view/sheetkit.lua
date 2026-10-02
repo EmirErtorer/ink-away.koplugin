@@ -1,6 +1,7 @@
 --[[
-Building blocks shared by the sheets: title row, buttons, icon tiles, colour
-swatches and brush samples (cached while the canvas is open).
+Building blocks shared by the sheets: opening and closing them, title row,
+buttons, icon tiles, colour swatches and brush samples (cached while the canvas
+is open).
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -15,6 +16,7 @@ local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local Size = require("ui/size")
+local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -23,13 +25,27 @@ local _ = require("gettext")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Raster = require("ink/raster")
+local IconMenu = require("ink/ui/iconmenu")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
+local BLACK = Blitbuffer.COLOR_BLACK
+local LABEL = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF)   -- section headings
+local HINT = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF)    -- explanations under a control
 local TILE_BG = Paint.TILE_BG
 local sameColor = Palette.sameColor
 local uiFill = Paint.uiFill
 local isChromatic = Paint.isChromatic
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+
+-- A cached image as a Button label. The cache owns the buffer, so the widget must
+-- not free it, and fgcolor must be set: Button's tap highlight inverts
+-- label_widget.fgcolor whenever `text` is set (ours is ""), and a nil one crashes.
+local function imageLabel(bb, w, h)
+    return ImageWidget:new{ image = bb, width = w, height = h,
+        image_disposable = false, fgcolor = BLACK }
+end
 
 local InkAwayView = {}
 
@@ -59,6 +75,52 @@ function InkAwayView:sheetTopY()
     return (self._bar_h or 0) + Screen:scaleBySize(6)
 end
 
+-- The width of a sheet's content: `cols` equal columns (four by default) and the
+-- gaps between them, about 84% of the screen's short side. Returns the width, the
+-- gap and the column width.
+function InkAwayView:sheetWidth(cols)
+    cols = cols or 4
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local col = math.floor((target - (cols - 1) * gap) / cols)
+    return cols * col + (cols - 1) * gap, gap, col
+end
+
+-- Show a sheet (an IconMenu) and keep it in self[field] while it is open. It
+-- hangs from the toolbar unless opts.bottom_y pins its bottom edge there;
+-- opts.on_close runs when a tap outside it or Back closes it.
+function InkAwayView:showSheet(field, build, opts)
+    opts = opts or {}
+    self[field] = IconMenu:new{ build = build,
+        top_y = not opts.bottom_y and self:sheetTopY() or nil, bottom_y = opts.bottom_y,
+        on_close = function()
+            self[field] = nil
+            if opts.on_close then opts.on_close() end
+        end }
+    UIManager:show(self[field])
+end
+
+-- Close the sheet kept in self[field], if one is open.
+function InkAwayView:closeSheet(field)
+    if self[field] then UIManager:close(self[field]); self[field] = nil end
+end
+
+-- Rebuild the sheet in self[field] in place. Returns false, after closing
+-- whatever else the field holds, when there is no sheet to rebuild.
+function InkAwayView:rebuildSheet(field)
+    local sheet = self[field]
+    if sheet and sheet.rebuild then sheet:rebuild(); return true end
+    self:closeSheet(field)
+    return false
+end
+
+-- Show `widget` in place of a Button's own label.
+function InkAwayView:setButtonLabel(button, widget)
+    if button.label_container then
+        button.label_widget = widget; button.label_container[1] = widget
+    end
+end
+
 -- Shared tile helpers, used by both the Shapes menu and its line/arrow/curve
 -- child menu so they look identical.
 function InkAwayView:iconPath(name)
@@ -82,61 +144,74 @@ end
 -- optionally above a label and a small grey hint sublabel. `hold_cb` wires a
 -- long-press action.
 function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_cb)
-    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     local b = Button:new{ icon = "inkaway." .. name, icon_width = size, icon_height = size,
         width = w, height = h, bordersize = 0,
         radius = Screen:scaleBySize(16), background = sel and BLACK or TILE_BG,
         margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     local iw = self:tileIcon(name, size, sel)
-    if iw and b.label_container then
-        if label then
-            local tw = TextWidget:new{ text = label, face = Font:getFace("cfont", 15),
-                bold = true, fgcolor = sel and WHITE or BLACK }
-            local vg = VerticalGroup:new{ align = "center", iw,
-                VerticalSpan:new{ width = Screen:scaleBySize(6) }, tw }
-            if sublabel then
-                local hint = TextWidget:new{ text = sublabel, face = Font:getFace("cfont", 11),
-                    fgcolor = sel and Blitbuffer.ColorRGB32(0xC8, 0xC8, 0xC8, 0xFF)
-                                   or Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF) }
-                table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(3) })
-                table.insert(vg, hint)
-            end
-            b.label_widget = vg; b.label_container[1] = vg
-        else
-            b.label_widget = iw; b.label_container[1] = iw
+    if iw and label then
+        local vg = VerticalGroup:new{ align = "center", iw, vspan(6),
+            TextWidget:new{ text = label, face = Font:getFace("cfont", 15),
+                bold = true, fgcolor = sel and WHITE or BLACK } }
+        if sublabel then
+            table.insert(vg, vspan(3))
+            table.insert(vg, TextWidget:new{ text = sublabel, face = Font:getFace("cfont", 11),
+                fgcolor = sel and Blitbuffer.ColorRGB32(0xC8, 0xC8, 0xC8, 0xFF) or HINT })
         end
+        iw = vg
     end
+    if iw then self:setButtonLabel(b, iw) end
     return b
 end
 
 -- Title row shared by every tool sheet: the sheet title on the left and a filled
 -- black pill (Done / Back) on the right, spanning content_w.
-function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb)
-    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
-    local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", 22), bold = true }
+function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size)
+    local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true }
     local pill = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
         bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
         callback = pill_cb, show_parent = self }
-    local ptw = TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
-        bold = true, fgcolor = WHITE }
-    if pill.label_container then pill.label_widget = ptw; pill.label_container[1] = ptw end
+    self:setButtonLabel(pill, TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
+        bold = true, fgcolor = WHITE })
     local g = content_w - titleW:getSize().w - pill:getSize().w
     return HorizontalGroup:new{ align = "center",
         titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), g) }, pill }
 end
 
+-- A small grey line of text in a sheet; a section heading when `bold`.
+function InkAwayView:sheetLabel(text, bold)
+    return TextWidget:new{ text = text, face = Font:getFace("cfont", 15), bold = bold, fgcolor = LABEL }
+end
+
+-- A grey explanation under a control, wrapped to `width`.
+function InkAwayView:sheetHint(text, width, size)
+    return TextBoxWidget:new{ text = text, width = width, face = Font:getFace("cfont", size or 13),
+        fgcolor = HINT }
+end
+
 -- A full/any-width rounded action button (grey by default, black when `dark`).
 function InkAwayView:actionButton(label, w, cb, dark, big)
-    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     local b = Button:new{ text = "", width = w, height = Screen:scaleBySize(48), bordersize = 0,
         radius = Screen:scaleBySize(14), background = dark and BLACK or TILE_BG,
         margin = 0, padding = 0, callback = cb, show_parent = self }
     -- `big` marks a primary action (New drawing / New notebook): a larger bold
     -- face so it reads heavier than the ordinary buttons around it
-    local tw = TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17), bold = true,
-        fgcolor = dark and WHITE or BLACK }
-    if b.label_container then b.label_widget = tw; b.label_container[1] = tw end
+    self:setButtonLabel(b, TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17),
+        bold = true, fgcolor = dark and WHITE or BLACK })
     return b
+end
+
+-- A row of equal buttons across `width`, one per { value, label } option, with
+-- the current one filled black. A tap calls onpick(value).
+function InkAwayView:segmentedRow(options, current, width, onpick)
+    local gap = Screen:scaleBySize(12)
+    local w = math.floor((width - (#options - 1) * gap) / #options)
+    local row = HorizontalGroup:new{ align = "center" }
+    for i, o in ipairs(options) do
+        if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+        table.insert(row, self:actionButton(o[2], w, function() onpick(o[1]) end, current == o[1]))
+    end
+    return row
 end
 
 -- A tappable rounded tile filled with `rgb`. A grey uses a Color8 fill (rounded in
@@ -158,9 +233,7 @@ function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
         callback = cb, hold_callback = hold_cb, show_parent = self }
     local ok, img_bb = pcall(function() return self:cachedColourTile(rgb, w, h, radius) end)
     if ok and img_bb and b.label_container then
-        local img = ImageWidget:new{ image = img_bb, width = w, height = h,
-            image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
-        b.label_widget = img; b.label_container[1] = img
+        self:setButtonLabel(b, imageLabel(img_bb, w, h))
     else
         b.frame.background = fill   -- fall back to the plain (slow) colour fill
     end
@@ -184,7 +257,6 @@ end
 -- (thicker when selected, so white/light swatches stay visible). Optional
 -- hold_cb for deleting a saved custom colour.
 function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb, h)
-    local BLACK = Blitbuffer.COLOR_BLACK
     local inner = w - Screen:scaleBySize(8)
     local inner_h = (h or w) - Screen:scaleBySize(8)
     local btn = self:colourTileButton(rgb, inner, inner_h, Screen:scaleBySize(11), cb, hold_cb)
@@ -198,7 +270,6 @@ end
 -- A brush-style tile: a small rounded rectangle showing a sample wave rendered
 -- through the same rasterizer the pen uses, so it previews how the brush looks.
 function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
-    local BLACK = Blitbuffer.COLOR_BLACK
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
         radius = Screen:scaleBySize(12), background = sel and BLACK or TILE_BG,
         margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
@@ -206,15 +277,7 @@ function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
     local iw = w - Screen:scaleBySize(16)
     local ih = h - Screen:scaleBySize(16)
     local ok, wave = pcall(function() return self:cachedBrushWave(key, iw, ih, sel) end)
-    if ok and wave and b.label_container then
-        -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
-        -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it must be
-        -- a real colour or the highlight crashes indexing a nil field. The sample
-        -- belongs to the view's cache, so the widget must not free it.
-        local img = ImageWidget:new{ image = wave, width = iw, height = ih,
-            image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
-        b.label_widget = img; b.label_container[1] = img
-    end
+    if ok and wave then self:setButtonLabel(b, imageLabel(wave, iw, ih)) end
     return b
 end
 

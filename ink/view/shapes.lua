@@ -386,7 +386,7 @@ function InkAwayView:deselectShape()
 end
 
 function InkAwayView:openShapeMenu(sel)
-    if self._shape_menu then UIManager:close(self._shape_menu); self._shape_menu = nil end
+    self:closeSheet("_shape_menu")
     self:setSelectionActive(true)   -- keep the shape draggable while the menu is up
     local op = sel.op
     local dlg

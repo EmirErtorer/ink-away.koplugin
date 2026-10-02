@@ -24,11 +24,12 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
 local Paint = require("ink/paint")
-local IconMenu = require("ink/ui/iconmenu")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
 local TILE_BG = Paint.TILE_BG
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 local InkAwayView = {}
 
@@ -99,8 +100,7 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     -- keeps the query, results and thumbnails, so nothing is refetched on Cancel.
     local reopen = false
     if not is_initial and self._image_browser_dialog then
-        UIManager:close(self._image_browser_dialog)
-        self._image_browser_dialog = nil
+        self:closeSheet("_image_browser_dialog")
         reopen = true
     end
     local function backToBrowser()
@@ -157,10 +157,7 @@ end
 
 -- Close the search box and its keyboard if one is open.
 function InkAwayView:closeImageSearchPrompt()
-    if self._img_search_dialog then
-        UIManager:close(self._img_search_dialog)
-        self._img_search_dialog = nil
-    end
+    self:closeSheet("_img_search_dialog")
 end
 
 -- (Re)create and show the browser sheet from the CURRENT browser state, without
@@ -171,19 +168,13 @@ end
 -- (onCloseMenu) tears the session down.
 function InkAwayView:showImageBrowserSheet()
     if not self._image_browser then return end
-    if self._image_browser_dialog then
-        UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
-    end
-    self._image_browser_dialog = IconMenu:new{
-        build = function(menu) return self:imageBrowserBuild(menu) end,
-        top_y = self:sheetTopY(),
+    self:closeSheet("_image_browser_dialog")
+    self:showSheet("_image_browser_dialog", function(menu) return self:imageBrowserBuild(menu) end, {
         -- tap-outside close: tear the whole session down like the Done button does
         on_close = function()
             self:closeImageSearchPrompt(); self:freeThumbs()
-            self._image_browser = nil; self._image_browser_dialog = nil
-        end,
-    }
-    UIManager:show(self._image_browser_dialog)
+            self._image_browser = nil
+        end })
 end
 
 function InkAwayView:openImageBrowser(query)
@@ -209,9 +200,7 @@ end
 -- session state (so the next "Browse online" starts fresh, not with the old query).
 function InkAwayView:onImageBrowserClose()
     self:closeImageSearchPrompt()
-    if self._image_browser_dialog then
-        UIManager:close(self._image_browser_dialog); self._image_browser_dialog = nil
-    end
+    self:closeSheet("_image_browser_dialog")
     self:freeThumbs()
     self._image_browser = nil
     UIManager:setDirty("all", "ui")   -- repaint the whole screen so nothing lingers
@@ -222,10 +211,7 @@ end
 function InkAwayView:imageBrowserBuild(menu)
     local st = self._image_browser or {}
     local GREY = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF)
-    local gap = Screen:scaleBySize(12)
-    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
-    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
-    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local content_w, gap = self:sheetWidth()
 
     -- Build the fixed chrome first and measure it, so the grid can be given exactly
     -- the vertical space that's left. That keeps the whole sheet on screen (with its
@@ -310,7 +296,7 @@ function InkAwayView:imageBrowserBuild(menu)
         + tip:getSize().h + Screen:scaleBySize(12)
     local bottom_h = Screen:scaleBySize(12) + footer:getSize().h
         + (page_w and (Screen:scaleBySize(6) + page_w:getSize().h) or 0)
-    local frame_pad = Screen:scaleBySize(18)
+    local frame_pad = Screen:scaleBySize(18)   -- the sheet panel's padding (ink/ui/iconmenu.lua)
     local usable = Screen:getHeight() - self:sheetTopY() - Screen:scaleBySize(10) - 2 * frame_pad
     local grid_avail = math.max(Screen:scaleBySize(80), usable - top_h - bottom_h)
 
@@ -355,8 +341,7 @@ function InkAwayView:imageBrowserBuild(menu)
     add(vspan(12))
     add(footer)
     if page_w then add(vspan(6)); add(page_w) end
-    return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
-        radius = Screen:scaleBySize(28), padding = frame_pad, content }
+    return content
 end
 
 -- One grid cell: a rounded tappable tile holding the thumbnail. A tap and a
@@ -380,17 +365,15 @@ function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h)
         radius = Screen:scaleBySize(12), background = TILE, margin = 0, padding = 0,
         callback = add, hold_callback = add, show_parent = self }
     local bb = st.thumbs[index]
-    if bb and b.label_container then
+    if bb then
         local pad = Screen:scaleBySize(6)
         -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
         -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it MUST be a
         -- real colour. Without it a plain tap crashed KOReader indexing a nil field
         -- (a long-press took a different feedback path, which is why only tapping a
         -- result crashed). Same fix as brushWaveTile.
-        local img = ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
-            scale_factor = 0, image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
-        b.label_widget = img
-        b.label_container[1] = img
+        self:setButtonLabel(b, ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
+            scale_factor = 0, image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK })
     end
     return b
 end

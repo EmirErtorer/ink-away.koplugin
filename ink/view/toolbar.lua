@@ -140,10 +140,7 @@ function InkAwayView:buildToolbar()
         local ok_icon, file_icon = pcall(function()
             return IconWidget:new{ file = icon_path, width = isz, height = isz }
         end)
-        if ok_icon and file_icon and b.label_container then
-            b.label_widget = file_icon
-            b.label_container[1] = file_icon
-        end
+        if ok_icon and file_icon then self:setButtonLabel(b, file_icon) end
         -- Make the button transparent: KOReader defaults a border-less button to a
         -- white fill, which would cover the active pill we paint behind it. With no
         -- fill, the white bar shows through and the active pill (drawn in paintTo)
