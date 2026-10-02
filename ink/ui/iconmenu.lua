@@ -50,9 +50,11 @@ function IconMenu:fitFrame()
     local content = self.frame[1]
     if not content or not content.getSize then return end
     local pad = Screen:scaleBySize(4)
+    -- a sheet hung from the toolbar slides up over it when it is too tall (see
+    -- paintTo), so it only scrolls when it is taller than the screen
     local avail
     if self.bottom_y then avail = self.bottom_y - pad
-    else avail = Screen:getHeight() - (self.top_y or pad) - pad end
+    else avail = Screen:getHeight() - 2 * pad end
     local chrome = 2 * ((self.frame.padding or 0) + (self.frame.bordersize or 0))
     -- measuring can fail with the headless test mocks; then no scroll wrapper
     local ok, csz = pcall(function() return content:getSize() end)
