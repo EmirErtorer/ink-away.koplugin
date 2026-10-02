@@ -24,6 +24,8 @@ Plain Lua, nothing from KOReader, so the headless tests drive it directly.
 
 local Geom = require("ink/geom")
 
+local pointInPoly = Geom.pointInPoly
+
 local Canvas = {}
 Canvas.__index = Canvas
 
@@ -243,5 +245,85 @@ function Canvas:opRect(op, extra)
         h = (y1 - y0) + 2 * pad,
     }
 end
+
+-- Average point of an op's geometry (canvas coords), or nil if it has none.
+local function opCentroid(op)
+    local sx, sy, n = 0, 0, 0
+    if op.pts then
+        for i = 1, #op.pts, 2 do sx = sx + op.pts[i]; sy = sy + op.pts[i + 1]; n = n + 1 end
+    elseif op.runs then
+        for i = 1, #op.runs, 3 do sx = sx + op.runs[i]; sy = sy + op.runs[i + 1]; n = n + 1 end
+    end
+    if n == 0 then return nil end
+    return sx / n, sy / n
+end
+
+-- Is an op picked by a lasso polygon (canvas coords)? An op counts as selected
+-- when most of it sits inside the loop (a fraction of its points, sampled and
+-- capped so a dense ink stroke stays cheap), OR when its centre is inside (so a
+-- big shape looped around its middle still selects). The point-fraction test is
+-- what makes ink as easy to grab as a shape: a stroke's average point is often
+-- outside a loop that clearly encircles the stroke, but its points are not.
+local function opInPoly(op, poly)
+    local inside, total = 0, 0
+    local function sample(x, y)
+        total = total + 1
+        if pointInPoly(x, y, poly) then inside = inside + 1 end
+    end
+    if op.pts then
+        local pairs_n = #op.pts / 2
+        local step = math.max(1, math.floor(pairs_n / 48))   -- <= ~48 samples
+        for p = 0, pairs_n - 1, step do
+            local i = p * 2 + 1
+            sample(op.pts[i], op.pts[i + 1])
+        end
+    elseif op.runs then
+        local triples = #op.runs / 3
+        local step = math.max(1, math.floor(triples / 48))
+        for t = 0, triples - 1, step do
+            local i = t * 3 + 1
+            sample(op.runs[i], op.runs[i + 1])
+        end
+    end
+    if total == 0 then return false end
+    if inside / total >= 0.3 then return true end             -- a good chunk is inside
+    local cx, cy = opCentroid(op)
+    if cx and pointInPoly(cx, cy, poly) then return true end   -- centre of mass is inside
+    -- bounding-box centre is inside (stable for long strokes)
+    local x0, y0, x1, y1
+    local function ext(x, y)
+        if not x0 or x < x0 then x0 = x end
+        if not y0 or y < y0 then y0 = y end
+        if not x1 or x > x1 then x1 = x end
+        if not y1 or y > y1 then y1 = y end
+    end
+    if op.pts then for i = 1, #op.pts, 2 do ext(op.pts[i], op.pts[i + 1]) end
+    elseif op.runs then for i = 1, #op.runs, 3 do ext(op.runs[i], op.runs[i + 1]) end end
+    if x0 then return pointInPoly((x0 + x1) / 2, (y0 + y1) / 2, poly) end
+    return false
+end
+
+-- Accumulate an op's bounds into x0,y0,x1,y1 (canvas coords). Returns updated four.
+local function accumBounds(op, x0, y0, x1, y1)
+    local function acc(x, y)
+        if not x0 or x < x0 then x0 = x end
+        if not y0 or y < y0 then y0 = y end
+        if not x1 or x > x1 then x1 = x end
+        if not y1 or y > y1 then y1 = y end
+    end
+    if op.pts then for i = 1, #op.pts, 2 do acc(op.pts[i], op.pts[i + 1]) end end
+    if op.runs then for i = 1, #op.runs, 3 do acc(op.runs[i], op.runs[i + 1]); acc(op.runs[i] + op.runs[i + 2], op.runs[i + 1]) end end
+    return x0, y0, x1, y1
+end
+
+-- Shift every coordinate of an op by (dx,dy) canvas pixels, in place.
+local function translateOp(op, dx, dy)
+    if op.pts then for i = 1, #op.pts, 2 do op.pts[i] = op.pts[i] + dx; op.pts[i + 1] = op.pts[i + 1] + dy end end
+    if op.runs then for i = 1, #op.runs, 3 do op.runs[i] = op.runs[i] + dx; op.runs[i + 1] = op.runs[i + 1] + dy end end
+end
+
+Canvas.opInPoly = opInPoly
+Canvas.accumBounds = accumBounds
+Canvas.translateOp = translateOp
 
 return Canvas

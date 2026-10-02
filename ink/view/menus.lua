@@ -1,0 +1,748 @@
+--[[
+The tool sheets: pen, eraser, shapes and line variants, fill colour and text,
+and the colour picker and brush maker they open.
+Part of InkAwayView (see ink/view.lua).
+]]
+
+local Blitbuffer = require("ffi/blitbuffer")
+local Button = require("ui/widget/button")
+local Device = require("device")
+local FrameContainer = require("ui/widget/container/framecontainer")
+local GeomUI = require("ui/geometry")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local InfoMessage = require("ui/widget/infomessage")
+local Size = require("ui/size")
+local UIManager = require("ui/uimanager")
+local _ = require("gettext")
+local Brushes = require("ink/brushes")
+local Paint = require("ink/paint")
+local Palette = require("ink/palette")
+local IconMenu = require("ink/ui/iconmenu")
+local SliderRow = require("ink/ui/controls").SliderRow
+local ToggleRow = require("ink/ui/controls").ToggleRow
+
+local Screen = Device.screen
+local WHITE = Blitbuffer.COLOR_WHITE
+local HAIRLINE = Paint.HAIRLINE
+local TILE_BG = Paint.TILE_BG
+local CARET_BG = Paint.CARET_BG
+local SHADES = Palette.SHADES
+local COLORS = Palette.COLORS
+local sameColor = Palette.sameColor
+
+local InkAwayView = {}
+
+-- The reader's saved custom colours (a list of {r,g,b}), persisted so they last.
+function InkAwayView:getCustomColors()
+    local list = self:getSetting("inkaway_custom_colors")
+    return type(list) == "table" and list or {}
+end
+
+function InkAwayView:addCustomColor(rgb)
+    local list = self:getCustomColors()
+    for _, c in ipairs(list) do
+        if c[1] == rgb[1] and c[2] == rgb[2] and c[3] == rgb[3] then return end  -- already saved
+    end
+    list[#list + 1] = { rgb[1], rgb[2], rgb[3] }
+    while #list > 18 do table.remove(list, 1) end   -- 3 rows of 6, oldest drops out
+    self:setSetting("inkaway_custom_colors", list)
+end
+
+function InkAwayView:removeCustomColor(rgb)
+    local list = self:getCustomColors()
+    for i, c in ipairs(list) do
+        if c[1] == rgb[1] and c[2] == rgb[2] and c[3] == rgb[3] then table.remove(list, i); break end
+    end
+    self:setSetting("inkaway_custom_colors", list)
+end
+
+-- Open the colour wheel to pick (and optionally save) an exact pen colour.
+function InkAwayView:openColorPicker()
+    local ok, ColorPicker = pcall(require, "ink/ui/colorpicker")
+    if not ok then return end
+    local function apply(rgb) self.pen_color = { rgb[1], rgb[2], rgb[3] } end
+    UIManager:show(ColorPicker:new{
+        color = self.pen_color,
+        on_pick = function(rgb) apply(rgb); self:openPenSettings() end,
+        on_save = function(rgb) apply(rgb); self:addCustomColor(rgb); self:openPenSettings() end,
+    })
+end
+
+-- Pen settings sheet (same rounded-sheet style as the Shapes menu): size and
+-- opacity sliders, brush-style wave tiles with a create (+) tile, colour swatch
+-- rows, and the stroke aids. Rebuilt and reshown whenever something changes.
+local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
+function InkAwayView:openPenSettings()
+    if self._pen_dialog then self._pen_dialog:rebuild(); return end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local Font = require("ui/font")
+    self:ensureUserIcons()
+
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local tileW = math.floor((target - 3 * gap) / 4)
+    local content_w = 4 * tileW + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local pxfmt = function(v) return v .. _(" px") end
+    local function closeSelf() if self._pen_dialog then UIManager:close(self._pen_dialog); self._pen_dialog = nil end end
+
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+
+        add(self:sheetTitle(_("Pen"), content_w, _("Done"), closeSelf))
+        add(vspan(12))
+        add(SliderRow:new{ label = _("Size"), value = self.pen_width, min = 1, max = 60,
+            width = content_w, parent = menu, format = pxfmt,
+            on_set = function(v) self.pen_width = math.max(1, v) end })
+        add(vspan(10))
+        add(SliderRow:new{ label = _("Opacity"), value = math.floor(self.pen_alpha / 255 * 100 + 0.5),
+            width = content_w, parent = menu,
+            on_set = function(v) self.pen_alpha = math.max(1, math.floor(v / 100 * 255 + 0.5)) end })
+        add(vspan(12))
+
+        -- brush styles: wave tiles (four per row, wrapping), then a create (+) tile
+        local styleMenu = Brushes.menu(function(k) return self:getSetting(k) end)
+        local ncustom = 0
+        for _, s in ipairs(styleMenu) do if s.custom then ncustom = ncustom + 1 end end
+        local per = 4
+        local swtile = math.floor((content_w - (per - 1) * gap) / per)
+        local wave_h = Screen:scaleBySize(46)
+        local tiles = {}
+        for _, s in ipairs(styleMenu) do
+            local sel = (self.pen_style == s.key)
+            tiles[#tiles + 1] = self:brushWaveTile(s.key, swtile, wave_h, sel, function()
+                self.pen_style = s.key; self:setSetting("inkaway_pen_style", s.key); self:openPenSettings()
+            end, s.custom and function() self:confirmDeleteBrush(s.key, s.label) end or nil)
+        end
+        if ncustom < PEN_CUSTOM_CAP then
+            tiles[#tiles + 1] = Button:new{ text = "+", text_font_size = 26, text_font_bold = true,
+                width = swtile, height = wave_h, bordersize = 0, radius = Screen:scaleBySize(12),
+                background = TILE_BG, margin = 0, padding = 0, show_parent = self,
+                callback = function() closeSelf(); self:openBrushMaker() end }
+        end
+        for i = 1, #tiles, per do
+            local row = HorizontalGroup:new{ align = "center" }
+            for j = i, math.min(i + per - 1, #tiles) do
+                if j > i then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                table.insert(row, tiles[j])
+            end
+            add(row)
+            if i + per <= #tiles then add(vspan(gap)) end
+        end
+        add(vspan(12))
+
+        -- The stroke aids (toggles + stabilizer) are the fixed tail of the sheet and
+        -- must never be pushed off-screen by the colour rows, so build them first,
+        -- measure them, and cap how many custom-colour rows we render to whatever
+        -- vertical space is left (see the colour section below).
+        local TextBoxWidget = require("ui/widget/textboxwidget")
+        local HINT = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF)
+        local function toggle(label, on, cb)
+            return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
+        end
+        local tail = VerticalGroup:new{ align = "left" }
+        local assistRow = HorizontalGroup:new{ align = "center",
+            toggle(_("Shape assist"), self.shape_assist, function(on)
+                self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
+                -- release the pre-stroke snapshot when assist is off; it is only
+                -- ever used by beautify, and re-created on the next stroke if needed
+                if not on and self._pre_stroke_bb then
+                    self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
+                    self._pre_stroke_valid = false
+                end end),
+        }
+        do
+            local pr = toggle(_("Palm rejection"), self.palm_reject, function(on)
+                self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
+                if on and not self:penCapable() then
+                    UIManager:show(InfoMessage:new{ text = _(
+                        "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+                end
+            end)
+            local a1w = assistRow[1].width
+            local slack = math.max(Screen:scaleBySize(16), content_w - a1w - pr.width)
+            table.insert(assistRow, HorizontalSpan:new{ width = slack })
+            table.insert(assistRow, pr)
+        end
+        table.insert(tail, assistRow)
+        -- Debug: the pen input test, hidden unless show_pen_test is set.
+        if self.show_pen_test and self:penCapable() then
+            table.insert(tail, vspan(10))
+            table.insert(tail, self:actionButton(_("Test pen input"), content_w,
+                function() closeSelf(); self:startPenInputTest() end))
+        end
+        table.insert(tail, vspan(12))
+        table.insert(tail, SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
+            width = content_w, parent = menu, format = function(v) return tostring(v) end,
+            on_set = function(v) self.stabilizer = v; self:setSetting("inkaway_stabilizer", v) end })
+        table.insert(tail, vspan(4))
+        table.insert(tail, TextBoxWidget:new{
+            text = _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."),
+            face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
+        -- Unfinished: handwriting to text, hidden unless show_handwriting is set.
+        if self.show_handwriting then
+            table.insert(tail, vspan(10))
+            table.insert(tail, ToggleRow:new{ label = _("Handwriting to text (beta)"), is_on = self.hwr_enabled,
+                width = content_w, parent = menu, callback = function(on)
+                    self.hwr_enabled = on; self:setSetting("inkaway_hwr", on)
+                    if not on then self:hwrCancel() end
+                end })
+            table.insert(tail, vspan(4))
+            table.insert(tail, TextBoxWidget:new{
+                text = _("Print letters with the pen, then pause -- they turn into text in your current text style. Offline; clear, separated capitals and digits work best."),
+                face = Font:getFace("cfont", 13), fgcolor = HINT, width = content_w })
+        end
+
+        -- colour swatches: shades, then (colour screens) colours + saved customs,
+        -- and always the RGB picker as a "+" tile. Rows are centred so a short row
+        -- (the 5 shades) stays symmetrical instead of hugging the left.
+        local CenterContainer = require("ui/widget/container/centercontainer")
+        local BLACK = Blitbuffer.COLOR_BLACK
+        -- Swatches fill the width (six per row), so grey and colour tiles are all the
+        -- same size with no empty margins. Their height is capped on big high-DPI
+        -- colour screens so two colour rows don't overflow the sheet (they become
+        -- wide rounded tiles rather than large squares).
+        local sw = math.floor((content_w - 5 * gap) / 6)
+        local swh = math.min(sw, Screen:scaleBySize(58))
+        local function swatch(rgb, custom)
+            return self:swatchTile(rgb, sameColor(self.pen_color, rgb), sw,
+                function() self.pen_color = { rgb[1], rgb[2], rgb[3] }; self:openPenSettings() end,
+                custom and function() self:removeCustomColor(rgb); self:openPenSettings() end or nil, swh)
+        end
+        local function pickerTile()
+            local inner = sw - Screen:scaleBySize(8)
+            local inner_h = swh - Screen:scaleBySize(8)
+            local b = Button:new{ text = "+", text_font_size = 24, text_font_bold = true,
+                width = inner, height = inner_h, background = TILE_BG,
+                radius = Screen:scaleBySize(11), bordersize = 0, margin = 0, padding = 0,
+                show_parent = self, callback = function() closeSelf(); self:openColorPicker() end }
+            return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = BLACK,
+                radius = Screen:scaleBySize(14), padding = Screen:scaleBySize(3), margin = 0, b }
+        end
+        local function centeredRow(list)
+            local hg = HorizontalGroup:new{ align = "center" }
+            for i, t in ipairs(list) do
+                if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
+                table.insert(hg, t)
+            end
+            return CenterContainer:new{ dimen = GeomUI:new{ w = content_w, h = hg:getSize().h }, hg }
+        end
+
+        -- Build the colour rows as measurable widgets so we can cap custom rows by
+        -- their real rendered height (estimates were off by a row on high-DPI
+        -- colour screens), keeping the toggles + stabilizer always on screen.
+        local rowWidgets = {}
+        local shadeTiles = {}
+        for _, e in ipairs(SHADES) do shadeTiles[#shadeTiles + 1] = swatch(e.rgb) end
+        rowWidgets[#rowWidgets + 1] = centeredRow(shadeTiles)
+        if self:colorScreen() then
+            -- Colours row: five preset colours plus the "+" RGB picker, so with no
+            -- saved customs the colour section is one clean row of six.
+            local colorTiles = {}
+            for i = 1, 5 do colorTiles[#colorTiles + 1] = swatch(COLORS[i].rgb) end
+            colorTiles[#colorTiles + 1] = pickerTile()
+            rowWidgets[#rowWidgets + 1] = centeredRow(colorTiles)
+
+            -- Saved custom colours go on additional rows below, but only as many as
+            -- fit: measure everything and cap by the real remaining height.
+            local head_h = content:getSize().h   -- head = title..brushes
+            content._size = nil                  -- invalidate (VerticalGroup caches offsets)
+            local fixed_h = head_h + tail:getSize().h + Screen:scaleBySize(16)
+            for _, w in ipairs(rowWidgets) do fixed_h = fixed_h + w:getSize().h + gap end
+            local per_row = rowWidgets[1]:getSize().h + gap
+            local budget = Screen:getHeight() - self:sheetTopY() - Screen:scaleBySize(4)
+                - Screen:scaleBySize(8) - 2 * Screen:scaleBySize(18) - 2 * Size.border.window
+            local ncustrows = math.max(0, math.floor((budget - fixed_h) / per_row))
+            local customs = self:getCustomColors()
+            local shown = math.min(#customs, ncustrows * 6)
+            for i = 1, shown, 6 do
+                local chunk = {}
+                for j = i, math.min(i + 5, shown) do chunk[#chunk + 1] = swatch(customs[j], true) end
+                rowWidgets[#rowWidgets + 1] = centeredRow(chunk)
+            end
+        end
+        for i, w in ipairs(rowWidgets) do
+            if i > 1 then add(vspan(gap)) end
+            add(w)
+        end
+        add(vspan(16))
+        for _, w in ipairs(tail) do add(w) end
+
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+
+    self._pen_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._pen_dialog = nil end }
+    UIManager:show(self._pen_dialog)
+end
+
+-- Open the brush maker. A saved brush is registered, made the current pen, and
+-- appears in the pen menu from then on (it is kept in KOReader's settings, so it
+-- survives restarts and plugin updates).
+function InkAwayView:openBrushMaker()
+    local ok, BrushMaker = pcall(require, "ink/ui/brushmaker")
+    if not ok then return end
+    local maker = BrushMaker:new{
+        params = Brushes.defaults(),
+        on_save = function(name, params)
+            local key = Brushes.save(
+                function(k) return self:getSetting(k) end,
+                function(k, val) self:setSetting(k, val) end,
+                name, params)
+            self.pen_style = key
+            self:setSetting("inkaway_pen_style", key)
+            self:openPenSettings()
+        end,
+    }
+    UIManager:show(maker)
+end
+
+function InkAwayView:confirmDeleteBrush(key, label)
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = string.format(_("Delete the brush \"%s\"?"), label),
+        ok_text = _("Delete"),
+        ok_callback = function()
+            local name = key:gsub("^user:", "")
+            Brushes.remove(function(k) return self:getSetting(k) end,
+                           function(k, v) self:setSetting(k, v) end, name)
+            if self.pen_style == key then
+                self.pen_style = "solid"
+                self:setSetting("inkaway_pen_style", "solid")
+            end
+            self:openPenSettings()
+        end,
+    })
+end
+
+-- Eraser menu: size, and whether the eraser also removes the background image.
+-- Eraser sheet (shapes-menu style): a size slider and an "erase pictures" toggle.
+function InkAwayView:openEraserSettings()
+    if self._eraser_dialog then self._eraser_dialog:rebuild(); return end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    self:ensureUserIcons()
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local closeSelf = function()
+        if self._eraser_dialog then UIManager:close(self._eraser_dialog); self._eraser_dialog = nil end
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        table.insert(content, self:sheetTitle(_("Eraser"), content_w, _("Done"), closeSelf))
+        table.insert(content, vspan(16))
+        table.insert(content, SliderRow:new{ label = _("Size"), value = self.eraser_width, min = 4, max = 120,
+            width = content_w, parent = menu, format = function(v) return v .. _(" px") end,
+            on_set = function(v) self.eraser_width = math.max(1, v) end })
+        table.insert(content, vspan(14))
+        table.insert(content, ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
+            width = content_w, parent = menu,
+            callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end })
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._eraser_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._eraser_dialog = nil end }
+    UIManager:show(self._eraser_dialog)
+end
+
+-- Arrowhead size, in canvas pixels (used by the arrow shapes).
+function InkAwayView:openArrowSize()
+    local SpinWidget = require("ui/widget/spinwidget")
+    UIManager:show(SpinWidget:new{
+        title_text = _("Arrowhead size"),
+        info_text = _("How big the arrowheads are, in canvas pixels."),
+        value = self.arrow_head, value_min = 6, value_max = 120, value_step = 2, value_hold_step = 10,
+        unit = _("px"),
+        callback = function(spin)
+            self.arrow_head = math.max(4, math.floor(spin.value))
+            self:setSetting("inkaway_arrow_head", self.arrow_head)
+            self:openShapeLineMenu()
+        end,
+    })
+end
+
+-- The Shapes menu: big rounded-square icon tiles (the Line tile carries a small
+-- caret in its bottom-right corner that opens the line/arrow/curve submenu; the
+-- rest of the tile selects a plain line), the paint-bucket and lasso tools as
+-- smaller secondary tiles, and Fill / snap options as sliding toggles that flip
+-- in place. Icons are rendered with true transparency (alpha = true) so the tile
+-- colour shows through; the selected tile inverts a white-flattened icon so black
+-- strokes read as white on the black tile.
+function InkAwayView:openShapePicker()
+    self:flushShape()
+    if self._shape_dialog then self._shape_dialog:rebuild(); return end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    self:ensureUserIcons()
+
+    -- Four square tiles fill the row with equal gaps; derive the exact content
+    -- width from the tile size so everything lines up flush to the panel padding.
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local tileW = math.floor((target - 3 * gap) / 4)
+    local content_w = 4 * tileW + 3 * gap
+    local halfW = math.floor((content_w - gap) / 2)
+    local isz = math.floor(tileW * 0.60)   -- big icon inside the tile
+
+    -- The Line tile: a full-size select button (picks a plain line) with a small
+    -- caret button pinned to the bottom-right that opens the variants submenu.
+    local function lineTile(sel)
+        local select_btn = self:makeTile("sh_line", tileW, tileW, isz, sel, function()
+            self:flushShape(); self.shape, self.shape_arrow = "line", nil
+            self:refreshToolLabels(); self:openShapePicker()
+        end)
+        local caretW = Screen:scaleBySize(30)
+        local inset = Screen:scaleBySize(5)
+        local caretIsz = caretW - Screen:scaleBySize(8)
+        local caret_btn = Button:new{ icon = "inkaway.caret", icon_width = caretIsz, icon_height = caretIsz,
+            width = caretW, height = caretW,
+            bordersize = 0, radius = Screen:scaleBySize(8), background = CARET_BG,
+            margin = 0, padding = 0, show_parent = self,
+            callback = function() self:openShapeLineMenu() end,
+            overlap_offset = { tileW - caretW - inset, tileW - caretW - inset } }
+        local cw = self:tileIcon("caret", caretIsz, false)
+        if cw and caret_btn.label_container then
+            caret_btn.label_widget = cw; caret_btn.label_container[1] = cw
+        end
+        -- Caret is child[1] so the default first->last dispatch checks its small
+        -- corner range first; any tap outside it falls through to the big select
+        -- button (child[2]). paintTo is reversed so the select button draws
+        -- underneath and the caret stays visible on top.
+        local og = OverlapGroup:new{ dimen = { w = tileW, h = tileW },
+            allow_mirroring = false, caret_btn, select_btn }
+        function og:paintTo(bb, x, y)
+            for i = #self, 1, -1 do
+                local w = self[i]
+                if w.overlap_offset then
+                    w:paintTo(bb, x + w.overlap_offset[1], y + w.overlap_offset[2])
+                else
+                    w:paintTo(bb, x, y)
+                end
+            end
+        end
+        return og
+    end
+
+    local function shapeTile(name, shape)
+        return self:makeTile(name, tileW, tileW, isz, self.shape == shape, function()
+            self:flushShape(); self.shape, self.shape_arrow = shape, nil
+            self:refreshToolLabels(); self:openShapePicker()
+        end)
+    end
+
+    -- title row: "Shapes" on the left, a black Done pill on the right
+    local titleW = TextWidget:new{ text = _("Shapes"), face = Font:getFace("cfont", 22), bold = true }
+    local done = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = function() UIManager:close(self._shape_dialog); self._shape_dialog = nil end, show_parent = self }
+    do
+        local dtw = TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 15), bold = true, fgcolor = WHITE }
+        if done.label_container then done.label_widget = dtw; done.label_container[1] = dtw end
+    end
+    local title_gap = content_w - titleW:getSize().w - done:getSize().w
+    local titleRow = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), title_gap) }, done }
+
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+
+    -- The whole panel is built inside the menu's build callback so the toggle
+    -- rows can use the (about-to-be-shown) menu as their repaint parent.
+    local build = function(menu)
+        -- The shape and tool tiles show the current selection, so they must be
+        -- rebuilt here (inside the rebuild callback), not once above -- otherwise
+        -- picking a shape would not move the highlight until the sheet reopened.
+        local lineSel = (self.shape == "line" or self.shape == "curve")
+        local shapeRow = HorizontalGroup:new{ align = "center",
+            lineTile(lineSel), HorizontalSpan:new{ width = gap },
+            shapeTile("sh_rect", "rect"), HorizontalSpan:new{ width = gap },
+            shapeTile("sh_ellipse", "ellipse"), HorizontalSpan:new{ width = gap },
+            shapeTile("sh_triangle", "triangle"),
+        }
+        -- tools row: paint bucket + lasso, smaller/secondary tiles with a label
+        local toolH = Screen:scaleBySize(96)
+        local toolIsz = Screen:scaleBySize(36)
+        local toolRow = HorizontalGroup:new{ align = "center",
+            self:makeTile("bucket", halfW, toolH, toolIsz, self.tool == "fill", function()
+                self:flushShape(); self.tool = "fill"; self:refreshToolLabels()
+                UIManager:close(self._shape_dialog); self._shape_dialog = nil
+            end, _("Paint bucket"), _("hold to pick colour"), function() self:openFillColor() end),
+            HorizontalSpan:new{ width = gap },
+            self:makeTile("lasso", halfW, toolH, toolIsz, self.tool == "lasso", function()
+                self:flushPending(); self:flushShape()
+                if self.selection or self.lassoing then self:clearSelection() end
+                self.tool = "lasso"; self:refreshToolLabels()
+                UIManager:close(self._shape_dialog); self._shape_dialog = nil
+                self:composeCanvas(); self:renderView(); self:refresh("all", "full")
+            end, _("Lasso select")),
+        }
+        -- three compact toggles (switch right after its label) spread across one row
+        local function toggle(label, on, cb)
+            return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
+        end
+        local fillRow = toggle(_("Fill"), self.shape_fill, function(on)
+            self.shape_fill = on end)
+        local gridRow = toggle(_("Snap to grid"), self.snap_grid, function(on)
+            self.snap_grid = on; self:setSetting("inkaway_snap_grid", on) end)
+        local snap45Row = toggle(_("Snap to 45\u{00B0}"), self.snap_angle, function(on)
+            self.snap_angle = on; self:setSetting("inkaway_snap_angle", on) end)
+        local totalW = fillRow.width + gridRow.width + snap45Row.width
+        local slack = math.max(Screen:scaleBySize(16), math.floor((content_w - totalW) / 2))
+        local togglesRow = HorizontalGroup:new{ align = "center",
+            fillRow, HorizontalSpan:new{ width = slack },
+            gridRow, HorizontalSpan:new{ width = slack },
+            snap45Row }
+        local content = VerticalGroup:new{ align = "left",
+            titleRow, vspan(16),
+            shapeRow, vspan(16),
+            togglesRow, vspan(16),
+            toolRow,
+        }
+        return FrameContainer:new{
+            background = WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18),
+            content,
+        }
+    end
+
+    self._shape_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._shape_dialog = nil end }
+    UIManager:show(self._shape_dialog)
+end
+
+-- The line/arrow/curve variants, opened from the Line tile. Kept as a compact
+-- ButtonDialog (glyph + label), with the arrowhead size for the arrow variants.
+-- The line/arrow/curve variants, in the SAME rounded-tile style as the parent
+-- Shapes menu but with smaller tiles (it is a child menu): two rows of three
+-- (straight family / curved family), plus an arrowhead-size row and a Back pill.
+function InkAwayView:openShapeLineMenu()
+    -- (no rebuild-in-place: every button here closes this sheet and navigates
+    -- away, so it is always opened fresh)
+    if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
+    if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    self:ensureUserIcons()
+
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local parentTileW = math.floor((target - 3 * gap) / 4)
+    local tileW = math.floor(parentTileW * 0.78)   -- smaller than the parent's tiles
+    local isz = math.floor(tileW * 0.60)
+    local content_w = 3 * tileW + 2 * gap
+
+    local function isSel(shape, arrow)
+        return self.shape == shape and (self.shape_arrow or false) == (arrow or false)
+    end
+    local function pick(shape, arrow)
+        return function()
+            self:flushShape(); self.shape, self.shape_arrow = shape, arrow
+            self:refreshToolLabels()
+            if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+            self:openShapePicker()
+        end
+    end
+    local function tile(name, shape, arrow)
+        return self:makeTile(name, tileW, tileW, isz, isSel(shape, arrow), pick(shape, arrow))
+    end
+
+    local row1 = HorizontalGroup:new{ align = "center",
+        tile("sh_line", "line", nil), HorizontalSpan:new{ width = gap },
+        tile("sh_arrow", "line", "end"), HorizontalSpan:new{ width = gap },
+        tile("sh_darrow", "line", "both") }
+    local row2 = HorizontalGroup:new{ align = "center",
+        tile("sh_curve", "curve", nil), HorizontalSpan:new{ width = gap },
+        tile("sh_carrow", "curve", "end"), HorizontalSpan:new{ width = gap },
+        tile("sh_cdarrow", "curve", "both") }
+
+    -- title row: label on the left, a black Back pill on the right
+    local titleW = TextWidget:new{ text = _("Line / arrow / curve"), face = Font:getFace("cfont", 20), bold = true }
+    local back = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = function()
+            if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+            self:openShapePicker()
+        end, show_parent = self }
+    do
+        local btw = TextWidget:new{ text = _("Back"), face = Font:getFace("cfont", 15), bold = true, fgcolor = WHITE }
+        if back.label_container then back.label_widget = btw; back.label_container[1] = btw end
+    end
+    local title_gap = content_w - titleW:getSize().w - back:getSize().w
+    local titleRow = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), title_gap) }, back }
+
+    -- arrowhead size: a full-width rounded grey text button (text buttons are safe)
+    local ahRow = Button:new{ text = string.format(_("Arrowhead size: %d px"), self.arrow_head),
+        width = content_w, height = Screen:scaleBySize(48), bordersize = 0,
+        radius = Screen:scaleBySize(14), background = TILE_BG, margin = 0, padding = 0,
+        text_font_size = 17, show_parent = self,
+        callback = function()
+            if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
+            self:openArrowSize()
+        end }
+
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left",
+            titleRow, vspan(16),
+            row1, vspan(gap),
+            row2, vspan(16),
+            ahRow,
+        }
+        return FrameContainer:new{ background = WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._shape_line_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._shape_line_dialog = nil end }
+    UIManager:show(self._shape_line_dialog)
+end
+
+-- The paint-bucket colour picker (opened by holding the Paint bucket tile), in
+-- the same rounded-sheet style as the Shapes menu: rows of colour swatch tiles
+-- (grey shades, plus chromatic colours on a colour screen) and an opacity row.
+function InkAwayView:openFillColor()
+    if self._fill_dialog then self._fill_dialog:rebuild(); return end
+    if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
+    self:ensureUserIcons()
+
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local sw = math.floor((target - 5 * gap) / 6)   -- 6 swatches per row (colours)
+    local content_w = 6 * sw + 5 * gap
+
+    -- one colour swatch: a colour-filled rounded tile; the current colour gets a
+    -- black ring (via a wrapping FrameContainer), others a hairline.
+    local function swatch(e)
+        local selected = sameColor(self.fill_color, e.rgb)
+        local inner = sw - Screen:scaleBySize(8)
+        local btn = self:colourTileButton(e.rgb, inner, inner, Screen:scaleBySize(12),
+            function() self.fill_color = { e.rgb[1], e.rgb[2], e.rgb[3] }; self:openFillColor() end)
+        return FrameContainer:new{
+            bordersize = selected and Screen:scaleBySize(3) or Screen:scaleBySize(1),
+            color = selected and BLACK or HAIRLINE,
+            radius = Screen:scaleBySize(15),
+            padding = selected and Screen:scaleBySize(1) or Screen:scaleBySize(3),
+            margin = 0, btn }
+    end
+    local function swatchRow(entries)
+        local row = HorizontalGroup:new{ align = "center" }
+        for i, e in ipairs(entries) do
+            if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+            table.insert(row, swatch(e))
+        end
+        return row
+    end
+
+    -- title + Done
+    local titleW = TextWidget:new{ text = _("Fill colour"), face = Font:getFace("cfont", 22), bold = true }
+    local done = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
+        callback = function() if self._fill_dialog then UIManager:close(self._fill_dialog); self._fill_dialog = nil end end,
+        show_parent = self }
+    do
+        local dtw = TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 15), bold = true, fgcolor = WHITE }
+        if done.label_container then done.label_widget = dtw; done.label_container[1] = dtw end
+    end
+    local title_gap = content_w - titleW:getSize().w - done:getSize().w
+    local titleRow = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), title_gap) }, done }
+
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    -- opacity: a 0..100 slider built inside build() so it can use the shown menu
+    -- as its repaint parent for the in-place value change.
+    local build = function(menu)
+        local pct = math.floor(self.fill_alpha / 255 * 100 + 0.5)
+        local opacity = SliderRow:new{ label = _("Opacity"), value = pct, width = content_w, parent = menu,
+            on_set = function(v) self.fill_alpha = math.floor(v / 100 * 255 + 0.5) end }
+        local content = VerticalGroup:new{ align = "center" }
+        table.insert(content, titleRow)
+        table.insert(content, vspan(16))
+        table.insert(content, swatchRow(SHADES))
+        if self:colorScreen() then
+            table.insert(content, vspan(gap))
+            table.insert(content, swatchRow(COLORS))
+        end
+        table.insert(content, vspan(18))
+        table.insert(content, opacity)
+        return FrameContainer:new{ background = WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._fill_dialog = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._fill_dialog = nil end }
+    UIManager:show(self._fill_dialog)
+end
+
+-- Text settings submenu: font family and default size.
+-- Text sheet (shapes-menu style): font chooser, a font-size slider, and the
+-- snap / eraser-protect toggles.
+function InkAwayView:openTextSettings()
+    if self._text_settings then UIManager:close(self._text_settings); self._text_settings = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    self:ensureUserIcons()
+    local gap = Screen:scaleBySize(12)
+    local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    local size = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
+    local closeSelf = function()
+        if self._text_settings then UIManager:close(self._text_settings); self._text_settings = nil end
+    end
+    local build = function(menu)
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Text"), content_w, _("Done"), closeSelf))
+        add(vspan(16))
+        add(self:actionButton(_("Font: ") .. self:textFontDisplay(), content_w,
+            function() closeSelf(); self:openTextFont() end))
+        add(vspan(12))
+        add(SliderRow:new{ label = _("Font size"), value = size, min = 10, max = 96,
+            width = content_w, parent = menu, format = function(v) return v .. _(" px") end,
+            on_set = function(v) self.text_size = v; self:setSetting("inkaway_text_size", v) end })
+        add(vspan(14))
+        add(ToggleRow:new{ label = _("Snap lines to ruling"), is_on = self.text_grid_snap,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.text_grid_snap = on; self:setSetting("inkaway_text_grid_snap", on)
+                if self.editing_text then
+                    self.editing_text.grid_snap = on
+                    if on then self:snapTextBoxToGrid(self.editing_text) end
+                    self:invalidateLayout(); self:refreshTextBox("flashui")
+                end
+            end })
+        add(vspan(10))
+        add(ToggleRow:new{ label = _("Protect text from eraser"), is_on = self.text_erase_protect,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.text_erase_protect = on; self:setSetting("inkaway_text_erase_protect", on)
+            end })
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
+    end
+    self._text_settings = IconMenu:new{ build = build, top_y = self:sheetTopY(),
+        on_close = function() self._text_settings = nil end }
+    UIManager:show(self._text_settings)
+end
+
+return InkAwayView
