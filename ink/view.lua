@@ -34,6 +34,41 @@ local displayColor = Paint.displayColor
 -- A full garbage collection, run shortly after the canvas closes.
 local function deferredCollect() collectgarbage("collect") end
 
+-- Sheets the emulator can open by name for scripted screenshots (INKAWAY_AUTOSHEET).
+local function inNotebook(open)
+    return function(v)
+        if not v.notebook then
+            v:startNotebook({ style = "lines", size = v.grid_size or 40, strength = v.grid_strength or 45 })
+        end
+        open(v)
+    end
+end
+local DEV_SHEETS = {
+    pen = function(v) v:openPenSettings() end,
+    eraser = function(v) v:openEraserSettings() end,
+    text = function(v) v:openTextSettings() end,
+    settings = function(v) v:openSettings() end,
+    save = function(v) v:onSave() end,
+    brush = function(v) v:openBrushMaker() end,
+    shape = function(v) v:openShapePicker() end,
+    shapeline = function(v) v:openShapePicker(); v:openShapeLineMenu() end,
+    fill = function(v) v:openFillColor() end,
+    grid = function(v) v:openGridSettings() end,
+    background = function(v) v:openBackground() end,
+    image = function(v) v:chooseImage() end,
+    colorpicker = function(v) v:openColorPicker() end,
+    format = function(v)
+        v:setTool("text")
+        v:newTextAt({ x = v.view.area_x + 40, y = v.view.area_y + 60 })
+        v:openTextFormatMenu()
+    end,
+    newnotebook = function(v) v:newNotebook() end,
+    notebook = inNotebook(function() end),
+    export = inNotebook(function(v) v:exportNotebookPDF() end),
+    pagemenu = inNotebook(function(v) v:openPageMenu() end),
+    ["goto"] = inNotebook(function(v) v:nbJumpPrompt() end),
+}
+
 local InkAwayView = InputContainer:extend{
     name = "inkaway_view",
     covers_fullscreen = true,
@@ -289,26 +324,14 @@ function InkAwayView:init()
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
-    -- sheet and INKAWAY_AUTOSHOT saves the screen to a PNG.
+    -- sheet from DEV_SHEETS and INKAWAY_AUTOSHOT saves the screen to a PNG.
     local autoorient = os.getenv("INKAWAY_AUTOORIENT")
     if autoorient == "landscape" or autoorient == "portrait" then
         UIManager:scheduleIn(0.4, function() self:setOrientation(autoorient) end)
     end
-    local autosheet = os.getenv("INKAWAY_AUTOSHEET")
+    local autosheet = DEV_SHEETS[os.getenv("INKAWAY_AUTOSHEET") or ""]
     if autosheet then
-        UIManager:scheduleIn(0.7, function()
-            if autosheet == "pen" then self:openPenSettings()
-            elseif autosheet == "eraser" then self:openEraserSettings()
-            elseif autosheet == "text" then self:openTextSettings()
-            elseif autosheet == "settings" then self:openSettings()
-            elseif autosheet == "save" then self:onSave()
-            elseif autosheet == "brush" then self:openBrushMaker()
-            elseif autosheet == "shape" then self:openShapePicker()
-            elseif autosheet == "shapeline" then self:openShapePicker(); self:openShapeLineMenu()
-            elseif autosheet == "fill" then self:openFillColor()
-            elseif autosheet == "notebook" then self:startNotebook({ style = "lines", size = self.grid_size or 40, strength = self.grid_strength or 45 })
-            end
-        end)
+        UIManager:scheduleIn(0.7, function() autosheet(self) end)
     end
     local autoshot = os.getenv("INKAWAY_AUTOSHOT")
     if autoshot then
