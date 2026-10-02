@@ -31,43 +31,94 @@ local function hash01(x, y, seed)
 end
 Raster.hash01 = hash01
 
+local floor, sqrt, ceil, max = math.floor, math.sqrt, math.ceil, math.max
+local huge = math.huge
+
+-- Half-widths of each row of a disc of radius r (row dy -> span), cached for the
+-- last few radii: a stroke draws thousands of discs with one or two radii (the
+-- master and the on-screen copy), so the square roots are worked out once.
+local SPAN_CACHE_N = 4
+local span_keys, span_vals, span_next = {}, {}, 1
+local function discSpans(r)
+    for i = 1, SPAN_CACHE_N do
+        if span_keys[i] == r then return span_vals[i] end
+    end
+    local r2 = r * r
+    local ir = floor(r)
+    local t = { ir = ir }
+    for dy = 0, ir do t[dy] = floor(sqrt(r2 - dy * dy) + 0.5) end
+    span_keys[span_next], span_vals[span_next] = r, t
+    span_next = span_next % SPAN_CACHE_N + 1
+    return t
+end
+
 -- Give back the horizontal spans of a filled disc of radius r centred at
 -- (cx, cy). Coordinates are rounded to the pixel grid so callers get whole
 -- number spans.
 function Raster.disc(cx, cy, r, put)
     if r < 0.5 then r = 0.5 end
-    local r2 = r * r
-    local icx = math.floor(cx + 0.5)
-    local icy = math.floor(cy + 0.5)
-    local ir = math.floor(r)
+    local t = discSpans(r)
+    local ir = t.ir
+    local icx = floor(cx + 0.5)
+    local icy = floor(cy + 0.5)
     for dy = -ir, ir do
-        -- half the disc's width at this row
-        local span = math.floor(math.sqrt(r2 - dy * dy) + 0.5)
-        if span >= 0 then
-            put(icx - span, icy + dy, 2 * span + 1)
-        end
+        local span = t[dy < 0 and -dy or dy]   -- half the disc's width at this row
+        put(icx - span, icy + dy, 2 * span + 1)
     end
 end
 
 -- Stamp a disc roughly every pixel along each segment so the path comes out as
 -- a continuous line instead of a row of dots. `pts` is a flat array
 -- {x1,y1,x2,y2,...}. A single point (one coordinate pair) stamps one dot.
+--
+-- The discs of one straight segment are merged before they are handed out: on
+-- each row they overlap into a single run, so the segment comes out as one span
+-- per row instead of a full disc of spans at every pixel step (a 15 px pen moved
+-- 8 px was ~130 span writes, now ~25). The pixels covered are exactly the same,
+-- and every writer just sets pixels, so the result is byte-identical.
+local rowL, rowR = {}, {}
 function Raster.path(pts, r, put)
-    local n = math.floor(#pts / 2)
+    local n = floor(#pts / 2)
     if n == 0 then return end
+    if r < 0.5 then r = 0.5 end
     local px, py = pts[1], pts[2]
-    Raster.disc(px, py, r, put)
+    if n == 1 then return Raster.disc(px, py, r, put) end
+    local t = discSpans(r)
+    local ir = t.ir
     for i = 2, n do
         local nx, ny = pts[2 * i - 1], pts[2 * i]
         local dx, dy = nx - px, ny - py
         local dist2 = dx * dx + dy * dy
         if dist2 >= 1 then
-            local steps = math.ceil(math.sqrt(dist2))
+            local steps = ceil(sqrt(dist2))
             local inv = 1 / steps
-            for s = 1, steps do
-                Raster.disc(px + dx * (s * inv), py + dy * (s * inv), r, put)
+            -- rows this segment can touch (a row of margin for float rounding)
+            local ya, yb = floor(py + 0.5), floor(ny + 0.5)
+            if ya > yb then ya, yb = yb, ya end
+            local y0 = ya - ir - 1
+            local rows = (yb + ir + 1) - y0
+            for k = 0, rows do rowL[k] = huge; rowR[k] = -huge end
+            -- the first point's disc goes in with the first segment
+            for s = (i == 2) and 0 or 1, steps do
+                local cx, cy
+                if s == 0 then cx, cy = px, py
+                else cx, cy = px + dx * (s * inv), py + dy * (s * inv) end
+                local icx = floor(cx + 0.5)
+                local base = floor(cy + 0.5) - y0
+                for ddy = -ir, ir do
+                    local span = t[ddy < 0 and -ddy or ddy]
+                    local k = base + ddy
+                    local a, b = icx - span, icx + span
+                    if a < rowL[k] then rowL[k] = a end
+                    if b > rowR[k] then rowR[k] = b end
+                end
+            end
+            for k = 0, rows do
+                local a = rowL[k]
+                if a ~= huge then put(a, y0 + k, rowR[k] - a + 1) end
             end
         else
+            if i == 2 then Raster.disc(px, py, r, put) end
             Raster.disc(nx, ny, r, put)
         end
         px, py = nx, ny
@@ -114,8 +165,6 @@ function Raster.registerStyle(key, params)
     Raster.STYLES[key] = st
 end
 
-local floor, sqrt, ceil, max = math.floor, math.sqrt, math.ceil, math.max
-
 -- Whether pixel (x,y) is inked for this style, given d2 = (distance/r)^2. Kept
 -- free of a per-pixel sqrt (the square root is only needed for the soft fringe
 -- beyond the rim) so textured brushes stay responsive.
@@ -145,7 +194,9 @@ local function inked(st, x, y, d2, seed, outer)
     return h < p
 end
 
--- A textured disc for style `st`.
+-- A textured disc for style `st`. Neighbouring inked pixels on a row go out as
+-- one run rather than one write each (same pixels, far fewer writes), and each
+-- row only scans the columns its circle can reach.
 function Raster.discTex(cx, cy, r, put, st, seed)
     if r < 0.5 then r = 0.5 end
     local grow = st.grow or 0
@@ -153,15 +204,25 @@ function Raster.discTex(cx, cy, r, put, st, seed)
     local inv_r2 = 1 / (r * r)
     local icx, icy = floor(cx + 0.5), floor(cy + 0.5)
     local ir = floor(r * (1 + grow))
+    local reach2 = outer * r * r
     for dy = -ir, ir do
         local y = icy + dy
         local dy2 = dy * dy
-        for dx = -ir, ir do
+        -- a column bound that is never tighter than the d2 test below
+        local w = reach2 - dy2
+        local xr = (w > 0) and floor(sqrt(w)) + 1 or 1
+        if xr > ir then xr = ir end
+        local run
+        for dx = -xr, xr do
             local d2 = (dx * dx + dy2) * inv_r2
             if d2 <= outer and inked(st, icx + dx, y, d2, seed, outer) then
-                put(icx + dx, y, 1)
+                if not run then run = icx + dx end
+            elseif run then
+                put(run, y, icx + dx - run)
+                run = nil
             end
         end
+        if run then put(run, y, icx + xr + 1 - run) end
     end
 end
 
