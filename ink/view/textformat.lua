@@ -7,12 +7,17 @@ Part of InkAwayView (see ink/view.lua).
 local ffi = require("ffi")
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
 local Size = require("ui/size")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Text = require("ink/text")
 local IconMenu = require("ink/ui/iconmenu")
@@ -130,7 +135,6 @@ end
 -- factor first to land on the actual pixel size we asked for (otherwise text is
 -- ~2-3x too big on a high-dpi e-ink panel).
 function InkAwayView:faceAt(name, px)
-    local Font = require("ui/font")
     px = math.max(6, math.floor(px + 0.5))
     if not self._dpi_factor then
         local s = Screen.scaleBySize and (Screen:scaleBySize(1000) / 1000)
@@ -216,7 +220,6 @@ end
 -- ink / highlight shades) at 1:1, for the exporter to composite into PNG / JPEG
 -- / PDF. Returns (uint8 buffer, w, h).
 function InkAwayView:exportTextRaster(op)
-    local ffi = require("ffi")
     local lay, ctx = self:layoutText(op, 1)
     local w = math.max(1, math.floor(op.w + 0.5))
     local h = math.max(1, math.floor((op.auto_h and lay.height or op.h) + 0.5))
@@ -318,11 +321,6 @@ function InkAwayView:openTextFormatMenu()
     if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
     self:hideClipBubble()
     self:hideTextKeyboard()
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(10)
     local content_w = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
@@ -461,8 +459,6 @@ end
 -- once and kept; only its position changes.
 function InkAwayView:clipBubbleWidget()
     if self._clip_widget then return self._clip_widget end
-    local TextWidget = require("ui/widget/textwidget")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
     local isz = math.max(16, math.floor((self._icon_sz or Screen:scaleBySize(28)) * 0.8))
     local icon = IconWidget:new{ file = self:pluginDir() .. "ink/icons/clipboard.svg",
         width = isz, height = isz }

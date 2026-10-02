@@ -140,7 +140,6 @@ end
 
 function InkAwayView:openSelectionMenu()
     if not self.selection then return end
-    local ButtonDialog = require("ui/widget/buttondialog")
     local dlg
     local n = #self.selection.idxs
     local buttons = {

@@ -7,12 +7,18 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
+local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local Size = require("ui/size")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
@@ -76,10 +82,6 @@ end
 -- optionally above a label and a small grey hint sublabel. `hold_cb` wires a
 -- long-press action.
 function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_cb)
-    local TextWidget = require("ui/widget/textwidget")
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     local b = Button:new{ icon = "inkaway." .. name, icon_width = size, icon_height = size,
         width = w, height = h, bordersize = 0,
@@ -110,9 +112,6 @@ end
 -- Title row shared by every tool sheet: the sheet title on the left and a filled
 -- black pill (Done / Back) on the right, spanning content_w.
 function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb)
-    local TextWidget = require("ui/widget/textwidget")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", 22), bold = true }
     local pill = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
@@ -128,8 +127,6 @@ end
 
 -- A full/any-width rounded action button (grey by default, black when `dark`).
 function InkAwayView:actionButton(label, w, cb, dark, big)
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     local b = Button:new{ text = "", width = w, height = Screen:scaleBySize(48), bordersize = 0,
         radius = Screen:scaleBySize(14), background = dark and BLACK or TILE_BG,
@@ -161,7 +158,6 @@ function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
         callback = cb, hold_callback = hold_cb, show_parent = self }
     local ok, img_bb = pcall(function() return self:cachedColourTile(rgb, w, h, radius) end)
     if ok and img_bb and b.label_container then
-        local ImageWidget = require("ui/widget/imagewidget")
         local img = ImageWidget:new{ image = img_bb, width = w, height = h,
             image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }
         b.label_widget = img; b.label_container[1] = img
@@ -202,7 +198,6 @@ end
 -- A brush-style tile: a small rounded rectangle showing a sample wave rendered
 -- through the same rasterizer the pen uses, so it previews how the brush looks.
 function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
-    local WidgetContainer = require("ui/widget/container/widgetcontainer")
     local BLACK = Blitbuffer.COLOR_BLACK
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
         radius = Screen:scaleBySize(12), background = sel and BLACK or TILE_BG,
@@ -212,7 +207,6 @@ function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
     local ih = h - Screen:scaleBySize(16)
     local ok, wave = pcall(function() return self:cachedBrushWave(key, iw, ih, sel) end)
     if ok and wave and b.label_container then
-        local ImageWidget = require("ui/widget/imagewidget")
         -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
         -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it must be
         -- a real colour or the highlight crashes indexing a nil field. The sample

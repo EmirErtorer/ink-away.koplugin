@@ -7,12 +7,17 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
+local PathChooser = require("ui/widget/pathchooser")
 local RenderImage = require("ui/renderimage")
 local Size = require("ui/size")
+local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local InkGeom = require("ink/geom")
@@ -56,7 +61,6 @@ function InkAwayView:placeBackground(img, path)
 end
 
 function InkAwayView:loadBackground(path)
-    local RenderImage = require("ui/renderimage")
     local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
     if not ok or not img then
         UIManager:show(InfoMessage:new{ text = _("Could not open that image.") })
@@ -74,7 +78,6 @@ function InkAwayView:removeBackground()
 end
 
 function InkAwayView:chooseBackground()
-    local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = false, select_file = true, show_files = true,
         path = self:defaultDir(),
@@ -600,7 +603,6 @@ end
 -- and the same delete glyph). The image stays draggable underneath (see
 -- setSelectionActive); a tap outside the menu deselects and bakes it in.
 function InkAwayView:openImageMenu(sel)
-    local ButtonDialog = require("ui/widget/buttondialog")
     if self._image_menu then UIManager:close(self._image_menu); self._image_menu = nil end
     self:setSelectionActive(true)
     local dlg
@@ -826,10 +828,6 @@ end
 -- the dark (primary) button and stays exactly as it always was.
 function InkAwayView:chooseImage()
     self:finishImageEdit()
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local TextBoxWidget = require("ui/widget/textboxwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -861,7 +859,6 @@ end
 
 -- The original local-file picker, unchanged in behaviour.
 function InkAwayView:chooseLocalImage()
-    local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = false, select_file = true, show_files = true,
         path = self:defaultDir(),

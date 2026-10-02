@@ -6,13 +6,23 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
+local CenterContainer = require("ui/widget/container/centercontainer")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
+local OverlapGroup = require("ui/widget/overlapgroup")
 local Size = require("ui/size")
+local SpinWidget = require("ui/widget/spinwidget")
+local TextBoxWidget = require("ui/widget/textboxwidget")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Brushes = require("ink/brushes")
 local Paint = require("ink/paint")
@@ -74,10 +84,6 @@ end
 local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
 function InkAwayView:openPenSettings()
     if self._pen_dialog then self._pen_dialog:rebuild(); return end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local Font = require("ui/font")
     self:ensureUserIcons()
 
     local gap = Screen:scaleBySize(12)
@@ -138,7 +144,6 @@ function InkAwayView:openPenSettings()
         -- must never be pushed off-screen by the colour rows, so build them first,
         -- measure them, and cap how many custom-colour rows we render to whatever
         -- vertical space is left (see the colour section below).
-        local TextBoxWidget = require("ui/widget/textboxwidget")
         local HINT = Blitbuffer.ColorRGB32(0x90, 0x90, 0x90, 0xFF)
         local function toggle(label, on, cb)
             return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
@@ -199,7 +204,6 @@ function InkAwayView:openPenSettings()
         -- colour swatches: shades, then (colour screens) colours + saved customs,
         -- and always the RGB picker as a "+" tile. Rows are centred so a short row
         -- (the 5 shades) stays symmetrical instead of hugging the left.
-        local CenterContainer = require("ui/widget/container/centercontainer")
         local BLACK = Blitbuffer.COLOR_BLACK
         -- Swatches fill the width (six per row), so grey and colour tiles are all the
         -- same size with no empty margins. Their height is capped on big high-DPI
@@ -302,7 +306,6 @@ function InkAwayView:openBrushMaker()
 end
 
 function InkAwayView:confirmDeleteBrush(key, label)
-    local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
         text = string.format(_("Delete the brush \"%s\"?"), label),
         ok_text = _("Delete"),
@@ -323,8 +326,6 @@ end
 -- Eraser sheet (shapes-menu style): a size slider and an "erase pictures" toggle.
 function InkAwayView:openEraserSettings()
     if self._eraser_dialog then self._eraser_dialog:rebuild(); return end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
     self:ensureUserIcons()
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
@@ -354,7 +355,6 @@ end
 
 -- Arrowhead size, in canvas pixels (used by the arrow shapes).
 function InkAwayView:openArrowSize()
-    local SpinWidget = require("ui/widget/spinwidget")
     UIManager:show(SpinWidget:new{
         title_text = _("Arrowhead size"),
         info_text = _("How big the arrowheads are, in canvas pixels."),
@@ -378,12 +378,6 @@ end
 function InkAwayView:openShapePicker()
     self:flushShape()
     if self._shape_dialog then self._shape_dialog:rebuild(); return end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local OverlapGroup = require("ui/widget/overlapgroup")
-    local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     self:ensureUserIcons()
 
@@ -531,11 +525,6 @@ function InkAwayView:openShapeLineMenu()
     -- away, so it is always opened fresh)
     if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
     if self._shape_line_dialog then UIManager:close(self._shape_line_dialog); self._shape_line_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     self:ensureUserIcons()
 
@@ -618,11 +607,6 @@ end
 function InkAwayView:openFillColor()
     if self._fill_dialog then self._fill_dialog:rebuild(); return end
     if self._shape_dialog then UIManager:close(self._shape_dialog); self._shape_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local WHITE, BLACK = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
     self:ensureUserIcons()
 
@@ -698,8 +682,6 @@ end
 -- snap / eraser-protect toggles.
 function InkAwayView:openTextSettings()
     if self._text_settings then UIManager:close(self._text_settings); self._text_settings = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
     self:ensureUserIcons()
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)

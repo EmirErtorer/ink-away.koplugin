@@ -9,11 +9,13 @@ paintTo copies to the screen.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Brushes = require("ink/brushes")
@@ -779,7 +781,6 @@ function InkAwayView:redo()
 end
 
 function InkAwayView:promptExit()
-    local ConfirmBox = require("ui/widget/confirmbox")
     self:flushPending()
     if self.canvas:isEmpty() then
         UIManager:close(self)
@@ -965,8 +966,6 @@ function InkAwayView:paintTo(bb, x, y)
     -- The notebook's bottom bar, matching the toolbar's height and icons. It is
     -- chrome, so it is skipped on region blits and area-only paints like the toolbar.
     if paint_chrome and self.notebook and self.nb_bar_h > 0 then
-        local Font = require("ui/font")
-        local TextWidget = require("ui/widget/textwidget")
         local nb = self.notebook
         local h = self.nb_bar_h
         local w = self.screen_w

@@ -6,7 +6,9 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local Font = require("ui/font")
 local GeomUI = require("ui/geometry")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local InkGeom = require("ink/geom")
@@ -119,8 +121,6 @@ function InkAwayView:textEditButtons()
     if not m then
         -- the same look as the sheets: a grey rounded "Format" button and the black
         -- "Done" pill. The labels are built once and reused on every paint.
-        local Font = require("ui/font")
-        local TextWidget = require("ui/widget/textwidget")
         local face = Font:getFace("cfont", 15)
         local fw = TextWidget:new{ text = _("Format"), face = face, bold = true, fgcolor = Blitbuffer.COLOR_BLACK }
         local dw = TextWidget:new{ text = _("Done"), face = face, bold = true, fgcolor = WHITE }

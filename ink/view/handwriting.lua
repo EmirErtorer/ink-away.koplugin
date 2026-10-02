@@ -5,6 +5,7 @@ is ink/hwr.lua; its templates come from the font's own glyphs.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
+local Font = require("ui/font")
 local UIManager = require("ui/uimanager")
 local Notebook = require("ink/notebook")
 local Text = require("ink/text")
@@ -61,7 +62,6 @@ end
 function InkAwayView:hwrRecognizer(chars)
     if self._hwr_rec then return self._hwr_rec end
     local Hwr = require("ink/hwr")
-    local Font = require("ui/font")
     local rec = Hwr.Recognizer.new()
     local ok = pcall(function()
         local face = Font:getFace("cfont", 48)
@@ -141,7 +141,6 @@ end
 -- writing line after line stays in one box); otherwise starts a fresh box. Uses
 -- the current text font/size/grid-snap.
 function InkAwayView:hwrInsertText(text, ink_ops, minx, miny, maxx, maxy)
-    local Text = require("ink/text")
     self.canvas:pushHistory()
     -- remove the recognised ink ops (highest index first)
     local idxs = {}

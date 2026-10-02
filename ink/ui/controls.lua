@@ -5,12 +5,17 @@ and SliderRow (a label, a draggable track and the value).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local OverlapGroup = require("ui/widget/overlapgroup")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 
 local Screen = Device.screen
 
@@ -33,7 +38,6 @@ function ToggleRow:init()
     end
 end
 function ToggleRow:_switch()
-    local WidgetContainer = require("ui/widget/container/widgetcontainer")
     local w, h = self.sw_w, self.sw_h
     local track = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0,
         radius = math.floor(h / 2), background = self.is_on and Blitbuffer.COLOR_BLACK or TRACK_OFF,
@@ -44,13 +48,9 @@ function ToggleRow:_switch()
         padding = 0, margin = 0, radius = math.floor(knob / 2), background = Blitbuffer.COLOR_WHITE,
         WidgetContainer:new{ dimen = GeomUI:new{ w = knob - Screen:scaleBySize(2), h = knob - Screen:scaleBySize(2) } } }
     knobFrame.overlap_offset = { self.is_on and (w - knob - inset) or inset, math.floor((h - knob) / 2) }
-    local OverlapGroup = require("ui/widget/overlapgroup")
     return OverlapGroup:new{ dimen = { w = w, h = h }, allow_mirroring = false, track, knobFrame }
 end
 function ToggleRow:_build()
-    local TextWidget = require("ui/widget/textwidget")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local Font = require("ui/font")
     local label = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
     local sw = self:_switch()
     local span
@@ -102,12 +102,6 @@ function SliderRow:init()
     end
 end
 function SliderRow:_build()
-    local FrameContainer = require("ui/widget/container/framecontainer")
-    local OverlapGroup = require("ui/widget/overlapgroup")
-    local WidgetContainer = require("ui/widget/container/widgetcontainer")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(14)
     local labelw = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
     local valw = TextWidget:new{ text = self:_fmt(self.value),

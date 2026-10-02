@@ -5,14 +5,22 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
+local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
+local PathChooser = require("ui/widget/pathchooser")
 local RenderImage = require("ui/renderimage")
 local Size = require("ui/size")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
@@ -34,7 +42,6 @@ function InkAwayView:digitInkMetric(face, isz, box_h)
     if self._digit_ink and self._digit_ink.key == isz then return self._digit_ink end
     local res
     pcall(function()
-        local TextWidget = require("ui/widget/textwidget")
         local probe = TextWidget:new{ text = "0123456789", face = face,
             fgcolor = Blitbuffer.COLOR_BLACK }
         local pw, ph = probe:getSize().w, probe:getSize().h
@@ -66,7 +73,6 @@ end
 function InkAwayView:renderPdfPage(doc, pageno, tw, th)
     if not doc then return nil end
     local Document = require("document/document")
-    local Geom = require("ui/geometry")
     local W, H = tw or self.view.canvas_w, th or self.view.canvas_h
     local img
     pcall(function()
@@ -77,7 +83,7 @@ function InkAwayView:renderPdfPage(doc, pageno, tw, th)
         -- fit KOReader's tile cache (e.g. an A4 page at fit-zoom) is refused
         -- outright ("no render region ... won't render") and comes back blank; a
         -- rect makes it render that region uncached instead.
-        local rect = Geom:new{ x = 0, y = 0,
+        local rect = GeomUI:new{ x = 0, y = 0,
             w = math.floor(native.w * zoom + 0.5), h = math.floor(native.h * zoom + 0.5) }
         local tile = Document.renderPage(doc, pageno, rect, zoom, 0, 1.0, 1.0, false)
         if tile and tile.bb then img = fitIntoCanvasBB(tile.bb:copy(), W, H) end
@@ -93,7 +99,6 @@ function InkAwayView:navImage(name, sz)
     local c = self._nav_img[key]
     if c == nil then
         local ok, raw, straight = pcall(function()
-            local RenderImage = require("ui/renderimage")
             return RenderImage:renderSVGImageFile(self:pluginDir() .. "ink/icons/" .. name .. ".svg", sz, sz)
         end)
         if ok and raw then
@@ -305,11 +310,6 @@ function InkAwayView:nbJumpPrompt()
     local nb = self.notebook
     if not nb then return end
     if self._goto_dialog then UIManager:close(self._goto_dialog); self._goto_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -348,7 +348,6 @@ end
 function InkAwayView:promptGotoNumber()
     local nb = self.notebook
     if not nb then return end
-    local InputDialog = require("ui/widget/inputdialog")
     local d
     d = InputDialog:new{
         title = string.format(_("Go to page (1\u{2013}%d)"), nb:count()),
@@ -382,10 +381,6 @@ function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
     if self._page_dialog then UIManager:close(self._page_dialog); self._page_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -480,7 +475,6 @@ function InkAwayView:nbDeletePage()
         UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
         return
     end
-    local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
         text = _("Delete this page?"),
         ok_text = _("Delete"),
@@ -571,7 +565,6 @@ end
 
 -- Pick a PDF and open it as a notebook (confirming first if there is work open).
 function InkAwayView:openPdfAsNotebook()
-    local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = false, select_file = true, show_files = true,
         path = self:defaultDir(),
@@ -582,7 +575,6 @@ function InkAwayView:openPdfAsNotebook()
             end
             local function go() self:startPdfNotebook(path) end
             if self.notebook or not self.canvas:isEmpty() then
-                local ConfirmBox = require("ui/widget/confirmbox")
                 UIManager:show(ConfirmBox:new{
                     text = _("Open this PDF as a notebook? The current work will be cleared."),
                     ok_text = _("Open"), ok_callback = go,
@@ -607,7 +599,6 @@ function InkAwayView:newNotebook()
     end
     local function go(style)
         if self.notebook or not self.canvas:isEmpty() then
-            local ConfirmBox = require("ui/widget/confirmbox")
             UIManager:show(ConfirmBox:new{
                 text = _("Start a new notebook? The current work will be cleared."),
                 ok_text = _("New"), ok_callback = function() begin(style) end,
@@ -617,8 +608,6 @@ function InkAwayView:newNotebook()
         end
     end
     if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap

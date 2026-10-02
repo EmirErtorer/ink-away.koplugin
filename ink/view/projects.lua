@@ -4,8 +4,10 @@ files are offered in.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
+local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
+local PathChooser = require("ui/widget/pathchooser")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Project = require("ink/project")
@@ -103,7 +105,6 @@ function InkAwayView:newDrawing()
         UIManager:setDirty(self, "full")
     end
     if self.canvas:isEmpty() and not self.notebook then fresh(); return end
-    local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
         text = _("Start a new drawing? The current one will be cleared."),
         ok_text = _("New"), ok_callback = fresh,
@@ -111,7 +112,6 @@ function InkAwayView:newDrawing()
 end
 
 function InkAwayView:openProject()
-    local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = false, select_file = true, show_files = true,
         path = self:projectDir(),
@@ -132,13 +132,11 @@ function InkAwayView:openProject()
 end
 
 function InkAwayView:saveProject()
-    local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = true, select_file = false, show_files = true,
         path = self:projectDir(),
         onConfirm = function(dir)
             self:rememberProjectDir(dir)
-            local InputDialog = require("ui/widget/inputdialog")
             local name = os.date(self.notebook and "notebook-%Y%m%d-%H%M%S" or "ink-%Y%m%d-%H%M%S")
             local d
             d = InputDialog:new{

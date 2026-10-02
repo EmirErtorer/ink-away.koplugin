@@ -7,6 +7,7 @@ Part of InkAwayView (see ink/view.lua).
 local ButtonDialog = require("ui/widget/buttondialog")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
+local SpinWidget = require("ui/widget/spinwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Canvas = require("ink/canvas")
@@ -385,7 +386,6 @@ function InkAwayView:deselectShape()
 end
 
 function InkAwayView:openShapeMenu(sel)
-    local ButtonDialog = require("ui/widget/buttondialog")
     if self._shape_menu then UIManager:close(self._shape_menu); self._shape_menu = nil end
     self:setSelectionActive(true)   -- keep the shape draggable while the menu is up
     local op = sel.op
@@ -573,7 +573,6 @@ function InkAwayView:shapeToFront(sel)
 end
 
 function InkAwayView:editSelectedColour(sel)
-    local ButtonDialog = require("ui/widget/buttondialog")
     local dlg
     local function pick(rgb)
         self:applyEdit(sel, function(o) o.color = { rgb[1], rgb[2], rgb[3] } end)
@@ -590,7 +589,6 @@ function InkAwayView:editSelectedColour(sel)
 end
 
 function InkAwayView:editSelectedSize(sel)
-    local SpinWidget = require("ui/widget/spinwidget")
     local op = sel.op
     UIManager:show(SpinWidget:new{
         title_text = _("Shape line size"),
@@ -603,7 +601,6 @@ function InkAwayView:editSelectedSize(sel)
 end
 
 function InkAwayView:editSelectedOpacity(sel)
-    local SpinWidget = require("ui/widget/spinwidget")
     local op = sel.op
     UIManager:show(SpinWidget:new{
         title_text = _("Shape opacity"),

@@ -8,6 +8,7 @@ local Device = require("device")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local MovableContainer = require("ui/widget/container/movablecontainer")
 local UIManager = require("ui/uimanager")
 
 local Screen = Device.screen
@@ -71,7 +72,6 @@ function IconMenu:fitFrame()
 end
 
 function IconMenu:init()
-    local MovableContainer = require("ui/widget/container/movablecontainer")
     if self.build then self.frame = self:build(); self:fitFrame() end
     if Device:isTouchDevice() then
         self.ges_events = { TapClose = { GestureRange:new{ ges = "tap",
@@ -117,7 +117,6 @@ function IconMenu:rebuild()
     if not (self.movable and self.build) then return end
     local old = self.movable.dimen and self.movable.dimen:copy()
     if self.movable.free then self.movable:free() end
-    local MovableContainer = require("ui/widget/container/movablecontainer")
     self.frame = self:build()
     self:fitFrame()
     self.movable = MovableContainer:new{ self.frame }

@@ -5,14 +5,21 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
+local PathChooser = require("ui/widget/pathchooser")
 local Size = require("ui/size")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
 local Export = require("ink/export")
@@ -97,11 +104,6 @@ function InkAwayView:onSave()
     end
     self.save_fmt = self.save_fmt or "png"
     if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     self:ensureUserIcons()
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
@@ -195,11 +197,6 @@ function InkAwayView:exportNotebookPDF()
     self.nb_paper = self.nb_paper or "white"
     self.nb_scope = self.nb_scope or "all"
     if self._save_dialog then UIManager:close(self._save_dialog); self._save_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -260,7 +257,6 @@ end
 -- Ask for the first and last page of the export range.
 function InkAwayView:promptExportRange()
     local nb = self.notebook
-    local InputDialog = require("ui/widget/inputdialog")
     local d
     d = InputDialog:new{
         title = string.format(_("Page range (1\u{2013}%d), e.g. 3-8"), nb:count()),
@@ -282,7 +278,6 @@ function InkAwayView:promptExportRange()
 end
 
 function InkAwayView:chooseNotebookDestination()
-    local PathChooser = require("ui/widget/pathchooser")
     UIManager:show(PathChooser:new{
         select_directory = true, select_file = false, show_files = true,
         path = existingDir(self:getSetting("inkaway_last_notebook_dir"))
@@ -295,7 +290,6 @@ function InkAwayView:chooseNotebookDestination()
 end
 
 function InkAwayView:promptNotebookFilename(dir)
-    local InputDialog = require("ui/widget/inputdialog")
     local name = os.date("notebook-%Y%m%d-%H%M%S")
     local d
     d = InputDialog:new{
@@ -414,7 +408,6 @@ function InkAwayView:doNotebookExport(path)
         local proj_saved = self:autoSaveNotebookProject(path)
         -- make the PDF open as a full page with no auto-crop the first time
         self:seedPdfView(path)
-        local ConfirmBox = require("ui/widget/confirmbox")
         local msg = string.format(_("Notebook exported:\n%s"), path)
         if proj_saved then msg = msg .. string.format(_("\n\nEditable copy kept in:\n%s"), proj_saved) end
         UIManager:show(ConfirmBox:new{
@@ -489,7 +482,6 @@ function InkAwayView:openExportedPDF(path)
 end
 
 function InkAwayView:chooseDestination(fmt)
-    local PathChooser = require("ui/widget/pathchooser")
     local chooser
     chooser = PathChooser:new{
         select_directory = true,

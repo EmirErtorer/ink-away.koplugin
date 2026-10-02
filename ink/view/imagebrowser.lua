@@ -6,13 +6,21 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
+local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local Size = require("ui/size")
+local TextBoxWidget = require("ui/widget/textboxwidget")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
 local Paint = require("ink/paint")
@@ -213,13 +221,6 @@ end
 -- thumbnail grid, and a Prev/Next footer.
 function InkAwayView:imageBrowserBuild(menu)
     local st = self._image_browser or {}
-    local TextWidget = require("ui/widget/textwidget")
-    local TextBoxWidget = require("ui/widget/textboxwidget")
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local ImageWidget = require("ui/widget/imagewidget")
-    local Font = require("ui/font")
     local GREY = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF)
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
@@ -341,7 +342,7 @@ function InkAwayView:imageBrowserBuild(menu)
             local row = HorizontalGroup:new{ align = "center" }
             for c = 1, cols do
                 if i <= n then
-                    row[#row + 1] = self:imageBrowserCell(st, i, cell_w, cell_h, ImageWidget)
+                    row[#row + 1] = self:imageBrowserCell(st, i, cell_w, cell_h)
                     if c < cols and i < n then row[#row + 1] = HorizontalSpan:new{ width = gap } end
                     i = i + 1
                 end
@@ -361,7 +362,7 @@ end
 -- One grid cell: a rounded tappable tile holding the thumbnail. A tap and a
 -- long-press do the same thing -- ask to add the image -- since a plain tap is
 -- what most people try first (paging has its own buttons, so a tap can't page).
-function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h, ImageWidget)
+function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h)
     local TILE = TILE_BG
     -- Adding runs behind a guard: if anything goes wrong (a bad result, a network
     -- hiccup) it shows a message instead of letting the error escape and take all
@@ -464,7 +465,6 @@ function InkAwayView:imageBrowserAdd(index)
     if not st then return end
     local r = st.results[index]
     if not r or not r.full then return end
-    local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
         text = _("Add this image to your drawing?"),
         ok_text = _("Add"),

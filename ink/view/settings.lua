@@ -6,10 +6,16 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local Size = require("ui/size")
+local TextBoxWidget = require("ui/widget/textboxwidget")
+local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local IconMenu = require("ink/ui/iconmenu")
 local SliderRow = require("ink/ui/controls").SliderRow
@@ -20,10 +26,6 @@ local InkAwayView = {}
 
 function InkAwayView:openBackground()
     if self._bg_dialog then UIManager:close(self._bg_dialog); self._bg_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local TextBoxWidget = require("ui/widget/textboxwidget")
-    local Font = require("ui/font")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -66,8 +68,6 @@ local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"
 -- of { value, label }; onpick(value) is called after the sheet closes.
 function InkAwayView:openChooserSheet(title, options, current, onpick)
     if self._chooser_dialog then UIManager:close(self._chooser_dialog); self._chooser_dialog = nil end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -102,9 +102,6 @@ function InkAwayView:openGridSettings()
         if self._grid_dialog.rebuild then self._grid_dialog:rebuild(); return end
         UIManager:close(self._grid_dialog); self._grid_dialog = nil
     end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
     local content_w = 4 * math.floor((target - 3 * gap) / 4) + 3 * gap
@@ -182,11 +179,6 @@ function InkAwayView:openSettings()
         if self._settings_dialog.rebuild then self._settings_dialog:rebuild(); return end
         UIManager:close(self._settings_dialog); self._settings_dialog = nil
     end
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local VerticalSpan = require("ui/widget/verticalspan")
-    local HorizontalSpan = require("ui/widget/horizontalspan")
-    local TextWidget = require("ui/widget/textwidget")
-    local Font = require("ui/font")
     self:ensureUserIcons()
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
@@ -308,7 +300,6 @@ function InkAwayView:openSettings()
                 self._strokes_since_full = 0 end })
         add(vspan(4))
         do
-            local TextBoxWidget = require("ui/widget/textboxwidget")
             add(TextBoxWidget:new{
                 text = _("Fast strokes leave faint marks; a full refresh clears them this often."),
                 face = Font:getFace("cfont", 13),
