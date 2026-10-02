@@ -35,10 +35,10 @@ local function knob(d)
         WidgetContainer:new{ dimen = GeomUI:new{ w = d - Screen:scaleBySize(2), h = d - Screen:scaleBySize(2) } } }
 end
 
--- A classic sliding on/off toggle row: a label on the left and a pill switch on
--- the right (grey track + white knob at left when off; black track + knob at
--- right when on). The whole row is one tap target and flips in place; `parent`
--- is the shown widget used as the repaint target.
+-- A sliding on/off toggle row: a label and a pill switch (grey track with the
+-- knob on the left when off, black with the knob on the right when on). The
+-- whole row is one tap target and flips in place; `parent` is the shown widget
+-- used as the repaint target.
 local ToggleRow = InputContainer:extend{
     label = "", is_on = false, width = nil, callback = nil, parent = nil,
 }
@@ -65,7 +65,7 @@ function ToggleRow:_build()
     local sw = self:_switch()
     local span
     if self.compact then
-        -- toggle sits just after the label; the row is only as wide as its content
+        -- the switch sits right after the label; the row is as wide as its content
         span = Screen:scaleBySize(12)
         self.width = label:getSize().w + span + self.sw_w
     else
@@ -116,8 +116,8 @@ function SliderRow:_build()
     local labelw = TextWidget:new{ text = self.label, face = Font:getFace("cfont", 18) }
     local valw = TextWidget:new{ text = self:_fmt(self.value),
         face = Font:getFace("cfont", 16), bold = true }
-    -- reserve a fixed width for the value (measured at the max) so the track
-    -- doesn't jump as digits change
+    -- a fixed width for the value (measured at the max), so the track stays put
+    -- as the digits change
     local wmax = TextWidget:new{ text = self:_fmt(self.max), face = Font:getFace("cfont", 16), bold = true }
     local val_w = math.max(wmax:getSize().w, Screen:scaleBySize(40)); wmax:free()
     local track_w = self.width - labelw:getSize().w - val_w - 2 * gap
@@ -137,14 +137,13 @@ function SliderRow:_build()
         track, fill, thumb }
     self[1] = HorizontalGroup:new{ align = "center",
         labelw, HorizontalSpan:new{ width = gap }, trackGroup, HorizontalSpan:new{ width = gap }, valw }
-    -- references so _apply can update the moving parts in place, without rebuilding
-    -- the whole row (and re-measuring text) on every drag tick
+    -- kept so _apply can update the moving parts without rebuilding the row
     self._fill_wc, self._knob, self._valw = fill[1], thumb, valw
     local sz = self[1]:getSize()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
 end
--- Update only the fill width, knob position and value text for the current value,
--- in place -- no widget/text-shaping churn per drag tick.
+-- Update the fill width, knob position and value text in place for the current
+-- value, with no rebuild per drag step.
 function SliderRow:_apply()
     local track_w, th, kn = self._track_w, self.track_h, self.knob
     local frac = math.max(0, math.min(1, (self.value - self.min) / (self.max - self.min)))
@@ -166,13 +165,10 @@ function SliderRow:_setFromX(x, mode)
         self.value = v
         self:_apply()   -- update the moving parts in place; no rebuild, dimen unchanged
         if self.on_set then self.on_set(v) end
-        -- Refresh only the track-to-value band, not the whole row, and use the fast
-        -- (A2, monochrome) waveform WHILE dragging so the black fill, white knob and
-        -- value follow the finger crisply; settle to grey-capable "ui" on release so
-        -- the light-grey track renders correctly (A2 can't show its grey). This is
-        -- what stops a slider drag from flashing a screen-wide GC16 strip per tick.
-        -- self.parent (the sheet) is still the repaint target so the menu stays on
-        -- top of any canvas the on_set refreshed underneath (e.g. a grid preview).
+        -- Refresh only the band from the track to the value: with the fast
+        -- black-and-white waveform while dragging, then with "ui" on release so
+        -- the grey track shows. The sheet stays the repaint target, so it is
+        -- painted over anything on_set refreshed underneath (a grid preview).
         local band = GeomUI:new{ x = self.dimen.x + self._track_dx, y = self.dimen.y,
             w = self.width - self._track_dx, h = self.dimen.h }
         UIManager:setDirty(self.parent or self, mode or "ui", band)

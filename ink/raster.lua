@@ -1,15 +1,9 @@
 --[[
-Turns a stroke into pixels. The screen and the saved file both go through here,
-so what you see on the canvas is what lands in the exported image.
-
-A stroke is drawn by stamping filled discs along its path. Each disc comes out
-as a few horizontal spans, handed to a `put(x, y, len)` callback. The caller
-decides what a span means: paint black on the screen, write opaque pixels into
-the export buffer, clear pixels back to transparent for the eraser, and so on.
-Keeping the geometry here and the pixel writing in the callback means there is
-one rasterizer and no way for the screen and the export to drift apart.
-
-Stamping discs along a path is a common way to rasterize a brush stroke.
+Turns a stroke into pixels by stamping filled discs along its path. Each disc
+comes out as horizontal spans handed to a `put(x, y, len)` callback, and the
+caller decides what a span means (ink on screen, opaque pixels in an export,
+cleared pixels for the eraser). The screen and the export share this one
+rasterizer, so they cannot drift apart.
 ]]
 
 local Raster = {}
@@ -67,15 +61,11 @@ function Raster.disc(cx, cy, r, put)
     end
 end
 
--- Stamp a disc roughly every pixel along each segment so the path comes out as
--- a continuous line instead of a row of dots. `pts` is a flat array
--- {x1,y1,x2,y2,...}. A single point (one coordinate pair) stamps one dot.
---
--- The discs of one straight segment are merged before they are handed out: on
--- each row they overlap into a single run, so the segment comes out as one span
--- per row instead of a full disc of spans at every pixel step (a 15 px pen moved
--- 8 px was ~130 span writes, now ~25). The pixels covered are exactly the same,
--- and every writer just sets pixels, so the result is byte-identical.
+-- Stamp a disc roughly every pixel along each segment, so the path is a
+-- continuous line rather than a row of dots. `pts` is a flat {x1,y1,x2,y2,...}
+-- array; a single point stamps one dot. The discs of one straight segment are
+-- merged first, so each row gets one span instead of a disc of spans per pixel
+-- step; the pixels covered are exactly the same.
 local rowL, rowR = {}, {}
 function Raster.path(pts, r, put)
     local n = floor(#pts / 2)
@@ -125,24 +115,17 @@ function Raster.path(pts, r, put)
     end
 end
 
--- Textured pen styles. Each is a per-pixel test: given the pixel, its distance
--- from the stamp centre (0 at centre, 1 at the rim) and the stable hash, decide
--- whether to ink it. This is how the styles get their distinct feel on grey
--- e-ink, where "lighter" is really "fewer black pixels among the white".
---   density : base fraction of pixels inked
---   edge    : how much thinner the ink gets toward the rim (0 = flat)
---   grow    : how far past the nominal radius the texture scatters (fraction)
---   pattern : nil | "hatch" (diagonal lines) | "stipple" (coarse dots) | "streak"
---   blotch  : uneven, cloudy coverage (for a washy look)
--- Per style:
---   density  : base fraction of pixels inked
---   cell     : grain clump size in px (grains this big read as pigment, not TV
---              static; 1 = finest)
---   edge     : fade toward the rim (soft, dry edge) 0..1
---   edgedark : build up toward the rim (wet pooling) 0..1
---   grow     : how far past the radius the texture scatters (fraction)
---   blotch   : cloudy, uneven coverage (a wash)
---   pattern  : nil | "hatch" | "stipple" | "streak"
+-- Textured pen styles. Each is a per-pixel test on the pixel, its distance from
+-- the stamp centre and the stable hash, deciding whether to ink it: on e-ink a
+-- lighter texture is fewer inked pixels. Fields:
+--   density  base fraction of pixels inked
+--   cell     grain clump size in px (1 is finest; larger reads as pigment)
+--   edge     fade toward the rim, a soft dry edge (0..1)
+--   edgedark build-up toward the rim, wet pooling (0..1)
+--   grow     how far past the radius the texture scatters (fraction)
+--   tooth    paper tooth: patches of this size (px) catch more or less grain
+--   blotch   cloudy, uneven coverage (a wash)
+--   pattern  nil, "hatch" (diagonal lines) or "streak"
 Raster.STYLES = {
     solid      = { solid = true },
     -- pencil: fine, even grain; dark enough that black reads black, still textured
@@ -155,9 +138,9 @@ Raster.STYLES = {
     stipple    = { density = 0.55, cell = 3, edge = 0.15, grow = 0.10 },
 }
 
--- Register a custom (user made) brush under `key` so ops that name it resolve
--- here just like a built-in style. Called on startup for every saved brush, so
--- a project or an export always finds the style it was drawn with.
+-- Register a custom brush under `key`, so ops that name it resolve like a
+-- built-in style. Every saved brush is registered at startup, so a project or an
+-- export always finds the style it was drawn with.
 function Raster.registerStyle(key, params)
     if type(key) ~= "string" or type(params) ~= "table" then return end
     local st = {}
@@ -165,9 +148,8 @@ function Raster.registerStyle(key, params)
     Raster.STYLES[key] = st
 end
 
--- Whether pixel (x,y) is inked for this style, given d2 = (distance/r)^2. Kept
--- free of a per-pixel sqrt (the square root is only needed for the soft fringe
--- beyond the rim) so textured brushes stay responsive.
+-- Is pixel (x, y) inked for this style, given d2 = (distance / r)^2? A square
+-- root is taken only for the fringe beyond the rim, keeping textured brushes fast.
 local function inked(st, x, y, d2, seed, outer)
     if d2 > outer then return false end
     local p = st.density or 1
@@ -184,7 +166,7 @@ local function inked(st, x, y, d2, seed, outer)
     if st.blotch then
         p = p * (0.45 + 0.75 * hash01(floor(x / 7), floor(y / 7), seed + 9))
     end
-    if st.tooth and st.tooth > 0 then   -- paper-tooth: some patches catch more grain
+    if st.tooth and st.tooth > 0 then   -- paper tooth: some patches catch more grain
         local tc = st.tooth
         p = p * (0.5 + 1.0 * hash01(floor(x / tc), floor(y / tc), seed + 7))
     end
@@ -195,8 +177,7 @@ local function inked(st, x, y, d2, seed, outer)
 end
 
 -- A textured disc for style `st`. Neighbouring inked pixels on a row go out as
--- one run rather than one write each (same pixels, far fewer writes), and each
--- row only scans the columns its circle can reach.
+-- one run, and each row scans only the columns its circle can reach.
 function Raster.discTex(cx, cy, r, put, st, seed)
     if r < 0.5 then r = 0.5 end
     local grow = st.grow or 0
@@ -226,9 +207,8 @@ function Raster.discTex(cx, cy, r, put, st, seed)
     end
 end
 
--- Like Raster.path but with a textured pen style. Discs are stepped coarser
--- than the solid path (the texture hides the wider spacing), which keeps
--- textured strokes about as responsive as plain ink.
+-- Raster.path with a textured pen style. Discs are spaced wider than on the solid
+-- path (the texture hides it), so textured strokes are about as fast as plain ink.
 function Raster.pathTex(pts, r, put, st, seed)
     local n = floor(#pts / 2)
     if n == 0 then return end

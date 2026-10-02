@@ -14,16 +14,9 @@ local HWR_PAUSE = 1.1   -- idle seconds after the last pen stroke before recogni
 
 local InkAwayView = {}
 
-------------------------------------------------------------------------------
--- Handwriting recognition (offline). Templates are built once from the bundled
--- font's glyphs, so coverage follows the font (not just Latin); the pure matcher
--- lives in ink/hwr.lua.
-------------------------------------------------------------------------------
-
--- Sample the OUTLINE of a rendered glyph into a point cloud. The outline (inked
--- pixels bordering blank ones) is a thin curve, so it lies in the same shape space
--- as a thin handwritten stroke -- which discriminates far better than the glyph's
--- solid fill (whose clouds all look alike to the matcher).
+-- Sample the outline of a rendered glyph into a point cloud. The outline (inked
+-- pixels next to blank ones) is a thin curve like a handwritten stroke, which
+-- the matcher tells apart far better than solid fills.
 function InkAwayView:hwrGlyphCloud(face, charcode)
     local RenderText = require("ui/rendertext")
     local ok, glyph = pcall(function() return RenderText:getGlyph(face, charcode) end)
@@ -77,8 +70,8 @@ function InkAwayView:hwrRecognizer(chars)
     return self._hwr_rec
 end
 
--- Buffer a just-committed pen stroke and (re)start the pause timer. When the pen
--- rests for HWR_PAUSE, hwrRecognizePending fires.
+-- Buffer a just-committed pen stroke and restart the pause timer; when the pen
+-- rests for HWR_PAUSE, hwrRecognizePending runs.
 function InkAwayView:hwrCapture(op)
     self._hwr_ops = self._hwr_ops or {}
     self._hwr_ops[#self._hwr_ops + 1] = op
@@ -87,8 +80,8 @@ function InkAwayView:hwrCapture(op)
     UIManager:scheduleIn(HWR_PAUSE, self._hwr_cb)
 end
 
--- Drop any pending handwriting (timer + buffer). Called when the feature is turned
--- off, the tool changes, or the widget closes.
+-- Drop any pending handwriting (timer and buffer), when the feature is turned
+-- off, the tool changes or the view closes.
 function InkAwayView:hwrCancel()
     if self._hwr_cb then UIManager:unschedule(self._hwr_cb) end
     self._hwr_ops = nil
@@ -99,11 +92,11 @@ function InkAwayView:hwrRecognizePending()
     local buf = self._hwr_ops
     self._hwr_ops = nil
     if not buf or #buf == 0 then return end
-    if self.editing_text or self.capturing then return end   -- don't fight an open box / live stroke
+    if self.editing_text or self.capturing then return end   -- not during an open box or a live stroke
     local Hwr = require("ink/hwr")
     local rec = self:hwrRecognizer()
     if not rec then return end
-    -- keep only buffered ops that are still on the canvas (not undone / page-changed)
+    -- keep only buffered ops still on the canvas (not undone, same page)
     local present = {}
     for i = 1, #self.canvas.ops do present[self.canvas.ops[i]] = true end
     local strokes, live_ops = {}, {}
@@ -136,10 +129,9 @@ function InkAwayView:hwrRecognizePending()
     self:hwrInsertText(text, live_ops, minx, miny, maxx, maxy)
 end
 
--- Replace the recognised ink with a text box, in one undoable step. Appends to the
--- box the last recognition made when the new writing sits just below/beside it (so
--- writing line after line stays in one box); otherwise starts a fresh box. Uses
--- the current text font/size/grid-snap.
+-- Replace the recognised ink with a text box, in one undoable step. Writing just
+-- below or beside the last recognised box is appended to it, so line after line
+-- stays in one box. Uses the current text font, size and grid snap.
 function InkAwayView:hwrInsertText(text, ink_ops, minx, miny, maxx, maxy)
     self.canvas:pushHistory()
     -- remove the recognised ink ops (highest index first)
@@ -154,8 +146,8 @@ function InkAwayView:hwrInsertText(text, ink_ops, minx, miny, maxx, maxy)
 
     local v = self.view
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
-    -- reuse the previous handwriting box if it is still around and the new writing
-    -- sits within about a line of it (clone it so the history snapshot is untouched)
+    -- reuse the previous box if it is still there and the new writing is within
+    -- about a line of it (cloned, so the history snapshot is untouched)
     local last = self._hwr_last
     local reuse_idx
     if last and last.op and miny >= last.top - size and miny <= last.bottom + 1.6 * size then

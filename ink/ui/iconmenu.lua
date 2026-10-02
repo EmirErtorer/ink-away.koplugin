@@ -22,26 +22,14 @@ local function panel(content)
         radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
 end
 
--- Shape chooser. Each entry shows the actual shape glyph next to its name; the
--- current one gets a checkmark. Shapes are drawn with the pen's size, opacity
--- and colour.
--- A lightweight modal composed of stock KOReader widgets, mirroring ButtonDialog's
--- machinery (CenterContainer > MovableContainer > FrameContainer) so it opens
--- reliably on device. `build(menu)` returns the sheet's content (built with a
--- reference to the menu, so child CheckButtons can use it as their repaint
--- parent), which is framed in the sheet's panel. A tap outside the panel, or
+-- A modal sheet with ButtonDialog's structure (a MovableContainer around a
+-- FrameContainer). `build(menu)` returns the content, built with the menu at hand
+-- so its controls can use it as their repaint parent. A tap outside the panel, or
 -- Back, closes it.
 --
--- The critical detail: UIManager:show(widget) with no refreshtype only marks the
--- widget dirty -- it paints into the buffer but schedules NO e-ink refresh, so
--- nothing reaches the panel and the menu looks like it "never opened". onShow must
--- schedule the refresh itself (as every stock modal does), with the region read
--- from a closure so movable.dimen is available (it is nil until first paintTo).
--- NOTE: deliberately NOT covers_fullscreen. The canvas below must keep painting
--- under the sheet (as ButtonDialog does): the sheet is smaller than the screen
--- and the child submenu is smaller than the parent, so covering the screen would
--- make _repaint skip the canvas and leave stale sheet pixels around a closing or
--- reopening smaller sheet (visible as ghost panels until you draw or refresh).
+-- It is deliberately not covers_fullscreen: the canvas must keep painting under
+-- the sheet, or closing or reopening a smaller sheet would leave stale panel
+-- pixels around it.
 local IconMenu = InputContainer:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath
@@ -49,15 +37,14 @@ local IconMenu = InputContainer:extend{
     on_close = nil,
     top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
                                -- instead of centring it vertically
-    bottom_y = nil,            -- if set, pin the sheet's BOTTOM here (e.g. touching
-                               -- the notebook bottom bar); takes precedence over top_y
+    bottom_y = nil,            -- if set, pin the sheet's bottom here (on the notebook
+                               -- bottom bar); takes precedence over top_y
 }
--- If the built sheet is taller than the screen allows (a long settings sheet, or
--- any sheet in short landscape), wrap its content in a ScrollableContainer capped to
--- the available height, so nothing is clipped -- it scrolls instead. This mirrors
--- how KOReader's own ButtonDialog copes with a button list taller than the screen.
--- Child-first gesture propagation means a pan inside the scroll area scrolls, while
--- MovableContainer only sees drags outside it, so the two coexist.
+
+-- If the sheet is taller than the space it has (a long sheet, or any sheet in a
+-- short landscape screen), wrap its content in a ScrollableContainer capped to that
+-- height, as ButtonDialog does. Gestures reach children first, so a pan inside the
+-- scroll area scrolls while MovableContainer only sees drags outside it.
 function IconMenu:fitFrame()
     if not self.frame then return end
     local content = self.frame[1]
@@ -67,8 +54,7 @@ function IconMenu:fitFrame()
     if self.bottom_y then avail = self.bottom_y - pad
     else avail = Screen:getHeight() - (self.top_y or pad) - pad end
     local chrome = 2 * ((self.frame.padding or 0) + (self.frame.bordersize or 0))
-    -- measuring can fail in the headless mock env (incomplete widgets); then just
-    -- skip -- no scroll wrapper, exactly the old behaviour
+    -- measuring can fail with the headless test mocks; then no scroll wrapper
     local ok, csz = pcall(function() return content:getSize() end)
     if not ok or not csz or csz.h + chrome <= avail then return end   -- fails or fits
     local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
@@ -90,39 +76,36 @@ function IconMenu:init()
     if Device:hasKeys() then
         self.key_events = { CloseMenu = { { Device.input.group.Back } } }
     end
-    -- MovableContainer gives the content a reliable .dimen (set at paint time),
-    -- and swallows drag gestures that start on the frame. We position it ourselves
-    -- in paintTo (see below), so it is the sole child.
+    -- MovableContainer gives the content a reliable .dimen (set at paint time) and
+    -- swallows drags that start on the frame; paintTo positions it
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable
 end
--- The sheet opens OVER the drawing canvas, which holds dark ink and grid lines.
--- It MUST be shown with a flashing refresh ("flashui"): only a flash fully clears
--- the region to the opaque white sheet. A non-flashing "ui" morphs the dark pixels
--- in (a slow fade), and a 1-bit "fast"/A2 refresh does not clear at all, so the
--- grid and ink ghost straight through the sheet (it looks translucent) and every
--- later refresh has to fight that ghost. The flash is a deliberate, one-time cost
--- for a crisp, opaque sheet -- do not "optimise" it to fast/ui.
+
+-- UIManager:show without a refresh type only marks the widget dirty, so the sheet
+-- schedules its own refresh, reading the region in a closure because
+-- movable.dimen is nil until the first paint. It must be a flashing "flashui":
+-- the sheet opens over dark ink and grid lines, a plain "ui" fades them out
+-- slowly, and the fast waveform does not clear them at all, so the ink would show
+-- through the sheet.
 function IconMenu:onShow()
     UIManager:setDirty(self, function() return "flashui", self.movable.dimen end)
 end
--- On close, UIManager repaints the uncovered canvas underneath, so a plain "ui"
--- brings it back with no black blink. (A "flashui" here would be a black flash
--- where the menu had been.) Free the content subtree (some sheets build
--- blitbuffers, e.g. brush previews).
+
+-- On close UIManager repaints the canvas underneath, and a plain "ui" brings it
+-- back without the black blink a flash would leave. The content is freed, as some
+-- sheets build buffers (brush previews).
 function IconMenu:onCloseWidget()
     local region = self.movable and self.movable.dimen
     UIManager:setDirty(nil, function() return "ui", region end)
     if self.movable and self.movable.free then self.movable:free() end
 end
--- Rebuild the sheet's contents in place (used when a control inside it changes
--- state, e.g. picking a brush or colour), instead of closing and reopening the
--- whole dialog. When the sheet keeps its footprint -- the common case, a
--- selection highlight moving -- refresh only that region with a non-flashing "ui"
--- (the sheet is already an opaque white rectangle on screen, so there is nothing
--- dark to clear): the same partial, no-flash update the sliders and toggles do.
--- Only when the footprint changes (a row added/removed) fall back to repainting
--- the exposed canvas and flashing the union.
+
+-- Rebuild the sheet's content in place when a control inside it changes state
+-- (picking a brush or a colour). When the footprint is unchanged, the usual case,
+-- only that region is refreshed with "ui" (the sheet is already opaque white on
+-- screen); when it changes, the uncovered canvas is repainted and the union
+-- flashes.
 function IconMenu:rebuild()
     if not (self.movable and self.build) then return end
     local old = self.movable.dimen and self.movable.dimen:copy()
@@ -135,26 +118,26 @@ function IconMenu:rebuild()
     local new = self.movable.dimen
     if old and new and old.x == new.x and old.y == new.y
             and old.w == new.w and old.h == new.h then
-        -- mark THIS menu dirty (not nil): if the same tap also repaints the view
-        -- underneath (e.g. a shape pick refreshes the toolbar pill), the menu must
-        -- be repainted on top of it, or the canvas would clobber the sheet.
+        -- mark this menu dirty (not nil): when the same tap also repaints the view
+        -- underneath (a shape pick moves the toolbar pill), the menu must be
+        -- repainted on top of it
         UIManager:setDirty(self, function() return "ui", new end)
     else
         local region = (old and new) and old:combine(new) or new
         UIManager:setDirty("all", function() return "flashui", region end)
     end
 end
--- Paint the sheet horizontally centred and, when top_y is set, pinned just below
--- the toolbar (so tapping a toolbar tool drops its options right under the hand),
--- clamped to stay on screen. MovableContainer sets its own .dimen from where we
--- paint it, which we adopt for hit-testing and refresh regions.
+
+-- Paint the sheet centred horizontally and, with top_y or bottom_y, pinned there
+-- and clamped to the screen. MovableContainer sets its .dimen from where it is
+-- painted, which is used for hit tests and refresh regions.
 function IconMenu:paintTo(bb, x, y)
     local sz = self.movable:getSize()
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)
     local py
     if self.bottom_y then
-        -- pin the sheet's BOTTOM here (e.g. touching the notebook bottom bar's top)
+        -- pin the sheet's bottom here (on the top of the notebook bottom bar)
         py = math.max(pad, math.min(self.bottom_y - sz.h, Screen:getHeight() - sz.h - pad))
     elseif self.top_y then
         py = math.max(pad, math.min(self.top_y, Screen:getHeight() - sz.h - pad))
@@ -164,6 +147,7 @@ function IconMenu:paintTo(bb, x, y)
     self.movable:paintTo(bb, px, py)
     self.dimen = self.movable.dimen
 end
+
 function IconMenu:onTapClose(_, ges)
     if ges and ges.pos and self.movable.dimen
             and ges.pos:notIntersectWith(self.movable.dimen) then
@@ -171,6 +155,7 @@ function IconMenu:onTapClose(_, ges)
     end
     return true
 end
+
 function IconMenu:onCloseMenu()
     UIManager:close(self)
     if self.on_close then self.on_close() end

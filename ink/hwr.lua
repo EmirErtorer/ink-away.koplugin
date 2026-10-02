@@ -1,25 +1,20 @@
 --[[
-On-device handwriting recognition, kept pure so it unit-tests without a KOReader
-environment. It recognises hand-PRINTED characters (one at a time, after the
-caller has segmented a word into characters) using the $P point-cloud recogniser
-(Vatavu, Anthony & Wobbrock, 2012).
+Handwriting recognition for the hidden handwriting-to-text feature, pure so it
+unit-tests without KOReader. It recognises printed characters one at a time
+(Hwr.segment splits a page of strokes into characters first) with the $P
+point-cloud recogniser (Vatavu, Anthony and Wobbrock, 2012).
 
-Why $P: a drawn character is a small set of strokes whose points, taken together,
-form a cloud. $P matches two clouds by summing nearest-neighbour distances, so it
-is naturally multi-stroke and independent of stroke order and direction -- exactly
-the freedom a person needs when printing a letter (crossbars first or last, an
-'X' either way). It needs no training run and no floating-point model, just a set
-of template clouds to compare against; those templates can be produced from any
-font's glyphs (see ink/view.lua), which is what lets this cover more than Latin.
+$P treats a character's strokes as one cloud of points and matches clouds by
+summing nearest-neighbour distances, so stroke order and direction do not matter
+(a crossbar first or last, an X either way). It needs no training, only template
+clouds, which ink/view/handwriting.lua builds from a font's glyphs.
 
-Everything here is plain Lua and side-effect free:
+  * Hwr.normalize(strokes)          a normalised point cloud
+  * Hwr.segment(strokes)            reading-order character, space and newline tokens
+  * Hwr.Recognizer.new(templates)   rec:add(label, strokes), rec:recognize(strokes)
 
-  * Recognizer.normalize(strokes)      -> a normalized point cloud
-  * Recognizer.makeTemplate(label, strokes)
-  * rec:recognize(strokes)             -> label, score, ranked[]
-
-`strokes` is a list of strokes, each a list of {x=, y=} points (screen or canvas
-coordinates -- normalisation removes position and scale).
+`strokes` is a list of strokes, each a list of {x=, y=} points; normalising
+removes position and scale.
 ]]
 
 local Hwr = {}
@@ -76,9 +71,8 @@ local function resampleStroke(pts, n)
     return out
 end
 
--- Resample a multi-stroke gesture to N points, splitting N across strokes in
--- proportion to their length so pen-up gaps are never interpolated across (that
--- would draw a phantom line between, say, an 'i' and its dot).
+-- Resample a multi-stroke gesture to N points, splitting N across strokes by
+-- length, so no points are made up across a pen-up gap (between an i and its dot).
 local function resample(strokes)
     local lens, total = {}, 0
     for s = 1, #strokes do
@@ -139,10 +133,9 @@ function Hwr.normalize(strokes)
     return scaleAndTranslate(resample(strokes))
 end
 
--- Normalise a RAW point cloud (not strokes) -- e.g. the inked pixels sampled from
--- a font glyph -- to a comparable N-point cloud. Downsamples (or pads) to exactly
--- N points, then scales + translates like a gesture, so a glyph template and a
--- handwritten gesture live in the same space.
+-- Normalise a raw point cloud (not strokes), such as the points sampled from a
+-- font glyph, to an N-point cloud: downsample or pad to N points, then scale and
+-- move it like a gesture, so glyph templates and handwriting compare directly.
 function Hwr.normalizeCloud(points)
     local n = #points
     if n == 0 then return {} end
@@ -160,9 +153,9 @@ function Hwr.normalizeCloud(points)
     return scaleAndTranslate(out)
 end
 
--- $P cloud distance: sum of weighted nearest-neighbour distances, walking the
--- points from `start` and weighting earlier matches more (an approximation that
--- makes the greedy match order-robust).
+-- $P cloud distance: the sum of weighted nearest-neighbour distances, walking the
+-- points from `start` and weighting earlier matches more, which makes the greedy
+-- match robust to order.
 local function cloudDistance(pts, tmpl, start)
     local n = #pts
     local matched = {}
@@ -200,12 +193,11 @@ local function greedyMatch(pts, tmpl)
     return best
 end
 
--- Split a page of loose strokes into reading order: group them into lines (by
--- vertical position), then within each line into characters (by horizontal gaps),
--- emitting spaces for wide gaps and a newline between lines. Returns a flat token
--- list: { {kind="char", strokes={...}}, {kind="space"}, {kind="newline"} ... }.
--- Pure; thresholds are relative to the median stroke height so it scales with the
--- writing. The caller recognises each "char" token's strokes.
+-- Split a page of loose strokes into reading order: lines by vertical position,
+-- then characters by horizontal gaps, with a space for a wide gap and a newline
+-- between lines. Returns a flat token list:
+--   { {kind="char", strokes={...}}, {kind="space"}, {kind="newline"} ... }
+-- Thresholds follow the median stroke height, so it scales with the writing.
 local function strokeBBox(s)
     local minx, miny, maxx, maxy = math.huge, math.huge, -math.huge, -math.huge
     for i = 1, #s do
@@ -287,11 +279,13 @@ local Recognizer = {}
 Recognizer.__index = Recognizer
 Hwr.Recognizer = Recognizer
 
--- templates: optional list of { label=, cloud= } (already normalised).
+-- A recogniser over `templates`, an optional list of { label=, cloud= } with the
+-- clouds already normalised.
 function Recognizer.new(templates)
     return setmetatable({ templates = templates or {} }, Recognizer)
 end
 
+-- Add a template from strokes, or from a normalised cloud when `is_cloud`.
 function Recognizer:add(label, strokes_or_cloud, is_cloud)
     self.templates[#self.templates + 1] = {
         label = label,
@@ -301,14 +295,14 @@ end
 
 function Recognizer:count() return #self.templates end
 
--- Recognise a gesture. Returns best_label, score (0..1, higher is better), and a
--- ranked list { {label, score} ... }. Returns nil when there is nothing to match.
+-- Recognise a gesture. Returns the best label, its score (0..1, higher is
+-- better) and a ranked list { {label, score} ... }, or nil with nothing to match.
 function Recognizer:recognize(strokes)
     if #self.templates == 0 then return nil end
     local cloud = Hwr.normalize(strokes)
     if #cloud == 0 then return nil end
-    -- half the diagonal of the unit square is the worst plausible mean distance;
-    -- use it to turn a raw distance into a 0..1 score.
+    -- half the unit square's diagonal is the worst plausible mean distance, which
+    -- turns a raw distance into a 0..1 score
     local maxDist = 0.5 * math.sqrt(2)
     local ranked = {}
     for _, t in ipairs(self.templates) do

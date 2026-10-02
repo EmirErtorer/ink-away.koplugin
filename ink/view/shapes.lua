@@ -27,10 +27,9 @@ local displayColor = Paint.displayColor
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Shapes: rubber-band placement (drag to stretch, like a paint program). The
--- committed drawing in canvas_bb is never touched while stretching; the shape
--- is drawn on top in paintTo and only its changed rectangle is refreshed, so it
--- stays snappy. On release the shape is stamped into the master and folded in.
+-- Placing a shape: drag to stretch it. The master is untouched while stretching;
+-- the shape is drawn on top in paintTo and only its changed rectangle refreshes.
+-- On release it is stamped into the master.
 ------------------------------------------------------------------------------
 
 -- Screen-coordinate op for the current drag, drawn as the live preview.
@@ -80,15 +79,12 @@ function InkAwayView:refreshPreview()
     self._preview_rect = r
     if not u then return end
     local x0, y0, x1, y1 = self:refreshAreaBox("fast", u.x, u.y, u.x2, u.y2)
-    -- Region fast-path (see paintTo): while CREATING a shape (a live drag or the
-    -- curve's bend stage) with no symmetry mirror to track, re-blit only this
-    -- region instead of the whole surface + toolbar on every touch sample -- the
-    -- full-repaint branch was why shape creation felt much slower than freehand,
-    -- especially on a rotated landscape screen. Accumulate into any pending rect
-    -- (u already unions the previous preview) so a skipped paint never strands an
-    -- un-erased outline. Restricted to shape CREATION (not moving/rotating an
-    -- existing shape, which can carry selection chrome outside this rect) and to
-    -- symmetry off (previewRect covers only the un-mirrored shape).
+    -- Region fast path (see paintTo): while creating a shape (a live drag or the
+    -- curve's bend stage), paint only this region instead of the whole view and
+    -- toolbar on every touch sample, which matters most on a rotated landscape
+    -- screen. The rect accumulates, so a skipped paint never strands an outline.
+    -- Not while moving or rotating a placed shape (its selection chrome can lie
+    -- outside), nor with symmetry on (previewRect covers only the base shape).
     if x0 and (self.shape_drag or self.curve_stage) and self.symmetry == "off" then
         local v = self.view
         self._blit_rect = InkGeom.growRect(self._blit_rect,
@@ -138,9 +134,9 @@ function InkAwayView:shapeMove(pos)
     return true
 end
 
--- Snap the drag's end point: to the grid (if on), and to 45-degree steps for a
--- line or curve (if angle snapping is on). Rectangles and ellipses are NOT
--- forced square, so you can draw any proportion.
+-- Snap the drag's end point to the grid (if on) and, for a line or curve, to
+-- 45-degree steps (if angle snapping is on). Rectangles and ellipses keep any
+-- proportion.
 function InkAwayView:shapeEndPoint(pos)
     local d = self.shape_drag
     local x1, y1 = self:snapScreen(pos.x, pos.y)
@@ -180,11 +176,9 @@ function InkAwayView:shapeRelease(pos)
     return true
 end
 
--- Give a freshly placed shape op its symmetry mode and, for a line or curve,
--- any arrowheads, before it is stamped in. `snap` is the settings captured when
--- the shape was started (see shapeTouch); it is used in preference to the live
--- settings so a shape always commits as it was drawn, even if the tool changed
--- between the draw and a deferred commit.
+-- Give a freshly placed shape op its symmetry mode and, for a line or curve, any
+-- arrowheads, before it is stamped in. `snap` holds the settings captured when
+-- the shape was started (see shapeTouch).
 function InkAwayView:decorateShapeOp(op, snap)
     local sym = (snap and snap.sym) or self.symmetry
     if sym ~= "off" then op.sym = sym end
@@ -200,9 +194,8 @@ function InkAwayView:commitShape()
     local d = self.shape_drag
     local c0x, c0y = self:toCanvasClamped(d.x0, d.y0)
     local c1x, c1y = self:toCanvasClamped(d.x1, d.y1)
-    -- Use the settings snapshotted when the drag began, not the live ones: a
-    -- finished shape whose lift was missed can be committed later, after the
-    -- tool or shape type has changed, and it must still commit as what it was.
+    -- use the settings from when the drag began: a shape whose lift was missed
+    -- may commit after the tool or shape type changed, and must stay what it was
     local shape = d.shape or self.shape
     local fill = d.fill; if fill == nil then fill = self.shape_fill end
     local op = self.canvas:addShape(shape, fill,
@@ -255,12 +248,11 @@ function InkAwayView:cancelShape()
     self:refreshPreview()   -- clears the old preview region from the base
 end
 
--- Place a shape that is finished but still pending -- typically because its lift
--- event was missed on the touch panel -- before the tool or shape type changes
--- under it. A curve waiting for its bend is placed straight; a pending drag too
--- small to be a shape is dropped. Call this at every transition (tool switch,
--- opening the shape picker, changing the shape type) so a drawn shape is never
--- left as a stray preview to be dropped, nor re-typed into a different shape.
+-- Place a shape that is finished but still pending (usually because the panel
+-- missed its lift) before the tool or shape type changes under it. A curve
+-- waiting for its bend is placed straight; a drag too small to be a shape is
+-- dropped. Called at every such transition, so a drawn shape is never lost or
+-- turned into a different shape.
 function InkAwayView:flushShape()
     if self.curve_stage == "bend" then
         self:commitCurve()
@@ -272,10 +264,10 @@ function InkAwayView:flushShape()
 end
 
 ------------------------------------------------------------------------------
--- Paint bucket: flood fill an enclosed area on tap.
+-- Paint bucket: flood fill an enclosed area on tap
 ------------------------------------------------------------------------------
 
--- The top-most CLOSED shape whose interior contains a canvas point, or nil.
+-- The topmost closed shape whose interior contains a canvas point, or nil.
 function InkAwayView:shapeUnderPoint(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
@@ -289,10 +281,9 @@ end
 function InkAwayView:doFill(pos)
     self:flushPending()
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
-    -- Tapping inside a shape paints THAT shape's interior: the colour is stored on
-    -- the shape itself (under its outline), so it moves, rotates, duplicates and
-    -- deletes with the shape instead of being left behind. Copy-on-write, so a
-    -- single Undo right after lifts just the fill and restores the empty shape.
+    -- A tap inside a shape fills that shape: the colour is stored on the shape
+    -- (under its outline), so it moves, rotates, duplicates and deletes with it.
+    -- Copy-on-write, so one Undo takes just the fill away.
     local shp = self:shapeUnderPoint(cx, cy)
     if shp then
         self:editOp(shp.idx, shp.op, function(o)
@@ -316,8 +307,8 @@ function InkAwayView:doFill(pos)
 end
 
 ------------------------------------------------------------------------------
--- Editing a placed shape: hold one to pick it, then rotate / recolour / resize
--- / delete it from a small menu anchored beside it.
+-- Editing a placed shape: hold one to pick it, then rotate, recolour, resize or
+-- delete it from a small menu anchored beside it
 ------------------------------------------------------------------------------
 
 -- Edit the op at `idx` as one undo step: it is copied, mutate(copy) changes the
@@ -332,8 +323,8 @@ function InkAwayView:editOp(idx, op, mutate)
     return clone
 end
 
--- Move the op in `sel` to the top of the stack, so later marks no longer cover
--- it. Reordering the list is safe for history snapshots (the op is untouched).
+-- Move the op in `sel` to the top of the stack, above later marks. Snapshots
+-- stay valid: only the list order changes, not the op.
 function InkAwayView:opToFront(sel)
     local ops = self.canvas.ops
     if sel.idx >= #ops then return end
@@ -357,7 +348,7 @@ function InkAwayView:duplicateOp(sel)
     return { op = clone, idx = #self.canvas.ops }
 end
 
--- Find the top-most shape op under a screen point. Returns {op, idx} or nil.
+-- Find the topmost shape op under a screen point. Returns {op, idx} or nil.
 function InkAwayView:hitTestShape(sx, sy)
     local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
     for i = #self.canvas.ops, 1, -1 do
@@ -451,8 +442,8 @@ function InkAwayView:openShapeMenu(sel)
     UIManager:show(dlg)
 end
 
--- Rotate the selected shape a quarter turn about its centre (a handy preset next
--- to the free-rotate drag). Shapes carry op.angle in radians.
+-- Rotate the selected shape a quarter turn about its centre. Shapes carry
+-- op.angle in radians.
 function InkAwayView:rotateShape90(sel)
     self:applyEdit(sel, function(o) o.angle = ((o.angle or 0) + math.pi / 2) end)
     self:openShapeMenu(sel)
@@ -466,8 +457,8 @@ function InkAwayView:pointOnShape(op, sx, sy)
     return Shapes.hit(op, cx, cy, tol)
 end
 
--- Drag a selected shape freely, like an image. The move is copy-on-write (a clone
--- is edited from the first movement) so undo restores the original position.
+-- Drag a selected shape freely, like an image. A clone is edited from the first
+-- movement (copy-on-write), so undo restores the original position.
 function InkAwayView:shapeMoveTouch(pos)
     self.shape_move = { sx = pos.x, sy = pos.y, began = false }
     return true
@@ -479,10 +470,9 @@ function InkAwayView:shapeMovePan(pos)
     local sel = self.selected
     if not sel then self.shape_move = nil; return true end
     if not d.began then
-        -- First real movement: snapshot for undo, edit a clone, and drop it from the
-        -- master ONCE. From here the drag is a cheap screen-space preview (a single
-        -- Shapes.render into the changed rect), so recomposing every ops in the
-        -- canvas per frame -- the old, frozen path -- never happens.
+        -- first real movement: snapshot for undo, edit a clone and drop it from the
+        -- master once; from here the drag is a screen-space preview of the changed
+        -- rect, with no per-frame recompose
         sel.op = self:editOp(sel.idx, sel.op, function(o) o.hidden = true end)
         d.began = true
         d.lastx, d.lasty = d.sx, d.sy
@@ -516,7 +506,7 @@ function InkAwayView:shapeMoveRelease()
     return true
 end
 
--- Apply an edit to the selected op through copy-on-write, so undo/redo work.
+-- Apply an edit to the selected op through copy-on-write, so it can be undone.
 function InkAwayView:applyEdit(sel, mutate)
     local clone = self:editOp(sel.idx, sel.op, mutate)
     sel.op = clone
@@ -542,9 +532,8 @@ function InkAwayView:duplicateSelected(sel)
     self:openShapeMenu(self.selected)
 end
 
--- Flip the selected shape across the middle of its own bounding box (mirrors the
--- image Flip H / Flip V). Reflecting the defining points and negating the rotation
--- angle mirrors the shape exactly, whatever its rotation.
+-- Flip the selected shape across the middle of its bounding box. Reflecting the
+-- defining points and negating the angle mirrors it exactly at any rotation.
 function InkAwayView:flipShape(sel, axis)
     self:applyEdit(sel, function(o)
         local p = o.pts
@@ -560,8 +549,7 @@ function InkAwayView:flipShape(sel, axis)
     self:openShapeMenu(sel)
 end
 
--- Move the selected shape to the top of the stack, so later marks no longer cover
--- it (mirrors the image To front). Reordering the array is snapshot-safe.
+-- Move the selected shape to the top of the stack, above later marks.
 function InkAwayView:shapeToFront(sel)
     self:opToFront(sel)
     self:openShapeMenu(sel)

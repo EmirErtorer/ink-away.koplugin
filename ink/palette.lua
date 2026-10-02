@@ -26,10 +26,10 @@ local COLORS = {
     { name = _("Purple"), rgb = { 0x80, 0x00, 0xB0 } },
 }
 
--- PDF paper colours (shown in the exported PDF; grey e-ink can't show the tint).
+-- Paper colours for an exported PDF (grey e-ink cannot show the tint).
 local PAPERS = {
     white = { 255, 255, 255 },
-    sand  = { 240, 230, 200 },   -- warm "sandpaper" / legal-pad
+    sand  = { 240, 230, 200 },   -- warm, like a legal pad
 }
 
 -- Is the pen currently set to this rgb?

@@ -31,9 +31,8 @@ local CLIP_MAX = 5000   -- longest paste, in characters (a huge one would stall 
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Text notes: font faces and the measuring/rendering context handed to the
--- text engine. Kept here (not in ink/text.lua) so the engine stays pure Lua and
--- testable; only this side touches KOReader fonts.
+-- Fonts and the measuring and rendering context handed to the text engine.
+-- They live here, not in ink/text.lua, so the engine stays pure Lua and testable.
 ------------------------------------------------------------------------------
 
 function InkAwayView:textFontName()
@@ -60,7 +59,7 @@ function InkAwayView:afterFontChange()
     end
 end
 
--- Scrollable chooser over the device's installed fonts, each shown in its own font.
+-- A scrollable chooser over the installed fonts, each shown in its own face.
 function InkAwayView:openTextFont()
     local FontList = require("fontlist")
     local items = {
@@ -74,8 +73,8 @@ function InkAwayView:openTextFont()
             preview_font = path,
             callback = function() self.text_font = path; self:afterFontChange() end }
     end
-    -- Fit the popup inside the drawing area with a comfortable margin on all four
-    -- sides, so it clears the toolbar and the page-nav strip and never gets clipped.
+    -- fit the popup inside the drawing area with a margin all round, clear of the
+    -- toolbar and the notebook bar
     local v = self.view
     local m = Screen:scaleBySize(28)
     local area = { x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
@@ -93,12 +92,9 @@ function InkAwayView:openTextFont()
     UIManager:show(menu)
 end
 
--- Snap a text box's top edge onto the notebook ruling so its lines line up with
--- the printed lines (a no-op off a ruled page).
 -- The ruling step (canvas px) that grid-snapped text lines up with, or nil when
--- there is nothing to snap to. A notebook uses its printed ruling; a plain
--- drawing uses the on-screen grid, but only the styles that have horizontal rows
--- (square, ruled lines, dots) -- isometric and rule-of-thirds have no rows.
+-- there is nothing to snap to. A notebook uses its printed ruling; a drawing uses
+-- the on-screen grid, in the styles that have rows (square, lines, dots).
 function InkAwayView:textRulingStep()
     if self.notebook then
         local t = self.notebook.template
@@ -112,16 +108,16 @@ function InkAwayView:textRulingStep()
     return nil
 end
 
+-- Snap a text box's top edge onto the ruling, so its lines sit on the printed
+-- lines (a no-op without one).
 function InkAwayView:snapTextBoxToGrid(op)
     local step = self:textRulingStep()
     if op and step and step > 0 then op.y = math.floor(op.y / step + 0.5) * step end
 end
 
--- The font size (canvas px) to use for grid-snapped text, so one line fills one
--- ruling row and the tall letters reach up toward the line above. We aim the
--- font's ascent at ~0.90 of the ruling step, measuring the face's own ascent
--- ratio (it varies a lot between fonts) so the fill is consistent whatever font
--- and however fine the ruling.
+-- The font size (canvas px) for grid-snapped text, so one line fills one ruling
+-- row. The font's ascent is aimed at ~0.90 of the step, using the face's own
+-- ascent ratio (it varies a lot between fonts), so every font fills a row alike.
 function InkAwayView:gridBaseSize(name, rawStep)
     local probe = 100
     local face = self:faceAt(name, probe)
@@ -133,10 +129,8 @@ function InkAwayView:gridBaseSize(name, rawStep)
     return math.max(6, math.floor(0.90 * rawStep / ratio + 0.5))
 end
 
--- A cached font face at a REAL pixel size. Font:getFace applies Screen DPI
--- scaling (Screen:scaleBySize) to the size it is given, so we divide by that
--- factor first to land on the actual pixel size we asked for (otherwise text is
--- ~2-3x too big on a high-dpi e-ink panel).
+-- A cached font face at a real pixel size. Font:getFace scales the size it is
+-- given by the screen DPI, so the size is divided by that factor first.
 function InkAwayView:faceAt(name, px)
     px = math.max(6, math.floor(px + 0.5))
     if not self._dpi_factor then
@@ -159,10 +153,9 @@ function InkAwayView:textCtx(op, scale)
     local RenderText = require("ui/rendertext")
     scale = scale or 1
     local name = op.font or self:textFontName()
-    -- Grid-line snap: when the box asks for it and the page (notebook ruling or
-    -- the drawing-mode grid) has rows, the ruling step drives both the line
-    -- snapping AND the font size, so one line fills one row and text never skips a
-    -- line however fine the ruling is set.
+    -- grid-line snap: when the box asks for it and the page has rows, the ruling
+    -- step sets both the line spacing and the font size, so one line fills one
+    -- row however fine the ruling
     local rawStep = op.grid_snap and self:textRulingStep() or nil
     local gridStep = rawStep and rawStep * scale or nil
     local base = rawStep and self:gridBaseSize(name, rawStep) or (op.size or 32)
@@ -219,9 +212,9 @@ function InkAwayView:stampTextInto(dst, op)
     Text.render(op, lay, dst, op.x, op.y, ctx, { color = Blitbuffer.COLOR_BLACK })
 end
 
--- Rasterise a text op to an 8-bit level buffer (255 = untouched white, lower =
--- ink / highlight shades) at 1:1, for the exporter to composite into PNG / JPEG
--- / PDF. Returns (uint8 buffer, w, h).
+-- Rasterise a text op at 1:1 into an 8-bit level buffer (255 is untouched white,
+-- lower values are ink and highlight shades) for the exporter to composite.
+-- Returns the uint8 buffer, w and h.
 function InkAwayView:exportTextRaster(op)
     local lay, ctx = self:layoutText(op, 1)
     local w = math.max(1, math.floor(op.w + 0.5))
@@ -240,13 +233,16 @@ function InkAwayView:exportTextRaster(op)
     return out, w, h
 end
 
--- ---- styling of the selection (or of the next typing, with no selection) --
+------------------------------------------------------------------------------
+-- Styling the selection, or the next typing when nothing is selected
+------------------------------------------------------------------------------
+
 function InkAwayView:textHasSel()
     return self.text_sel and not Text.selEmpty(self.text_sel)
 end
 
--- The word around the cursor, as a selection, or nil if the cursor is not on a
--- word. Lets you just tap a word and format it, without a precise drag-select.
+-- The word around the cursor as a selection, or nil if the cursor is not on a
+-- word, so a tap on a word is enough to format it.
 function InkAwayView:wordSelAtCursor()
     local op, cur = self.editing_text, self.text_cur
     if not (op and cur) then return nil end
@@ -259,8 +255,8 @@ function InkAwayView:wordSelAtCursor()
     return { a = { p = cur.p, o = lo }, b = { p = cur.p, o = hi } }
 end
 
--- What a format action targets: an explicit selection, else the word under the
--- cursor. nil means "no target" -> the style applies to the next typing instead.
+-- What a format action targets: the selection, else the word under the cursor.
+-- nil means no target, and the style applies to the next typing instead.
 function InkAwayView:textEffectiveSel()
     if self:textHasSel() then return self.text_sel end
     return self:wordSelAtCursor()
@@ -315,10 +311,9 @@ function InkAwayView:textToggleBullet(kind)
     self:refreshTextBox("ui")
 end
 
--- A menu to style the word / selection (or the next typing). The keyboard is
--- hidden while it is open -- you are not typing then anyway -- which frees the
--- screen and lets the dialog own the input cleanly (an anchored dialog over the
--- keyboard had its buttons' tap regions in the wrong place).
+-- A menu to style the word or selection (or the next typing). The keyboard is
+-- hidden while it is open, which frees the screen and keeps the sheet's buttons
+-- clear of it.
 function InkAwayView:openTextFormatMenu()
     if not self.editing_text then return end
     self:closeSheet("_text_fmt")
@@ -378,20 +373,19 @@ function InkAwayView:openTextFormatMenu()
                   { label = _("Paste"), enabled = has_clip, cb = function() self:textPaste(); done() end } }))
         return content
     end
-    -- The keyboard is hidden while the sheet is open, so the sheet takes its place
-    -- at the bottom of the drawing area, leaving the text box visible above it.
+    -- the sheet takes the keyboard's place at the bottom of the drawing area,
+    -- leaving the text box visible above it
     local v = self.view
     self:showSheet("_text_fmt", build, { bottom_y = v.area_y + v.area_h,
         on_close = function() if self.editing_text then self:showTextKeyboard() end end })
 end
 
--- ---- clipboard: paste bubble, copy / cut ---------------------------------
--- A long press inside the text box being edited shows a small "Paste" bubble
--- above the finger, the way phones do; tapping it inserts KOReader's clipboard
--- (whatever was copied in the reader, a dictionary, another text field...) at
--- the caret, replacing any selection. The format menu (a selection, or the Aa
--- button) also has Copy / Cut / Paste. The bubble is drawn by the canvas itself,
--- so the keyboard below keeps working while it shows.
+------------------------------------------------------------------------------
+-- Clipboard. A long press inside the box being edited shows a small "Paste"
+-- bubble above the finger; tapping it inserts KOReader's clipboard at the caret,
+-- replacing any selection. The format menu also has Copy, Cut and Paste. The
+-- canvas draws the bubble itself, so the keyboard keeps working while it shows.
+------------------------------------------------------------------------------
 
 -- KOReader's clipboard text cleaned up for a text box (line breaks unified, tabs
 -- as spaces, other control characters dropped, capped at CLIP_MAX characters).
@@ -425,7 +419,7 @@ function InkAwayView:textPaste()
     end
 end
 
--- Copy (or cut) the selection -- or the word under the caret -- to the clipboard.
+-- Copy (or cut) the selection, or the word under the caret, to the clipboard.
 function InkAwayView:textCopy(cut)
     self:hideClipBubble()
     if not self.editing_text then return end

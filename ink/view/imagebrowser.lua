@@ -34,13 +34,6 @@ local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px)
 
 local InkAwayView = {}
 
-------------------------------------------------------------------------------
--- Online image browser: a small e-ink grid over keyless image APIs (Openverse,
--- Wikimedia Commons). Consistent with the tool sheets (rounded IconMenu, black
--- pills, sliding toggles), paged with Prev/Next rather than scrolling, and
--- entirely optional -- see ink/imagesearch.lua for the network/parse pieces.
-------------------------------------------------------------------------------
-
 -- Free the decoded thumbnail buffers (called on refetch and on close).
 function InkAwayView:freeThumbs()
     local st = self._image_browser
@@ -51,9 +44,9 @@ function InkAwayView:freeThumbs()
     end
 end
 
--- Entry point from the "Browse online" button. runWhenOnline prompts to enable
--- Wi-Fi per the reader's own settings and runs the callback when connected; if
--- they decline or there is no network, nothing happens -- nothing is disrupted.
+-- Entry point from the "Browse online" button. runWhenOnline offers to turn on
+-- Wi-Fi as the reader's settings say and runs the callback once connected; if
+-- they decline or there is no network, nothing happens.
 function InkAwayView:browseOnlineImages()
     local start = function() self:imageBrowserSearchPrompt(true) end
     local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
@@ -67,21 +60,16 @@ end
 -- Ask for a search term. `is_initial` opens the browser on the first search;
 -- otherwise it refines the query in the already-open browser.
 function InkAwayView:imageBrowserSearchPrompt(is_initial)
-    -- Only ever one search box at a time: a stale one left showing (with its
-    -- keyboard) is what made the next one refuse input and what lingered on screen
-    -- after closing the browser.
+    -- one search box at a time: a stale one (and its keyboard) would block input
+    -- to the next and linger after the browser closes
     self:closeImageSearchPrompt()
     local st = self._image_browser
-    -- A fresh browse starts empty so a leftover query is never searched by mistake;
-    -- refining an already-open browser keeps the current query so it can be tweaked.
+    -- a fresh browse starts empty; refining keeps the current query to tweak
     local cur = (not is_initial and st and st.query) or ""
-    -- Don't stack the query editor over the open browser sheet. That sheet is a
-    -- full-screen modal, and an InputDialog shown on top of it comes up with an
-    -- on-screen keyboard that cannot reach the field -- you see the keyboard but
-    -- can't type or re-search (which is why the FIRST search, with no sheet under
-    -- it, worked, but refining did not). So close the sheet while editing and bring
-    -- it straight back. Closing it this way (UIManager:close, not its tap-close)
-    -- keeps the query, results and thumbnails, so nothing is refetched on Cancel.
+    -- An InputDialog over the full-screen browser sheet shows a keyboard that
+    -- cannot reach its field, so the sheet closes while the query is edited and
+    -- comes straight back. UIManager:close (not the sheet's tap-close) keeps the
+    -- query, results and thumbnails, so Cancel refetches nothing.
     local reopen = false
     if not is_initial and self._image_browser_dialog then
         self:closeSheet("_image_browser_dialog")
@@ -90,14 +78,11 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     local function backToBrowser()
         if reopen and self._image_browser then self:showImageBrowserSheet() end
     end
-    -- Make sure the on-screen keyboard is available for this search field. On a
-    -- device that reports a physical keyboard -- notably the desktop emulator, and
-    -- any reader with the on-screen keyboard turned off in settings -- InputDialog
-    -- would otherwise suppress its virtual keyboard, leaving no way to type here by
-    -- touch. Turning the global flag on only while the dialog is built lets it lay
-    -- itself out with the keyboard from the start (one clean paint, no reinit); the
-    -- flag is restored immediately after. On a reader with no physical keyboard
-    -- nothing was ever suppressed, so this makes no visible difference there.
+    -- Where a physical keyboard is reported (the desktop emulator, or a reader
+    -- with the on-screen keyboard turned off), InputDialog hides its virtual
+    -- keyboard and the field cannot be typed into by touch. The global flag is
+    -- switched on just while the dialog is built, so it lays out with the keyboard
+    -- from the start, and restored right after.
     local G = rawget(_G, "G_reader_settings")
     local prev_vk = G and G:readSetting("virtual_keyboard_enabled")
     if G then G:saveSetting("virtual_keyboard_enabled", true) end
@@ -132,8 +117,8 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     if G then G:saveSetting("virtual_keyboard_enabled", prev_vk) end   -- restore (nil clears it)
     self._img_search_dialog = dialog
     UIManager:show(dialog)
-    -- Show the keyboard on the next tick, after the tap that opened this has fully
-    -- resolved (doing it inline sometimes lost focus, so the field wouldn't type).
+    -- show the keyboard on the next tick, once the opening tap has resolved;
+    -- inline it can lose focus and the field will not type
     UIManager:nextTick(function()
         if self._img_search_dialog == dialog and dialog.onShowKeyboard then dialog:onShowKeyboard() end
     end)
@@ -144,12 +129,10 @@ function InkAwayView:closeImageSearchPrompt()
     self:closeSheet("_img_search_dialog")
 end
 
--- (Re)create and show the browser sheet from the CURRENT browser state, without
--- starting a new search. Used to open the browser and to bring it back after the
--- query editor closes. Closing the sheet with UIManager:close (below and in the
--- query editor) only repaints -- it does NOT run on_close -- so the browser state
--- (query, results, thumbnails) survives a close/reopen; only a tap-outside
--- (onCloseMenu) tears the session down.
+-- Show the browser sheet for the current state, without a new search: on open,
+-- and again after the query editor closes. UIManager:close does not run on_close,
+-- so the state (query, results, thumbnails) survives a close and reopen; only a
+-- tap outside (onCloseMenu) ends the session.
 function InkAwayView:showImageBrowserSheet()
     if not self._image_browser then return end
     self:closeSheet("_image_browser_dialog")
@@ -165,14 +148,12 @@ function InkAwayView:openImageBrowser(query)
     self:freeThumbs()
     self._image_browser = {
         query = query, page = 1,
-        -- Transparent-only is off by default (true PNGs are scarce in both
-        -- catalogues, so an on-by-default filter mostly returns nothing); remembered
-        -- across sessions once the reader changes it.
+        -- transparent-only is off by default (true PNGs are scarce in both
+        -- catalogues, so the filter mostly returns nothing) and remembered
         png_only = (self:getSetting("inkaway_img_png_only", false) == true),
-        full_res = (self._img_full_res == true),     -- default OFF (scaled to save space)
-        -- Which catalogue to search; remembered across sessions. Wikimedia Commons
-        -- (faster, most reliable thumbnails) by default, Openverse the alternative --
-        -- the reader flips between them with the Source button.
+        full_res = (self._img_full_res == true),     -- off by default (scaled to save space)
+        -- the catalogue, remembered: Wikimedia Commons by default (faster, most
+        -- reliable thumbnails), Openverse from the Source button
         provider = (self:getSetting("inkaway_img_source", "commons") == "openverse") and "openverse" or "commons",
         results = {}, thumbs = {}, status = _("Searching\u{2026}"), has_next = false,
     }
@@ -180,8 +161,8 @@ function InkAwayView:openImageBrowser(query)
     self:imageBrowserFetch()
 end
 
--- Close the browser completely: the search box, the sheet, its thumbnails, and the
--- session state (so the next "Browse online" starts fresh, not with the old query).
+-- Close the browser completely: the search box, the sheet, its thumbnails and the
+-- session state, so the next "Browse online" starts fresh.
 function InkAwayView:onImageBrowserClose()
     self:closeImageSearchPrompt()
     self:closeSheet("_image_browser_dialog")
@@ -190,26 +171,23 @@ function InkAwayView:onImageBrowserClose()
     UIManager:setDirty("all", "ui")   -- repaint the whole screen so nothing lingers
 end
 
--- Build the browser sheet: title, a search bar, the source selector, the PNG/full-res toggles, the
--- thumbnail grid, and a Prev/Next footer.
+-- Build the browser sheet: title, search bar, source selector, the PNG and full
+-- resolution toggles, the thumbnail grid and a Prev/Next footer.
 function InkAwayView:imageBrowserBuild(menu)
     local st = self._image_browser or {}
     local GREY = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF)
     local content_w, gap = self:sheetWidth()
 
-    -- Build the fixed chrome first and measure it, so the grid can be given exactly
-    -- the vertical space that's left. That keeps the whole sheet on screen (with its
-    -- Prev/Next footer visible) on every device, from a small Kobo to a Scribe,
-    -- instead of a fixed cell size that overflows tall panels.
+    -- Build and measure the fixed parts first, so the grid gets exactly the height
+    -- left and the whole sheet (footer included) fits on any screen.
     local title = self:sheetTitle(_("Browse images"), content_w, _("Done"),
         function() self:onImageBrowserClose() end)
     local q_label = (st.query and st.query ~= "") and st.query or _("Search\u{2026}")
     local search = self:actionButton("\u{1F50D}  " .. q_label, content_w,
         function() self:imageBrowserSearchPrompt(false) end)
-    -- Source selector: two keyless catalogues, tap to switch and re-search. Web
-    -- engines (DuckDuckGo/Bing/Google) can't be used -- they gate results behind
-    -- in-page JavaScript a plain HTTP client can't run -- so this is the way to a
-    -- wider selection.
+    -- Source selector: two keyless catalogues, tap to switch and search again.
+    -- Web search engines need in-page JavaScript, which a plain HTTP client cannot
+    -- run.
     local SOURCE_LABEL = { openverse = _("Openverse"), commons = _("Wikimedia") }
     local src = self:actionButton(
         _("Source: ") .. (SOURCE_LABEL[st.provider] or _("Openverse")) .. "   \u{21C4}", content_w,
@@ -223,14 +201,12 @@ function InkAwayView:imageBrowserBuild(menu)
         callback = function(on) st.png_only = on; self:setSetting("inkaway_img_png_only", on); st.page = 1; self:imageBrowserFetch() end }
     local tog2 = ToggleRow:new{ label = _("Full resolution"), is_on = st.full_res, width = content_w, parent = menu,
         callback = function(on) st.full_res = on; self._img_full_res = on end }
-    -- A short note on how the two sources differ, so the Source button explains
-    -- itself. Grey and small so it reads as a hint under the control, not a button.
+    -- a small grey hint on how the two sources differ
     local src_hint = TextBoxWidget:new{
         text = _("Wikimedia is faster. Openverse has a wider variety."),
         face = Font:getFace("cfont", 13), width = content_w, alignment = "center", fgcolor = GREY }
-    -- A friendly tip: truly transparent PNGs are scarce in both catalogues, so nudge
-    -- the reader toward the eraser's background removal. Framed and accented so it
-    -- reads as a helpful aside rather than an error line.
+    -- a framed tip: transparent PNGs are scarce, so point to erasing backgrounds
+    -- with Erase pictures
     local ACCENT = Blitbuffer.ColorRGB32(0x2E, 0x2E, 0x2E, 0xFF)
     local tip_pad = Screen:scaleBySize(12)
     local tip_star = TextWidget:new{ text = "\u{2605}", face = Font:getFace("cfont", 20), fgcolor = ACCENT }
@@ -328,14 +304,12 @@ function InkAwayView:imageBrowserBuild(menu)
     return content
 end
 
--- One grid cell: a rounded tappable tile holding the thumbnail. A tap and a
--- long-press do the same thing -- ask to add the image -- since a plain tap is
--- what most people try first (paging has its own buttons, so a tap can't page).
+-- One grid cell: a rounded tile holding the thumbnail. Tap and long-press both
+-- ask to add the image.
 function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h)
     local TILE = TILE_BG
-    -- Adding runs behind a guard: if anything goes wrong (a bad result, a network
-    -- hiccup) it shows a message instead of letting the error escape and take all
-    -- of KOReader down with it.
+    -- guarded: a bad result or a network hiccup shows a message rather than
+    -- raising an error through KOReader
     local add = function()
         local ok, err = xpcall(function() self:imageBrowserAdd(index) end, debug.traceback)
         if not ok then
@@ -351,11 +325,9 @@ function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h)
     local bb = st.thumbs[index]
     if bb then
         local pad = Screen:scaleBySize(6)
-        -- `fgcolor` is unused by ImageWidget, but Button's tap-highlight inverts
-        -- `label_widget.fgcolor` whenever `text` is set (ours is ""), so it MUST be a
-        -- real colour. Without it a plain tap crashed KOReader indexing a nil field
-        -- (a long-press took a different feedback path, which is why only tapping a
-        -- result crashed). Same fix as brushWaveTile.
+        -- ImageWidget ignores fgcolor, but Button's tap highlight inverts
+        -- label_widget.fgcolor whenever `text` is set (ours is ""), and a nil one
+        -- crashes (see imageLabel in sheetkit.lua)
         self:setButtonLabel(b, ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
             scale_factor = 0, image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK })
     end
@@ -372,11 +344,10 @@ function InkAwayView:imageBrowserGo(delta)
     self:imageBrowserFetch()
 end
 
--- Fetch the current page in the main loop under Trapper: the JSON search, then each
--- thumbnail, with a dismissable progress spinner and a cancel check between steps.
--- The network runs here (not a forked subprocess) because LuaSec's SSL can crash a
--- fork on some builds; a small page + short per-request timeouts keep it responsive.
--- Rebuilds the sheet when done.
+-- Fetch the current page under Trapper: the JSON search, then each thumbnail,
+-- with a dismissable progress message and a cancel check between steps. It runs
+-- in the main process because LuaSec's SSL can crash a forked one on some builds;
+-- small pages and short timeouts keep it responsive. Rebuilds the sheet when done.
 function InkAwayView:imageBrowserFetch()
     local st = self._image_browser
     if not st then return end
@@ -402,10 +373,9 @@ function InkAwayView:imageBrowserFetch()
             local total = #page.results
             for idx, r in ipairs(page.results) do
                 if not Trapper:info(string.format(_("Loading images\u{2026} %d/%d"), idx, total)) then break end
-                -- light thumbnail first; fall back to the full image (some providers'
-                -- thumbnail proxies fail), with short timeouts so one slow image
-                -- can't stall the grid. A browser agent keeps image CDNs from
-                -- rejecting the request.
+                -- the light thumbnail first, else the full image (some thumbnail
+                -- proxies fail); short timeouts so one slow image cannot stall the
+                -- grid, and a browser agent so image CDNs accept the request
                 local iua = { ["User-Agent"] = ImageSearch.BROWSER_UA, ["Accept"] = "image/*,*/*" }
                 local bytes = (r.thumb and ImageSearch.httpGet(r.thumb, 6, 12, iua))
                     or (r.full and ImageSearch.httpGet(r.full, 6, 15, iua))
@@ -439,9 +409,9 @@ function InkAwayView:imageBrowserAdd(index)
     })
 end
 
--- Download the chosen full image, then place it exactly like a local file. When
--- "full resolution" is off, decode + scale down + re-save as PNG (keeps any
--- transparency and saves space); otherwise keep the original bytes/format.
+-- Download the chosen image, then place it like a local file. With full
+-- resolution off it is scaled down and saved as PNG (keeping any transparency);
+-- otherwise the original file is kept as is.
 function InkAwayView:imageBrowserDownloadAndInsert(r)
     local ImageSearch = require("ink/imagesearch")
     local Trapper = require("ui/trapper")
@@ -457,8 +427,8 @@ function InkAwayView:imageBrowserDownloadAndInsert(r)
     local base = string.format("online-%d-%d", os.time(), self._img_dl_seq)
     Trapper:wrap(function()
         if not Trapper:info(_("Downloading image\u{2026}")) then return end
-        -- main-process download (a browser agent, so image CDNs don't reject us);
-        -- kept out of a subprocess for the same LuaSec-in-fork reason as the search
+        -- in the main process, like the search (LuaSec in a fork); a browser agent
+        -- so image CDNs accept the request
         local bytes = ImageSearch.httpGet(r.full, 10, 30,
             { ["User-Agent"] = ImageSearch.BROWSER_UA, ["Accept"] = "image/*,*/*" })
         Trapper:reset()

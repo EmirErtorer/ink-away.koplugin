@@ -21,17 +21,15 @@ local Paint = require("ink/paint")
 local Screen = Device.screen
 local HAIRLINE = Paint.HAIRLINE
 
--- The floating zoom control. E-ink cannot reliably alpha-blend a rounded fill
--- (it paints opaque), so instead of a see-through charcoal box we use a light,
--- airy pill with a soft border and dark glyphs: it reads as a whisper-quiet
--- floating control rather than a heavy solid button, and its auto-hide (melting
--- away as the pen draws near) is what actually keeps the canvas reachable.
+-- The floating zoom pill: e-ink cannot show a see-through fill, so it is a light
+-- opaque pill with a soft border and dark glyphs, and it hides while drawing
+-- near it so the canvas underneath stays reachable.
 local FAB_FILL   = Blitbuffer.ColorRGB32(0xF0, 0xF0, 0xF0, 0xFF)
 local FAB_BORDER = Blitbuffer.ColorRGB32(0xB4, 0xB4, 0xB4, 0xFF)
 local FAB_GLYPH  = Blitbuffer.ColorRGB32(0x33, 0x34, 0x36, 0xFF)
 
--- The floating controls: the fabRect name, the flag set while one has melted
--- away, and the callback (made by initFabs) that brings it back.
+-- The floating controls: the fabRect name, the flag set while one is hidden, and
+-- the callback (made by initFabs) that brings it back.
 local FABS = {
     { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
     { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
@@ -46,10 +44,7 @@ local InkAwayView = {}
 
 function InkAwayView:buildToolbar()
     local specs = {
-        -- First tap selects the tool (so you can draw/type right away with the
-        -- current settings); tapping it again, while already active, opens its
-        -- options. The options use KOReader's standard ButtonDialog, which renders
-        -- and takes taps identically on every device.
+        -- the first tap selects a tool; a tap on the active tool opens its options
         { id = "pen",   label = _("Pen"),   tool = true, cb = function()
             if self.tool == "pen" then self:openPenSettings() else self:setTool("pen") end
         end },
@@ -61,12 +56,12 @@ function InkAwayView:buildToolbar()
         end },
         { id = "text",  label = _("Text"),  tool = true, cb = function()
             -- tapping Text while a box is open finishes it (and closes the keyboard);
-            -- once the tool is active, a second tap opens the font & size options
+            -- once the tool is active, a second tap opens the font and size options
             if self.editing_text then self:finishTextEdit(true)
             elseif self.tool == "text" then self:openTextSettings()
             else self:setTool("text") end
         end },
-        -- quick access to placing an image, instead of digging into Settings
+        -- placing an image, one tap away
         { id = "image", label = _("Image"), cb = function() self:chooseImage() end },
         { id = "pan",   label = _("Pan"),   tool = true, cb = function() self:setTool("pan") end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
@@ -82,31 +77,24 @@ function InkAwayView:buildToolbar()
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
-    -- a compact bar: the icons carry the meaning, so the buttons are short. This is
-    -- the active pill's height; the toolbar is taller by twice the button margin,
-    -- so the pill floats clear of the top/bottom edges.
+    -- the button height, which is also the active pill's; the toolbar is taller by
+    -- twice the button margin, so the pill clears the top and bottom edges
     local bar_h = math.max(Screen:scaleBySize(32), math.min(Screen:scaleBySize(46), math.floor(btn_w * 0.66)))
     self._btn_w, self._bar_h = btn_w, bar_h   -- for the active-tool pill in paintTo
     -- centre of the last (Exit) button, so the collapse chevron lines up under it
     self._last_btn_center = math.floor(btn_w * (n - 1) + (Screen:getWidth() - btn_w * (n - 1)) / 2)
-    -- The icon sits centred in a fixed-height cell (height = bar_h below), so every
-    -- tool's icon shares the same height and baseline and the active black pill is
-    -- identical for all of them. Keep the icon well inside the cell so the pill has
-    -- clear breathing room and never reaches the toolbar edges.
+    -- every icon is centred in a cell of the same height, well inside it, so the
+    -- active pill looks the same behind each tool
     local isz = math.max(20, math.floor(bar_h * 0.66))
-    self._icon_sz = isz   -- the notebook bottom bar matches this exactly, for one consistent style
+    self._icon_sz = isz   -- the notebook bottom bar uses the same icon size
     self.tool_buttons = {}
     self._toolbar_icons = {}
     local row = {}
     for i, s in ipairs(specs) do
         local w = (i == n) and (Screen:getWidth() - btn_w * (n - 1)) or btn_w
-        -- The icon belongs to the Button (via KOReader's user-icon dir), so the
-        -- Button paints and repaints it itself -- including its tap feedback, which
-        -- for an icon (text-less) Button just inverts and restores the region. That
-        -- is why the icon no longer vanishes on press (an overdrawn overlay would).
-        -- Guard every tool action: if a callback ever errors, catch it so the
-        -- Button's tap feedback still un-inverts (no dead black button) and the
-        -- reader sees what went wrong instead of a menu that silently won't open.
+        -- The icon belongs to the Button, so the Button repaints it itself,
+        -- including its tap feedback (an inverted region). Each action is guarded:
+        -- an error is shown, and the tap feedback still clears.
         local raw_cb = s.cb
         local guarded_cb = function()
             local ok, err = xpcall(raw_cb, debug.traceback)
@@ -124,10 +112,8 @@ function InkAwayView:buildToolbar()
             callback = guarded_cb,
             width = w,
             height = bar_h,
-            -- Borderless icons on a clean bar: no per-button boxes. The active tool
-            -- is shown by a filled rounded pill = that button's own grey background
-            -- (set in updateToolbarActive), inset by the margin so it reads as a
-            -- pill rather than a full-cell block.
+            -- borderless icons on a clean bar; the active tool gets a pill drawn
+            -- behind it in paintTo (see drawActiveToolPill)
             bordersize = 0,
             radius = 0,
             background = nil,
@@ -135,25 +121,17 @@ function InkAwayView:buildToolbar()
             padding = 0,
             show_parent = self,
         }
-        -- Point the icon at the plugin's own SVG by absolute path, bypassing
-        -- IconWidget's name lookup. That lookup builds its search-directory list
-        -- and a name->path cache once, when the iconwidget module is first loaded
-        -- during KOReader startup, and it only searches the user-icon dir when
-        -- that dir already existed at that moment. On a first run our
-        -- ensureUserIcons() creates that dir only later (when the canvas opens),
-        -- so "inkaway.<id>" resolves to the not-found triangle for the rest of the
-        -- session -- which is exactly why some users saw triangles until they
-        -- restarted (or reinstalled). A file-based IconWidget takes the file
-        -- directly and always renders, on every device and on the very first run.
+        -- Load the icon from the plugin's own SVG by path. IconWidget's name lookup
+        -- searches the user-icon dir only if it existed when KOReader started, so on
+        -- a first run (ensureUserIcons creates it later) every name would resolve to
+        -- the not-found triangle until a restart.
         local icon_path = self:pluginDir() .. "ink/icons/" .. ICON[s.id] .. ".svg"
         local ok_icon, file_icon = pcall(function()
             return IconWidget:new{ file = icon_path, width = isz, height = isz }
         end)
         if ok_icon and file_icon then self:setButtonLabel(b, file_icon) end
-        -- Make the button transparent: KOReader defaults a border-less button to a
-        -- white fill, which would cover the active pill we paint behind it. With no
-        -- fill, the white bar shows through and the active pill (drawn in paintTo)
-        -- reads correctly under the icon.
+        -- no fill: KOReader gives a borderless button a white one, which would
+        -- cover the active pill painted behind it
         if b.frame then b.frame.background = nil end
         if s.tool then self.tool_buttons[s.id] = { button = b } end
         self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true }
@@ -172,11 +150,9 @@ function InkAwayView:buildToolbar()
     self:updateToolbarActive()   -- give the current tool its pill
 end
 
--- Mark the active tool: remember its button index (so paintTo can draw an inset
--- black pill behind it) and invert its icon to white. Inverting works because the
--- icon renders on an opaque white ground, so invert flips it to white-on-black,
--- merging seamlessly into the black pill. Inactive tools stay transparent (their
--- icon reads black on the white bar).
+-- Mark the active tool: remember its button index (paintTo draws a black pill
+-- behind it) and invert its icon, which renders on an opaque white ground, so it
+-- shows white on the pill.
 function InkAwayView:updateToolbarActive()
     if not self._toolbar_icons then return end
     local active = (self.tool == "fill") and "shape" or self.tool
@@ -190,9 +166,8 @@ function InkAwayView:updateToolbarActive()
     end
 end
 
--- Paint the active tool's pill: a black rounded rect inset within its cell so it
--- floats clear of every toolbar edge. Called from paintTo BEFORE the (transparent)
--- toolbar paints, so the icon lands on top and its invert reads white-on-black.
+-- Paint the active tool's pill: a black rounded rect inset within its cell.
+-- Called from paintTo before the transparent toolbar, so the icon lands on top.
 function InkAwayView:drawActiveToolPill(bb, ox, oy)
     if self._toolbar_hidden or not self._active_btn_idx or not self._btn_w or not self._bar_h then return end
     local m = Screen:scaleBySize(7)
@@ -201,8 +176,7 @@ function InkAwayView:drawActiveToolPill(bb, ox, oy)
         Blitbuffer.COLOR_BLACK, Screen:scaleBySize(9))
 end
 
--- The active tool is shown by a short underline drawn in paintTo, so a tool
--- change only needs the toolbar area repainted.
+-- Show the current tool as active. Only the toolbar needs repainting.
 function InkAwayView:refreshToolLabels()
     self:updateToolbarActive()   -- move the pill to the current tool
     UIManager:setDirty(self, "ui", self.toolbar and self.toolbar.dimen or nil)
@@ -216,13 +190,10 @@ function InkAwayView:pluginDir()
     return self._plugin_dir
 end
 
--- Copy the plugin's tool icons into KOReader's user-icon dir (once, refreshed
--- when the plugin ships newer ones), so a toolbar Button can render them by the
--- name "inkaway.<id>" -- IconWidget searches that dir first. Owning the icon in
--- the Button (rather than overdrawing it) is what keeps it from vanishing on tap.
+-- Copy the plugin's icons into KOReader's user-icon dir (refreshed when the
+-- plugin ships newer ones), so a Button can show them by the name "inkaway.<id>".
 function InkAwayView:ensureUserIcons()
-    -- Sync once per session: the plugin's files never change while it runs, so the
-    -- mtime-compare (46 stat calls) is pure latency on every later toolbar/menu open.
+    -- once per session: the plugin's files cannot change while it runs
     if self._icons_synced then return true end
     local ok = pcall(function()
         local lfs = require("libs/libkoreader-lfs")
@@ -252,8 +223,7 @@ function InkAwayView:ensureUserIcons()
     return ok
 end
 
--- A hairline under the toolbar, painted on top after the icons, separating the
--- bar from the canvas.
+-- Paint the hairline that separates the toolbar from the canvas, after the icons.
 function InkAwayView:drawToolbarIcons(bb)
     if not self._bar_h then return end
     local y = (self.dimen and self.dimen.y or 0) + self._bar_h - 1
@@ -275,20 +245,18 @@ function InkAwayView:setTool(tool)
     self.pan_last = nil
     self.tool = tool
     self:refreshToolLabels()
-    -- This refreshes the TOOLBAR strip (the active pill moves), so the next paint
-    -- must repaint the chrome -- clear any area-only flag a nested clearSelection/
-    -- deselect set via areaScreenRect, or the pill move would be skipped.
+    -- the toolbar strip changes too (the pill moves), so clear any area-only flag
+    -- set by a nested deselect, or the next paint would skip the toolbar
     self._area_only = false
     UIManager:setDirty(self, "ui", GeomUI:new{
         x = 0, y = 0, w = self.screen_w, h = self.view.area_y })
 end
 
 ------------------------------------------------------------------------------
--- Floating immersive controls: a zoom pill at the bottom-right, and a toolbar
--- collapse/expand arrow at the top-right. Both zoom/toggle on a tap and melt away
--- while the pen draws near them (reappearing shortly after) so the canvas beneath
--- stays reachable. Their geometry follows the drawing area, so they move when the
--- toolbar hides and the paper grows.
+-- Floating controls: a zoom pill at the bottom right and chevrons that collapse
+-- the toolbar (and, in a notebook, the bottom bar). They hide while drawing comes
+-- near them and return shortly after, so the canvas beneath stays reachable.
+-- They follow the drawing area, so they move when a bar collapses.
 ------------------------------------------------------------------------------
 
 -- Make the callbacks that bring each control back once drawing near it has
@@ -311,7 +279,7 @@ function InkAwayView:cancelFabs()
     end
 end
 
--- Screen rect of a named control ("zoom" pill or "bar" toggle), or nil.
+-- Screen rect of a named control ("zoom", "bar" or "nbbar"), or nil.
 function InkAwayView:fabRect(which)
     if not self.view then return nil end
     local v = self.view
@@ -321,9 +289,8 @@ function InkAwayView:fabRect(which)
         local h = Screen:scaleBySize(92)
         return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
     elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
-        -- bar's top-left, mirroring the toolbar toggle. Anchored to the area bottom
-        -- so it stays reachable whether the bar is shown (sits on the bar's top edge)
-        -- or collapsed (sits near the screen bottom).
+        -- bar's top left, anchored to the area bottom so it sits on the bar's top
+        -- edge when shown and near the screen bottom when collapsed
         if not self.notebook then return nil end
         local bw = Screen:scaleBySize(34)
         local bh = Screen:scaleBySize(22)
@@ -342,16 +309,15 @@ end
 -- showing draws the control, both without a full redraw.
 function InkAwayView:refreshFabRegion(r)
     if not r then return end
-    self._blit_rect = nil   -- a control melted/appeared over the canvas; blit the
-                            -- whole area so the region under it is restored, not
-                            -- just the live-stroke sub-rect
+    self._blit_rect = nil   -- blit the whole area, so the canvas under the
+                            -- control is restored, not just a stroke's rect
     local m = Screen:scaleBySize(4)
     UIManager:setDirty(self, "ui", GeomUI:new{
         x = r.x - m, y = r.y - m, w = r.w + 2 * m, h = r.h + 2 * m })
 end
 
--- What a point hits: "zoomin"/"zoomout" (halves of the pill), "bar" (the toggle),
--- or nil. Hidden controls are not hittable, so a draw passes straight through.
+-- What a point hits: "zoomin" or "zoomout" (halves of the pill), "bar" or "nbbar"
+-- (the toggles), or nil. Hidden controls cannot be hit, so drawing passes through.
 function InkAwayView:fabHit(px, py)
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
@@ -419,11 +385,10 @@ local function fabChevron(bb, r, ox, oy, dir)
     seg(cx, yTip, cx + half, yEnd)
 end
 
--- The zoom pill is a fixed grey rounded control. Its rounded-corner COLOUR fill is
--- a slow per-pixel path (the README's warning), and it was being redrawn on every
--- paint. Build it ONCE into a transparent-cornered alpha sprite and stamp that with
--- a cheap C alpha-blit each paint instead. Rebuilt only when its size, the screen
--- buffer type, or night-mode inversion changes -- i.e. essentially never.
+-- The zoom pill as an alpha sprite with transparent corners. A rounded colour
+-- fill is a slow per-pixel path, so the pill is drawn once and stamped with a C
+-- alpha-blit on each paint; it is rebuilt only when its size, the screen buffer
+-- type or night mode changes.
 function InkAwayView:zoomPillSprite(w, h)
     local typ = Screen.bb:getType()
     local inv = (Screen.bb.getInverse and Screen.bb:getInverse()) or 0
@@ -449,12 +414,11 @@ function InkAwayView:zoomPillSprite(w, h)
     return bb
 end
 
--- Paint the floating controls onto the screen buffer (called last in paintTo so
--- they float on top). A light, airy pill so it never reads as a solid box.
+-- Paint the floating controls onto the screen buffer, last in paintTo so they
+-- sit on top.
 function InkAwayView:drawFabs(bb, ox, oy)
     if self.selecting_crop then return end
-    -- zoom pill (+ over -): stamp the cached sprite (the pricey rounded draw is done
-    -- once, in zoomPillSprite, not per paint)
+    -- zoom pill (+ over -), stamped from the cached sprite
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
         if r then
@@ -462,14 +426,14 @@ function InkAwayView:drawFabs(bb, ox, oy)
             bb:alphablitFrom(sprite, ox + r.x, oy + r.y, 0, 0, r.w, r.h)
         end
     end
-    -- toolbar toggle: a bare chevron (no pill) -- up to collapse, down to expand.
-    -- Hidden while a text box is being edited, whose Done button sits in that corner.
+    -- toolbar toggle: a bare chevron, up to collapse and down to expand; hidden
+    -- while a text box is edited, as its Done button sits in that corner
     if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
         if r then fabChevron(bb, r, ox, oy, self._toolbar_hidden and 1 or -1) end   -- down = expand, up = collapse
     end
-    -- notebook bottom-bar toggle: the same bare chevron at the bar's top-left. Bar
-    -- shown -> down (collapse it away); collapsed -> up (bring it back).
+    -- notebook bottom-bar toggle: the same chevron at the bar's top left, down
+    -- to collapse and up to bring it back
     if self.notebook and not self._nbbar_toggle_hidden then
         local r = self:fabRect("nbbar")
         if r then fabChevron(bb, r, ox, oy, self._nb_collapsed and -1 or 1) end   -- up = expand, down = collapse

@@ -1,11 +1,7 @@
 --[[
-Plain coordinate and geometry helpers: moving points between screen space and
-the fixed canvas, bounding boxes, joining rectangles, and thinning out strokes.
-
-Nothing here touches KOReader, so the headless tests can call it directly.
-
-Two well known methods do the stroke thinning: the Ramer Douglas Peucker line
-simplification and a filter that drops points too close together.
+Pure geometry helpers: screen and canvas coordinates, the viewport, bounds and
+rectangles, stroke thinning (Ramer-Douglas-Peucker and a minimum spacing) and the
+input aids (stabilizer, grid and angle snap). Nothing here touches KOReader.
 ]]
 
 local Geom = {}
@@ -20,46 +16,43 @@ end
 ------------------------------------------------------------------------------
 -- Viewport
 --
--- The canvas is a fixed W x H image (the size of the device screen). It shows
--- inside a rectangular "area" of the screen (below the toolbar) at some `zoom`,
--- scrolled so that canvas point (pan_x, pan_y) sits at the top left corner of
--- that area. A view table is:
+-- The canvas is a fixed W x H image. It shows inside a rectangular "area" of the
+-- screen (below the toolbar) at some `zoom`, scrolled so that canvas point
+-- (pan_x, pan_y) sits at the area's top left corner. A view table is:
 --   { area_x, area_y, area_w, area_h,  -- area rect in screen coords
 --     zoom, pan_x, pan_y,              -- canvas point shown at the area corner
 --     canvas_w, canvas_h }
 ------------------------------------------------------------------------------
 
--- screen -> canvas
+-- Convert screen coordinates to canvas coordinates.
 function Geom.toCanvas(view, sx, sy)
     return view.pan_x + (sx - view.area_x) / view.zoom,
            view.pan_y + (sy - view.area_y) / view.zoom
 end
 
--- canvas -> screen
+-- Convert canvas coordinates to screen coordinates.
 function Geom.toScreen(view, cx, cy)
     return view.area_x + (cx - view.pan_x) * view.zoom,
            view.area_y + (cy - view.pan_y) * view.zoom
 end
 
--- Smallest zoom that fits the whole canvas inside the area (used as the pinch-out
--- floor: "see the whole page"). May be < 1 when the canvas is larger than the area.
--- At this zoom a canvas whose shape differs from the area is letterboxed.
+-- The smallest zoom that fits the whole canvas inside the area: the pinch-out
+-- floor. Below 1 when the canvas is larger than the area; a canvas of a different
+-- shape is letterboxed at this zoom.
 function Geom.fitZoom(view)
     return math.min(view.area_w / view.canvas_w, view.area_h / view.canvas_h)
 end
 
--- Smallest zoom that COVERS the whole area (fills both dimensions; the longer side
--- of the canvas overflows and is reached by panning). Used as the default view so
--- the drawing area is always fully paintable -- no undrawable margin or bar, even
--- when the canvas orientation differs from the screen (a landscape page kept as-is
--- after rotating back to portrait). Equals fill-width when the canvas is the same
--- shape as (or narrower than) the area, so it changes nothing in the common case.
+-- The smallest zoom that covers the whole area (the canvas's longer side
+-- overflows and is reached by panning). It is the default view, so the drawing
+-- area is always fully paintable, even when the page's shape differs from the
+-- screen. For a canvas the shape of the area, or narrower, it equals fill-width.
 function Geom.coverZoom(view)
     return math.max(view.area_w / view.canvas_w, view.area_h / view.canvas_h)
 end
 
--- Clamp pan so the visible window stays over the canvas. When the canvas is
--- smaller than the area in a dimension, it is centred in that dimension.
+-- Clamp the pan so the visible window stays over the canvas. A canvas smaller
+-- than the area in a dimension is centred in it.
 function Geom.clampPan(view)
     local vis_w = view.area_w / view.zoom
     local vis_h = view.area_h / view.zoom
@@ -161,8 +154,8 @@ end
 -- Stroke simplification
 ------------------------------------------------------------------------------
 
--- Drop points closer than `min_spacing` to the previously kept point. Keeps the
--- first and last. Input/output are flat {x,y,...} lists.
+-- Drop points closer than `min_spacing` to the previously kept point, keeping the
+-- first and last. Takes and returns flat {x,y,...} lists.
 function Geom.dropClose(pts, min_spacing)
     local n = math.floor(#pts / 2)
     if n <= 2 then return copyList(pts) end
@@ -183,9 +176,9 @@ function Geom.dropClose(pts, min_spacing)
     return out
 end
 
--- Ramer Douglas Peucker on a flat point list. Returns a flat list of the points
--- it keeps. `tol` is how far a point may sit from the line before it is kept,
--- in the same units as pts.
+-- Ramer-Douglas-Peucker simplification of a flat point list. Returns the points
+-- it keeps; `tol` is how far a point may sit from the line before it is kept, in
+-- the units of pts.
 function Geom.rdp(pts, tol)
     local n = math.floor(#pts / 2)
     if n <= 2 then return copyList(pts) end
@@ -238,13 +231,13 @@ end
 -- Input aids: stabilizer, grid snap, angle snap
 ------------------------------------------------------------------------------
 
--- Exponential smoothing (the stabilizer). Moves the smoothed point a fraction
--- `alpha` of the way to the raw point; alpha 1 = no smoothing, small = heavy.
+-- Exponential smoothing for the stabilizer: move the smoothed point a fraction
+-- `alpha` of the way to the raw point (1 for none, small values for heavy).
 function Geom.ema(px, py, x, y, alpha)
     return px + (x - px) * alpha, py + (y - py) * alpha
 end
 
--- Map a 0..100 stabilizer strength to an EMA alpha. 0 -> 1 (off); 100 -> ~0.08.
+-- Map a 0..100 stabilizer strength to an EMA alpha: 0 gives 1 (off), 100 ~0.08.
 function Geom.stabilizerAlpha(strength)
     local s = math.max(0, math.min(100, strength or 0)) / 100
     return 1 - s * 0.92
@@ -257,7 +250,7 @@ function Geom.snapToGrid(x, y, spacing)
            math.floor(y / spacing + 0.5) * spacing
 end
 
--- Snap the segment from (x0,y0) to (x1,y1) to the nearest 45-degree direction,
+-- Snap the segment from (x0, y0) to (x1, y1) to the nearest 45-degree direction,
 -- keeping its length. Returns the adjusted end point.
 function Geom.snapAngle(x0, y0, x1, y1)
     local dx, dy = x1 - x0, y1 - y0

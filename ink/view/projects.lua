@@ -16,7 +16,7 @@ local existingDir = Storage.existingDir
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Projects and autosave
+-- Session and autosave
 ------------------------------------------------------------------------------
 
 -- Path of the kept "last session" file.
@@ -34,7 +34,7 @@ function InkAwayView:loadOps(ops)
     self.dirty = false
 end
 
--- Load ops from a project into the canvas, if they fit this screen. Returns ok.
+-- Load a project's ops into the canvas. Returns false when there are none.
 function InkAwayView:loadProjectData(data)
     if not data or not data.ops then return false end
     self:loadOps(data.ops)
@@ -88,7 +88,7 @@ function InkAwayView:setAutosave(mode)
 end
 
 ------------------------------------------------------------------------------
--- Projects: new / open / save (the editable drawing, not the image export).
+-- Projects: new, open and save (the editable drawing, not the image export)
 ------------------------------------------------------------------------------
 
 -- Run `fn`, asking first with `text` when there is work it would clear.
@@ -101,9 +101,9 @@ function InkAwayView:newDrawing()
     self:confirmDiscard(_("Start a new drawing? The current one will be cleared."), _("New"), function()
         self:exitNotebook()
         self:loadOps({})
-        os.remove(self:sessionPath())   -- so reopening does not restore the old drawing
+        os.remove(self:sessionPath())   -- so reopening does not restore the previous drawing
         self:composeCanvas(); self:renderView()
-        self:resetTransientMemory()     -- reclaim the old drawing's memory now
+        self:resetTransientMemory()     -- reclaim the previous drawing's memory now
         UIManager:setDirty(self, "full")
     end)
 end
@@ -145,7 +145,11 @@ function InkAwayView:saveProject()
     end)
 end
 
--- Four folders under "ink away/": drawings (PNG/JPEG images), drawing projects
+------------------------------------------------------------------------------
+-- Folders
+------------------------------------------------------------------------------
+
+-- Four folders under "ink away/": drawings (PNG and JPEG images), drawing projects
 -- (editable .inkaway canvases), notebooks (exported PDFs) and notebook projects
 -- (editable .inkaway notebooks). Returns the images path.
 function InkAwayView:ensureDefaultDir()
@@ -161,13 +165,13 @@ function InkAwayView:defaultDir()
     return existingDir(self:getSetting("inkaway_last_dir")) or self.default_dir or "/"
 end
 
--- Where the project open/save dialogs start: the folder for the current kind of
--- project (drawing vs notebook), last-used location remembered separately for
--- each so the two never get mixed up again.
+-- The settings key for the last folder of the current project kind.
 function InkAwayView:projectDirKey()
     return self.notebook and "inkaway_last_nproj_dir" or "inkaway_last_dproj_dir"
 end
 
+-- Where the project open and save dialogs start: the last folder used for the
+-- current kind (drawing or notebook, kept apart), else that kind's folder.
 function InkAwayView:projectDir()
     local def = self.notebook and self.nproj_dir or self.dproj_dir
     return existingDir(self:getSetting(self:projectDirKey())) or def or self.default_dir or "/"
@@ -178,7 +182,7 @@ function InkAwayView:rememberDir(dir)
     self:setSetting("inkaway_last_dir", dir)
 end
 
--- Remember the last project folder used (per project kind), for next time.
+-- Remember the last project folder used (per kind), for next time.
 function InkAwayView:rememberProjectDir(dir)
     self:setSetting(self:projectDirKey(), dir)
 end

@@ -26,7 +26,7 @@ function InkAwayView:inArea(x, y)
        and y >= v.area_y and y < v.area_y + v.area_h
 end
 
--- screen -> canvas, clamped to the canvas bounds
+-- Convert a screen point to canvas coordinates, clamped to the canvas.
 function InkAwayView:toCanvasClamped(sx, sy)
     local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
     if cx < 0 then cx = 0 elseif cx > self.view.canvas_w then cx = self.view.canvas_w end
@@ -34,7 +34,7 @@ function InkAwayView:toCanvasClamped(sx, sy)
     return cx, cy
 end
 
--- canvas to area coordinates (origin at the area's top left corner, i.e. area_bb)
+-- Convert canvas coordinates to area_bb coordinates (origin at the area's top left).
 function InkAwayView:toAreaLocal(cx, cy)
     local v = self.view
     return (cx - v.pan_x) * v.zoom, (cy - v.pan_y) * v.zoom
@@ -51,24 +51,20 @@ end
 ------------------------------------------------------------------------------
 -- Orientation (portrait / landscape)
 --
--- KOReader rotates the whole screen: a rotation mode is 0 (upright portrait),
--- 1 (clockwise landscape), 2 (upside-down portrait) or 3 (counter-clockwise
--- landscape) -- the odd modes are the two landscapes. Ink Away can run either
--- way up. It remembers the reader's own rotation when it opens and puts it back
--- on close, and it remembers the orientation you last drew in so a fresh launch
--- comes up the same way. Opening while the device is already held in landscape
--- works too, since the very first launch simply adopts whatever the screen is.
+-- KOReader rotates the whole screen: rotation mode 0 is upright portrait, 1
+-- clockwise landscape, 2 upside-down portrait and 3 counter-clockwise landscape.
+-- Ink Away puts the reader's own rotation back on close and remembers the
+-- orientation last drawn in, so the next launch comes up the same way; the very
+-- first launch adopts whatever the screen is.
 --
 -- The canvas is created at the screen size, so a landscape session gets a wide
--- canvas and its PNG/JPEG/PDF export comes out landscape with no extra work. A
--- drawing already on screen keeps its size and is just shown rotated (you pan to
--- reach it); only a still-blank page is reshaped to the new orientation.
+-- page and a landscape export. Rotating reshapes the page (see reshapeToScreen).
 ------------------------------------------------------------------------------
 
 local function modeIsLandscape(mode) return mode ~= nil and (mode % 2 == 1) end
 
--- Is screen rotation available at all (it is on real devices and the emulator;
--- guard so the headless tests, which stub Screen, never call a missing method).
+-- Is screen rotation available? It is on devices and the emulator; the headless
+-- tests stub Screen without it.
 function InkAwayView:orientationSupported()
     return (Screen.setRotationMode and Screen.getRotationMode) and true or false
 end
@@ -77,18 +73,17 @@ function InkAwayView:currentRotation()
     return (Screen.getRotationMode and Screen:getRotationMode()) or 0
 end
 
--- The "portrait" / "landscape" class of a rotation mode (the current one if none
--- is given).
+-- The class ("portrait" or "landscape") of a rotation mode, the current one by
+-- default.
 function InkAwayView:orientationClass(mode)
     if mode == nil then mode = self:currentRotation() end
     return modeIsLandscape(mode) and "landscape" or "portrait"
 end
 
--- Which rotation mode to use for a requested orientation. Prefer the reader's own
--- rotation when it already matches the class (so we keep the exact way up the
--- device is held), else a sensible default: upright for portrait, and
--- counter-clockwise for landscape (so the device's bottom bezel ends up on the
--- right, matching how most readers turn a device for landscape).
+-- Which rotation mode to use for an orientation: the reader's own rotation when
+-- it already matches (keeping the way up the device is held), else upright for
+-- portrait and counter-clockwise for landscape (bottom bezel on the right, the
+-- usual way to turn a reader).
 function InkAwayView:rotationForClass(class)
     local orig = self.orig_rotation
     if class == "landscape" then
@@ -100,9 +95,9 @@ function InkAwayView:rotationForClass(class)
     end
 end
 
--- Apply the orientation Ink Away should open in, called once at init BEFORE the
--- canvas and buffers are sized. Uses the remembered choice if there is one, else
--- adopts (and remembers) however the device is currently held.
+-- Apply the orientation to open in, once at init before the canvas and buffers
+-- are sized: the remembered choice, else (remembered from now on) however the
+-- device is held.
 function InkAwayView:applyStartupOrientation()
     if not self:orientationSupported() then
         self.orientation = self:orientationClass()
@@ -121,8 +116,8 @@ function InkAwayView:applyStartupOrientation()
     end
 end
 
--- Switch orientation from the Settings sheet. Rotates the screen, remembers the
--- choice, then re-lays-out (and reshapes a blank page to the new orientation).
+-- Switch orientation from the Settings sheet: rotate the screen, remember the
+-- choice, then reshape the page and lay out again.
 function InkAwayView:setOrientation(class)
     if not self:orientationSupported() then return end
     if self:orientationClass() == class then return end   -- already that way up
@@ -130,26 +125,22 @@ function InkAwayView:setOrientation(class)
     self.orientation = class
     self:setSetting("inkaway_orientation", class)
     self:handleScreenResize()
-    -- a full refresh both draws the new orientation and clears the panel, which is
-    -- exactly when a full refresh earns its cost
+    -- a full refresh draws the new orientation and clears the panel
     UIManager:setDirty(self, "full")
 end
 
--- Reshape the page to the screen's current size, so it always MATCHES the
--- orientation: a landscape session gets a landscape page (and a landscape export),
--- a portrait session a portrait one. Existing marks keep their canvas coordinates,
--- so they stay upright and line-snapped text stays on its ruling; a mark that now
--- falls past the new, shorter edge is simply not drawn or exported until you rotate
--- back -- nothing is deleted from the ops list, so it is fully reversible. A
--- PDF-backed notebook is the one exception: its page size is the imported PDF's, so
--- it is never reshaped. Returns true if it reshaped, and recomposes the master so
--- the caller's renderView shows the reshaped page.
+-- Reshape the page to the screen size, so it matches the orientation (and so does
+-- the export). Marks keep their canvas coordinates, so text stays on its ruling;
+-- a mark past the new, shorter edge is not drawn or exported until the screen
+-- turns back, and nothing is deleted. A PDF-backed notebook keeps the PDF's page
+-- size. Returns true if it reshaped; the master is recomposed for the caller's
+-- renderView.
 function InkAwayView:reshapeToScreen()
     local W, H = Screen:getWidth(), Screen:getHeight()
     local v = self.view
     if not v then return false end
     if v.canvas_w == W and v.canvas_h == H then return false end   -- already that shape
-    -- a PDF-backed notebook's pages ARE the imported PDF at its own size: never reshape
+    -- a PDF-backed notebook's pages are the imported PDF at its own size
     if self.notebook and self.notebook.template and self.notebook.template.pdf_path then
         return false
     end
@@ -162,18 +153,17 @@ function InkAwayView:reshapeToScreen()
     return true
 end
 
--- Re-lay-out after the screen size changed -- from our own orientation toggle, or
--- the device being physically turned (onSetDimensions). Reshape the page to the new
--- orientation first, then rebuild the toolbar/area and refit the view.
+-- Lay out again after the screen size changed, from the orientation setting or
+-- the device being turned (onSetDimensions): reshape the page first, then rebuild
+-- the toolbar and area and refit the view.
 function InkAwayView:handleScreenResize()
     self:reshapeToScreen()
     self:relayout()
     self.orientation = self:orientationClass()
 end
 
--- Screen size changed, from a rotation or a window resize. The canvas keeps the
--- pixel size it had when it opened, since the export size is fixed at that
--- point, so all we do here is rebuild the toolbar and viewport and refit the page.
+-- Rebuild the toolbar and drawing area for the current screen size and refit the
+-- view. The page itself is left alone (see reshapeToScreen).
 function InkAwayView:relayout()
     local W, H = Screen:getWidth(), Screen:getHeight()
     self.screen_w, self.screen_h = W, H
@@ -189,11 +179,9 @@ function InkAwayView:relayout()
 end
 
 -- Refit the view after the drawing area changed size, then reallocate the
--- on-screen buffer and re-render it. The default is to cover the whole area (see
--- InkGeom.coverZoom), so a page whose shape differs from the screen (a landscape
--- drawing shown after rotating back to portrait) still fills it, with no
--- undrawable margin and no stray page edge under the toolbar. A zoomed-in view is
--- kept; only a view below "cover" is lifted up to it.
+-- on-screen buffer and render it. The page covers the whole area (see
+-- InkGeom.coverZoom) even when its shape differs from the screen, so there is no
+-- undrawable margin; a zoomed-in view is kept.
 function InkAwayView:refitArea()
     local v = self.view
     self.zoom_min = InkGeom.fitZoom(v)
@@ -205,7 +193,7 @@ function InkAwayView:refitArea()
 end
 
 ------------------------------------------------------------------------------
--- Zoom  (consistent multiplicative steps between fit and ZOOM_MAX)
+-- Zoom, in even multiplicative steps up to ZOOM_MAX
 ------------------------------------------------------------------------------
 
 function InkAwayView:setZoom(new_zoom, anchor_sx, anchor_sy)
@@ -231,10 +219,9 @@ function InkAwayView:zoomStep(dir)
     self:setZoom(self.view.zoom * factor)
 end
 
--- Pinch (dir<0, fingers together -> zoom out) and spread (dir>0, fingers apart
--- -> zoom in) zoom the CANVAS, anchored at the gesture's midpoint, by an amount
--- proportional to how far the fingers moved. On e-ink a single anchored jump per
--- gesture (rather than a live continuous zoom) is what avoids ghosting.
+-- Pinch (dir < 0) zooms out and spread (dir > 0) zooms in, anchored at the
+-- gesture's midpoint, by an amount that follows how far the fingers moved. One
+-- jump per gesture, rather than a live zoom, avoids ghosting on e-ink.
 function InkAwayView:pinchZoom(ges, dir)
     self:flushPending()
     self:cancelShape()
@@ -247,9 +234,7 @@ function InkAwayView:pinchZoom(ges, dir)
     self:setZoom(nz, pos and pos.x, pos and pos.y)
 end
 
--- Hide or show the top toolbar, growing the paper to fill the freed space. The
--- drawing-area buffer is reallocated and the view re-fitted, exactly as on a
--- screen-rotation relayout.
+-- Hide or show the top toolbar, growing the paper into the freed space.
 function InkAwayView:setToolbarHidden(hidden)
     if (self._toolbar_hidden or false) == hidden then return end
     self:flushPending()
@@ -266,9 +251,8 @@ function InkAwayView:setToolbarHidden(hidden)
     self:refresh(self, "full")
 end
 
--- Hide or show the notebook bottom bar, growing the paper to fill the freed space
--- (mirrors setToolbarHidden). Honours a hidden toolbar too, so the two can be
--- collapsed independently.
+-- Hide or show the notebook bottom bar, growing the paper into the freed space.
+-- The toolbar can be collapsed independently.
 function InkAwayView:setNbBarHidden(hidden)
     if not self.notebook then return end
     if (self._nb_collapsed or false) == hidden then return end
@@ -284,8 +268,8 @@ function InkAwayView:setNbBarHidden(hidden)
 end
 
 ------------------------------------------------------------------------------
--- Pan, shared by the Pan tool and two finger pan. It works from one step to the
--- next, so it stays reliable even when the panel sends events unevenly.
+-- Pan, shared by the Pan tool and two-finger pan. It works from one step to the
+-- next, so it stays reliable when the panel sends events unevenly.
 ------------------------------------------------------------------------------
 
 function InkAwayView:panByScreen(dx, dy)
@@ -307,9 +291,8 @@ function InkAwayView:recomputeArea()
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
     self.zoom_min = InkGeom.fitZoom(v)
-    -- Cover the whole area (no letterbox), exactly like a flat canvas; this keeps a
-    -- notebook filling the device -- and, if its page shape differs from the screen
-    -- after a rotation, still covers the area rather than centring with a margin.
+    -- cover the whole area, as for a drawing, even when the page shape differs
+    -- from the screen after a rotation
     v.zoom = math.max(self.zoom_min, InkGeom.coverZoom(v))
     InkGeom.clampPan(v)
 end

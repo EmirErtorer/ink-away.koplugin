@@ -1,7 +1,7 @@
 --[[
-A small PDF writer: one JPEG image per page, at a fixed page size. Each JPEG is
-embedded as-is (/DCTDecode, the image filter PDF reads natively), and pages are
-written to disk as they are added, so memory stays flat however long the document.
+A small PDF writer: one JPEG image per page. Each JPEG is embedded as it is
+(/DCTDecode) and written to disk as the page is added, so memory stays flat
+however long the document.
 
 Objects: 1 catalog, 2 page tree, then for page i: 3i image, 3i+1 content, 3i+2
 page. The page tree goes last; the xref table records where each object sits.
@@ -30,8 +30,8 @@ function Stream:put(s)
     return true
 end
 
--- Add one page from a JPEG file on disk, copied across in chunks (it is never held
--- in memory whole). `w`,`h` are the page box in points; `pxw`,`pxh` the JPEG's
+-- Add one page from a JPEG file on disk, copied in chunks so it is never held in
+-- memory whole. `w`, `h` are the page box in points and `pxw`, `pxh` the JPEG's
 -- pixel size. Returns ok, err.
 function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh)
     local jf = io.open(jpeg_path, "rb")

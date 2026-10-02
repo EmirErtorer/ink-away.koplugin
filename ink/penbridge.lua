@@ -1,26 +1,22 @@
 --[[
 Keeps a Wacom pen's events on the pen's own slot while the canvas is open.
 
-KOReader reads the pen (a single-touch digitizer: ABS_X/ABS_Y/BTN_TOUCH) and the
-capacitive panel (multi-touch: ABS_MT_*) through ONE "current slot" cursor. The
-panel moves that cursor to a resting palm's slot, and the pen's next events then
-land on the palm's slot instead of the pen's: the pen's coordinates are written
-into the palm, and its lift (BTN_TOUCH 0) is dropped because KOReader only honours
-it when the current slot holds a pen. The pen slot then never sees the lift, and
-the next pen-down continues the old stroke -- the straight line from one stroke to
-the next that Kindle Scribe users with a resting hand see.
+KOReader reads the pen (a single-touch digitizer: ABS_X, ABS_Y, BTN_TOUCH) and
+the touch panel (multi-touch: ABS_MT_*) through one "current slot" cursor. When
+the panel moves that cursor to a resting palm's slot, the pen's next coordinates
+land on the palm, and its lift (BTN_TOUCH 0) is dropped because KOReader honours
+it only while the current slot holds a pen. The pen slot never sees the lift, and
+the next pen-down continues the previous stroke with a straight line.
 
 While installed, the bridge gives each device its own cursor:
-  * ABS_X / ABS_Y / ABS_PRESSURE always go to the pen slot;
-  * BTN_TOUCH goes to the pen slot whenever the pen is in range or has a live
-    contact, so a lift can never be lost (KOReader's own check looks at whatever
-    slot is current);
-  * every ABS_MT_* event goes back to the panel slot the panel last selected.
+  * ABS_X, ABS_Y and ABS_PRESSURE always go to the pen slot;
+  * BTN_TOUCH goes to the pen slot whenever the pen is in range or touching, so
+    a lift is never lost;
+  * every ABS_MT_* event goes to the panel slot the panel last selected.
 It also moves the pen slot out of the panel's 0..9 range (to 15), so a hand with
-several contacts can never share the pen's slot. Everything is restored on close.
+several contacts never shares it. Everything is restored on uninstall.
 
-The approach follows pierspad's Notebook plugin (MIT), which showed the cursor
-split is what makes palm rejection reliable on the Scribe. It is installed only on
+The approach follows pierspad's Notebook plugin (MIT). It is installed only on
 Wacom-protocol devices that use KOReader's stock touch handlers.
 ]]
 
@@ -67,12 +63,12 @@ end
 function PenBridge.install(input)
     if not PenBridge.supported(input) then return nil end
     local h = { input = input, orig_pen_slot = input.pen_slot }
-    -- The panel's slot cursor: where KOReader's cursor is now, unless that is the pen.
+    -- the panel's slot cursor: where KOReader's cursor is now, unless that is the pen
     local cur = input.cur_slot
     h.panel_slot = (cur ~= nil and cur ~= input.pen_slot) and cur or (input.main_finger_slot or 0)
 
-    -- Move the pen slot, carrying over whether the pen is in range right now (the
-    -- canvas is often opened with the pen hovering, and BTN_TOOL_PEN won't repeat).
+    -- move the pen slot, carrying over whether the pen is in range now (the canvas
+    -- is often opened with the pen hovering, and BTN_TOOL_PEN is not sent again)
     local new_slot = PenBridge.PEN_SLOT
     local old = slotData(input, h.orig_pen_slot)
     local fresh = ensureSlot(input, new_slot)
@@ -125,7 +121,7 @@ function PenBridge.install(input)
                 this:setCurrentMtSlot("id", ev.value == 1 and this.pen_slot or -1)
                 return true
             end
-            -- Some reports put the touch BEFORE the pen's "in range" key in the
+            -- Some reports put the touch before the pen's "in range" key in the
             -- same frame. Hold it until that key arrives, or the contact-down is
             -- lost and the whole stroke is taken for hovering.
             h.touch_pending = ev.value
@@ -163,6 +159,7 @@ function PenBridge.install(input)
     return h
 end
 
+-- Restore KOReader's handlers and the original pen slot.
 function PenBridge.uninstall(h)
     if not h then return end
     local input = h.input

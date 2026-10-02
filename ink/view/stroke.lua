@@ -21,11 +21,9 @@ local bgSpanWriter = Paint.bgSpanWriter
 
 local PREVIEW_INK = Blitbuffer.COLOR_BLACK   -- live preview of non-black ink on colour panels
 
--- When the finger lifts, wait this long before committing the stroke. If a
--- fresh touch lands nearby within the window, treat it as the SAME stroke.
--- Touch panels on these readers often drop and reacquire a finger in the middle
--- of a line, and this is what keeps one lift as one undo step, keeps exported
--- strokes whole, and fills the gap a dropped contact would otherwise leave.
+-- After a lift, wait this long before committing the stroke; a touch that lands
+-- nearby in the meantime continues it. Panels often drop and reacquire a finger
+-- mid-line, and this keeps one lift as one stroke and one undo step, with no gap.
 local COALESCE_SEC = 0.15
 
 local GC_HEAL_KB = 48 * 1024        -- ~48 MB: far above any legitimate drawing
@@ -34,7 +32,7 @@ local GC_HEAL_EVERY = 96            -- check at most once per this many commits
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Drawing gesture handlers
+-- Drawing a stroke
 ------------------------------------------------------------------------------
 
 -- Current live ink colour and width, from the active tool.
@@ -46,12 +44,10 @@ function InkAwayView:liveWidth()
     return (self.tool == "erase") and self.eraser_width or self.pen_width
 end
 
--- Build the reusable per-stroke drawing writers ONCE (called from beginStroke) so
--- the per-point path (stampLive) allocates almost nothing. Colour, width, brush
--- style and symmetry are fixed for the whole stroke, so the span writers, the
--- symmetry-combining wrapper and the raster dispatcher never need rebuilding per
--- point -- rebuilding them ~18x/point under quad symmetry was the GC thrash that
--- made fast drawing with symmetry stutter (and never fully recover).
+-- Build the stroke's writers once, in beginStroke. Colour, width, brush and
+-- symmetry are fixed for the whole stroke, so the per-point path (stampLive)
+-- allocates almost nothing; building them per point made fast symmetric drawing
+-- stutter under garbage collection.
 function InkAwayView:setupLiveWriters()
     local color = self:liveColor()
     local style = (self.tool ~= "erase") and self.pen_style or nil
@@ -61,24 +57,21 @@ function InkAwayView:setupLiveWriters()
     self._lw_stroke = function(seg, r, put)
         if textured then Raster.pathTex(seg, r, put, st, seed) else Raster.path(seg, r, put) end
     end
-    -- remember which buffers these writers target, so stampLive can rebuild them if
-    -- a relayout/rotation reallocated a buffer mid-interaction (else the writers
-    -- would poke a freed buffer)
+    -- the buffers these writers target, so stampLive can rebuild them if a relayout
+    -- reallocated one mid-stroke (rather than draw into a freed buffer)
     self._lw_area_bb, self._lw_canvas_bb = self.area_bb, self.canvas_bb
     self._lw_acc = self._lw_acc or { x0 = 0, y0 = 0, x1 = 0, y1 = 0 }
-    -- canvas-space bbox of everything this stroke writes into the master, so the
-    -- panel-order mirror can be resynced over just that rect when the stroke ends
+    -- canvas bbox of everything the stroke writes into the master, so the mirror
+    -- (see display.lua) is resynced over just that rect when it ends
     self._lw_cacc = self._lw_cacc or { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
-    -- reused 4-slot segment tables (master + on-screen), so a continuing stroke
-    -- allocates no per-point segment garbage; Raster.path reads them synchronously
+    -- reused segment tables (master and screen); Raster reads them synchronously
     self._lw_seg_c = self._lw_seg_c or { 0, 0, 0, 0 }
     self._lw_seg_a = self._lw_seg_a or { 0, 0, 0, 0 }
     local sym = self.symmetry
-    -- On a colour panel the live ink is shown with the fast black/white waveform
-    -- (the grey/colour one blocks on every sample there), which cannot show colour,
-    -- grey or a light tint: those would vanish or look wrong while drawing. So the
-    -- on-screen copy is drawn in black and the master keeps the real colour; the
-    -- true pixels are put back on lift and settle in one refresh (queueReconcile).
+    -- On a colour panel live ink uses the fast black-and-white waveform (the
+    -- grey-capable one blocks on each sample there), which cannot show colour, grey
+    -- or a light tint. So the screen copy is drawn black while the master keeps the
+    -- real colour; the true pixels come back on lift and settle in one refresh.
     local area_color = color
     self._live_preview = false
     if self:colourPanel() and self.tool ~= "erase" and self._live_mode == "fast"
@@ -93,9 +86,8 @@ function InkAwayView:setupLiveWriters()
         cput = Symmetry.wrap(cput, sym, crefx, crefy)
     end
     self._lw_cput = cput
-    -- on-screen writer, accumulating the base bbox into the reused acc table; the
-    -- mirror images are painted through a writer that does NOT grow acc, so the
-    -- refresh stays a few small rects (one per image) rather than one giant box.
+    -- On-screen writer: the base image grows _lw_acc, the mirror images go through
+    -- a writer that does not, so the refresh stays a few small rects.
     local aput = spanWriter(self.area_bb, v.area_w, v.area_h, area_color, self._lw_acc)
     if sym and sym ~= "off" then
         local arefx, arefy = Symmetry.areaRefs(v)
@@ -105,14 +97,9 @@ function InkAwayView:setupLiveWriters()
     self._lw_aput = aput
 end
 
--- Stamp the live segment ending at canvas point (cx,cy) into BOTH buffers: the
--- 1:1 master (so a later zoom/pan re-render is correct) and the on-screen buffer
--- at the current zoom (so drawing feels immediate). Only the on-screen dirty
--- rectangle is refreshed. `fresh` starts a new segment with no line back.
--- The eraser, when set to leave the background, restores the background image
--- along its path in the master and re-renders the affected area, so erasing
--- takes away your ink but the picture underneath shows through (matching what a
--- background-keeping export produces).
+-- The eraser over something to reveal (a background, images, notebook paper):
+-- restore those pixels along the path in the master, then re-render the touched
+-- rects on screen, so ink goes and the picture underneath shows through.
 function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local r = self.eraser_width / 2
@@ -128,7 +115,7 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
     else
         Raster.path({ cx, cy }, r, put)
     end
-    -- mirror the just-restored region before renderViewRect (below) reads the mirror
+    -- sync the mirror over the restored region before renderViewRect reads it
     self:markCanvasDirtyAcc(cacc)
     self.last_cx, self.last_cy = cx, cy
     local zr = r * self.view.zoom + 2
@@ -139,8 +126,7 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
         x1 = math.max(ax0, ax1) + zr, y1 = math.max(ay0, ay1) + zr,
     }
     self._stroke_rect = InkGeom.growRect(self._stroke_rect, acc.x0, acc.y0, acc.x1, acc.y1)
-    -- Re-render only the touched region (base + each mirror) from the restored
-    -- master, instead of a full-screen crop-scale on every point.
+    -- re-render only the touched rects (base and mirrors) from the master
     local rects, nr = self:symAreaRects(acc)
     for i = 1, nr do
         local rr = rects[i]
@@ -149,18 +135,20 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
     end
 end
 
+-- Stamp the live segment ending at canvas point (cx, cy) into the master (1:1,
+-- so a later re-render is right) and into the on-screen buffer at the current
+-- zoom (so drawing is immediate), refreshing only what changed. `fresh` starts a
+-- new segment with no line back.
 function InkAwayView:stampLive(cx, cy, fresh)
     if self.tool == "erase" then
-        -- soft erase reveals the page; in a notebook even a hard erase reveals the
+        -- a soft erase reveals the page; in a notebook even a hard erase reveals the
         -- bare paper, so the ruling can never be rubbed out
         local reveal
         if self.erase_bg then reveal = self.notebook and self:barePaperBB() or nil
         else reveal = self:eraseRevealBB() end
         if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
-    -- writers were built once in beginStroke (setupLiveWriters); rebuild them if
-    -- missing or if a buffer was reallocated since (relayout/rotation), so we never
-    -- draw into a freed buffer.
+    -- rebuild the writers if they are missing or a buffer was reallocated
     if not self._lw_stroke or self._lw_area_bb ~= self.area_bb
             or self._lw_canvas_bb ~= self.canvas_bb then
         self:setupLiveWriters()
@@ -180,9 +168,8 @@ function InkAwayView:stampLive(cx, cy, fresh)
         self.last_cx, self.last_cy = cx, cy
     end
 
-    -- on screen, at the current zoom. The reused `acc` table tracks only the base
-    -- image (reset each point); the mirror images paint through a writer that does
-    -- NOT grow acc, so the refresh stays a few small rects (one per image).
+    -- on screen, at the current zoom; acc tracks the base image only (see
+    -- setupLiveWriters) and is reset for each point
     local ax, ay = self:toAreaLocal(cx, cy)
     local acc = self._lw_acc
     acc.x0, acc.y0, acc.x1, acc.y1 = math.huge, math.huge, -math.huge, -math.huge
@@ -195,7 +182,7 @@ function InkAwayView:stampLive(cx, cy, fresh)
     end
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
-        -- grow the whole-stroke (base) bbox for a tidy refresh at the end
+        -- grow the whole stroke's base rect for the refresh at the end
         self._stroke_rect = InkGeom.growRect(self._stroke_rect, acc.x0, acc.y0, acc.x1, acc.y1)
         local rects, nr = self:symAreaRects(acc)
         for i = 1, nr do
@@ -205,8 +192,8 @@ function InkAwayView:stampLive(cx, cy, fresh)
 end
 
 -- Add a screen point to the live stroke (kept in canvas coords) and draw it.
--- The stabilizer smooths the finger's path toward a trailing point, so wobble
--- becomes a clean line; strength 0 draws the raw point.
+-- The stabilizer pulls the point towards the previous one, turning wobble into a
+-- clean line; strength 0 draws the raw point.
 function InkAwayView:addScreenPoint(sx, sy, fresh)
     local cx, cy = self:toCanvasClamped(sx, sy)
     if fresh then
@@ -234,27 +221,17 @@ function InkAwayView:beginStroke(sx, sy)
     self.live_seed = math.random(1, 1000000)
     local style = nil
     if not is_erase then style = self.pen_style end
-    -- Live-refresh waveform, chosen once for the whole stroke. The "fast" (A2/DU)
-    -- waveform is 1-bit black/white: it shows opaque BLACK solid ink instantly, but
-    -- it physically cannot render grey/colour/low-opacity ink, so such a stroke
-    -- looks wrong (or invisible) mid-draw and only snaps in on the "ui" settle at
-    -- lift -- which is exactly why grey/white pens felt slow. Use "fast" only for a
-    -- solid, fully-opaque, pure-black pen; everything else draws under grey-capable
-    -- "ui" so it appears in the right shade as you draw.
+    -- The live refresh waveform, chosen once per stroke. The fast (A2/DU) waveform
+    -- is black and white only: it shows solid opaque black ink at once but cannot
+    -- render grey, colour or partial opacity, which would only appear at the lift.
     if is_erase then
-        -- "fast" (A2/DU) is 1-bit black/white, so it can only show white. That is
-        -- fine when the eraser reveals plain white (a blank drawing page), but in a
-        -- notebook it reveals the grey ruling, and over a background image it reveals
-        -- that picture -- neither of which A2 can render, so the erased path flashes
-        -- to white and (on colour panels especially) does not settle back to the
-        -- revealed shade. Use the grey-capable "ui" waveform whenever the reveal is
-        -- non-white; keep the snappy "fast" erase only for the blank-white case.
+        -- fast can only show white, so it suits erasing to a blank page; over a
+        -- notebook ruling or a picture the erased path needs the grey-capable "ui"
         local reveal = self.erase_bg and (self.notebook and self:barePaperBB()) or self:eraseRevealBB()
         self._live_mode = reveal and "ui" or "fast"
     else
-        -- On a colour panel every pen draws live with "fast" (a black preview for
-        -- anything that is not pure black, see setupLiveWriters): the grey/colour
-        -- waveform there blocks on each refresh.
+        -- on a colour panel every pen draws with "fast" (a black preview, see
+        -- setupLiveWriters) because the grey-capable waveform blocks each refresh
         self._live_mode = (self:pureBlackPen() or self:colourPanel()) and "fast" or "ui"
     end
     -- a new stroke pushes back the pending colour settle (see queueReconcile)
@@ -262,7 +239,7 @@ function InkAwayView:beginStroke(sx, sy)
     self.canvas:startStroke(is_erase and "erase" or "ink",
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
-    -- a "hard" erase also removes the background; the soft default leaves it
+    -- a "hard" erase also removes pictures; the soft default leaves them
     if is_erase and self.erase_bg and self.canvas.live then self.canvas.live.ebg = true end
     self.capturing = true
     self.pending_lift = nil
@@ -273,11 +250,9 @@ function InkAwayView:beginStroke(sx, sy)
         self._lw_cacc.x0, self._lw_cacc.y0 = math.huge, math.huge
         self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
     end
-    -- Shape assist may rewrite this stroke into a clean shape on lift, which means
-    -- rebuilding the master. Snapshot the pre-stroke master now so beautify can
-    -- restore just the stroke's footprint instead of replaying every op (which got
-    -- progressively slower as a drawing filled up). Only when it might actually
-    -- run: a pen stroke with shape assist on.
+    -- Shape assist may swap this stroke for a clean shape on lift. Snapshot the
+    -- master now so that swap restores just the stroke's footprint instead of
+    -- replaying every op (see beautifyRecompose); only when assist could run.
     self._pre_stroke_valid = false
     if self.shape_assist and not is_erase and self.canvas_bb then
         local W, H = self.view.canvas_w, self.view.canvas_h
@@ -291,38 +266,35 @@ function InkAwayView:beginStroke(sx, sy)
         self._pre_stroke_bb:blitFrom(self.canvas_bb, 0, 0, 0, 0, W, H)
         self._pre_stroke_valid = true
     end
-    self:setupLiveWriters()        -- build the reusable per-stroke writers once
+    self:setupLiveWriters()
     self:addScreenPoint(sx, sy, true)
 end
 
--- Provisional lift: hold the stroke open briefly (COALESCE_SEC) in case the
--- panel dropped the contact and it is about to come back nearby.
+-- A lift: hold the stroke open for COALESCE_SEC in case the panel dropped the
+-- contact and it comes back nearby.
 function InkAwayView:scheduleFinalize(sx, sy)
     self.pending_lift = { x = sx, y = sy }
     UIManager:unschedule(self._finalize)
     UIManager:scheduleIn(COALESCE_SEC, self._finalize)
 end
 
--- Commit the live stroke as one op. Called by the coalesce timer, or eagerly
--- via flushPending() before any action that must see a consistent model.
--- Shape assist: try to replace a just-committed freehand ink op with a clean
--- shape recognised from its raw path `raw`. `committed` is the ink op (already
--- at the end of the ops list). Returns true if it swapped one in. The swap
--- reuses the single history entry finishStroke pushed, so it is one undo step,
--- and the master is recomposed so the freehand ink is replaced by the shape.
+------------------------------------------------------------------------------
+-- Committing a stroke
+------------------------------------------------------------------------------
+
+-- Shape assist: replace the just-committed ink op `committed` with a clean shape
+-- recognised from its raw path, in place. Returns true if it did. It reuses the
+-- history entry finishStroke pushed, so the swap is part of the same undo step.
 function InkAwayView:beautifyStroke(raw, committed)
-    -- Threshold in canvas px, scaled by zoom so "~20 screen px of travel" is the
-    -- floor whether zoomed in or out (canvas px shrink as you zoom in).
+    -- the minimum size is ~20 screen px at any zoom
     local zoom = (self.view and self.view.zoom) or 1
     local min_size = Screen:scaleBySize(20) / (zoom > 0 and zoom or 1)
     local pts, shape = Recognize.detect(raw, { min_size = min_size })
     if not pts then return false end
     if shape then
-        -- The stroke reads as a toolbar primitive (line / rectangle / ellipse /
-        -- triangle): turn the ink op INTO a real shape op, in place, so tapping or
-        -- holding it later brings up the very same edit menu as a shape drawn from
-        -- the toolbar. It keeps the pen's width, colour, opacity and symmetry.
-        -- Still one op, so it remains a single undo step.
+        -- A line, rectangle, ellipse or triangle becomes a real shape op, so it gets
+        -- the same edit menu as a shape drawn with the tool. It keeps the pen's
+        -- width, colour, opacity and symmetry.
         committed.kind = "shape"
         committed.shape = shape.shape
         committed.pts = shape.pts
@@ -331,14 +303,11 @@ function InkAwayView:beautifyStroke(raw, committed)
         committed.angle = 0
         committed.style, committed.seed = nil, nil   -- ink-only fields; a shape ignores them
     else
-        -- A straightened but non-primitive path (an L bend, a general polygon):
-        -- keep the SAME ink op and only swap its points, so the clean path is drawn
-        -- with the very brush the user was using.
+        -- any other straightened path (an L, a polygon) stays ink with the same
+        -- brush; only its points change
         committed.pts = pts
     end
     self.dirty = true
-    -- Rebuild the master WITHOUT replaying every op when we can (see below); only
-    -- fall back to a full composeCanvas when the snapshot is unusable.
     if not self:beautifyRecompose(raw, committed) then
         self:composeCanvas()
     end
@@ -346,13 +315,11 @@ function InkAwayView:beautifyStroke(raw, committed)
     return true
 end
 
--- Rebuild the master after shape assist swapped a stroke, without a whole-canvas
--- replay. beginStroke snapshotted the pre-stroke master; restore just the raw
--- stroke's footprint (and each symmetry mirror of it) from that snapshot to wipe
--- the old wobbly ink, then stamp the clean op back on top. The result is pixel
--- identical to composeCanvas but costs O(stroke area) instead of O(number of
--- ops), which is what made a filling-up drawing get slower per stroke. Returns
--- false (caller runs the full composeCanvas) when the snapshot cannot be used.
+-- Update the master after shape assist swapped a stroke, without replaying every
+-- op: restore the raw stroke's footprint (and its mirrors) from the snapshot
+-- beginStroke took, then stamp the clean op on top. Pixel-identical to
+-- composeCanvas at the cost of the stroke's area. Returns false when the
+-- snapshot cannot be used, and the caller recomposes instead.
 function InkAwayView:beautifyRecompose(raw, committed)
     if not (self._pre_stroke_valid and self._pre_stroke_bb and self.canvas_bb) then
         return false
@@ -361,7 +328,7 @@ function InkAwayView:beautifyRecompose(raw, committed)
     if self._pre_stroke_bb:getWidth() ~= W or self._pre_stroke_bb:getHeight() ~= H then
         return false
     end
-    -- footprint (canvas px) of the OLD raw ink and the NEW clean op together
+    -- footprint (canvas px) of the raw ink and the clean op together
     local hw = (committed.width or self.pen_width or 1) / 2 + 2
     local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
     local function grow(pts)
@@ -383,34 +350,35 @@ function InkAwayView:beautifyRecompose(raw, committed)
         x1 = math.min(W, math.ceil(x1 + hw)),
         y1 = math.min(H, math.ceil(y1 + hw)),
     }
-    -- the raw ink was mirrored into the master under symmetry, so restore every
-    -- mirror of the footprint too (exact pixel reflection in canvas space)
+    -- under symmetry the raw ink was mirrored too, so restore every mirror
     local rects, nr = Symmetry.mirrorRects(base, committed.sym, W, H)
     for i = 1, nr do
         local r = rects[i]
         local w, h = r.x1 - r.x0, r.y1 - r.y0
         if w > 0 and h > 0 then
             self.canvas_bb:blitFrom(self._pre_stroke_bb, r.x0, r.y0, r.x0, r.y0, w, h)
-            self:markCanvasDirty(r.x0, r.y0, r.x1, r.y1)   -- resync mirror over the restored footprint
+            self:markCanvasDirty(r.x0, r.y0, r.x1, r.y1)
         end
     end
-    self:stampOpIntoCanvas(committed)   -- draw the clean op (all mirrors) back on top
-    self._pre_stroke_valid = false      -- snapshot consumed; a stale reuse would be wrong
+    self:stampOpIntoCanvas(committed)   -- the clean op (all mirrors) on top
+    self._pre_stroke_valid = false      -- the snapshot is used up
     return true
 end
 
+-- Commit the live stroke as one op. Called by the coalesce timer, or straight
+-- away by flushPending before anything that needs the ops up to date.
 function InkAwayView:finalizeStroke()
     if not self.capturing then return end
     UIManager:unschedule(self._finalize)
     self.pending_lift = nil
     self.capturing = false
-    -- the live stroke wrote canvas_bb directly; resync the mirror over its footprint
+    -- the live stroke wrote canvas_bb directly; resync the mirror over it
     self:markCanvasDirtyAcc(self._lw_cacc)
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     local was_erase = self.tool == "erase"
-    -- Grab the raw points before finishStroke simplifies them, so shape assist
-    -- recognises the shape from the full path rather than an RDP skeleton.
+    -- keep the raw points before finishStroke simplifies them: shape assist
+    -- recognises from the full path
     local raw
     if self.shape_assist and self.tool == "pen" and self.canvas.live then
         local lp = self.canvas.live.pts
@@ -418,13 +386,11 @@ function InkAwayView:finalizeStroke()
         for i = 1, #lp do raw[i] = lp[i] end
     end
     local committed = self.canvas:finishStroke()
-    -- Record whether text was protected when THIS stroke was made, so later
-    -- toggling the setting never retroactively erases (or un-erases) text that a
-    -- past stroke passed over. Compose then honours each erase op's own flag.
+    -- An erase records whether text was protected when it was made, so changing
+    -- the setting later never erases or restores text retroactively.
     if committed and committed.kind == "erase" then
         committed.spare_text = self.text_erase_protect or nil
     end
-    -- Shape assist: if the finished pen stroke reads as a clean shape, swap it in.
     if raw and committed and committed.kind == "ink" and self:beautifyStroke(raw, committed) then
         self._stroke_rect = nil
         self:afterCommit()
@@ -433,9 +399,8 @@ function InkAwayView:finalizeStroke()
     self.dirty = true
     local sr = self._stroke_rect
     if self:colourPanel() then
-        -- Show the last samples now, put the real colours back where a black
-        -- preview was drawn, and let one grey/colour refresh settle the stroke once
-        -- the pen rests -- no blocking refresh (or flash) on every lift.
+        -- show the last samples now, put the real colours back where the black
+        -- preview was, and let one refresh settle them once the pen rests
         self:liveFlush()
         if sr then
             local rects, nr = self:symAreaRects(sr)
@@ -451,13 +416,10 @@ function InkAwayView:finalizeStroke()
         end
         self._live_preview = false
     else
-        -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
-        -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
-        -- (which fully repaints black/white) to clear them.
+        -- settle the fast waveform's ghosting over the stroke's rects; an erase
+        -- over dark or textured ink needs a flashing refresh to clear it
         local mode = was_erase and "flashui" or "ui"
         if sr then
-            -- refresh the base rect and each mirror rect separately, so an erase
-            -- under symmetry flashes a few small areas rather than the whole screen
             local rects, nr = self:symAreaRects(sr)
             for i = 1, nr do
                 self:dirtyAreaRect(mode, rects[i], 2)
@@ -467,16 +429,16 @@ function InkAwayView:finalizeStroke()
         end
     end
     self._stroke_rect = nil
-    -- Handwriting to text: buffer the pen stroke and (re)arm the pause timer.
+    -- handwriting to text (hidden feature): queue the stroke and restart the pause timer
     if self.hwr_enabled and self.tool == "pen" and committed and committed.kind == "ink" then
         self:hwrCapture(committed)
     end
     self:afterCommit()
 end
 
--- Called once per committed drawing action. When ghosting cleanup is on, count
--- the actions and, at the threshold, force one full-screen refresh to clear the
--- ghosting that fast refreshes leave behind, then reset the count and carry on.
+-- Called once per committed drawing action. With ghosting clean-up on, every
+-- `ghost_clean` actions get one full-screen refresh to clear what the fast
+-- refreshes left behind.
 function InkAwayView:afterCommit()
     self:healMemory()
     local n = self.ghost_clean or 0
@@ -488,13 +450,9 @@ function InkAwayView:afterCommit()
     end
 end
 
--- Safety net against a runaway heap. Called at idle moments (a stroke just
--- committed): if the Lua heap has grown large over a very long session, reclaim
--- garbage right here so drawing can never degrade into GC thrashing. This is a
--- backstop, not the fix -- the per-stroke allocation is already flat (see the
--- delta-history + pooled-hot-path work); this only ever fires if something starts
--- leaking again. Gated on size so a normal session pays nothing, and it runs
--- between strokes (never mid-stroke), so the one-off collect is invisible.
+-- A safety net: if the Lua heap ever grows large over a long session, collect
+-- between strokes, where the pause goes unnoticed. Normal drawing allocates
+-- almost nothing per stroke, so this should never fire.
 function InkAwayView:healMemory()
     self._commits_since_gc = (self._commits_since_gc or 0) + 1
     if self._commits_since_gc < GC_HEAL_EVERY then return end
@@ -502,10 +460,8 @@ function InkAwayView:healMemory()
     if collectgarbage("count") > GC_HEAL_KB then collectgarbage("collect") end
 end
 
--- Hand the previous drawing's / notebook's memory back when switching to a fresh
--- one: drop the per-stroke snapshot buffer and collect now, so the new context
--- starts light without needing to close Ink Away or restart KOReader. Call after
--- the new canvas/notebook is loaded (a New action, not a page turn).
+-- Give the previous drawing's or notebook's memory back after starting a new one
+-- (not on a page turn): drop the stroke snapshot and collect now.
 function InkAwayView:resetTransientMemory()
     if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
     self._pre_stroke_valid = false
@@ -513,7 +469,7 @@ function InkAwayView:resetTransientMemory()
     collectgarbage("collect")
 end
 
--- Commit immediately if a stroke is open (or pending). Safe to call any time.
+-- Commit the stroke now if one is open or pending. Safe to call any time.
 function InkAwayView:flushPending()
     if self.capturing then self:finalizeStroke() end
 end

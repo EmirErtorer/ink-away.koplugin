@@ -36,13 +36,12 @@ local IMG_PAD    = IMG_HANDLE + 4   -- refresh margin around the frame and handl
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Symmetry, ghosting cleanup, and the background image.
+-- Background image
 ------------------------------------------------------------------------------
 
--- Build a canvas-sized RGBA FFI buffer from the background (a BBRGB32 whose
--- memory is already r,g,b,alpha). One memcpy per row, not a million per-pixel
--- reads, so it is quick even on a Kindle. Alpha is kept, so a transparent PNG
--- stays transparent. Returns the buffer, or nil.
+-- Copy the background into a canvas-sized RGBA buffer for export. A BBRGB32 is
+-- already r,g,b,a in memory, so this is one memcpy per row. Alpha is kept, so a
+-- transparent PNG stays transparent. Returns the buffer, or nil.
 function InkAwayView:buildBgRGBA()
     return bbToRGBA(self.bg_bb, self.view.canvas_w, self.view.canvas_h)
 end
@@ -97,22 +96,20 @@ function InkAwayView:chooseBackground()
 end
 
 ------------------------------------------------------------------------------
--- Images: place a PNG/JPEG on the page, move/resize it with corner handles, and
--- rotate/flip/reorder it from a hold menu (mirrors the placed-shape menu). An
--- image is an op:
+-- Placed images: a PNG or JPEG on the page, moved and resized with corner
+-- handles and rotated, flipped or reordered from its menu. An image is an op:
 --   { kind="image", x, y, w, h (canvas px), path, natw, nath,
 --     angle = 0|90|180|270, flip_h, flip_v }
--- The decoded pixels are cached by path and NEVER serialised, so a project file
--- stores just the path (+ box + orientation) and re-decodes on load. Images
--- compose into the master and export exactly like other ops, so every save
--- includes them. The selected image is skipped from the master by identity (not
--- a stored flag, so undo/redo snapshots stay clean) and drawn as a live overlay,
--- so moving and resizing never recompose the whole page.
+-- Decoded pixels are cached by path and never saved, so a project stores the
+-- path, box and orientation and decodes again on load. Images compose into the
+-- master and export like any other op. While dragged or rotated, the selected
+-- image is skipped from the master by identity (no stored flag, so undo
+-- snapshots stay clean) and drawn as a live overlay instead.
 ------------------------------------------------------------------------------
 
--- Free every decoded / scaled / oriented / display image buffer and drop the
--- caches. Buffers can be shared (a scaled copy may BE its source when sizes
--- match), so a `seen` set frees each underlying buffer exactly once.
+-- Free every decoded, scaled, oriented and display buffer and drop the caches.
+-- Buffers can be shared (a scaled copy is its source when the sizes match), so a
+-- `seen` set frees each one exactly once.
 function InkAwayView:freeImageCache()
     local seen = {}
     local function drop(bb)
@@ -131,23 +128,17 @@ function InkAwayView:freeImageDisplay()
     self._img_disp = nil
 end
 
--- A short signature of an op's orientation, used as a cache key so a rotate/flip
--- invalidates the oriented and scaled buffers.
+-- A short signature of an op's orientation, used as a cache key so a rotation or
+-- flip invalidates the oriented and scaled buffers.
 local function orientSig(op)
     return ((op.angle or 0) % 360) .. "/" .. (op.flip_h and 1 or 0) .. "/" .. (op.flip_v and 1 or 0)
 end
 
--- Decode (once, cached by path) the source picture for an op as a BBRGB32 that
--- keeps its alpha. The resident copy is capped to the canvas size: an image is
--- never shown or exported larger than the page, so keeping a full-resolution
--- decode (a high-megapixel photo is tens of MB in RGBA) would only waste memory.
--- We downscale once, preserving aspect, and never upscale. Returns the buffer or
--- nil. A `false` entry caches a decode failure so we do not retry every frame.
--- Decode a picture file into a BBRGB32 (keeping alpha), capped to the canvas size
--- (an image is never shown or exported larger than the page, and a full-resolution
--- decode of a big photo would waste memory). Returns the buffer or nil. Not cached
--- -- imageSrc caches per op.path; the background remover uses this directly on the
--- original file.
+-- Decode a picture file into a BBRGB32 (keeping alpha), shrunk to fit the canvas
+-- with its aspect kept: an image is never shown or exported larger than the page,
+-- and a full-resolution photo would take tens of MB. Returns the buffer or nil.
+-- Not cached; imageSrc caches per path, and the background remover decodes the
+-- original file directly.
 function InkAwayView:decodeCapped(path)
     if not path then return nil end
     local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
@@ -172,6 +163,8 @@ function InkAwayView:decodeCapped(path)
     return n
 end
 
+-- The decoded picture for an op, cached by path. A `false` entry caches a failed
+-- decode so it is not retried on every frame.
 function InkAwayView:imageSrc(op)
     if not op or not op.path then return nil end
     self._img_bb = self._img_bb or {}
@@ -182,11 +175,8 @@ function InkAwayView:imageSrc(op)
     return norm or nil
 end
 
--- Build a copy of `src` with the flips and a quarter-turn rotation baked in, by an
--- exact pixel permutation (no interpolation, no gaps). A quarter turn swaps the
--- dimensions. Returns the new buffer, or nil if the pixels could not be read.
 -- The axis-aligned bounding box (canvas coords) of an image op at its angle,
--- computed analytically (no buffer): op.w/op.h are the unrotated size, the box
+-- computed without a buffer: op.w and op.h are the unrotated size and the box
 -- grows as it turns. Returns x, y, w, h.
 local function imageBBox(op)
     local a = math.rad((op.angle or 0) % 360)
@@ -197,9 +187,9 @@ local function imageBBox(op)
     return cx - bw / 2, cy - bh / 2, bw, bh
 end
 
--- The picture scaled to the op's on-page size (canvas px), UNROTATED. One copy is
--- kept per path, rebuilt only on a size change, so a resize drag never piles up
--- buffers and a move drag reuses the cached scale.
+-- The picture scaled to the op's on-page size (canvas px), unrotated. One copy is
+-- kept per path and rebuilt only on a size change, so a resize drag never piles
+-- up buffers and a move drag reuses the cached scale.
 function InkAwayView:imageScaled(op)
     local src = self:imageSrc(op)
     if not src then return nil end
@@ -220,11 +210,11 @@ function InkAwayView:imageScaled(op)
     return scaled or nil
 end
 
--- The fully oriented (flipped + rotated) bitmap at on-page size, plus its top-left
--- in CANVAS coords -- which shifts away from op.x/op.y once the picture is rotated,
--- since the bounding box grows. Cached per path; rebuilt only when the size or
--- orientation changes (never per drag frame). With no orientation it returns the
--- plain scaled buffer at op.x/op.y, so the common case allocates nothing extra.
+-- The flipped and rotated bitmap at on-page size, and its top-left in canvas
+-- coords (which moves away from op.x, op.y once rotated, as the box grows).
+-- Cached per path and rebuilt only when the size or orientation changes. With no
+-- orientation it is the plain scaled buffer at op.x, op.y, so the common case
+-- allocates nothing extra.
 function InkAwayView:imageRendered(op)
     local scaled = self:imageScaled(op)
     if not scaled then return nil end
@@ -244,9 +234,9 @@ function InkAwayView:imageRendered(op)
     return e.bb, cx - e.bb:getWidth() / 2, cy - e.bb:getHeight() / 2
 end
 
--- The rendered picture scaled to on-SCREEN size and its screen top-left, for the
--- live overlay, so the selected image is exactly the size and place it will occupy
--- once committed (no jump on Done). Returns bb, sx, sy (area-relative).
+-- The rendered picture at on-screen size and its top-left, for the live overlay,
+-- so the selected image is exactly where it will be once committed (no jump on
+-- Done). Returns bb, sx, sy (area-relative).
 function InkAwayView:imageDisplayScaled(op)
     local bb, ox, oy = self:imageRendered(op)
     if not bb then return nil end
@@ -357,13 +347,11 @@ function InkAwayView:setSelectionActive(on)
     end
 end
 
--- Select an image. It stays in the ops list and in the master (composeInto only
--- skips it while it is actively dragged), so picking it up changes NO pixels of
--- the drawing -- only a frame and corner handles are drawn over its own rectangle.
--- We therefore refresh just that rectangle, never the whole area: a full-area
--- flashing refresh on every pick was the black flash when moving in pan mode.
--- `fresh` = a just-inserted image that is not in the master yet, so bake it in
--- once (that single insert refresh is expected).
+-- Select an image. It stays in the master (composeInto skips it only while it is
+-- dragged), so selecting changes no pixels of the drawing: only the frame and
+-- handles appear over its rectangle, and only that rectangle is refreshed.
+-- `fresh` marks a just-inserted image that is not in the master yet; it is baked
+-- in once.
 function InkAwayView:selectImage(sel, fresh)
     if self.active_image and self.active_image.op ~= sel.op then self:finishImageEdit() end
     self.active_image = sel
@@ -378,7 +366,7 @@ end
 
 -- Finish editing: close the menu, drop the selection, and recompose so the image
 -- is baked back into the master at its final spot. Safe to call more than once
--- (e.g. the menu's tap-outside close and a Done both route here).
+-- (the menu's tap-outside close and Done both end up here).
 function InkAwayView:finishImageEdit()
     if not (self.active_image or self.image_rotating or self._image_menu) then return end
     self:clearImageSelection()
@@ -407,26 +395,24 @@ function InkAwayView:deleteActiveImage()
     self:recompose()
 end
 
--- Copy-on-write before mutating the selected image, so the pre-drag / pre-edit
--- state stays in the undo snapshot (older snapshots keep the original op). Call
--- once at the start of a change; returns the editable clone.
+-- Copy-on-write before changing the selected image, so the undo snapshot keeps
+-- the original op. Call once at the start of a change; returns the editable clone.
 function InkAwayView:beginImageEdit()
     local sel = self.active_image
     sel.op = self:editOp(sel.idx, sel.op)
     return sel.op
 end
 
--- Apply one discrete edit (rotate / flip / etc.) to the selected image through
--- copy-on-write, then recompose. Undo/redo restore the previous op.
+-- Apply one discrete edit (a rotation, a flip) to the selected image through
+-- copy-on-write, then recompose. Undo restores the previous op.
 function InkAwayView:applyImageEdit(sel, mutate)
     sel.op = self:editOp(sel.idx, sel.op, mutate)
     self:freeImageDisplay()   -- size / orientation may have changed
     self:recompose()
 end
 
--- Rotate a quarter turn clockwise about the image centre. op.w/op.h are the
--- UNROTATED size, so a quarter turn only bumps op.angle; the bounding box (and
--- the frame) follow from the angle.
+-- Rotate a quarter turn clockwise about the image centre. op.w and op.h are the
+-- unrotated size, so only op.angle changes; the bounding box and frame follow.
 function InkAwayView:rotateImage90(sel)
     self:applyImageEdit(sel, function(o) o.angle = ((o.angle or 0) + 90) % 360 end)
     self:openImageMenu(sel)   -- keep the menu up for repeated turns
@@ -439,16 +425,14 @@ function InkAwayView:flipImage(sel, axis)
     self:openImageMenu(sel)
 end
 
--- Move the image to the top of the stack, so later strokes/images no longer cover
--- it. Reordering the array is safe against snapshots (the op itself is untouched).
+-- Move the image to the top of the stack, above later strokes and images.
 function InkAwayView:imageToFront(sel)
     self:opToFront(sel)
     self:openImageMenu(sel)
 end
 
--- Duplicate the selected image, offset a little, and select the copy (mirrors the
--- shape Duplicate). The pixels are shared by path -- only the box is copied -- so a
--- duplicate costs no extra image memory.
+-- Duplicate the selected image, offset a little, and select the copy. The pixels
+-- are shared by path, so a duplicate costs no extra image memory.
 function InkAwayView:duplicateImage(sel)
     self.active_image = self:duplicateOp(sel)
     self._img_drag = nil
@@ -457,11 +441,10 @@ function InkAwayView:duplicateImage(sel)
     self:openImageMenu(self.active_image)
 end
 
--- Remove a placed image's background (first-pass, brightness based -- see
--- bgRemovedRGBA). The cut-out is written as a transparent PNG and the op is
--- repointed at it (keeping the original path in op.src_path so a re-run works from
--- the original and nothing is lost), which reuses the whole decode/export path with
--- no special cases. It is a copy-on-write op edit, so Undo brings the original back.
+-- Remove a placed image's background (see ImageProc.bgRemovedRGBA). The cut-out
+-- is saved as a transparent PNG and the op points at it, so decoding and export
+-- need no special case; op.src_path keeps the original for a re-run. It is a
+-- copy-on-write edit, so Undo brings the original back.
 function InkAwayView:removeImageBackground(sel)
     local op = sel and sel.op
     if not op then return end
@@ -504,8 +487,8 @@ function InkAwayView:removeImageBackground(sel)
     self:openImageMenu(sel)
 end
 
--- Free rotation: like the shape rotate, drag anywhere to spin the picture to any
--- angle; a live preview follows the finger, and the angle is committed on lift.
+-- Free rotation: drag anywhere to spin the picture to any angle. A live preview
+-- follows the finger and the angle is committed on lift.
 function InkAwayView:beginImageRotate(sel)
     self.image_rotating = { base = sel.op.angle or 0, cur = sel.op.angle or 0 }
     self:composeCanvas(); self:renderView()   -- drop it from the master; preview draws it
@@ -544,10 +527,9 @@ function InkAwayView:imageRotateEnd()
     return true
 end
 
--- The hold/tap menu for a placed image, anchored beside it -- same ButtonDialog
--- look as the shape edit menu (free rotate, a 90-degree preset, flips, to front,
--- and the same delete glyph). The image stays draggable underneath (see
--- setSelectionActive); a tap outside the menu deselects and bakes it in.
+-- The menu for a placed image, anchored beside it like the shape edit menu. The
+-- image stays draggable underneath (see setSelectionActive); a tap outside the
+-- menu deselects it and bakes it in.
 function InkAwayView:openImageMenu(sel)
     self:closeSheet("_image_menu")
     self:setSelectionActive(true)
@@ -602,7 +584,7 @@ function InkAwayView:imageTouch(pos)
             self._img_drag = { kind = "resize", rotated = true, cxC = cxC, cyC = cyC,
                                d0 = d0, w0 = op.w, h0 = op.h }
         else
-            -- upright: keep the OPPOSITE corner fixed, aspect locked
+            -- upright: keep the opposite corner fixed, aspect locked
             local ax = (zone == "nw" or zone == "sw") and (op.x + op.w) or op.x
             local ay = (zone == "nw" or zone == "ne") and (op.y + op.h) or op.y
             self._img_drag = { kind = "resize", corner = zone, ax = ax, ay = ay, w0 = op.w, h0 = op.h }
@@ -620,9 +602,9 @@ end
 function InkAwayView:imagePan(pos)
     local d = self._img_drag
     if not d then return true end
-    -- Take the undo snapshot on the FIRST real movement (a plain tap that never
-    -- moves records no history), then edit a clone from here on. Recompose once so
-    -- the master drops the image (now it is the live overlay) for a smooth drag.
+    -- Take the undo snapshot on the first real movement (a plain tap records no
+    -- history), then edit a clone. Recompose once so the master drops the image
+    -- and the live overlay carries it for a smooth drag.
     if not d.began then
         self:beginImageEdit(); d.began = true
         self:composeCanvas(); self:renderView()
@@ -706,9 +688,9 @@ function InkAwayView:paintImageOverlay(bb, x, y)
 
     local r = self:imageScreenRect()
     local ox, oy = math.floor(r.x + x), math.floor(r.y + y)
-    -- The image is only drawn here while it is being dragged (then the master has
-    -- dropped it). A still, selected image stays in the master, so we draw only the
-    -- frame and handles over it -- picking or dropping never nudges it.
+    -- The image itself is drawn here only while dragged (the master has dropped
+    -- it then). A still, selected image stays in the master and gets just the
+    -- frame and handles, so selecting or dropping it never nudges it.
     if self._img_drag and self._img_drag.began then
         local scaled = self:imageDisplayScaled(op)
         if scaled then pcall(blitClipped, bb, scaled, ox, oy, ax0, ay0, ax1, ay1) end
@@ -728,9 +710,7 @@ function InkAwayView:paintImageOverlay(bb, x, y)
 end
 
 -- Insert a new image from a file: fit it to ~60% of the visible area (so its
--- corners show for dragging), centre it in the viewport, and select it. The
--- picture lands in Pan mode with its edit menu already open (see the tail of this
--- function) so it can be moved, resized, duplicated or deleted straight away.
+-- corners show for dragging), centre it in the viewport and select it.
 function InkAwayView:insertImage(path)
     local tmp = { kind = "image", path = path, x = 0, y = 0, w = 1, h = 1 }
     local src = self:imageSrc(tmp)
@@ -753,18 +733,15 @@ function InkAwayView:insertImage(path)
     self.canvas:pushHistory()
     self.canvas.ops[#self.canvas.ops + 1] = op
     self.dirty = true
-    -- Drop straight into Pan mode with the picture selected and its edit menu open,
-    -- exactly as if the reader had tapped it there. Pan mode's move/resize is the
-    -- smooth, responsive one, and it isn't obvious you have to switch to it -- so a
-    -- freshly added image is immediately ready to move, resize, duplicate or delete.
+    -- Switch to Pan with the picture selected and its menu open, as if it had been
+    -- tapped there, so a new image is ready to move, resize or delete at once.
     self:setTool("pan")
     self:selectImage({ op = op, idx = #self.canvas.ops }, true)   -- fresh: bake it in once
     self:openImageMenu(self.active_image)
 end
 
--- The image tool now asks first: a local file, or browse online. Browsing is
--- entirely optional -- Ink Away never needs a connection -- so the local path is
--- the dark (primary) button and stays exactly as it always was.
+-- Ask where a new image comes from: a local file (the primary button) or an
+-- online search. Browsing is optional; Ink Away never needs a connection.
 function InkAwayView:chooseImage()
     self:finishImageEdit()
     local content_w = self:sheetWidth()
@@ -788,7 +765,7 @@ function InkAwayView:chooseImage()
     self:showSheet("_img_src_dialog", build)
 end
 
--- The original local-file picker, unchanged in behaviour.
+-- Pick a local PNG or JPEG and insert it.
 function InkAwayView:chooseLocalImage()
     self:pickImageFile(function(path) self:insertImage(path) end)
 end

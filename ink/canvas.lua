@@ -1,25 +1,19 @@
 --[[
-The drawing model: an ordered list of stroke operations over a fixed W x H
-canvas. This list is the one source of truth. The view on screen and the saved
-image are both produced by replaying these ops in order.
-
-An op is:
+The drawing model: an ordered list of ops over a fixed W x H canvas, the one
+source of truth. The screen and the saved image are both made by replaying the
+ops in order. A stroke op is:
     { kind = "ink" | "erase", width = <canvas px>, alpha = 0..255,
       color = { r, g, b } or nil (black), style = "solid"|"pencil"|"charcoal"|"marker",
       seed = <int for grain>, pts = { x1,y1, x2,y2, ... } }
+Shapes, fills, text and images are ops too. Points are in canvas coordinates, so
+a stroke keeps its thickness and position in the export at any zoom. An erase
+clears pixels along its path (to transparent in the export, to whatever lies
+under the ink on screen).
 
-Points are in canvas coordinates, so a stroke keeps the same thickness and
-position in the exported W x H image whatever zoom it was drawn at.
-
-Erase is just another op that clears pixels along its path (to transparent in
-the export, to the background on screen).
-
-Undo/redo keep a history of the ops list. Snapshots are shallow (arrays of op
-references), which is cheap because appends and deletes never change an existing
-op. The one case that would -- editing a placed shape's colour/size/angle -- goes
-through cloneOp + replaceOp instead, so older snapshots keep the original.
-
-Plain Lua, nothing from KOReader, so the headless tests drive it directly.
+Undo history holds shallow snapshots (arrays of op references), which is cheap
+because appending or deleting never changes an existing op; an edit clones the
+op and replaces it (cloneOp, replaceOp), so older snapshots keep the original.
+Plain Lua, so the headless tests drive it directly.
 ]]
 
 local Geom = require("ink/geom")
@@ -32,9 +26,8 @@ Canvas.__index = Canvas
 -- Simplification tuning (canvas pixels).
 local MIN_SPACING = 1.5   -- drop points closer than this while drawing
 local RDP_TOL = 0.75      -- max deviation when collapsing a finished stroke
-local HISTORY_MAX = 8     -- undo/redo depth (kept small: each entry pins a full
-                          -- ops snapshot, and deep history is the main avoidable
-                          -- memory a long session accumulates)
+local HISTORY_MAX = 8     -- undo depth, kept small: each snapshot entry pins a
+                          -- whole ops array
 
 function Canvas.new(w, h)
     return setmetatable({
@@ -47,20 +40,19 @@ function Canvas.new(w, h)
     }, Canvas)
 end
 
--- A shallow snapshot of the current ops list (op tables are shared by reference;
--- only the array of pointers is copied). table.move is the C-level array copy.
+-- A shallow snapshot of the current ops list: the ops are shared, only the array
+-- is copied (table.move copies in C).
 local function snapshot(self)
     return table.move(self.ops, 1, #self.ops, 1, {})
 end
 
 -- History entries are one of:
---   { snap = <ops array> }  -- restore this whole list; used for edits that change
---                              existing ops (colour/size/move/delete/z-order/clear/load).
---   { add = true }          -- the last op was appended; to undo, drop the last op.
--- Appending one op is by far the most common action while drawing, so it uses the
--- cheap `add` entry: a committed stroke costs O(1) history instead of copying the
--- whole ops list. Copying the list every stroke is what made a long drawing throw
--- off garbage proportional to its size and slow down as it filled up.
+--   { snap = <ops array> }  restore this whole list (an edit of existing ops:
+--                           colour, size, move, delete, order, clear, load)
+--   { add = true }          the last op was appended; undo drops it
+-- Appending is by far the most common action, so a committed stroke costs O(1)
+-- history instead of a copy of the whole list, which would make a long drawing
+-- slower as it fills.
 local function pushEntry(self, entry)
     local u = self.undo_stack
     u[#u + 1] = entry
@@ -68,7 +60,7 @@ local function pushEntry(self, entry)
     self.redo_stack = {}
 end
 
--- Snapshot checkpoint: call BEFORE an edit that changes existing ops in place.
+-- Snapshot checkpoint: call before an edit that changes existing ops.
 function Canvas:pushHistory()
     pushEntry(self, { snap = snapshot(self) })
 end
@@ -108,9 +100,9 @@ function Canvas:opCount()
     return #self.ops
 end
 
--- Begin a new stroke. `kind` is "ink" or "erase"; `alpha` (0-255) is the ink
--- opacity (ignored for erase, which always clears fully); `color` is an optional
--- {r,g,b} table (defaults to black). Opacity defaults to opaque.
+-- Begin a new stroke. `kind` is "ink" or "erase"; `alpha` (0-255, opaque by
+-- default) is the ink opacity, ignored by an erase, which always clears fully;
+-- `color` is an optional {r,g,b} (black by default).
 function Canvas:startStroke(kind, width, alpha, color, style, seed)
     self.live = { kind = kind, width = width, alpha = alpha or 255, color = color,
                   style = style, seed = seed, pts = {} }
@@ -128,8 +120,8 @@ function Canvas:addPoint(cx, cy)
     pts[n + 2] = cy
 end
 
--- Finish the live stroke, simplify it, and commit it. Returns the committed op
--- (or nil if the stroke had no points).
+-- Finish the live stroke, simplify it and commit it. Returns the committed op,
+-- or nil if the stroke had no points.
 function Canvas:finishStroke()
     local live = self.live
     self.live = nil
@@ -166,9 +158,9 @@ function Canvas:addFillOp(runs, color, alpha)
     return op
 end
 
--- Undo/redo step through the history entries. An `add` entry is reversed by
--- dropping (undo) or re-appending (redo) the single op; a `snap` entry swaps the
--- whole ops list. Returns true if it moved.
+-- Undo and redo step through the history. An `add` entry drops (undo) or
+-- re-appends (redo) the single op; a `snap` entry swaps the whole ops list.
+-- Returns true if it moved.
 function Canvas:undo()
     local entry = table.remove(self.undo_stack)
     if not entry then return false end
@@ -211,8 +203,8 @@ function Canvas:setOps(ops)
     self.redo_stack = {}
 end
 
--- Which kinds of visible op a list holds: erase (soft_erase / hard_erase split by
--- op.ebg, spare_text for text-protecting erases), text and image.
+-- Which kinds of visible op a list holds: erases (soft_erase and hard_erase,
+-- split by op.ebg, and spare_text for text-protecting ones), text and image.
 function Canvas.scanOps(ops)
     local f = {}
     for _, op in ipairs(ops) do
@@ -232,8 +224,8 @@ function Canvas.scanOps(ops)
     return f
 end
 
--- Bounding rect {x,y,w,h} of an op in canvas coordinates, padded by half its width (plus
--- a pixel of safety) so the whole stamped disc is covered. nil for empty ops.
+-- Bounding rect {x,y,w,h} of an op in canvas coordinates, padded by half its
+-- width and a pixel, so the whole stamped disc is covered. nil for an empty op.
 function Canvas:opRect(op, extra)
     local x0, y0, x1, y1 = Geom.bounds(op.pts)
     if not x0 then return nil end
@@ -258,12 +250,10 @@ local function opCentroid(op)
     return sx / n, sy / n
 end
 
--- Is an op picked by a lasso polygon (canvas coords)? An op counts as selected
--- when most of it sits inside the loop (a fraction of its points, sampled and
--- capped so a dense ink stroke stays cheap), OR when its centre is inside (so a
--- big shape looped around its middle still selects). The point-fraction test is
--- what makes ink as easy to grab as a shape: a stroke's average point is often
--- outside a loop that clearly encircles the stroke, but its points are not.
+-- Is an op picked by a lasso polygon (canvas coords)? It is when a good share of
+-- its points lie inside (sampled, so a dense stroke stays cheap), or its centre
+-- does (a big shape looped around its middle). The point test matters for ink: a
+-- curved stroke's average point can lie outside a loop that clearly holds it.
 local function opInPoly(op, poly)
     local inside, total = 0, 0
     local function sample(x, y)
@@ -303,7 +293,7 @@ local function opInPoly(op, poly)
     return false
 end
 
--- Accumulate an op's bounds into x0,y0,x1,y1 (canvas coords). Returns updated four.
+-- Grow x0, y0, x1, y1 (canvas coords) by an op's bounds and return the four.
 local function accumBounds(op, x0, y0, x1, y1)
     local function acc(x, y)
         if not x0 or x < x0 then x0 = x end
@@ -316,7 +306,7 @@ local function accumBounds(op, x0, y0, x1, y1)
     return x0, y0, x1, y1
 end
 
--- Shift every coordinate of an op by (dx,dy) canvas pixels, in place.
+-- Shift every coordinate of an op by (dx, dy) canvas pixels, in place.
 local function translateOp(op, dx, dy)
     if op.pts then for i = 1, #op.pts, 2 do op.pts[i] = op.pts[i] + dx; op.pts[i + 1] = op.pts[i + 1] + dy end end
     if op.runs then for i = 1, #op.runs, 3 do op.runs[i] = op.runs[i] + dx; op.runs[i + 1] = op.runs[i + 1] + dy end end

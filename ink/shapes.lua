@@ -1,18 +1,15 @@
 --[[
-Shape rasterization: line, curve, rectangle, ellipse and triangle, each either
-outlined or filled, and each optionally rotated about its centre.
+Shape rasterization: line, curve, rectangle, ellipse, triangle and point-path
+polygon, outlined or filled, optionally rotated about the centre.
 
-Every shape is reduced to a boundary polyline (its outline, with rotation already
-applied). Outlines are then stamped as discs along that polyline via the freehand
-rasterizer, so a shape's edge has the same rounded, even thickness as a pen
-stroke. Fills are a scanline fill of the same polygon. Working from one polyline
-is what lets any shape rotate freely.
-
-Everything is emitted through a `put(x, y, len)` span callback, so the same code
-paints the on-screen preview, the 1:1 master bitmap, and the exported image.
+Every shape is reduced to a boundary polyline with its rotation applied. Outlines
+are stamped as discs along it by the freehand rasterizer, so an edge has the same
+rounded, even thickness as a pen stroke; fills are a scanline fill of the same
+polygon. Everything goes through a `put(x, y, len)` span callback, so the same
+code paints the preview, the 1:1 master and the export.
 
 A shape op looks like:
-    { kind = "shape", shape = "line"|"curve"|"rect"|"ellipse"|"triangle",
+    { kind = "shape", shape = "line"|"curve"|"rect"|"ellipse"|"triangle"|"poly",
       fill = true|false, angle = <radians>, width = <px>, alpha = .., color = {r,g,b},
       pts = { x0,y0, x1,y1 [, cx,cy] } }   -- cx,cy is the curve control point
 ]]
@@ -66,14 +63,14 @@ local function boundary(op)
             poly[#poly + 1] = cy + ry * sin(a)
         end
     elseif s == "poly" then
-        -- an explicit point path (a beautified freehand shape, e.g. a snapped
-        -- triangle or polygon). Drawn exactly as its points, closed on demand.
+        -- an explicit point path (a snapped triangle or polygon from shape
+        -- assist), drawn as its points and closed on demand
         for i = 1, #p do poly[i] = p[i] end
         closed = op.closed and true or false
     end
 
-    -- rotate about the centre of the defining box / endpoints (for a poly, the
-    -- centre of the bounding box of all its points)
+    -- rotate about the centre of the defining box or endpoints (for a poly, of
+    -- the bounding box of all its points)
     local ang = op.angle
     if ang and ang ~= 0 then
         local cx, cy
@@ -125,10 +122,9 @@ local function fillPolygon(poly, put)
     end
 end
 
--- Arrowhead segments for a line or curve carrying op.arrow ("end" or "both").
--- Each is a {tx,ty, bx,by} barb, worked out from the tangent at the tip so the
--- head follows the shape's direction (and its rotation, since poly is already
--- rotated). Returns a list of such segments (empty when there is no arrow).
+-- Arrowhead barbs for a line or curve with op.arrow ("end" or "both"): a list of
+-- {tx,ty, bx,by} segments from the tangent at each tip, so a head follows the
+-- shape's direction and rotation (poly is already rotated). Empty without arrows.
 local function arrowSegs(op, poly)
     local segs = {}
     if op.arrow ~= "end" and op.arrow ~= "both" then return segs end
@@ -171,17 +167,16 @@ function Shapes.render(op, put)
     end
 end
 
--- Fill just the (closed) interior of a shape with the given span writer, whatever
--- op.fill says. Used to paint a bucket-filled interior UNDERNEATH the outline, so
--- a shape can keep its outline colour and carry a separate interior colour.
+-- Fill just the interior of a closed shape with the given span writer, whatever
+-- op.fill says. A paint-bucket fill is painted this way under the outline, so the
+-- interior can have its own colour.
 function Shapes.fill(op, put)
     local poly, closed = boundary(op)
     if closed then fillPolygon(poly, put) end
 end
 
--- Is point (px,py) strictly inside a CLOSED shape's interior? (Open shapes -- a
--- line or curve -- have no interior, so always false.) Used to decide whether a
--- paint-bucket tap lands inside a shape, so the fill can join that shape.
+-- Is point (px, py) strictly inside a closed shape's interior? Always false for
+-- an open line or curve. Decides whether a paint-bucket tap fills the shape.
 function Shapes.contains(op, px, py)
     local poly, closed = boundary(op)
     if not closed then return false end
@@ -201,11 +196,10 @@ function Shapes.bounds(op)
     return x0, y0, x1, y1
 end
 
--- Is point (px,py) on or inside the shape? Used to pick a shape by touch. Any
--- closed shape (rectangle, ellipse, triangle, polygon) is grabbable anywhere
--- inside it, filled or not -- an unfilled outline is otherwise a thread-thin
--- target that is almost impossible to tap. Open shapes (line/curve/arrow) have no
--- interior, so they are picked within `tol` of the boundary polyline.
+-- Is point (px, py) on or inside the shape, for picking it by touch? A closed
+-- shape can be grabbed anywhere inside, filled or not, as a bare outline is too
+-- thin a target; an open line, curve or arrow is picked within `tol` of its
+-- boundary.
 function Shapes.hit(op, px, py, tol)
     local poly, closed = boundary(op)
     local n = floor(#poly / 2)

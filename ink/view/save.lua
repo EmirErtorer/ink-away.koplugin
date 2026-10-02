@@ -32,7 +32,7 @@ local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px)
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Export area selection: drag a rectangle to export just part of the page.
+-- Export area: drag a rectangle to export just part of the page
 ------------------------------------------------------------------------------
 
 function InkAwayView:cropTouch(pos)
@@ -46,9 +46,8 @@ function InkAwayView:cropMove(pos)
     local c = self._crop_screen
     local ox0, oy0, ox1, oy1 = c.x0, c.y0, c.x1, c.y1   -- previous box
     c.x1, c.y1 = pos.x, pos.y
-    -- refresh only the union of the old and new selection boxes, and use a fast
-    -- (non-flashing) refresh so dragging stays smooth instead of queueing full
-    -- grayscale updates
+    -- refresh only the union of the old and new boxes, with the fast waveform,
+    -- so dragging stays smooth
     self:refreshAreaBox("fast", math.min(ox0, ox1, c.x0, c.x1) - 3, math.min(oy0, oy1, c.y0, c.y1) - 3,
         math.max(ox0, ox1, c.x0, c.x1) + 3, math.max(oy0, oy1, c.y0, c.y1) + 3)
     return true
@@ -74,12 +73,11 @@ function InkAwayView:cropRelease(pos)
 end
 
 ------------------------------------------------------------------------------
--- Save workflow: format -> destination folder -> filename -> encode
+-- Saving: format, then folder, then file name, then encode
 ------------------------------------------------------------------------------
 
--- One compact dialog for the whole save: pick the format, optionally the area,
--- and (when a background is loaded) whether to include it, then Save. The rows
--- are toggles so it never turns into a wizard.
+-- One sheet for the whole save: the format, optionally the area and (with a
+-- background loaded) whether to include it, then Save.
 function InkAwayView:onSave()
     self:flushPending()
     if self.active_image then self:finishImageEdit() end   -- bake it so the export includes it
@@ -119,9 +117,8 @@ function InkAwayView:onSave()
         add(vspan(16))
         add(self:actionButton(_("Save"), content_w, function()
             closeSelf(); self:chooseDestination(self.save_fmt) end, true))
-        -- One-tap save straight into the bookshelf plugin's ornament folder, only
-        -- when that plugin is in use. Always a transparent PNG (an ornament needs
-        -- its transparency), so it ignores the format toggle above.
+        -- save straight into the bookshelf plugin's ornament folder, when that
+        -- plugin is in use; always a transparent PNG, whatever the format above
         if self:ornamentsDir() then
             add(vspan(10))
             add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
@@ -160,7 +157,7 @@ function InkAwayView:selectedNotebookPages()
     return sel
 end
 
--- Export the notebook to a single PDF, with paper colour, page-scope, page
+-- Export the notebook to a single PDF, with paper colour, page scope, page
 -- numbers and (for imported PDFs) a sharp-text option, then offer to open it.
 function InkAwayView:exportNotebookPDF()
     self:nbSyncOut()
@@ -252,7 +249,7 @@ end
 function InkAwayView:doNotebookExport(path)
     local nb = self.notebook
     self:nbSyncOut()
-    -- copy the template so the export tint/strength never sticks to the working
+    -- copy the template so the export tint and strength never stick to the
     -- notebook, and bake the ruling grey from the paper strength
     local template = {}
     for k, v in pairs(nb.template) do template[k] = v end
@@ -274,8 +271,8 @@ function InkAwayView:doNotebookExport(path)
     local quality = is_pdf and 90 or 85
 
     -- background per selected page: a PDF-backed notebook renders each source
-    -- page on the fly at the export resolution (one at a time, so memory stays
-    -- flat); otherwise a single loaded picture is shared by every page.
+    -- page at the export resolution, one at a time so memory stays flat;
+    -- otherwise one loaded picture is shared by every page
     local bg
     if is_pdf then
         self:ensureNotebookPDF()
@@ -293,10 +290,9 @@ function InkAwayView:doNotebookExport(path)
         bg = self.bg_rgba or self:buildBgRGBA()
     end
 
-    -- Export one page per UI step, with a progress bar and a way to stop. Doing it
-    -- in one go froze the reader for minutes on a long imported PDF and built the
-    -- whole file in memory, which could crash it; the job streams each page to
-    -- disk and frees it before the next.
+    -- Export one page per UI step, with a progress bar and a way to stop. Each
+    -- page streams to disk and is freed before the next, so a long imported PDF
+    -- neither freezes the reader nor builds the whole file in memory.
     local job, jerr = Export.notebookPDFJob(pages_ops, nb.w, nb.h, template, path, quality, tmp_dir, bg,
         { footer = self.nb_numbers and true or nil, scale = scale,
           bg_opaque = is_pdf and true or nil })   -- rendered PDF pages are drawn on white
@@ -338,9 +334,8 @@ function InkAwayView:doNotebookExport(path)
     local function finished()
         self._export_job = nil
         closeProgress()
-        -- Also keep the editable notebook: save a project with the same name in
-        -- the projects folder, so closing right after exporting never loses the
-        -- work (people export the PDF and may not think to also "Save project").
+        -- also keep the editable notebook as a project of the same name, so
+        -- closing right after exporting never loses the work
         local proj_saved = self:autoSaveNotebookProject(path)
         -- make the PDF open as a full page with no auto-crop the first time
         self:seedPdfView(path)
@@ -387,9 +382,9 @@ function InkAwayView:autoSaveNotebookProject(pdf_path)
     return ok and proj or nil
 end
 
--- Pre-seed a freshly exported PDF's sidecar so KOReader opens it as a whole
--- page with no margin auto-crop (its defaults are page-width + auto-crop, which
--- would zoom into the ink and clip it). Best effort; harmless if it fails.
+-- Seed a freshly exported PDF's sidecar so KOReader opens it as a whole page
+-- with no margin cropping (its defaults would zoom into the ink and clip it).
+-- Best effort.
 function InkAwayView:seedPdfView(path)
     local dok, DocSettings = pcall(require, "docsettings")
     if not (dok and DocSettings) then return end
@@ -452,8 +447,8 @@ function InkAwayView:writeFile(fmt, dir, name, ext)
     local ow = self.save_area and self.save_area.w or self.canvas.w
     local oh = self.save_area and self.save_area.h or self.canvas.h
     if ok then
-        -- also keep an editable project of the same name, so people who never
-        -- find the "Save project" button can still come back to this drawing
+        -- also keep an editable project of the same name, so the drawing can be
+        -- reopened even if it was never saved as a project
         local proj = self:autoSaveDrawingProject(name)
         local msg = string.format(_("Saved %d × %d image:\n%s"), ow, oh, path)
         if proj then msg = msg .. string.format(_("\n\nEditable copy kept in:\n%s"), proj) end
@@ -467,9 +462,9 @@ function InkAwayView:writeFile(fmt, dir, name, ext)
     end
 end
 
--- Is the bookshelf plugin present? Prefer KOReader's loaded-plugin registry (so
--- it is found wherever it is installed), then fall back to a directory probe next
--- to this plugin and in the user plugins folder. Cached for the session.
+-- Is the bookshelf plugin present? Checks KOReader's loaded-plugin registry (found
+-- wherever it is installed), then the folders next to this plugin and in the user
+-- plugins folder. Cached for the session.
 function InkAwayView:bookshelfInstalled()
     if self._bookshelf_seen ~= nil then return self._bookshelf_seen end
     local seen = false
@@ -499,13 +494,10 @@ function InkAwayView:bookshelfInstalled()
     return seen
 end
 
--- The bookshelf plugin's ornament folder (koreader/icons/bookshelf.ornaments),
--- or nil when the bookshelf plugin isn't in use. A saved ornament is just a
--- transparent PNG dropped in here -- the bookshelf plugin picks up any *.png or
--- *.svg it finds. KOReader never creates icons/ itself, so callers make the tree.
--- "In use" means the folder already exists (the user keeps ornaments there) or
--- the bookshelf plugin is installed, so the option also shows before the first
--- ornament is saved.
+-- The bookshelf plugin's ornament folder (koreader/icons/bookshelf.ornaments), or
+-- nil when that plugin is not in use (neither the folder nor the plugin exists).
+-- An ornament is a transparent PNG dropped in here. KOReader never creates icons/
+-- itself, so callers create the folders.
 function InkAwayView:ornamentsDir()
     local data = Storage.dataDir()
     if not data then return nil end
@@ -514,9 +506,8 @@ function InkAwayView:ornamentsDir()
     return nil
 end
 
--- Save the canvas straight into the bookshelf ornament folder as a transparent
--- PNG. The destination is fixed, so this skips the folder chooser and only asks
--- for a name; it makes icons/ and the ornaments folder if they aren't there yet.
+-- Save the canvas into the bookshelf ornament folder as a transparent PNG. The
+-- folder is fixed, so this only asks for a name; it creates the folders if needed.
 function InkAwayView:saveOrnament()
     local dir = self:ornamentsDir()
     if not dir then return end
@@ -531,8 +522,8 @@ function InkAwayView:saveOrnament()
 end
 
 -- Ask for an ornament name, then write it. A trailing ".invert" is kept (the
--- bookshelf plugin reads name.invert.png as the dark-mode variant); the ".png"
--- extension is added when the name doesn't already end in it.
+-- bookshelf plugin reads name.invert.png as the dark-mode variant); ".png" is
+-- added when the name does not already end in it.
 function InkAwayView:promptOrnamentName(dir)
     local default_name = os.date("ornament-%Y%m%d-%H%M%S")
     self:promptText{
@@ -558,8 +549,8 @@ function InkAwayView:writeOrnament(dir, name)
 end
 
 -- Save the current canvas as an editable .inkaway project in the drawing
--- projects folder, using the image's base name. Returns the path or nil (and
--- skips a blank canvas, since there is nothing to come back to).
+-- projects folder, using the image's base name. Returns the path, or nil (also
+-- for a blank canvas).
 function InkAwayView:autoSaveDrawingProject(image_name)
     if self.canvas:isEmpty() then return nil end
     local base = image_name:gsub("%.[^.]+$", "")

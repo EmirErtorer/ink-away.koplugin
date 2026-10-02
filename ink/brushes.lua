@@ -1,13 +1,10 @@
 --[[
-The brush list: the built in styles plus any brushes the reader makes themselves.
+The brush list: the built-in styles plus the brushes the reader makes.
 
-A brush is just the small table of numbers the rasterizer reads (density, grain
-size, edge fade and so on, see ink/raster.lua). Built in brushes live in
-Raster.STYLES; user brushes are kept in KOReader's global settings, which sit
-outside the plugin folder, so a made brush survives both a restart and a plugin
-update. On startup every saved brush is registered back into the rasterizer under
-the key "user:<name>", so a project or an export always finds the style a stroke
-was drawn with, even if the brush is later changed.
+A brush is the small table of numbers the rasterizer reads (see ink/raster.lua).
+Made brushes are kept in KOReader's settings, outside the plugin folder, so they
+survive plugin updates, and each is registered at startup under "user:<name>",
+so a project or an export finds the style its strokes name.
 ]]
 
 local Raster = require("ink/raster")
@@ -16,7 +13,7 @@ local Brushes = {}
 
 local SETTING = "inkaway_brushes"
 
--- Built in styles, in the order they appear in the pen menu.
+-- The built-in styles, in pen menu order.
 local BUILTIN = {
     { key = "solid",   label = "Ink" },
     { key = "pencil",  label = "Pencil" },
@@ -25,11 +22,9 @@ local BUILTIN = {
     { key = "stipple", label = "Stipple" },
 }
 
--- The sliders a brush is built from, each 0..1 unless noted, with how they map
--- onto the rasterizer's fields. This is the whole vocabulary of the brush maker.
--- Ranges are kept modest on purpose: large spread/tooth make a brush scan many
--- more pixels per stamp, so capping them keeps a made brush about as quick as a
--- built in one.
+-- The brush maker's sliders, each 0..1 unless noted, and how they map onto the
+-- rasterizer's fields. The ranges are modest because a large spread or tooth
+-- makes each stamp scan many more pixels.
 Brushes.FIELDS = {
     { id = "density",  label = "Ink",       min = 0.2,  max = 1.0 },
     { id = "cell",     label = "Grain",     min = 1,    max = 4,  step = 1 },
@@ -38,26 +33,26 @@ Brushes.FIELDS = {
     { id = "tooth",    label = "Tooth",     min = 0,    max = 4,  step = 1 },
 }
 
--- A sensible starting point for a brand new brush.
+-- The starting values for a new brush.
 function Brushes.defaults()
     return { density = 0.8, cell = 2, edge = 0.3, grow = 0.1, tooth = 0 }
 end
 
--- Read the saved user-brush list (array of { name, params }). Never nil.
+-- The saved brushes, a list of { name, params }; never nil.
 function Brushes.userList(getSetting)
     local list = getSetting(SETTING)
     if type(list) ~= "table" then return {} end
     return list
 end
 
--- Register every saved user brush with the rasterizer. Call once on startup.
+-- Register every saved brush with the rasterizer; called once at startup.
 function Brushes.loadAll(getSetting)
     for _, b in ipairs(Brushes.userList(getSetting)) do
         if b.name and b.params then Raster.registerStyle("user:" .. b.name, b.params) end
     end
 end
 
--- The full menu list: built in styles first, then user brushes. Each entry is
+-- The pen menu's list: the built-in styles, then the made brushes, each as
 -- { key, label, custom }.
 function Brushes.menu(getSetting)
     local out = {}
@@ -68,8 +63,8 @@ function Brushes.menu(getSetting)
     return out
 end
 
--- Save a user brush by name (adding, or replacing one with the same name),
--- register it, and persist the list. Returns the style key.
+-- Save a brush by name (adding it, or replacing one of the same name), register
+-- it and store the list. Returns the style key.
 function Brushes.save(getSetting, setSetting, name, params)
     local list = Brushes.userList(getSetting)
     local entry = { name = name, params = params }
@@ -83,7 +78,7 @@ function Brushes.save(getSetting, setSetting, name, params)
     return "user:" .. name
 end
 
--- Remove a user brush by name and persist. Returns true if one was removed.
+-- Remove a brush by name and store the list. Returns true if one was removed.
 function Brushes.remove(getSetting, setSetting, name)
     local list = Brushes.userList(getSetting)
     for i, b in ipairs(list) do

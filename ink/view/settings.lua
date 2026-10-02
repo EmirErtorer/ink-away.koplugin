@@ -49,9 +49,8 @@ function InkAwayView:openBackground()
     self:showSheet("_bg_dialog", build)
 end
 
--- A generic "pick one of a list" sub-sheet in the shapes-menu style: a vertical
--- stack of full-width buttons, the current one filled black. `options` is a list
--- of { value, label }; onpick(value) is called after the sheet closes.
+-- A "pick one" sub-sheet: a stack of full-width buttons, the current one black.
+-- `options` is a list of { value, label }; onpick(value) runs after it closes.
 function InkAwayView:openChooserSheet(title, options, current, onpick)
     self:closeSheet("_chooser_dialog")
     local content_w = self:sheetWidth()
@@ -71,18 +70,14 @@ function InkAwayView:openChooserSheet(title, options, current, onpick)
     self:showSheet("_chooser_dialog", build)
 end
 
--- The grid sub-sheet: type, size and opacity in one place, opened from the main
--- settings sheet's single "Grid" button so that sheet stays short (no scrolling).
--- Picking a type rebuilds this sheet in place (the highlight moves) like the other
--- segmented pickers; the sliders drive the same live grid refresh the old inline
--- controls did, and it wears the same rounded-corner sheet chrome as every sheet.
+-- The grid sub-sheet: type, size and opacity, opened from the settings sheet's
+-- Grid button. Picking a type rebuilds it in place; the sliders refresh the grid
+-- behind the sheet as they move.
 function InkAwayView:openGridSettings()
     if self:rebuildSheet("_grid_dialog") then return end
     local content_w = self:sheetWidth()
-    -- picking a type keeps the sheet open (rebuild in place) so several tweaks are
-    -- one visit; "Off" remembers the last real style so turning it back on restores
-    -- the same look. Size/opacity never force the grid on -- only the type does --
-    -- so the "Off" choice stays honest while its values are kept for next time.
+    -- "Off" remembers the last style, so turning the grid back on restores it.
+    -- Only the type switches the grid on; size and opacity are kept for next time.
     local function pick(v)
         if v == "off" then
             self.grid_on = false; self:setSetting("inkaway_grid", false)
@@ -99,7 +94,7 @@ function InkAwayView:openGridSettings()
             function() self:closeSheet("_grid_dialog"); self:openSettings() end))
         add(vspan(16))
 
-        -- type: two tidy rows of three (Off + the five styles)
+        -- type: two rows of three (Off and the five styles)
         local cur = self.grid_on and self.grid_style or "off"
         add(self:segmentedRow({ { "off", _("Off") }, { "square", _("Square") }, { "dots", _("Dots") } },
             cur, content_w, pick))
@@ -108,7 +103,7 @@ function InkAwayView:openGridSettings()
             cur, content_w, pick))
         add(vspan(16))
 
-        -- size + opacity, live-refreshing the grid behind the sheet as they move
+        -- size and opacity, refreshing the grid behind the sheet as they move
         add(SliderRow:new{ label = _("Size"), value = self.grid_size, min = 8, max = 200, step = 2,
             width = content_w, parent = menu, format = pxfmt,
             on_set = function(v) self.grid_size = v; self:setSetting("inkaway_grid_size", v)
@@ -123,14 +118,11 @@ function InkAwayView:openGridSettings()
     self:showSheet("_grid_dialog", build)
 end
 
--- The gear menu (shapes-menu style): file/page actions as buttons, the grid or
--- notebook-paper controls as a toggle/chooser and sliders, and symmetry /
--- autosave as segmented rows. Reorganised into clear sections.
+-- The settings sheet (gear): file and page actions, orientation, the grid or
+-- notebook paper, and the symmetry, autosave and ghosting options.
 function InkAwayView:openSettings()
     if self.active_image then self:finishImageEdit() end   -- settle a selected image first
-    -- `_settings_dialog` is normally this settings IconMenu (rebuild in place), but a
-    -- few transient ButtonDialogs (Page menu, page overview) reuse the field and have
-    -- no rebuild -- drop such a one and open fresh instead of crashing.
+    -- the field may hold a dialog without a rebuild; close it and open fresh
     if self:rebuildSheet("_settings_dialog") then return end
     self:ensureUserIcons()
     local content_w, gap = self:sheetWidth()
@@ -150,8 +142,7 @@ function InkAwayView:openSettings()
         add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf))
         add(vspan(16))
 
-        -- files & pages. New drawing / New notebook are the primary actions, so
-        -- they get the larger bold face (the `big` flag) to stand out.
+        -- files and pages; New drawing and New notebook get the larger face
         add(row2(act(_("New drawing"), halfW, function() self:newDrawing() end, false, true),
                  act(_("New notebook"), halfW, function() self:newNotebook() end, false, true)))
         add(vspan(8))
@@ -162,9 +153,7 @@ function InkAwayView:openSettings()
                  act(_("Background"), halfW, function() self:openBackground() end)))
         add(vspan(16))
 
-        -- orientation: portrait vs landscape. Switches the whole app (and the shape
-        -- of new canvases and notebooks) the chosen way up. Closes the sheet on pick
-        -- because the screen size changes; reopen it to see the new highlight.
+        -- orientation: picking one closes the sheet, as the screen size changes
         if self:orientationSupported() then
             add(self:sheetLabel(_("Orientation"), true))
             add(vspan(6))
@@ -194,10 +183,7 @@ function InkAwayView:openSettings()
                 on_set = function(v) t.strength = v; self.nb_strength = v; self:setSetting("inkaway_nb_strength", v)
                     self.dirty = true; self:composeCanvas(); self:renderView(); self:refreshArea() end })
         else
-            -- The grid type, size and opacity all live in their own sub-sheet
-            -- (openGridSettings), reached by this one button. Folding three
-            -- controls into one keeps the main sheet short enough to never scroll.
-            -- The button shows the current grid at a glance; state is remembered.
+            -- one button to the grid sub-sheet, labelled with the current grid
             local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
                 lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds") }
             local cur = self.grid_on and self.grid_style or "off"
@@ -206,8 +192,8 @@ function InkAwayView:openSettings()
         end
         add(vspan(16))
 
-        -- symmetry and autosave pick in place: the sheet stays open and rebuilds
-        -- with the highlight moved (refreshing just this region, no flash)
+        -- symmetry and autosave rebuild the sheet in place with the highlight
+        -- moved
         add(self:sheetLabel(_("Symmetry"), true))
         add(vspan(6))
         add(self:segmentedRow({ { "off", _("Off") }, { "vert", _("Vertical") }, { "horiz", _("Horizontal") },
@@ -215,8 +201,7 @@ function InkAwayView:openSettings()
             function(v) self.symmetry = v; self:setSetting("inkaway_symmetry", v); self:openSettings() end))
         add(vspan(14))
 
-        -- ghosting cleanup slider (0 = off). 0-50 in 5s: a small range is easier to
-        -- pinpoint, and clearing every >50 strokes is effectively never anyway.
+        -- ghosting cleanup: a full refresh every N strokes, 0 (off) to 50 in steps of 5
         add(SliderRow:new{ label = _("Ghosting"), value = math.min(50, self.ghost_clean or 0), min = 0, max = 50, step = 5,
             width = content_w, parent = menu,
             format = function(v) return v == 0 and _("off") or string.format(_("%d strokes"), v) end,

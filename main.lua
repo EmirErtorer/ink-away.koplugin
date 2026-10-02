@@ -1,9 +1,7 @@
 --[[
-Ink Away, a small finger drawing canvas for e-ink readers.
-
-The plugin adds a menu entry that opens a blank fullscreen canvas. All the
-drawing logic lives in the ink/ modules. This file only plugs Ink Away into
-KOReader and opens the view.
+Ink Away, a drawing canvas and notebook for e-ink readers. This file only plugs
+it into KOReader (the Tools menu entry and a gesture action) and opens the view;
+everything else lives under ink/.
 ]]
 
 local Dispatcher = require("dispatcher")
@@ -28,9 +26,8 @@ end
 function InkAway:init()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
-    -- Dev hook: with INKAWAY_AUTOOPEN set (the emulator launcher does this) drop
-    -- straight into the canvas so UI work needs no menu navigation. A no-op on a
-    -- real device, where the env var is never set. Guarded so it fires once.
+    -- emulator hook: INKAWAY_AUTOOPEN opens the canvas straight away, once; the
+    -- variable is never set on a device
     if os.getenv("INKAWAY_AUTOOPEN") and not InkAway._autoopened then
         InkAway._autoopened = true
         UIManager:scheduleIn(1.2, function() self:openCanvas() end)
@@ -46,20 +43,16 @@ function InkAway:addToMainMenu(menu_items)
     }
 end
 
--- Fires when the user maps a gesture to Ink Away in the gesture manager.
+-- The gesture action, when a gesture is mapped to Ink Away.
 function InkAway:onInkAwayOpen()
     self:openCanvas()
     return true
 end
 
 function InkAway:openCanvas()
-    -- Close any Ink Away view that is still open before opening a fresh one. This
-    -- (a) prevents stacking a duplicate when the open gesture / Tools entry is
-    -- re-invoked while Ink Away is already up -- a buried InkAwayView would keep
-    -- being painted and running its timers every frame, so the app gets slower with
-    -- each extra copy until a KOReader restart -- and (b) guarantees a reopen always
-    -- starts from a clean instance and can RECOVER a stuck/buried one, instead of
-    -- being blocked by it. Iterate a copy of the stack since close() mutates it.
+    -- Close any Ink Away view still open before opening a fresh one: a buried
+    -- copy would keep painting and running its timers, and a reopen should start
+    -- clean even if one got stuck. The stack is copied, as close() changes it.
     local stack = UIManager._window_stack or {}
     local existing = {}
     for i = 1, #stack do

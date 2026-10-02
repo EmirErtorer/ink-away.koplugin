@@ -43,7 +43,7 @@ local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
 
 local InkAwayView = {}
 
--- The reader's saved custom colours (a list of {r,g,b}), persisted so they last.
+-- The reader's saved custom colours, a list of {r,g,b} kept in the settings.
 function InkAwayView:getCustomColors()
     local list = self:getSetting("inkaway_custom_colors")
     return type(list) == "table" and list or {}
@@ -79,9 +79,8 @@ function InkAwayView:openColorPicker()
     })
 end
 
--- Pen settings sheet (same rounded-sheet style as the Shapes menu): size and
--- opacity sliders, brush-style wave tiles with a create (+) tile, colour swatch
--- rows, and the stroke aids. Rebuilt and reshown whenever something changes.
+-- The pen sheet: size and opacity sliders, brush tiles with a create (+) tile,
+-- colour swatch rows and the stroke aids. Rebuilt whenever something changes.
 function InkAwayView:openPenSettings()
     if self:rebuildSheet("_pen_dialog") then return end
     self:ensureUserIcons()
@@ -134,10 +133,9 @@ function InkAwayView:openPenSettings()
         end
         add(vspan(12))
 
-        -- The stroke aids (toggles + stabilizer) are the fixed tail of the sheet and
-        -- must never be pushed off-screen by the colour rows, so build them first,
-        -- measure them, and cap how many custom-colour rows we render to whatever
-        -- vertical space is left (see the colour section below).
+        -- The stroke aids (toggles and stabilizer) end the sheet and must never be
+        -- pushed off screen, so they are built and measured first and the custom
+        -- colour rows are capped to the space left (see the colour section).
         local function toggle(label, on, cb)
             return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
         end
@@ -145,8 +143,7 @@ function InkAwayView:openPenSettings()
         local assistRow = HorizontalGroup:new{ align = "center",
             toggle(_("Shape assist"), self.shape_assist, function(on)
                 self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
-                -- release the pre-stroke snapshot when assist is off; it is only
-                -- ever used by beautify, and re-created on the next stroke if needed
+                -- free the pre-stroke snapshot, which only shape assist uses
                 if not on and self._pre_stroke_bb then
                     self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
                     self._pre_stroke_valid = false
@@ -193,13 +190,10 @@ function InkAwayView:openPenSettings()
                 content_w))
         end
 
-        -- colour swatches: shades, then (colour screens) colours + saved customs,
-        -- and always the RGB picker as a "+" tile. Rows are centred so a short row
-        -- (the 5 shades) stays symmetrical instead of hugging the left.
-        -- Swatches fill the width (six per row), so grey and colour tiles are all the
-        -- same size with no empty margins. Their height is capped on big high-DPI
-        -- colour screens so two colour rows don't overflow the sheet (they become
-        -- wide rounded tiles rather than large squares).
+        -- Colour swatches: the shades, then on a colour screen the colours and
+        -- saved ones, and always the "+" tile for the colour wheel. Six tiles fill
+        -- each row; short rows are centred. Tile height is capped on large high-DPI
+        -- colour screens, so the colour rows never overflow the sheet.
         local sw = math.floor((content_w - 5 * gap) / 6)
         local swh = math.min(sw, Screen:scaleBySize(58))
         local function swatch(rgb, custom)
@@ -226,23 +220,20 @@ function InkAwayView:openPenSettings()
             return CenterContainer:new{ dimen = GeomUI:new{ w = content_w, h = hg:getSize().h }, hg }
         end
 
-        -- Build the colour rows as measurable widgets so we can cap custom rows by
-        -- their real rendered height (estimates were off by a row on high-DPI
-        -- colour screens), keeping the toggles + stabilizer always on screen.
+        -- the rows are real widgets, so the custom rows are capped by their
+        -- measured height, keeping the stroke aids on screen
         local rowWidgets = {}
         local shadeTiles = {}
         for _, e in ipairs(SHADES) do shadeTiles[#shadeTiles + 1] = swatch(e.rgb) end
         rowWidgets[#rowWidgets + 1] = centeredRow(shadeTiles)
         if self:colorScreen() then
-            -- Colours row: five preset colours plus the "+" RGB picker, so with no
-            -- saved customs the colour section is one clean row of six.
+            -- five preset colours and the "+" tile: one row of six
             local colorTiles = {}
             for i = 1, 5 do colorTiles[#colorTiles + 1] = swatch(COLORS[i].rgb) end
             colorTiles[#colorTiles + 1] = pickerTile()
             rowWidgets[#rowWidgets + 1] = centeredRow(colorTiles)
 
-            -- Saved custom colours go on additional rows below, but only as many as
-            -- fit: measure everything and cap by the real remaining height.
+            -- saved colours go on rows below, as many as fit in the height left
             local head_h = content:getSize().h   -- head = title..brushes
             content._size = nil                  -- invalidate (VerticalGroup caches offsets)
             local fixed_h = head_h + tail:getSize().h + Screen:scaleBySize(16)
@@ -270,9 +261,8 @@ function InkAwayView:openPenSettings()
     self:showSheet("_pen_dialog", build)
 end
 
--- Open the brush maker. A saved brush is registered, made the current pen, and
--- appears in the pen menu from then on (it is kept in KOReader's settings, so it
--- survives restarts and plugin updates).
+-- Open the brush maker. A saved brush becomes the current pen and stays in the
+-- pen menu (it is kept in KOReader's settings, so it survives plugin updates).
 function InkAwayView:openBrushMaker()
     local ok, BrushMaker = pcall(require, "ink/ui/brushmaker")
     if not ok then return end
@@ -308,8 +298,7 @@ function InkAwayView:confirmDeleteBrush(key, label)
     })
 end
 
--- Eraser menu: size, and whether the eraser also removes the background image.
--- Eraser sheet (shapes-menu style): a size slider and an "erase pictures" toggle.
+-- The eraser sheet: a size slider and the Erase pictures toggle.
 function InkAwayView:openEraserSettings()
     if self:rebuildSheet("_eraser_dialog") then return end
     self:ensureUserIcons()
@@ -347,27 +336,24 @@ function InkAwayView:openArrowSize()
     })
 end
 
--- The Shapes menu: big rounded-square icon tiles (the Line tile carries a small
--- caret in its bottom-right corner that opens the line/arrow/curve submenu; the
--- rest of the tile selects a plain line), the paint-bucket and lasso tools as
--- smaller secondary tiles, and Fill / snap options as sliding toggles that flip
--- in place. Icons are rendered with true transparency (alpha = true) so the tile
--- colour shows through; the selected tile inverts a white-flattened icon so black
--- strokes read as white on the black tile.
+-- The Shapes sheet: large shape tiles (a caret in the Line tile's corner opens
+-- the line variants), smaller paint bucket and lasso tiles, and the fill and snap
+-- toggles. Icons keep their transparency so the tile colour shows through; the
+-- selected tile is black with the icon inverted to white.
 function InkAwayView:openShapePicker()
     self:flushShape()
     if self:rebuildSheet("_shape_dialog") then return end
     self:ensureUserIcons()
 
-    -- Four square tiles fill the row with equal gaps; derive the exact content
-    -- width from the tile size so everything lines up flush to the panel padding.
+    -- four square tiles fill a row with equal gaps; the content width comes from
+    -- the tile size so everything lines up with the panel padding
     local content_w, gap, tileW = self:sheetWidth()
     local halfW = math.floor((content_w - gap) / 2)
     local isz = math.floor(tileW * 0.60)   -- big icon inside the tile
     local closeSelf = function() self:closeSheet("_shape_dialog") end
 
-    -- The Line tile: a full-size select button (picks a plain line) with a small
-    -- caret button pinned to the bottom-right that opens the variants submenu.
+    -- the Line tile: a select button (a plain line) with a small caret button in
+    -- its bottom right corner that opens the variants
     local function lineTile(sel)
         local select_btn = self:makeTile("sh_line", tileW, tileW, isz, sel, function()
             self:flushShape(); self.shape, self.shape_arrow = "line", nil
@@ -384,10 +370,9 @@ function InkAwayView:openShapePicker()
             overlap_offset = { tileW - caretW - inset, tileW - caretW - inset } }
         local cw = self:tileIcon("caret", caretIsz, false)
         if cw then self:setButtonLabel(caret_btn, cw) end
-        -- Caret is child[1] so the default first->last dispatch checks its small
-        -- corner range first; any tap outside it falls through to the big select
-        -- button (child[2]). paintTo is reversed so the select button draws
-        -- underneath and the caret stays visible on top.
+        -- the caret is child 1, so events reach its corner first and anything
+        -- else falls through to the select button; paintTo draws in reverse so
+        -- the caret stays on top
         local og = OverlapGroup:new{ dimen = { w = tileW, h = tileW },
             allow_mirroring = false, caret_btn, select_btn }
         function og:paintTo(bb, x, y)
@@ -410,12 +395,11 @@ function InkAwayView:openShapePicker()
         end)
     end
 
-    -- The whole panel is built inside the menu's build callback so the toggle
-    -- rows can use the (about-to-be-shown) menu as their repaint parent.
+    -- built inside the build callback so the toggles can use the menu as their
+    -- repaint parent
     local build = function(menu)
-        -- The shape and tool tiles show the current selection, so they must be
-        -- rebuilt here (inside the rebuild callback), not once above -- otherwise
-        -- picking a shape would not move the highlight until the sheet reopened.
+        -- the tiles show the current selection, so they are rebuilt on every
+        -- rebuild
         local lineSel = (self.shape == "line" or self.shape == "curve")
         local shapeRow = HorizontalGroup:new{ align = "center",
             lineTile(lineSel), HorizontalSpan:new{ width = gap },
@@ -423,7 +407,7 @@ function InkAwayView:openShapePicker()
             shapeTile("sh_ellipse", "ellipse"), HorizontalSpan:new{ width = gap },
             shapeTile("sh_triangle", "triangle"),
         }
-        -- tools row: paint bucket + lasso, smaller/secondary tiles with a label
+        -- tools row: paint bucket and lasso, smaller tiles with a label
         local toolH = Screen:scaleBySize(96)
         local toolIsz = Screen:scaleBySize(36)
         local toolRow = HorizontalGroup:new{ align = "center",
@@ -466,14 +450,10 @@ function InkAwayView:openShapePicker()
     self:showSheet("_shape_dialog", build)
 end
 
--- The line/arrow/curve variants, opened from the Line tile. Kept as a compact
--- ButtonDialog (glyph + label), with the arrowhead size for the arrow variants.
--- The line/arrow/curve variants, in the SAME rounded-tile style as the parent
--- Shapes menu but with smaller tiles (it is a child menu): two rows of three
--- (straight family / curved family), plus an arrowhead-size row and a Back pill.
+-- The line, arrow and curve variants, opened from the Line tile: two rows of
+-- three smaller tiles (straight and curved), the arrowhead size and a Back pill.
 function InkAwayView:openShapeLineMenu()
-    -- (no rebuild-in-place: every button here closes this sheet and navigates
-    -- away, so it is always opened fresh)
+    -- no rebuild in place: every button here closes the sheet
     self:closeSheet("_shape_dialog")
     self:closeSheet("_shape_line_dialog")
     self:ensureUserIcons()
@@ -508,7 +488,7 @@ function InkAwayView:openShapeLineMenu()
         tile("sh_carrow", "curve", "end"), HorizontalSpan:new{ width = gap },
         tile("sh_cdarrow", "curve", "both") }
 
-    -- arrowhead size: a full-width rounded grey text button (text buttons are safe)
+    -- arrowhead size: a full-width text button
     local ahRow = Button:new{ text = string.format(_("Arrowhead size: %d px"), self.arrow_head),
         width = content_w, height = Screen:scaleBySize(48), bordersize = 0,
         radius = Screen:scaleBySize(14), background = TILE_BG, margin = 0, padding = 0,
@@ -527,9 +507,8 @@ function InkAwayView:openShapeLineMenu()
     self:showSheet("_shape_line_dialog", build)
 end
 
--- The paint-bucket colour picker (opened by holding the Paint bucket tile), in
--- the same rounded-sheet style as the Shapes menu: rows of colour swatch tiles
--- (grey shades, plus chromatic colours on a colour screen) and an opacity row.
+-- The paint bucket's colour sheet (hold the Paint bucket tile): swatch rows (the
+-- shades, plus colours on a colour screen) and an opacity slider.
 function InkAwayView:openFillColor()
     if self:rebuildSheet("_fill_dialog") then return end
     self:closeSheet("_shape_dialog")
@@ -537,8 +516,8 @@ function InkAwayView:openFillColor()
 
     local content_w, gap, sw = self:sheetWidth(6)   -- 6 swatches per row (colours)
 
-    -- one colour swatch: a colour-filled rounded tile; the current colour gets a
-    -- black ring (via a wrapping FrameContainer), others a hairline.
+    -- one swatch: a rounded colour tile; the current colour gets a black ring,
+    -- the others a hairline
     local function swatch(e)
         local selected = sameColor(self.fill_color, e.rgb)
         local inner = sw - Screen:scaleBySize(8)
@@ -560,8 +539,7 @@ function InkAwayView:openFillColor()
         return row
     end
 
-    -- opacity: a 0..100 slider built inside build() so it can use the shown menu
-    -- as its repaint parent for the in-place value change.
+    -- opacity, built inside build() so the shown menu is its repaint parent
     local build = function(menu)
         local pct = math.floor(self.fill_alpha / 255 * 100 + 0.5)
         local opacity = SliderRow:new{ label = _("Opacity"), value = pct, width = content_w, parent = menu,
@@ -582,9 +560,8 @@ function InkAwayView:openFillColor()
     self:showSheet("_fill_dialog", build)
 end
 
--- Text settings submenu: font family and default size.
--- Text sheet (shapes-menu style): font chooser, a font-size slider, and the
--- snap / eraser-protect toggles.
+-- The text sheet: font chooser, a size slider, and the snap and eraser-protect
+-- toggles.
 function InkAwayView:openTextSettings()
     self:closeSheet("_text_settings")
     self:ensureUserIcons()

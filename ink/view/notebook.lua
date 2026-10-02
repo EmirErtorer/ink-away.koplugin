@@ -29,13 +29,12 @@ local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px)
 
 local InkAwayView = {}
 
--- Where a digit's INK actually sits inside a TextWidget's box. A text box has empty
--- ascent/descent, so centring the box makes a run of digits look high against an
--- icon; centring the measured ink instead lines them up. Renders the digits to a
--- scratch buffer once per icon size and scans for the first/last inked row, caching
--- {mid, h} (ink centre offset from the box top, and ink height) so the notebook
--- bottom-bar counter can both centre and size itself to the icon glyphs on any font
--- or device. Falls back to box metrics if the scan is unavailable (e.g. in tests).
+-- Where a digit's ink sits inside a TextWidget's box. The box includes empty
+-- ascent and descent, so centring it makes digits look high next to an icon.
+-- Renders the digits once per size and scans for the first and last inked rows,
+-- caching {mid, h} (ink centre from the box top, ink height) so the page counter
+-- can centre and size itself to the icons. Falls back to box metrics when the
+-- scan is unavailable (in tests).
 function InkAwayView:digitInkMetric(face, isz, box_h)
     if self._digit_ink and self._digit_ink.key == isz then return self._digit_ink end
     local res
@@ -65,9 +64,8 @@ function InkAwayView:digitInkMetric(face, isz, box_h)
     return res
 end
 
--- Render one PDF page to a canvas-sized page BlitBuffer, on demand. Mirrors the
--- call KOReader uses for cover thumbnails, so it is as fast as KOReader itself
--- (and the result is cached by KOReader's DocCache). Returns a BlitBuffer or nil.
+-- Render one PDF page to a canvas-sized BlitBuffer, on demand, the way KOReader
+-- renders cover thumbnails (cached in its DocCache). Returns a BlitBuffer or nil.
 function InkAwayView:renderPdfPage(doc, pageno, tw, th)
     if not doc then return nil end
     local Document = require("document/document")
@@ -77,10 +75,9 @@ function InkAwayView:renderPdfPage(doc, pageno, tw, th)
         local native = Document.getNativePageDimensions(doc, pageno)
         if not (native and native.w and native.h) then return end
         local zoom = math.min(W / native.w, H / native.h)
-        -- Always pass an explicit full-page rect. Without it, a page too large to
-        -- fit KOReader's tile cache (e.g. an A4 page at fit-zoom) is refused
-        -- outright ("no render region ... won't render") and comes back blank; a
-        -- rect makes it render that region uncached instead.
+        -- an explicit full-page rect: without one, a page too large for
+        -- KOReader's tile cache (an A4 page at fit zoom) is refused and comes back
+        -- blank, while a rect renders it uncached
         local rect = GeomUI:new{ x = 0, y = 0,
             w = math.floor(native.w * zoom + 0.5), h = math.floor(native.h * zoom + 0.5) }
         local tile = Document.renderPage(doc, pageno, rect, zoom, 0, 1.0, 1.0, false)
@@ -89,8 +86,8 @@ function InkAwayView:renderPdfPage(doc, pageno, tw, th)
     return img
 end
 
--- A nav-strip icon rendered from ink/icons onto an opaque white tile (the strip
--- is white), cached by name+size, freed in free(). Returns nil if unavailable.
+-- A bottom-bar icon from ink/icons on an opaque white tile, cached by name and
+-- size. Returns nil if unavailable.
 function InkAwayView:navImage(name, sz)
     self._nav_img = self._nav_img or {}
     local key = name .. "@" .. sz
@@ -116,17 +113,16 @@ function InkAwayView:navImage(name, sz)
 end
 
 ------------------------------------------------------------------------------
--- Notebook mode: a fixed-size, multi-page canvas. Each page is an ops list,
--- exactly like the single drawing, so every tool works unchanged. The current
--- page stays loaded in self.canvas; navigation syncs it back to the page model
--- (Notebook) and loads the next one, so only one page is ever composed at once.
+-- Notebook mode: a multi-page canvas. Each page is an op list like a drawing, so
+-- every tool works unchanged. The current page lives in self.canvas; turning a
+-- page syncs it back to the Notebook model and loads the next, so only one page
+-- is composed at a time.
 ------------------------------------------------------------------------------
 
--- Height of the bottom page-nav strip in notebook mode.
+-- Height of the notebook bottom bar.
 function InkAwayView:nbBarHeight()
     if self._nb_collapsed then return 0 end   -- hidden via the bottom-bar toggle
-    -- Snug around the icon row (the icon size + a little padding) so the bar is only
-    -- as tall as it needs to be -- shorter than the top toolbar, freeing screen space.
+    -- snug around the icon row, so the bar is shorter than the toolbar
     local isz = self._icon_sz or math.max(20, Screen:scaleBySize(26))
     return isz + 2 * Screen:scaleBySize(4)
 end
@@ -139,22 +135,17 @@ end
 -- Load the current notebook page into the canvas and repaint.
 function InkAwayView:nbLoad()
     if not self.notebook then return end
-    -- Drop the previous page's placed-image decode caches (`_img_*`): only the
-    -- visible page's images need to be resident, and composeCanvas below re-decodes
-    -- whatever this page uses. Without this, every page with pictures leaves its
-    -- full-size decodes behind, so memory climbs across a long multi-page session.
-    -- (`_nav_img` is the tiny nav-bar icon cache, not per-page, so it is untouched.)
+    -- drop the previous page's image decodes so memory stays flat over many
+    -- pages; composeCanvas decodes what this page uses (the bar icon cache stays)
     self:freeImageCache()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
     self.selected, self.rotating = nil, nil
     self:resetLasso()
     self:composeCanvas(); self:renderView()
-    -- A page turn does not flash the whole screen every time (on a colour panel a
-    -- flash costs ~1-2s even for a blank page, and on grey it is what made turning
-    -- pages feel slow). Like KOReader's own reader, turn with a non-flashing refresh
-    -- ("partial" on grey, which suits text pages; "ui" on colour) and flash only
-    -- every few turns to clear accumulated ghosting.
+    -- Like KOReader's reader, turn pages with a non-flashing refresh ("partial" on
+    -- grey, "ui" on colour, where a flash takes a second or two) and flash only
+    -- every few turns to clear ghosting.
     self._turns_since_full = (self._turns_since_full or 0) + 1
     local every = (self.ghost_clean and self.ghost_clean > 0) and self.ghost_clean or 6
     if self._turns_since_full >= every then
@@ -167,9 +158,8 @@ function InkAwayView:nbLoad()
     end
 end
 
--- Keep one open handle to the source PDF for the whole session, so page turns
--- render straight away (KOReader caches the rendered pages) instead of paying
--- the open cost each time.
+-- Keep one open handle to the source PDF for the session, so a page turn does not
+-- pay the cost of opening it again.
 function InkAwayView:ensureNotebookPDF()
     local t = self.notebook and self.notebook.template
     if not (t and t.pdf_path) then return end
@@ -188,18 +178,18 @@ function InkAwayView:closeNotebookPDF()
 end
 
 -- For a PDF-backed notebook, put the current page's rendered PDF image behind
--- the ink. Only the visible page is ever rendered or resident, so opening the
--- PDF and turning pages stay fast no matter how many pages it has.
+-- the ink. Only the visible page and its neighbours are kept, so a long PDF opens
+-- and turns as fast as a short one.
 function InkAwayView:loadNotebookPageBackground()
     local nb = self.notebook
     local t = nb and nb.template
     if not (t and t.pdf_path) then return end
     self:ensureNotebookPDF()
     local src = nb:currentSrc()      -- which source page this notebook page shows
-    -- Rendering a PDF page is the slow part of a page turn, so the page just left
-    -- is kept (turning back is instant) and the next one is rendered ahead while
-    -- you read (see prefetchPdfPage). A buffer is either the background or in the
-    -- cache, never both, so nothing else ever sees a cached buffer.
+    -- Rendering is the slow part of a page turn, so the page just left is kept
+    -- (turning back is instant) and the next is rendered ahead during a pause (see
+    -- prefetchPdfPage). A buffer is either the background or in the cache, never
+    -- both.
     local cache = self._pdf_cache or {}
     self._pdf_cache = cache
     if self.bg_bb and self._bg_src and self._bg_src ~= src and not cache[self._bg_src] then
@@ -244,9 +234,9 @@ function InkAwayView:trimPdfCache()
     end
 end
 
--- Render the next page (then the previous) ahead of time, once the reader has been
--- idle a moment after a page turn. Any touch or pen-down cancels a pending
--- prefetch, so it never runs in the way of writing.
+-- Render the next page (then the previous) ahead of time, after a short pause
+-- following a page turn. Any touch or pen-down cancels a pending prefetch, so it
+-- never gets in the way of writing.
 function InkAwayView:prefetchPdfPage()
     local nb = self.notebook
     if self.closing or not (nb and nb.template and nb.template.pdf_path and self._nb_pdf_doc) then return end
@@ -275,7 +265,7 @@ function InkAwayView:freePdfCache()
     end
 end
 
--- Step to another page (delta -1/+1).
+-- Step to the previous (-1) or next (+1) page.
 function InkAwayView:nbGo(delta)
     if self.notebook then self:nbGoTo(self.notebook.index + delta) end
 end
@@ -293,9 +283,8 @@ function InkAwayView:nbGoTo(target)
     self.dirty = true
 end
 
--- Go to a page: a new-style sheet with quick First/Last jumps and a "type a
--- number" button that opens the stock number keypad (kept as a stock InputDialog,
--- the device-safe way to type -- the sheet gives the chrome, the keypad the entry).
+-- Go to a page: a sheet with First and Last jumps and a button that opens the
+-- number keypad.
 function InkAwayView:nbJumpPrompt()
     local nb = self.notebook
     if not nb then return end
@@ -324,8 +313,8 @@ function InkAwayView:nbJumpPrompt()
     self:showSheet("_goto_dialog", build, { bottom_y = v.area_y + v.area_h })
 end
 
--- The actual page-number entry, reached from the Go-to-page sheet. A stock
--- InputDialog with the number keypad -- the proven, device-safe way to type.
+-- The page-number entry, reached from the Go-to-page sheet: a stock InputDialog
+-- with the number keypad, which types reliably on every device.
 function InkAwayView:promptGotoNumber()
     local nb = self.notebook
     if not nb then return end
@@ -348,8 +337,8 @@ function InkAwayView:nbDuplicatePage()
     self.dirty = true
 end
 
--- The page menu, opened by tapping the page counter in the nav strip: jump,
--- overview, duplicate, reorder, delete -- everything about pages in one place.
+-- The page menu, opened by tapping the page counter in the bottom bar: go to a
+-- page, the overview, duplicate and delete.
 function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
@@ -375,15 +364,14 @@ function InkAwayView:openPageMenu()
         add(act(_("Delete page"), function() self:nbDeletePage() end))
         return content
     end
-    -- Move earlier / later are omitted: the bottom bar's arrows already do that. The
-    -- sheet's bottom is pinned to the top of the notebook bottom bar (bottom_y).
+    -- the sheet's bottom sits on the top of the notebook bottom bar
     local v = self.view
     self:showSheet("_page_dialog", build, { bottom_y = v.area_y + v.area_h })
 end
 
--- Render one notebook page to a small thumbnail bitmap fitting maxw x maxh,
--- through the shared compositor so it matches the page exactly. A full-size
--- scratch is composed then scaled down and freed, so memory stays flat.
+-- Render one notebook page to a thumbnail fitting maxw x maxh, through the shared
+-- compositor so it matches the page. A full-size scratch is composed, scaled down
+-- and freed, so memory stays flat.
 function InkAwayView:renderPageThumb(index, maxw, maxh)
     local nb = self.notebook
     if not nb or not nb.pages[index] then return nil end
@@ -451,7 +439,7 @@ end
 
 -- Make `nb` the open notebook and show its current page. `keep` saves it to the
 -- session at once, so a close before the next autosave still reopens it as a
--- notebook rather than the old drawing.
+-- notebook rather than the previous drawing.
 function InkAwayView:enterNotebook(nb, keep)
     self.notebook = nb
     self.nb_bar_h = self:nbBarHeight()
@@ -479,8 +467,8 @@ function InkAwayView:openNotebookData(data)
     -- pages were drawn at their own screen size; treat them at this screen size
     nb.w, nb.h = self.screen_w, self.screen_h
     self:enterNotebook(nb)
-    -- warn clearly if this was a PDF-backed notebook but the source PDF is gone
-    -- (the ink is safe; only the page images are missing until it is restored)
+    -- warn if the source PDF of a PDF-backed notebook is gone (the ink is safe;
+    -- only the page images are missing until it is back)
     if self.notebook.template.pdf_path and not self._nb_pdf_doc then
         UIManager:show(InfoMessage:new{ text = string.format(
             _("The source PDF could not be opened:\n%s\n\nYour notes are intact, but the page images will be blank until the PDF is back in that location."),
@@ -538,8 +526,8 @@ function InkAwayView:newNotebook()
     local function begin(style)
         self.nb_style = style
         self:setSetting("inkaway_nb_style", style)
-        -- start from the ruling the user last set on a notebook (falling back to
-        -- the drawing-grid spacing/strength), so a new notebook matches the last one
+        -- start from the last notebook's ruling (else the drawing grid's spacing
+        -- and strength), so a new notebook matches the last one
         self:startNotebook({ style = style,
             size = self.nb_size or self.grid_size or 40,
             strength = self.nb_strength or self.grid_strength or 45 })
@@ -600,9 +588,8 @@ function InkAwayView:paintNotebookBar(bb, x, y)
     icon("nav_next", next_cx)
     self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
     self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
-    -- The page counter "index / count", centred. The slash is drawn (the font's is
-    -- taller than the digits), and the digits are centred on their measured ink,
-    -- not their text box, so they line up with the icons.
+    -- the page counter "index / count", centred; the slash is drawn (the font's
+    -- is taller than the digits) and the digits are centred on their measured ink
     local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
     local idxw = TextWidget:new{ text = tostring(nb.index), face = face, fgcolor = BLACKC }
     local cntw = TextWidget:new{ text = tostring(nb:count()), face = face, fgcolor = BLACKC }

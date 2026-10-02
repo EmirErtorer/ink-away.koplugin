@@ -1,7 +1,6 @@
 --[[
-Getting the page onto the screen: the on-screen buffer and the master kept in the
-panel's pixel order (so a software-rotated landscape blit is a memcpy),
-renderView, the grid overlay, and the e-ink refresh policy.
+Getting the page onto the screen: the on-screen buffer and the master mirror kept
+in the panel's pixel order, rendering, refresh helpers and pacing, and the grid.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -30,12 +29,11 @@ local function panelBuffer(w, h, rot, inv, typ)
     return bb
 end
 
--- Live-ink pacing on colour (Kaleido) panels, where every refresh costs the driver
--- a lot more than on grey e-ink: the fast (black/white) waveform at most every
--- LIVE_FAST_MS, the grey-capable one -- which blocks until the driver has taken it
--- -- at most every LIVE_UI_MS, and the last samples of a burst still within
--- LIVE_TAIL_MS. The real colours and greys settle in ONE refresh RECONCILE_SEC
--- after the pen rests, instead of a blocking refresh on every lift.
+-- Live-ink pacing on colour (Kaleido) panels, where each refresh costs the driver
+-- far more than on grey e-ink. The fast black-and-white waveform is sent at most
+-- every LIVE_FAST_MS and the grey-capable one (which blocks until the driver takes
+-- it) every LIVE_UI_MS; the last samples of a burst follow within LIVE_TAIL_MS.
+-- The true colours settle in one refresh RECONCILE_SEC after the pen rests.
 local LIVE_FAST_MS = 20
 local LIVE_UI_MS = 80
 local LIVE_TAIL_MS = 35
@@ -44,28 +42,24 @@ local RECONCILE_SEC = 0.8
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- On-screen buffer in the screen's panel pixel order (landscape speed)
+-- On-screen buffer in the panel's pixel order
 --
--- When a device shows landscape by rotating its framebuffer in software (many
--- Kindles), copying a plain top-left buffer onto Screen.bb goes pixel-by-pixel
--- through that rotation -- about 10x slower than the row copies portrait gets, and
--- what made menus / undo / placing text feel sluggish in landscape. So area_bb is
--- built in the SCREEN's own pixel order: allocated with the panel's dimensions and
--- given the screen's rotation, so all the drawing into it still uses ordinary area
--- coordinates, but the finished bytes are already turned. Copying it onto the
--- screen is then a plain memcpy through an unrotated view of the screen memory at
--- the buffer's physical position (blitAreaFull), byte-identical to the rotated
--- blit. This mirrors backgammon.koplugin's buildBoardBuffer / blitBoard. On the SDL
--- emulator (which rotates its window, not the framebuffer) and on hardware-rotation
--- devices Screen.bb's rotation is 0, so all of this collapses to the ordinary blit.
+-- A device that shows landscape by rotating its framebuffer in software (many
+-- Kindles) makes every plain blit onto Screen.bb a per-pixel rotated copy, about
+-- ten times slower than the row copies of portrait. So area_bb is built in the
+-- screen's own pixel order: it has the panel's dimensions and the screen's
+-- rotation, so drawing into it uses ordinary area coordinates while its bytes are
+-- already turned. Copying it onto the screen is then a row copy between unrotated
+-- views of both buffers. Where Screen.bb is not rotated (hardware rotation, the
+-- SDL emulator) this is just the ordinary blit.
+------------------------------------------------------------------------------
 
 function InkAwayView:screenBBRot() return Screen.bb.getRotation and Screen.bb:getRotation() or 0 end
 function InkAwayView:screenBBInv() return Screen.bb.getInverse and Screen.bb:getInverse() or 0 end
 
--- Allocate area_bb in the screen's panel order (see the note above). Records the
--- rotation / inversion / type it was built for, so matchAreaTarget can spot a later
--- change (turning landscape one way to the other keeps the screen size, so no
--- relayout fires, but the pixel order flips).
+-- Allocate area_bb in the panel's pixel order, recording the rotation, inversion
+-- and type it was built for. Turning from one landscape to the other keeps the
+-- screen size (so no relayout) but flips the pixel order; matchAreaTarget notices.
 function InkAwayView:newAreaBuffer()
     local v = self.view
     local rot, inv, typ = self:screenBBRot(), self:screenBBInv(), Screen.bb:getType()
@@ -73,9 +67,8 @@ function InkAwayView:newAreaBuffer()
     return panelBuffer(v.area_w, v.area_h, rot, inv, typ)
 end
 
--- Rebuild area_bb (and re-render it) if the screen's rotation, inversion or buffer
--- type has changed since it was made. Called at the top of every paint, cheap when
--- nothing changed.
+-- Rebuild and re-render area_bb if the screen's rotation, inversion or buffer type
+-- changed since it was made. Runs at the start of every paint; cheap otherwise.
 function InkAwayView:matchAreaTarget()
     if not self.area_bb then return end
     if self:screenBBRot() ~= self._area_rot or self:screenBBInv() ~= self._area_inv
@@ -94,14 +87,10 @@ function InkAwayView:physView(bb)
     return p
 end
 
--- Copy a sub-rect of area_bb -- logical (sx,sy,w,h) -- onto the screen so its
--- logical (sx,sy) lands at screen (dstx,dsty). Unrotated: a plain blit. Software-
--- rotated (landscape): go through UNROTATED views of BOTH buffers at their physical
--- positions, so it is a row-copy memcpy instead of a per-pixel rotated blit. That
--- rotated blit is ~40-60x slower and its cost grows with the rect, so using it for a
--- live stroke's (growing) changed region made the pen "trail behind" in landscape.
--- Byte-identical to the naive rotated blit in all rotations (verified against the
--- real C blitter).
+-- Copy the logical rect (sx, sy, w, h) of area_bb to screen (dstx, dsty). With a
+-- rotated screen it copies between the physical views of both buffers, which is
+-- byte-identical to the rotated blit and 40-60 times faster; that keeps a live
+-- stroke's growing region from lagging behind the pen in landscape.
 function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
     local area = self.area_bb
     if self._area_rot == 0 then
@@ -120,47 +109,36 @@ function InkAwayView:blitAreaFull(bb, dstx, dsty)
 end
 
 ------------------------------------------------------------------------------
--- Panel-order master mirror (landscape render without a per-frame rotation)
+-- Master mirror in the panel's pixel order
 --
--- On a software-rotated (landscape) screen, the per-frame cost used to be
--- renderView scaling the logical master canvas_bb and blitting it into the
--- panel-order area_bb: that final blit is a per-pixel rotated write, redone on
--- every pan / zoom / redraw. canvas_panel_bb is a mirror of canvas_bb stored in
--- the SCREEN's pixel order, so renderView can scale a crop of IT through
--- unrotated physical views straight into area_bb -- a memcpy, no rotation. The
--- rotation is paid only when the mirror is (re)synced from canvas_bb, which is
--- sparse: once on a full compose / rotation flip, and only over a changed op's
--- rectangle on a commit. In portrait (rotation 0) no mirror is kept and
--- rendering sources canvas_bb directly, exactly as before -- zero change there.
---
--- The master (canvas_bb) and the export path stay in logical coordinates, so
--- input mapping and the saved PNG/JPEG/PDF are untouched. The mirror is a
--- display buffer only; a downscale in landscape can differ from the old render
--- by at most ~1 grey level on a few pixels (mupdf's scaler rounds slightly
--- differently on a transposed image) -- invisible, and never in the export.
+-- On a rotated screen, rendering would otherwise scale the master (canvas_bb) and
+-- write it into area_bb with a rotated per-pixel copy on every pan, zoom or
+-- redraw. canvas_panel_bb mirrors canvas_bb in the screen's pixel order, so a
+-- crop of it scales straight into area_bb through physical views. The rotation
+-- is paid only when the mirror is synced: in full after a compose or a rotation
+-- change, and over just the changed rect after a commit. Portrait keeps no mirror.
+-- canvas_bb and the export stay in logical coordinates; a landscape downscale can
+-- differ from a portrait one by a grey level on a few pixels, on screen only.
 ------------------------------------------------------------------------------
 
--- Allocate the panel-order mirror at the CANVAS size, matching area_bb's rotation /
--- inversion / type (they must agree for the physical-view copy to line up).
+-- Allocate the mirror at the canvas size with area_bb's rotation and type (they
+-- must agree for the physical copies to line up).
 function InkAwayView:newCanvasPanelBuffer()
     local v = self.view
     local cw, ch = v.canvas_w, v.canvas_h
     local rot = self._area_rot or 0
     local typ = self._area_type or Screen.bb:getType()
-    -- The mirror holds the SAME (non-inverted) bytes as canvas_bb, just in panel
-    -- order: it matches area_bb's ROTATION (for the physical-view alignment) but
-    -- NOT its inverse. Screen inverse (e.g. night mode) is applied only by the
-    -- final copy into area_bb -- exactly as the old scaled->area_bb blit did -- so
-    -- copying canvas_bb (inverse 0) in here must not flip the bytes.
+    -- The mirror holds canvas_bb's bytes, which are never inverted, so it takes
+    -- area_bb's rotation but not its inverse: night mode is applied only by the
+    -- final copy into area_bb.
     local inv = (self.canvas_bb and self.canvas_bb.getInverse and self.canvas_bb:getInverse()) or 0
     self._cpanel_rot, self._cpanel_type = rot, typ
     self._cpanel_cw, self._cpanel_ch = cw, ch
     return panelBuffer(cw, ch, rot, inv, typ)
 end
 
--- Ensure the mirror exists and matches the current rotation / size. In portrait
--- (even rotation) there is no mirror. When it must be (re)built, do one full
--- rotated copy from canvas_bb, which resyncs it completely.
+-- Make sure the mirror exists and matches the current rotation and size (in
+-- portrait there is none). A rebuilt mirror is synced with one full copy.
 function InkAwayView:ensureCanvasPanel()
     if not self.canvas_bb then return end
     local rot = self._area_rot or 0
@@ -171,8 +149,7 @@ function InkAwayView:ensureCanvasPanel()
     end
     local v = self.view
     local typ = self._area_type or Screen.bb:getType()
-    -- inverse is deliberately NOT part of the match: the mirror mirrors canvas_bb's
-    -- bytes (never inverted), and a screen-inverse change only rebuilds area_bb.
+    -- inverse is left out on purpose: a night-mode change only rebuilds area_bb
     local stale = (not self.canvas_panel_bb)
         or self._cpanel_rot ~= rot or self._cpanel_type ~= typ
         or self._cpanel_cw ~= v.canvas_w or self._cpanel_ch ~= v.canvas_h
@@ -180,26 +157,26 @@ function InkAwayView:ensureCanvasPanel()
         if self.canvas_panel_bb then self.canvas_panel_bb:free() end
         self.canvas_panel_bb = self:newCanvasPanelBuffer()
         self.canvas_panel_bb:blitFrom(self.canvas_bb, 0, 0, 0, 0, v.canvas_w, v.canvas_h)
-        self._cpanel_dirty = nil   -- a full copy just synced everything
+        self._cpanel_dirty = nil   -- the full copy synced everything
     end
 end
 
--- Note a canvas-space rectangle whose pixels changed in canvas_bb, so the next
--- render resyncs just that region of the mirror instead of the whole buffer.
+-- Note a canvas rect whose pixels changed in canvas_bb, so the next render
+-- resyncs just that part of the mirror.
 function InkAwayView:markCanvasDirty(x0, y0, x1, y1)
     if x1 <= x0 or y1 <= y0 then return end
     self._cpanel_dirty = growRect(self._cpanel_dirty, x0, y0, x1, y1)
 end
 
--- Same, from a spanWriter acc table ({x0,y0,x1,y1}, empty when x1 < x0).
+-- The same, from a span writer's acc table ({x0, y0, x1, y1}, empty when x1 < x0).
 function InkAwayView:markCanvasDirtyAcc(acc)
     if acc and acc.x1 >= acc.x0 and acc.y1 >= acc.y0 then
         self:markCanvasDirty(acc.x0, acc.y0, acc.x1, acc.y1)
     end
 end
 
--- Copy the pending dirty rectangle from canvas_bb into the mirror (a small rotated
--- copy), clearing it. Called right before any render reads the mirror.
+-- Copy the pending changed rect from canvas_bb into the mirror. Called before
+-- any render reads the mirror.
 function InkAwayView:flushCanvasPanel()
     local d = self._cpanel_dirty
     if not (d and self.canvas_panel_bb and self.canvas_bb) then self._cpanel_dirty = nil; return end
@@ -212,10 +189,9 @@ function InkAwayView:flushCanvasPanel()
     self.canvas_panel_bb:blitFrom(self.canvas_bb, x0, y0, x0, y0, w, h)
 end
 
--- Scale a canvas-space crop (scx,scy,sw,sh) up/down to dw x dh and place it into
--- area_bb at (dx,dy), copying bw x bh. In portrait this is exactly the old scale +
--- blit from canvas_bb. In landscape it scales a physical view of the panel-order
--- mirror and copies into area_bb's physical bytes -- no per-pixel rotation.
+-- Scale the canvas crop (scx, scy, sw, sh) to dw x dh and put bw x bh of it into
+-- area_bb at (dx, dy). In landscape this scales a physical view of the mirror and
+-- copies into area_bb's physical bytes, so nothing is rotated per pixel.
 function InkAwayView:blitScaledPanel(scx, scy, sw, sh, dw, dh, dx, dy, bw, bh)
     if bw < 1 or bh < 1 or sw < 1 or sh < 1 then return end
     local area = self.area_bb
@@ -242,19 +218,17 @@ function InkAwayView:blitScaledPanel(scx, scy, sw, sh, dw, dh, dx, dy, bw, bh)
 end
 
 ------------------------------------------------------------------------------
--- Rendering
+-- Refreshing
 ------------------------------------------------------------------------------
 
--- The drawing area as a screen rect. A fresh Geom every call, because setDirty
--- keeps the region by reference rather than copying it.
+-- The drawing area as a screen rect (a fresh Geom each call: setDirty keeps the
+-- region by reference).
 function InkAwayView:areaScreenRect()
     local v = self.view
-    -- Every caller passes this as a setDirty region, i.e. "refresh only the drawing
-    -- area" -- which never covers the toolbar strip (above) or the notebook bar
-    -- (below). Flag it so the next paintTo can skip repainting that chrome (see
-    -- paintTo): the expensive part on a software-rotated landscape screen. Chrome
-    -- changes (setTool/relayout/hide) clear this so a pending chrome refresh is
-    -- never skipped.
+    -- Callers use this as a setDirty region, which never covers the toolbar or the
+    -- notebook bar, so the next paintTo may skip repainting that chrome (slow on a
+    -- rotated screen). Chrome changes (tool switch, relayout, hiding a bar) clear
+    -- the flag so their own refresh is never skipped.
     self._area_only = true
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
@@ -293,36 +267,27 @@ function InkAwayView:refreshRectUnion(a, b, pad, mode)
         math.max(a.x + a.w, b.x + b.w) + pad, math.max(a.y + a.h, b.y + b.h) + pad)
 end
 
--- True only on a colour (Kaleido) panel. Cached once: on grey e-ink a full-screen
--- flash is cheap, but on a colour panel it costs ~1-2s of colour waveform whether
--- or not any pixel changed, so colour needs a lighter refresh policy.
+-- Is this a colour (Kaleido) panel? A full-screen flash is cheap on grey e-ink but
+-- costs a second or two of colour waveform there, so colour gets lighter refreshes.
 function InkAwayView:colourPanel()
     if self._is_colour == nil then self._is_colour = self:colorScreen() end
     return self._is_colour
 end
 
--- Colour-aware refresh. On grey e-ink this is a byte-for-byte pass-through to
--- UIManager:setDirty (zero Kindle change). On a colour panel it turns an AVOIDABLE
--- full-screen flash ("full") into a non-flashing partial update ("ui"), which
--- covers the same region without the ~1-2s colour flash. Other modes are passed
--- through unchanged. Use this for repaints that only need the pixels updated (tool
--- switches, bar toggles, page turns, text-box commit); keep a literal
--- setDirty(..., "full", ...) for the deliberate flashes that must clear ghosting
--- (open/close, rotation, the periodic de-ghost, and big page-wide content swaps).
+-- setDirty, except that on a colour panel a "full" refresh becomes a non-flashing
+-- "ui" one over the same region. Use it where only the pixels need updating (tool
+-- switches, bar toggles, page turns, committing a text box); keep a plain "full"
+-- setDirty for the flashes that clear ghosting (open, close, rotation, the
+-- periodic clean-up, page-wide content swaps).
 function InkAwayView:refresh(target, mode, region)
     if self:colourPanel() and mode == "full" then mode = "ui" end
     UIManager:setDirty(target, mode, region)
 end
 
--- Given a changed rectangle of the base (un-mirrored) stroke in area-local
--- coordinates, return that rectangle plus one for each mirror image the current
--- symmetry produces. This keeps refreshes to a few small rectangles instead of
--- one huge box spanning the drawn side and all its mirrors (which would make
--- every stroke a near full-screen refresh, the symmetry slowdown).
--- Returns a REUSED pool of rects and a count (base rect + one per mirror). The
--- pool and the arithmetic (no per-call closures) keep this allocation-free, since
--- it runs once per drawn point under symmetry. Callers must read each rect within
--- the loop before the next call -- which they do, consuming it immediately.
+-- A stroke's changed rect (area-local) and one rect per mirror image of the current
+-- symmetry, so a symmetric stroke refreshes a few small rects instead of one box
+-- spanning all of them. Runs for every drawn point, so it returns a reused pool:
+-- read each rect before the next call.
 function InkAwayView:symAreaRects(acc)
     local p = self._sar_pool
     if not p then p = { {}, {}, {}, {} }; self._sar_pool = p end
@@ -343,14 +308,13 @@ local function clipToArea(v, r, pad)
     return x0, y0, x1, y1
 end
 
--- Refresh one area-local rectangle (clipped to the drawing area) at `mode`.
+-- Refresh one area-local rect, clipped to the drawing area, at `mode`.
 function InkAwayView:dirtyAreaRect(mode, r, pad)
     local v = self.view
     local x0, y0, x1, y1 = clipToArea(v, r, pad)
     if not x0 then return end
-    -- While a live stroke is drawing, only these sub-rects of area_bb change, so
-    -- accumulate them and let paintTo blit ONLY this region instead of the whole
-    -- drawing surface every point (see paintTo). Area-local coords.
+    -- during a live stroke only these rects of area_bb change, so paintTo blits
+    -- just their union (area-local) instead of the whole drawing area
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
     UIManager:setDirty(self, mode, GeomUI:new{
         x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
@@ -367,10 +331,9 @@ function InkAwayView:nowMs()
     return os.time() * 1000
 end
 
--- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect, exactly as
--- before. On a colour panel the rect is merged with the pending ones and sent at a
--- bounded pace (see LIVE_*_MS): the first sample shows at once, later ones ride
--- along with the next update. paintTo blits the union (_blit_rect) either way.
+-- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect. On a colour
+-- panel the rect joins the pending one, which is sent at a bounded pace (see
+-- LIVE_*_MS): the first sample shows at once, later ones go with the next update.
 function InkAwayView:liveDirty(mode, r, pad)
     if not self:colourPanel() then return self:dirtyAreaRect(mode, r, pad) end
     local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
@@ -390,7 +353,7 @@ function InkAwayView:liveDirty(mode, r, pad)
     end
 end
 
--- Send the pending live rect now (if any).
+-- Send the pending live rect now, if there is one.
 function InkAwayView:liveFlush()
     if self._live_flush_armed then
         UIManager:unschedule(self._live_flush_cb)
@@ -405,9 +368,9 @@ function InkAwayView:liveFlush()
         x = v.area_x + p.x0, y = v.area_y + p.y0, w = p.x1 - p.x0, h = p.y1 - p.y0 })
 end
 
--- Colour panels: remember an area-local rect whose true colours/greys still need
--- a grey-capable refresh, and (re)start the settle timer. Each new stroke pushes
--- it back, so handwriting never has a slow refresh running under the next letter.
+-- Colour panels: remember an area-local rect whose true colours still need a
+-- grey-capable refresh, and restart the settle timer. Each new stroke pushes it
+-- back, so a slow refresh never runs under the next letter.
 function InkAwayView:queueReconcile(r, pad)
     pad = pad or 0
     self._reconcile = growRect(self._reconcile, r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad)
@@ -430,21 +393,22 @@ function InkAwayView:runReconcile()
     end
 end
 
--- Rebuild what is on screen from the master bitmap: take the visible crop of
--- canvas_bb (a zero-copy viewport) and scale it into area_bb with mupdf's fast
--- C scaler. This is the whole reason zoom and pan are cheap: the work is a
--- single scale of one screenful, whatever the zoom or the amount of ink.
+------------------------------------------------------------------------------
+-- Rendering
+------------------------------------------------------------------------------
+
+-- Rebuild the on-screen buffer from the master: scale the visible crop of
+-- canvas_bb into area_bb with mupdf's C scaler. One scale of one screenful,
+-- however far zoomed and however much is drawn, is what keeps zoom and pan cheap.
 function InkAwayView:renderView()
     if not (self.area_bb and self.canvas_bb) then return end
-    self._blit_rect = nil   -- the whole area_bb is rebuilt; paintTo must blit it all
-    -- ...even if a stroke starts before that paint happens (a page turn and a pen
-    -- landing in the same input batch): the stroke's small rect must not replace
-    -- the full blit, or only the strip under the pen shows the new page.
+    self._blit_rect = nil   -- the whole area_bb is rebuilt, so paintTo must blit it all,
+    -- even if a stroke starts before that paint (a page turn and a pen landing in
+    -- the same input batch): its small rect must not replace the full blit
     self._full_blit = true
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
-    -- keep the panel-order mirror allocated and in sync with canvas_bb before we
-    -- scale a crop of it (a no-op in portrait, where we source canvas_bb directly)
+    -- sync the mirror before scaling from it (in portrait canvas_bb is used directly)
     self:ensureCanvasPanel()
     self:flushCanvasPanel()
 
@@ -456,32 +420,26 @@ function InkAwayView:renderView()
 
     local dw = math.max(1, math.floor(sw * v.zoom))
     local dh = math.max(1, math.floor(sh * v.zoom))
-    -- where that crop lands in the area: a positive margin when the whole page
-    -- fits (letterbox), or a sub-pixel nudge when zoomed in, which we clamp to
-    -- the area and trim so the blit always stays in bounds
+    -- where the crop lands: a margin when the whole page fits, or a sub-pixel nudge
+    -- when zoomed in, clamped and trimmed so the blit stays inside the area
     local ox = math.max(0, math.floor((sx - v.pan_x) * v.zoom))
     local oy = math.max(0, math.floor((sy - v.pan_y) * v.zoom))
     local bw = math.min(dw, v.area_w - ox)
     local bh = math.min(dh, v.area_h - oy)
-    -- Clear to white only what the blit will NOT cover: the letterbox margin when
-    -- the whole page fits, or a trimmed edge. When the blit fills the area (the
-    -- common case when zoomed in and panning), skip the full-area clear entirely
-    -- -- that saves one screenful memset per pan frame.
+    -- clear to white only when the blit leaves part of the area uncovered, which
+    -- saves a screenful of fill per frame while panning zoomed in
     if ox > 0 or oy > 0 or bw < v.area_w or bh < v.area_h then
         self.area_bb:paintRect(0, 0, v.area_w, v.area_h, WHITE)
     end
     if bw < 1 or bh < 1 then return end
 
     self:blitScaledPanel(sx, sy, sw, sh, dw, dh, ox, oy, bw, bh)
-    -- The grid is NOT drawn here: it is a paint-time overlay (see drawGrid), so
-    -- it never lives in area_bb, the eraser can never rub it out, and it never
-    -- reaches the export (which is rebuilt from the ops, not from any buffer).
+    -- the grid is painted over the screen in paintTo (see drawGrid), never into
+    -- area_bb, so the eraser cannot remove it and the export never contains it
 end
 
--- Re-render just an area-local sub-rectangle from the master, the same way
--- renderView does for the whole screen but scaling ONLY the touched region. The
--- soft eraser uses this so it can update the screen along its path without a
--- full-screen crop-scale on every point (which made erasing heavy).
+-- Re-render just an area-local rect from the master, the way renderView does the
+-- whole area. The soft eraser updates the screen along its path with this.
 function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
     if not (self.area_bb and self.canvas_bb) then return end
     local v = self.view
@@ -491,19 +449,19 @@ function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
     cx0 = math.max(0, math.floor(cx0)); cy0 = math.max(0, math.floor(cy0))
     cx1 = math.min(v.area_w, math.ceil(cx1)); cy1 = math.min(v.area_h, math.ceil(cy1))
     if cx1 <= cx0 or cy1 <= cy0 then return end
-    -- same visible-crop origin + landing offset as renderView
+    -- the same crop origin and landing offset as renderView
     local sx = math.max(0, math.min(W - 1, math.floor(v.pan_x)))
     local sy = math.max(0, math.min(H - 1, math.floor(v.pan_y)))
     local ox = math.max(0, math.floor((sx - v.pan_x) * v.zoom))
     local oy = math.max(0, math.floor((sy - v.pan_y) * v.zoom))
-    -- map the requested area rect back to canvas source pixels
+    -- the canvas pixels behind the requested area rect
     local scx0 = math.max(0, math.min(W, sx + math.floor((cx0 - ox) / v.zoom)))
     local scy0 = math.max(0, math.min(H, sy + math.floor((cy0 - oy) / v.zoom)))
     local scx1 = math.max(0, math.min(W, sx + math.ceil((cx1 - ox) / v.zoom)))
     local scy1 = math.max(0, math.min(H, sy + math.ceil((cy1 - oy) / v.zoom)))
     local sw, sh = scx1 - scx0, scy1 - scy0
     if sw < 1 or sh < 1 then return end
-    -- destination aligned to the canvas source we grabbed
+    -- where those pixels land in the area
     local dx = ox + math.floor((scx0 - sx) * v.zoom)
     local dy = oy + math.floor((scy0 - sy) * v.zoom)
     local dw = math.max(1, math.floor(sw * v.zoom))
@@ -515,11 +473,12 @@ function InkAwayView:renderViewRect(cx0, cy0, cx1, cy1)
     self:blitScaledPanel(scx0, scy0, sw, sh, dw, dh, dx, dy, bw, bh)
 end
 
--- A thin line into `bb` at screen offset (ox,oy), clipped to the drawing area.
+-- A one-pixel line into `bb` at screen offset (ox, oy), clipped to the box
+-- (bx0, by0)-(bx1, by1), the whole area by default.
 function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color, bx0, by0, bx1, by1)
     local aw, ah = self.view.area_w, self.view.area_h
     bx0 = bx0 or 0; by0 = by0 or 0; bx1 = bx1 or aw; by1 = by1 or ah
-    -- cheap bbox reject: the segment cannot touch the clip window
+    -- skip a segment whose bounding box misses the clip box
     if math.max(x0, x1) < bx0 or math.min(x0, x1) > bx1
         or math.max(y0, y1) < by0 or math.min(y0, y1) > by1 then return end
     local dx, dy = x1 - x0, y1 - y0
@@ -534,25 +493,19 @@ function InkAwayView:gridLine(bb, ox, oy, x0, y0, x1, y1, color, bx0, by0, bx1, 
     end
 end
 
--- Draw the current grid style into `bb` at screen offset (ox,oy). Display only:
--- painted onto the screen buffer each frame, never baked into area_bb, so the
--- eraser leaves it alone and it stays out of the saved PNG or JPEG.
--- `clip` (optional, area-local {x0,y0,x1,y1}) confines the redraw to a sub-rect.
--- While a stroke is drawing, paintTo only re-blits the small changed region, so we
--- pass that region here too: without it the WHOLE grid was repainted on every
--- touch point, which at a small grid size (thousands of cells, dots worst of all)
--- made grid-on drawing crawl -- even plain finger drawing. Clipping keeps grid-on
--- drawing as fast as grid-off. With no clip (a full paint) it covers the area.
+-- Draw the grid into `bb` at screen offset (ox, oy). It is painted over the screen
+-- each frame and never into area_bb, so the eraser leaves it alone and the export
+-- never contains it. `clip` (area-local {x0, y0, x1, y1}) limits it to the region
+-- a live stroke re-blits, so a fine grid costs nothing per point while drawing.
 function InkAwayView:drawGrid(bb, ox, oy, clip)
     local v = self.view
     local aw, ah = v.area_w, v.area_h
     local g = self.grid_size
     local style = self.grid_style or "square"
-    -- strength 1..100 maps to a grey: faint at low values, solid black at 100,
-    -- so the reader can make the grid a light guide or as dark as drawn ink
+    -- strength 1..100 maps to a grey, from a faint guide to as dark as ink
     local lvl = strengthToLevel(self.grid_strength)
     local col = Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF)
-    -- clip window in area-local coords (whole area when no clip is given)
+    -- clip box in area coords (the whole area without a clip)
     local bx0 = clip and math.max(0, math.floor(clip.x0)) or 0
     local by0 = clip and math.max(0, math.floor(clip.y0)) or 0
     local bx1 = clip and math.min(aw, math.ceil(clip.x1)) or aw
@@ -560,21 +513,21 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
     if bx1 <= bx0 or by1 <= by0 then return end
     local function ax(cx) return (cx - v.pan_x) * v.zoom end
     local function ay(cy) return (cy - v.pan_y) * v.zoom end
-    -- paint a rect given in area coords, clipped to the clip window then offset
+    -- a rect in area coords, clipped to the clip box and offset onto bb
     local function rect(px, py, w, h, c)
         local x0 = math.max(px, bx0); local y0 = math.max(py, by0)
         local x1 = math.min(px + w, bx1); local y1 = math.min(py + h, by1)
         if x1 > x0 and y1 > y0 then bb:paintRect(ox + x0, oy + y0, x1 - x0, y1 - y0, c) end
     end
-    -- canvas-coord span that maps into the clip window, so uniform grids iterate
-    -- only the lines that can land inside it instead of the whole page every frame
+    -- the canvas span behind the clip box, so the loops below visit only the lines
+    -- that can land inside it
     local cxA = math.max(0, bx0 / v.zoom + v.pan_x)
     local cxB = math.min(v.canvas_w, bx1 / v.zoom + v.pan_x)
     local cyA = math.max(0, by0 / v.zoom + v.pan_y)
     local cyB = math.min(v.canvas_h, by1 / v.zoom + v.pan_y)
 
     if style == "thirds" then
-        -- rule of thirds over the page rectangle
+        -- rule of thirds over the page
         for i = 1, 2 do
             local x = ax(v.canvas_w * i / 3)
             if x >= 0 and x < aw then rect(math.floor(x), 0, 1, ah, col) end
@@ -595,7 +548,7 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
         end
     elseif style == "dots" then                     -- a dot at each intersection
         local dot = math.max(3, math.floor(Screen:scaleBySize(3)))
-        local dcol = col                              -- follow the grid strength
+        local dcol = col
         local cxStart = math.floor(cxA / g) * g
         local cy = math.floor(cyA / g) * g
         while cy <= cyB do
@@ -612,7 +565,7 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
             end
             cy = cy + g
         end
-    elseif style == "iso" then                      -- isometric: verticals + 30 deg diagonals
+    elseif style == "iso" then                      -- isometric: verticals and 30-degree diagonals
         local cx = math.floor(cxA / g) * g
         while cx <= cxB do
             local x = ax(cx)
@@ -621,8 +574,8 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
         end
         local slope = math.tan(math.rad(30))
         local spacing = g / math.cos(math.rad(30))
-        -- two diagonal families, offset so they cover the whole area (each gridLine
-        -- rejects itself when its bbox misses the clip window)
+        -- two diagonal families, started far enough left to cover the whole area
+        -- (gridLine skips the ones that miss the clip box)
         local start = -math.ceil(ah * slope / spacing) * spacing
         local b = start
         while b <= v.canvas_w * v.zoom + ah do
@@ -646,8 +599,7 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
     end
 end
 
--- The page edges that fall inside the drawing area (only when zoomed out
--- further than cover).
+-- The page edges that fall inside the drawing area (when zoomed out past cover).
 function InkAwayView:paintPageEdges(bb, x, y)
     local v = self.view
     local ax0, ay0 = x + v.area_x, y + v.area_y

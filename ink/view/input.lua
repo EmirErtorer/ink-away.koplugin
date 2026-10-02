@@ -20,16 +20,17 @@ local Screen = Device.screen
 local PEN_LIFT_DEBOUNCE = 0.35
 
 -- Raw finger tracking (see installRawFinger): the tools drawn straight from touch
--- frames, and how young/short a raw stroke may be for a second finger landing to
--- CANCEL it (the first finger of a two-finger pan/pinch) rather than commit a dot.
+-- frames, and how young or short a raw stroke may be for a second finger landing
+-- to cancel it (the first finger of a two-finger pan or pinch) rather than commit
+-- a dot.
 local RAW_TOOLS = { pen = true, erase = true }
 local RAW_HANDOFF_CANCEL_MS = 250
 local RAW_HANDOFF_CANCEL_PX = 24
 
 -- A raw lift followed by a new contact this soon (kernel event time) is the panel
--- dropping the contact for a frame or two, so the stroke is bridged as before. A
--- longer gap is a real lift between letters: commit, so quick handwriting is never
--- joined up by straight connectors.
+-- dropping the contact for a frame or two, so the stroke carries on across it. A
+-- longer gap is a real lift between letters and commits the stroke, so quick
+-- handwriting is never joined up by straight connectors.
 local RAW_BRIDGE_MS = 40
 local timevMs = Stylus.timevMs
 
@@ -42,19 +43,16 @@ local InkAwayView = {}
 -- so a resting palm never draws. See ink/stylus.lua for the pure pieces.
 ------------------------------------------------------------------------------
 
--- Is this build/device able to deliver raw stylus events? (Older KOReader, or a
--- finger-only reader, simply never fire the callback -- so turning the setting on
--- is harmless there, but we only bother registering when the hook exists.)
+-- Can this KOReader build deliver raw stylus events? On a finger-only reader the
+-- callback simply never fires, so the setting is harmless there.
 function InkAwayView:penCapable()
     return Device.input and type(Device.input.registerStylusCallback) == "function"
 end
 
--- Does this device physically have a stylus? Used only to pick the default state
--- of the palm-rejection toggle (which the reader can always override). KOReader
--- flags the Wacom pen devices -- Kindle Scribe, reMarkable -- with wacom_protocol;
--- it exposes no reliable "has a pen" flag for Kobo styluses, so those (and every
--- finger-only reader) default the toggle OFF and turn it on by hand if they draw
--- with a pen. Being wrong here only changes a default, never whether the pen works.
+-- Does the device have a stylus? This only picks the default of the palm
+-- rejection toggle. KOReader flags the Wacom pen devices (Kindle Scribe,
+-- reMarkable) with wacom_protocol but has no reliable flag for Kobo styluses, so
+-- those default to off and are switched on by hand.
 function InkAwayView:deviceHasStylus()
     return Device.input and Device.input.wacom_protocol == true and true or false
 end
@@ -92,16 +90,13 @@ function InkAwayView:removePenBridge()
 end
 
 ------------------------------------------------------------------------------
--- Pen input diagnostic
+-- Pen input test (debug tool, hidden unless show_pen_test is set)
 --
--- Palm rejection can only work if KOReader hands the plugin the pen as a STYLUS
--- (its Input routes a slot to our callback only when the kernel tags it with a pen
--- tool -- BTN_TOOL_PEN or ABS_MT_TOOL_TYPE). On some devices/firmwares (a Kindle
--- Scribe gen 1 report) the pen instead arrives as an ordinary finger, so it can't
--- be told apart from a resting palm and both draw. Since that can't be reproduced
--- without the device, this test captures a few seconds of what the device actually
--- sends -- stylus events routed to us vs. plain finger touches -- and shows a
--- summary a tester can screenshot. It is opt-in from the pen menu.
+-- Palm rejection needs KOReader to hand the pen over as a stylus, which it does
+-- only when the kernel tags the slot with a pen tool (BTN_TOOL_PEN or
+-- ABS_MT_TOOL_TYPE). Where the pen arrives as an ordinary finger it cannot be
+-- told from a palm. This records a few seconds of what the device sends and shows
+-- a summary a tester can screenshot.
 ------------------------------------------------------------------------------
 
 function InkAwayView:penCaptureRecord(slot)
@@ -115,8 +110,8 @@ end
 
 function InkAwayView:startPenInputTest()
     if self._pen_capture then return end   -- already running
-    -- Register the stylus hook for the test even if palm rejection is off, so we
-    -- capture what the device sends regardless of the toggle.
+    -- register the stylus hook even with palm rejection off, so the test sees
+    -- what the device sends either way
     self._pen_test_temp_cb = false
     if self:penCapable() and not self._stylus_cb then
         self._stylus_cb = function(inp, slot) return self:onStylusSlot(inp, slot) end
@@ -166,11 +161,13 @@ function InkAwayView:finishPenInputTest()
     UIManager:show(InfoMessage:new{ text = msg })
 end
 
--- Drop all in-flight pen/palm state (called when palm rejection is turned off or
--- the widget closes). Restores a tool we swapped for the eraser tip or side button
--- if a stroke was mid-flight, so toggling off during a rear-eraser or side-button
--- stroke can't leave the tool stuck on "erase"/"lasso" or the state machine wedged
--- half-down.
+------------------------------------------------------------------------------
+-- Driving the drawing from the pen
+------------------------------------------------------------------------------
+
+-- Drop all in-flight pen and palm state, when palm rejection is turned off or the
+-- view closes. Also restores a tool swapped in for the eraser end or side button,
+-- so turning it off mid-stroke never leaves the tool stuck on erase or lasso.
 function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_clear)
     if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
@@ -189,23 +186,21 @@ function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_hold_cb)
 end
 
--- True while finger input must be ignored. Latched on PHYSICAL presence -- the pen
--- is actually down, or a palm is actually down -- not merely on the debounce timer,
--- so a stray palm frame's short timer can never drop rejection mid-stroke (that was
--- the "lines between palm and pen" leak). The timer (_reject_finger) only adds the
--- brief grace after everything lifts. Pen-fed events set _pen_feeding so they pass
--- through their own handlers.
+-- True while finger input must be ignored: the pen or a palm is physically down,
+-- the pen hovers in range, or the short grace after everything lifts
+-- (_reject_finger). Latching on physical presence, not the timer alone, means a
+-- stray palm frame's timer can never drop rejection mid-stroke and let a line
+-- appear between palm and pen. Pen-fed events set _pen_feeding to pass through.
 function InkAwayView:fingerRejected()
     if self._pen_feeding then return false end
     return self._pen_state.down or self._palm_count > 0 or self._reject_finger
         or self:penInRange()
 end
 
--- Is the pen hovering over (or on) the screen? On a Wacom device KOReader keeps the
--- pen's tool on its slot from the moment it comes into range until it leaves, so
--- this is a live, cheap check. With palm rejection on, a hand that lands while the
--- pen hovers just above the page is the writing hand, not a finger that means to
--- draw or pan.
+-- Is the pen hovering over (or on) the screen? On a Wacom device KOReader keeps
+-- the pen's tool on its slot from the moment it comes into range until it leaves,
+-- so this is a cheap live check. A hand that lands while the pen hovers just
+-- above the page is the writing hand, not a finger meant to draw or pan.
 function InkAwayView:penInRange()
     if not self.palm_reject then return false end
     local inp = self._stylus_input or Device.input
@@ -214,8 +209,8 @@ function InkAwayView:penInRange()
     return p ~= nil and (p.tool == Stylus.TOOL_PEN or p.tool == Stylus.TOOL_ERASER)
 end
 
--- Translate a raw stylus slot position into the same screen coordinates a finger
--- gesture would carry (raw slot pos, then the screen-rotation transform).
+-- Translate a raw slot position into the screen coordinates a finger gesture
+-- would carry (raw position, then the screen rotation).
 function InkAwayView:penScreenXY(slot)
     local S = Screen
     local mode = 0
@@ -242,12 +237,10 @@ function InkAwayView:stylusFacts(input)
     }
 end
 
--- Elapsed milliseconds since the previous stylus frame, from the slot's own
--- timestamp, for the kinematic palm filter. Returns nil when no usable timestamp
--- is present (then the filter does not engage). See Stylus.timevMs for the units.
+-- Milliseconds since the previous stylus frame, from the slot's own timestamp,
+-- for the kinematic palm filter; nil when there is no usable timestamp (the
+-- filter then stays off). timev is in microseconds, see Stylus.timevMs.
 function InkAwayView:penFrameMs(slot)
-    -- timev is microseconds (fts). It used to be read as seconds, which made every
-    -- frame gap look ~1000x longer and left the jump filter wide open.
     local ms = Stylus.timevMs(slot.timev)
     if not ms then self._pen_last_ms = nil; return nil end
     local prev = self._pen_last_ms
@@ -258,20 +251,19 @@ function InkAwayView:penFrameMs(slot)
     return dt
 end
 
--- Hold finger rejection open for the lift debounce and (re)start the clear timer.
--- Called on every pen and palm frame so that as long as either is physically
--- present, fingers stay ignored; the timer self-heals when activity truly stops.
+-- Hold finger rejection open for the lift debounce and restart the clear timer.
+-- Called on every pen and palm frame, so fingers stay ignored while either is
+-- present and the timer clears it once activity stops.
 function InkAwayView:holdReject()
     self._reject_finger = true
     UIManager:unschedule(self._pen_clear)
     UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
 end
 
--- A palm KOReader promoted to a stylus tool number and routed to us. We never
--- draw from it; we just remember it is down (so a lift can be reasoned about) and
--- keep fingers rejected. A palm whose tool later reverts to an ordinary finger
--- stops arriving here and reappears as a normal gesture -- the held rejection
--- window (refreshed by onIaTouch/onIaPan) covers that until it truly lifts.
+-- A palm KOReader promoted to a stylus tool number and routed to us. It never
+-- draws; we only track that it is down and keep fingers rejected. A palm whose
+-- tool reverts to an ordinary finger reappears as a normal gesture, and the held
+-- rejection window (refreshed by onIaTouch and onIaPan) covers it until it lifts.
 function InkAwayView:penPalm(slot)
     local key = slot.slot or 0
     local id = tonumber(slot.id)
@@ -292,22 +284,20 @@ function InkAwayView:penPalm(slot)
         end
     end
     self:holdReject()
-    -- A palm is usually promoted MID-CONTACT: the digitizer flags it as a palm only
-    -- after it has landed, so it first arrives as an ordinary touch and may already
-    -- have opened a stroke (the stray dot/line the tester sees). On the promotion,
-    -- retire that contact so no mark is left behind -- unless the pen itself is the
-    -- one drawing (a different, trusted slot), whose stroke must never be dropped.
+    -- The digitizer flags a palm only after it has landed, so it first arrives as
+    -- an ordinary touch and may already have opened a stroke. On the promotion,
+    -- drop that contact's mark, unless the pen itself is drawing (a different,
+    -- trusted slot whose stroke must never be dropped).
     if promoted and not self._pen_started and not self._pen_owner then
         self:penDropFingerOps()
     end
 end
 
 -- The stylus callback (registered on KOReader's Input). Runs before gesture
--- detection; returning true removes the slot from gesture detection so it never
--- also arrives as a finger-style gesture. A slot reaches us because its tool is
--- PEN/ERASER/HIGHLIGHTER or it sits on the pen slot -- but that set includes a
--- resting palm (MT_TOOL_PALM == ERASER == 2), so we classify by slot first and
--- only drive the drawing from a genuinely trusted pen.
+-- detection; returning true keeps the slot out of gesture detection. A slot
+-- reaches us when its tool is a pen, eraser or highlighter, or it sits on the pen
+-- slot; that includes a resting palm (MT_TOOL_PALM == ERASER == 2), so slots are
+-- classified first and only a trusted pen drives the drawing.
 function InkAwayView:onStylusSlot(inp, slot)
     if self._pen_capture then self:penCaptureRecord(slot) end
     if not self.palm_reject or self.closing then return false end
@@ -323,18 +313,15 @@ function InkAwayView:onStylusSlot(inp, slot)
             and (self._pen_owner == nil or slot.slot == self._pen_owner) then
         self._learned_pen_slot = slot.slot
     end
-    -- Single-slot ownership. While one slot is drawing the pen stroke, any OTHER
-    -- slot that also classifies as a stylus must NOT co-drive the same stroke --
-    -- feeding two slots into one pen state machine is what draws lines between
-    -- them. This matters off Wacom (Kobo), where a resting palm promoted to the
-    -- eraser/highlighter tool by a held barrel button classifies as a pen too;
-    -- here it is demoted back to a palm and discarded. (On Wacom only the single
-    -- pen slot is ever ROLE_PEN, so this never triggers there.)
+    -- One slot owns the pen stroke. Another slot that also classifies as a pen is
+    -- demoted to a palm: two slots feeding one pen state machine draw lines between
+    -- them. This happens off Wacom (Kobo), where a resting palm promoted to the
+    -- eraser or highlighter tool by a held barrel button looks like a pen; on Wacom
+    -- only the pen slot is ever ROLE_PEN.
     local sn = slot.slot or 0
-    -- The pen's own slot (known from the runtime or learned from a real pen frame)
-    -- is always the pen, so it is never demoted -- this also lets a coordinate-late
-    -- pen (whose announce frame carried no slot number, defaulting the owner to 0)
-    -- keep drawing once its real slotted frames arrive.
+    -- The pen's own slot (from the runtime or learned) is never demoted. This also
+    -- lets a pen whose first frame carried no slot number (so the owner defaulted
+    -- to 0) keep drawing once its slotted frames arrive.
     local is_pen_slot = (self._learned_pen_slot ~= nil and sn == self._learned_pen_slot)
                      or (input and input.pen_slot ~= nil and sn == input.pen_slot)
     if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner
@@ -354,9 +341,9 @@ function InkAwayView:onStylusSlot(inp, slot)
     elseif role == Stylus.ROLE_TOUCH then
         return false         -- a real finger that only reached us in passing
     end
-    -- ROLE_PEN: a trusted stylus. Drive our own touch / pan / release from it.
-    -- (Palms are already filtered, so penDown's tool==ERASER test now only ever
-    -- sees the pen's genuine rear eraser or a held barrel button.)
+    -- ROLE_PEN: a trusted pen drives our own touch, pan and release. Palms are
+    -- filtered out above, so an eraser tool here is the pen's own rear eraser or a
+    -- held barrel button.
     local action = Stylus.step(self._pen_state, slot.id)
     if action == "down" then
         self._pen_owner = sn        -- this slot owns the stroke until it lifts
@@ -370,10 +357,9 @@ function InkAwayView:onStylusSlot(inp, slot)
     return true   -- swallow the pen; we handle it ourselves
 end
 
--- Feed one synthetic touch/pan/release into our normal handlers, marked so the
--- finger-rejection guard lets it through. This reuses ALL the existing tool
--- routing (pen, eraser, shapes, text, pan, moving images/shapes), so the pen
--- does exactly what a finger would, just without the palm.
+-- Feed one synthetic touch, pan or release into the normal handlers, marked so
+-- the finger-rejection guard lets it through. The pen goes through the same tool
+-- routing as a finger (pen, eraser, shapes, text, pan, moving images and shapes).
 function InkAwayView:feedPen(kind, x, y)
     self._pen_feeding = true
     local ges = { pos = { x = x, y = y } }
@@ -383,8 +369,8 @@ function InkAwayView:feedPen(kind, x, y)
     self._pen_feeding = false
 end
 
--- Discard anything a palm/finger began in the instant before the pen touched
--- down, so resting your hand first and then writing doesn't leave a stray mark.
+-- Discard anything a palm or finger began just before the pen touched down, so a
+-- hand that rests on the screen before writing leaves no stray mark.
 function InkAwayView:penDropFingerOps()
     if self.capturing then
         UIManager:unschedule(self._finalize)
@@ -400,7 +386,7 @@ function InkAwayView:penDropFingerOps()
 end
 
 function InkAwayView:penDown(slot, facts)
-    -- restore a tool we swapped for the eraser tip / side button if the last up was lost
+    -- restore a tool swapped in for the eraser end or side button if the last lift was lost
     if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
     self._reject_finger = true
     self._pen_started = false      -- the stroke opens on the first point with coordinates
@@ -408,12 +394,11 @@ function InkAwayView:penDown(slot, facts)
     self._pen_last_ms = nil
     UIManager:unschedule(self._pen_clear)
     self:penDropFingerOps()
-    -- What this pen contact does: the rear eraser end erases, the primary side
-    -- (barrel) button is a lasso-select modifier, and everything else draws with
-    -- the current tool. Swap the tool in just for this stroke and restore it on
-    -- lift, so the eraser end and the side button behave like held modifiers. The
-    -- lasso selection lives in self.selection independent of the tool, so it
-    -- survives the restore and can be moved by re-holding the side button.
+    -- The rear eraser end erases, the primary side (barrel) button selects with the
+    -- lasso, and anything else draws with the current tool. The tool is swapped in
+    -- for this stroke only and restored on lift, so both act as held modifiers. A
+    -- lasso selection lives in self.selection, so it survives the restore and can
+    -- be moved by holding the side button again.
     local act = Stylus.penAction(slot, facts)
     if act == Stylus.ACT_SELECT and self.tool ~= "lasso" then
         self._pen_prev_tool = self.tool
@@ -450,8 +435,8 @@ function InkAwayView:penMove(slot)
     if not self._pen_started then
         self._pen_started = true
         self:feedPen("down", x, y)
-        -- The pen never produces KOReader's hold gesture, so time a long press
-        -- ourselves: held still in a text box being edited -> the paste bubble.
+        -- The pen never produces KOReader's hold gesture, so time a long press here:
+        -- holding still in a text box being edited opens the paste bubble.
         if self.editing_text and not self._clip_press then
             self._pen_hold_at = { x = x, y = y }
             UIManager:unschedule(self._pen_hold_cb)
@@ -486,18 +471,17 @@ end
 ------------------------------------------------------------------------------
 -- Raw finger tracking
 --
--- KOReader's GestureDetector emits NOTHING for a contact until it has moved
--- PAN_THRESHOLD (scaleByDPI(35) = 5.6 mm on any panel) from where it landed; a
--- letter that stays inside that box arrives as touch + tap/hold_release only, so
--- it was drawn as a straight line from the first contact to the lift. For the
--- freehand tools we therefore draw a contact that lands in the drawing area
--- straight from its touch frames, by wrapping the detector's feedEvent (every
--- Input:handleTouchEv* variant calls it once per SYN_REPORT with the frame's
--- slots). The owned slot is removed from the frame from its very first frame, so
--- the detector never opens a Contact for it: no hold/tap timers, no duplicate
--- gestures. Everything else (toolbar, floating controls, other tools, a second
--- finger, dialogs) stays on the gesture path. Pen devices with palm rejection on
--- keep their own stylus path.
+-- KOReader's GestureDetector emits nothing for a contact until it has moved
+-- PAN_THRESHOLD (scaleByDPI(35), 5.6 mm on any panel) from where it landed, so a
+-- letter that stays inside that box would arrive as a touch and a tap: a straight
+-- line from the first contact to the lift. The freehand tools therefore draw a
+-- contact that lands in the drawing area straight from its touch frames, by
+-- wrapping the detector's feedEvent (every Input:handleTouchEv* variant calls it
+-- once per SYN_REPORT with the frame's slots). The owned slot is removed from its
+-- very first frame, so the detector never opens a Contact for it: no hold or tap
+-- timers, no duplicate gestures. Everything else (toolbar, floating controls,
+-- other tools, a second finger, dialogs) stays on the gesture path, and pen
+-- devices with palm rejection on keep their own stylus path.
 ------------------------------------------------------------------------------
 
 function InkAwayView:installRawFinger()

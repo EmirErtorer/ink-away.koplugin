@@ -1,15 +1,10 @@
 --[[
-The notebook model: an ordered list of pages over a fixed page size, plus the
-ruling template shared by every page. Each page is just an ops list, exactly
-like the single canvas, so a page draws, undoes and exports through the same
-engine. The view keeps the current page loaded in the canvas and syncs it back
-here on navigation, so only one page is ever composed into a bitmap at a time.
-
-A page is a table { ops = {...}, src = <source PDF page number, or nil> }. The
-`src` lets a page stay tied to its page in an imported PDF even after pages are
-inserted, duplicated, reordered or deleted; a blank inserted page has src = nil.
-
-Plain Lua, no KOReader, so it drives from the headless tests.
+The notebook model: an ordered list of pages of one size, plus the ruling
+template they share. A page is { ops = {...}, src = <PDF page number or nil> }:
+its ops work like a drawing's, and `src` keeps it tied to its page of an
+imported PDF through inserts, duplicates, moves and deletes (a blank inserted
+page has none). The view keeps the current page in its canvas and syncs it back
+on navigation. Plain Lua, so the headless tests drive it.
 ]]
 
 local Notebook = {}
@@ -17,8 +12,8 @@ Notebook.__index = Notebook
 
 local function newPage(src) return { ops = {}, src = src } end
 
--- Deep copy a value (ops lists hold nested tables: pts, color, sym...), so a
--- duplicated page never shares mutable state with the page it came from.
+-- Deep copy a value (ops hold nested tables), so a duplicated page shares no
+-- state with the page it came from.
 local function deepcopy(v)
     if type(v) ~= "table" then return v end
     local out = {}
@@ -27,7 +22,7 @@ local function deepcopy(v)
 end
 Notebook.deepcopy = deepcopy
 
--- w,h: fixed page size. template: { style = "lines"|"grid"|"dots"|"blank", size = px }.
+-- A new notebook of w x h pages; template is { style = "lines"|"grid"|"dots"|"blank", size = px }.
 function Notebook.new(w, h, template)
     return setmetatable({
         w = w,
@@ -38,12 +33,12 @@ function Notebook.new(w, h, template)
     }, Notebook)
 end
 
--- Normalise a loaded page. Back-compat: the first notebook format stored each
--- page as a bare ops array; the current format stores { ops = ..., src = ... }.
+-- Normalise a loaded page: older files store a page as a bare ops array, newer
+-- ones as { ops = ..., src = ... }.
 local function normPage(p)
     if type(p) ~= "table" then return newPage() end
     if p.ops ~= nil or p.src ~= nil then return { ops = p.ops or {}, src = p.src } end
-    return { ops = p, src = nil }   -- old format: the table IS the ops array
+    return { ops = p, src = nil }   -- older format: the table is the ops array
 end
 
 -- Rebuild a notebook from a parsed project (Project.deserialize output, v2).

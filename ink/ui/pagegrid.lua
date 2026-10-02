@@ -1,12 +1,8 @@
 --[[
-The page overview: a grid of page thumbnails for a notebook, so you can see the
-whole thing at a glance and jump straight to any page instead of stepping one at
-a time. Thumbnails are rendered on demand by a callback the view supplies (the
-same compositor the live page uses, so a thumbnail matches its page exactly),
-and only the grid page on screen is ever rendered or held in memory, so even a
+The page overview: a full-screen grid of a notebook's page thumbnails; a tap
+jumps to that page. Thumbnails come from a callback the view supplies (the live
+page's compositor), and only the grid page on screen is rendered and kept, so a
 long imported PDF stays light.
-
-Full-screen, opaque, and it reads its own taps, like the brush maker.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -23,9 +19,8 @@ local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
 local GREY  = Blitbuffer.COLOR_GRAY
--- Luminance greys (Color8), so paintRoundedRect gets a luminance colour -- passing a
--- ColorRGB32 to it renders on the newer emulator but misbehaves on older on-device
--- builds, so the rounded cards/pills stay on the luminance path.
+-- Luminance greys (Color8): paintRoundedRect misbehaves with a ColorRGB32 on
+-- older device builds.
 local CARD  = Blitbuffer.Color8(0xE6)   -- light-grey rounded card behind a thumbnail
 local LABEL = Blitbuffer.Color8(0x66)   -- muted grey for the page-number labels
 
@@ -119,10 +114,8 @@ function PageGrid:paintTo(bb, x, y)
         t:paintTo(bb, math.floor(cx - sz.w / 2), math.floor(cy - sz.h / 2))
         t:free()
     end
-    -- top bar: a left-aligned bold title and a black "Done" pill on the right.
-    -- Font sizes are plain points (Font:getFace applies the DPI scaling itself);
-    -- wrapping them in scaleBySize would double-scale the text, oversizing it on
-    -- higher-DPI/colour panels -- which is what the old page grid did.
+    -- top bar: a bold title on the left and a black "Done" pill on the right;
+    -- font sizes are plain points, as Font:getFace applies the DPI scaling
     local title = TextWidget:new{ text = string.format(_("Pages  (%d)"), self.count),
         face = Font:getFace("cfont", 22), bold = true }
     local tsz = title:getSize()
@@ -143,8 +136,8 @@ function PageGrid:paintTo(bb, x, y)
         local c = self:cellRect(slot)
         if c.index then
             local sel = (c.index == self.current)
-            -- a rounded light-grey card behind each thumbnail; the current page gets a
-            -- solid black rounded border (a black card with an inset grey card)
+            -- a rounded light grey card behind each thumbnail; the current page gets
+            -- a black border (a black card with an inset grey card)
             if sel then
                 bb:paintRoundedRect(x + c.x, y + c.y, c.w, c.h, BLACK, card_r)
                 local ins = S(3)
@@ -164,7 +157,7 @@ function PageGrid:paintTo(bb, x, y)
         end
     end
 
-    -- bottom bar: rounded pill paging buttons, with a "grid page / total" indicator
+    -- bottom bar: paging pills and a "grid page / total" indicator
     local by = y + sh - self.bot_h
     local pw, ph = S(120), S(40)
     local pcy = by + math.floor(self.bot_h / 2)

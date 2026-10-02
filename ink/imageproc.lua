@@ -28,8 +28,8 @@ local function rgb32IsRGBA()
     return rgb32_is_rgba
 end
 
--- Convert a canvas-sized BBRGB32 into a packed RGBA FFI buffer (r,g,b,a), one
--- memcpy per row. Panels that store B,G,R,A get R/B swapped back. Returns buf or nil.
+-- Convert a canvas-sized BBRGB32 into a packed RGBA FFI buffer, one memcpy per
+-- row (R and B are swapped back where the layout is B,G,R,A). Returns buf or nil.
 local function bbToRGBA(bb, W, H)
     if not bb then return nil end
     local buf = ffi.new("uint8_t[?]", W * H * 4)
@@ -45,23 +45,14 @@ local function bbToRGBA(bb, W, H)
     return buf
 end
 
--- Remove the background from a decoded picture (a first-pass "smart" cutout for
--- making transparent PNGs). It floods inward FROM THE BORDERS through pixels whose
--- colour is close to the sampled background colour, and only those connected-to-the-
--- edge pixels are made transparent -- so dark (or light) parts of the SUBJECT that
--- are not joined to the border stay solid. This is what a plain global threshold
--- cannot do: on a photo it would fade the whole subject wherever it matched the
--- background's brightness (a grey cat on a dark background went translucent). The
--- background colour is sampled from the four borders, the tolerance adapts to how
--- noisy that border is, and the mask edge is softened so it isn't jagged. One
--- scan-line flood over the raw bytes, so it stays fast on a slow reader. `src` is a
--- BBRGB32; returns a packed RGBA (r,g,b,a) FFI buffer for ffi/png.encodeToFile, or nil.
---
--- Works on any background colour (white paper, black, a solid colour), keeping the
--- subject's own colour. Limits: it needs a background that actually reaches the
--- edges and is reasonably distinct from the subject; a subject touching all four
--- borders, or one the same colour as the background, is where a lasso (planned
--- next) will bound the region.
+-- Remove the background from a decoded picture, for a transparent PNG. A scanline
+-- flood from the borders takes in pixels close to the background colour (the mean
+-- of the four borders), and only those are made transparent, so parts of the
+-- subject not joined to the edge stay solid even where they match the background
+-- (a global threshold would fade them). The tolerance adapts to how noisy the
+-- border is, and the mask edge is softened. Works on any solid background colour;
+-- it needs a background that reaches the edges and differs from the subject.
+-- `src` is a BBRGB32; returns a packed RGBA buffer for ffi/png.encodeToFile, or nil.
 local function bgRemovedRGBA(src)
     if not src then return nil end
     local w, h = src:getWidth(), src:getHeight()
@@ -73,7 +64,7 @@ local function bgRemovedRGBA(src)
         local bi = rgba and 2 or 0      -- byte offset of B; G is always 1, alpha 3
         local sp = ffi.cast("uint8_t*", src.data)
         local ss = src.stride or (w * 4)
-        -- background reference colour = mean of the four borders
+        -- background reference colour: the mean of the four borders
         local sr, sg, sb, cnt = 0, 0, 0, 0
         local function accum(o) sr = sr + sp[o + ri]; sg = sg + sp[o + 1]; sb = sb + sp[o + bi]; cnt = cnt + 1 end
         for x = 0, w - 1 do accum(x * 4); accum((h - 1) * ss + x * 4) end
@@ -148,10 +139,10 @@ local function fitIntoCanvasBB(img, W, H)
     return bg
 end
 
--- Build a copy of `src` with the flips and an arbitrary rotation baked in. A
--- quarter turn is an exact pixel permutation (lossless, swaps the dimensions);
--- any other angle is a nearest-neighbour resample into the rotated bounding box
--- (transparent corners). Returns the new buffer, or nil if pixels can't be read.
+-- Build a copy of `src` with the flips and any rotation baked in. A quarter turn
+-- is an exact pixel permutation (it swaps the dimensions); any other angle is a
+-- nearest-neighbour resample into the rotated bounding box, with transparent
+-- corners. Returns the new buffer, or nil if the pixels cannot be read.
 local function resampleOriented(src, angleDeg, fh, fv)
     local sw, sh = src:getWidth(), src:getHeight()
     local a = angleDeg % 360

@@ -25,14 +25,14 @@ local TEXT_PAD = TEXT_HANDLE + 4   -- refresh margin around the frame and handle
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Undo / exit
+-- Word-level undo of a committed text box
 ------------------------------------------------------------------------------
 
--- Apply one stored word-level step to a COMMITTED text box (the op at ops[idx]),
--- without re-opening it or bringing up the keyboard. `from` is the stack to pop,
--- `to` the stack to push the current state onto (undo <-> redo). Uses clone +
--- replace, like a placed-shape edit, so canvas snapshots that still reference the
--- old op are never mutated. Returns true if a step was applied.
+-- Apply one stored word-level step to a committed text box (the op at ops[idx]),
+-- without reopening it or bringing up the keyboard. `from` is the stack to pop,
+-- `to` the stack that receives the current state (undo and redo swap them). The
+-- op is cloned and replaced, so canvas snapshots holding the previous op are
+-- never changed. Returns true if a step was applied.
 function InkAwayView:commitTextStep(idx, from, to)
     local ops = self.canvas.ops
     local op = ops[idx]
@@ -61,28 +61,19 @@ function InkAwayView:topTextHist()
 end
 
 ------------------------------------------------------------------------------
--- Painting
+-- Editing a text box. The box being edited is kept off the ops list and drawn as
+-- a live overlay, so typing refreshes only the box. On finish it is baked into
+-- the master and added to the ops, so it saves, undoes and exports like ink.
 ------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------
--- Text notes: creating, editing and moving a text box. The box being edited is
--- kept off the ops list and drawn as a live overlay (like a shape preview), so
--- typing never recomposes the whole page -- only the box's rectangle refreshes.
--- On finish it is baked into the master bitmap and added to the ops, so it
--- saves, undoes and exports exactly like ink.
-------------------------------------------------------------------------------
-
--- Lay the editing op out at the current zoom (so the overlay is crisp) and grow
--- an auto-height box to fit. Returns layout, ctx and the width-scaled proxy the
--- engine measured against.
--- Bump to invalidate the cached layout (call after any edit that changes the
--- text, the wrap width or the font/size).
+-- Invalidate the cached layout, after any edit that changes the text, the wrap
+-- width, the font or the size.
 function InkAwayView:invalidateLayout() self._lay_ver = (self._lay_ver or 0) + 1 end
 
--- Lay the editing op out at the current zoom, caching the result: the layout is
--- otherwise recomputed several times per keystroke (scroll-into-view, then the
--- paint, then the caret) which is O(text) each time. The cache is keyed on a
--- version bumped by edits, plus the op and zoom.
+-- Lay the editing op out at the current zoom (so the overlay is crisp) and grow
+-- an auto-height box to fit. Returns the layout, ctx and the width-scaled proxy
+-- it was measured against. Cached by op, zoom and an edit version, as one
+-- keystroke needs the layout several times.
 function InkAwayView:editTextLayout()
     local op = self.editing_text
     local zoom = self.view.zoom
@@ -99,26 +90,21 @@ function InkAwayView:editTextLayout()
     return lay, ctx, proxy
 end
 
--- The editing box rectangle on screen (clamped later by callers). InkGeom.toScreen
--- already includes the area origin, so we must NOT add area_x/area_y again -- doing
--- so shifted the editing overlay down by one toolbar height versus the committed
--- box (the "box jumps down a notch when reopened" bug).
+-- The editing box rectangle on screen. InkGeom.toScreen already includes the
+-- area origin, so area_x and area_y are not added again.
 function InkAwayView:textBoxScreenRect()
     local op, v = self.editing_text, self.view
     local sx, sy = InkGeom.toScreen(v, op.x, op.y)
     return { x = sx, y = sy, w = op.w * v.zoom, h = op.h * v.zoom }
 end
 
--- Lay out the two edit buttons: [ Format ][ ✓ Done ] pinned to the top-right.
--- The label sizes depend only on the (constant) labels and DPI, so measure them
--- once and cache: this method runs on every overlay paint and every touch, and
--- building throwaway TextWidgets each time was needless work on e-ink.
+-- Lay out the two edit buttons, Format and Done, at the top right. This runs on
+-- every overlay paint and touch, so the labels are measured once and cached.
 function InkAwayView:textEditButtons()
     local v = self.view
     local m = self._text_btn_metrics
     if not m then
-        -- the same look as the sheets: a grey rounded "Format" button and the black
-        -- "Done" pill. The labels are built once and reused on every paint.
+        -- the sheets' look: a grey rounded "Format" button and the black "Done" pill
         local face = Font:getFace("cfont", 15)
         local fw = TextWidget:new{ text = _("Format"), face = face, bold = true, fgcolor = Blitbuffer.COLOR_BLACK }
         local dw = TextWidget:new{ text = _("Done"), face = face, bold = true, fgcolor = WHITE }
@@ -157,7 +143,7 @@ function InkAwayView:textZone(sx, sy)
     return "outside"
 end
 
--- Refresh just the box's rectangle (plus a margin for the frame / handles).
+-- Refresh just the box's rectangle, with a margin for the frame and handles.
 function InkAwayView:refreshTextBox(mode)
     self:hideClipBubble()   -- any change to the box (typing, caret, selection) dismisses it
     local r = self:textBoxScreenRect()
@@ -184,8 +170,8 @@ function InkAwayView:keyboardTop()
     return self.screen_h
 end
 
--- Scroll the page vertically so the caret line sits in the strip between the
--- toolbar and the keyboard (the keyboard otherwise hides the box you type in).
+-- Scroll the page vertically so the caret line sits between the toolbar and the
+-- keyboard.
 function InkAwayView:ensureCaretVisible()
     if not self.editing_text then return end
     local v = self.view
@@ -212,7 +198,7 @@ function InkAwayView:ensureCaretVisible()
     end
 end
 
--- Default size and width for a new box on this device / page.
+-- Default size and width for a new box on this page.
 function InkAwayView:newTextAt(pos)
     local v = self.view
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
@@ -221,7 +207,7 @@ function InkAwayView:newTextAt(pos)
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
     local op = Text.new{ x = margin, y = cy, w = v.canvas_w - 2 * margin, size = size,
         font = self.text_font, align = "left", grid_snap = self.text_grid_snap }
-    -- snap the box origin to the ruling if the user asked for grid alignment
+    -- snap the box origin to the ruling when grid alignment is on
     if self.text_grid_snap then self:snapTextBoxToGrid(op) end
     self:startTextEdit(op, { p = 1, o = 0 }, true, nil)
 end
@@ -247,10 +233,9 @@ function InkAwayView:showTextKeyboard()
         scrollDown = function() end,
     }
     self._text_kb = VirtualKeyboard:new{ keyboard_layer = 2, inputbox = inputbox }
-    -- With the keyboard on top of the window stack, UIManager only delivers
-    -- gestures to lower widgets that are is_always_active. Without this the
-    -- toolbar and canvas would go dead while typing (no way to switch tool or
-    -- dismiss). We turn it back off when editing ends.
+    -- With the keyboard on top, UIManager only delivers gestures to lower
+    -- widgets that are is_always_active; this keeps the toolbar and canvas alive
+    -- while typing. It is turned off again when editing ends.
     self.is_always_active = true
     UIManager:show(self._text_kb)
 end
@@ -272,8 +257,7 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx, hit_pos)
         self.editing_text = op
     else
         self._text_orig = self.canvas.ops[idx]
-        -- copy BEFORE hiding the original, so the editable copy is not itself
-        -- marked hidden (that made the box vanish after committing an edit)
+        -- copy before hiding the original, so the copy is not marked hidden
         self.editing_text = Notebook.deepcopy(op)
         self.editing_text.hidden = nil
         self._text_orig.hidden = true
@@ -285,14 +269,13 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx, hit_pos)
     self.text_sel = nil
     self._text_edits = 0
     self._text_undo, self._text_redo, self._text_coalesce = {}, {}, nil
-    -- Opened by a touch (the finger is still down): wait for it to lift before
-    -- showing the keyboard. Otherwise a box placed low on the page brings the
-    -- keyboard up under the finger, and lifting it typed whatever key was there.
+    -- Opened by a touch: wait for the finger to lift before showing the keyboard,
+    -- or a box low on the page brings the keyboard up under the finger and the
+    -- lift types whatever key is there.
     if self._kb_defer then self._kb_pending = true else self:showTextKeyboard() end
-    -- Place the caret at the tapped point BEFORE the one scroll-into-view pass, so
-    -- opening a box never pans (the tap is above the keyboard by construction) and
-    -- there is no visible jump. We do not save/restore pan_y: leaving the scroll
-    -- where the caret needs it means closing the keyboard never snaps back either.
+    -- Place the caret at the tapped point before the scroll-into-view pass, so
+    -- opening a box does not pan (the tap is above the keyboard). pan_y is not
+    -- restored afterwards, so closing the keyboard does not jump either.
     if hit_pos then
         local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()
@@ -333,8 +316,8 @@ function InkAwayView:finishTextEdit(commit)
             end
         end
     end
-    -- Keep this box's word-level history alive so a later Undo peels it back a
-    -- word at a time (see undo()), rather than deleting the whole block at once.
+    -- keep this box's word-level history, so a later Undo takes it back a word
+    -- at a time (see undo) rather than removing the whole box
     if committed_op and self._text_undo and #self._text_undo > 0 then
         self._text_hist[committed_op] = { undo = self._text_undo, redo = self._text_redo or {} }
     end
@@ -347,22 +330,21 @@ function InkAwayView:finishTextEdit(commit)
     self:closeSheet("_text_fmt")
     self.dirty = true
     self:hideTextKeyboard()
-    -- While typing, the page may have been scrolled past its normal end so the line
-    -- stayed above the keyboard (see ensureCaretVisible). The keyboard is gone now,
-    -- so bring the view back inside the page, as a pan would; otherwise the page's
-    -- edge and the empty space beyond it stay on screen.
+    -- typing may have scrolled past the page end to keep the line above the
+    -- keyboard (see ensureCaretVisible); bring the view back inside the page
     InkGeom.clampPan(self.view)
     self:composeCanvas()
     self:renderView()
     self:refresh("all", "full")
 end
 
--- ---- per-box undo / redo -------------------------------------------------
--- A text-local history so Undo/Redo work inside the box without recomposing the
--- whole page per keystroke. Snapshots coalesce: a run of typed letters is one
--- word, a run of deletions is one step, and each format change is its own step.
--- `kind` groups consecutive same-kind edits; a boundary (space/newline, a cursor
--- move, or a different kind) starts a new undo step.
+------------------------------------------------------------------------------
+-- Undo inside the box being edited, without recomposing the page per keystroke.
+-- Steps coalesce: a run of typed letters is one word, a run of deletions is one
+-- step, and each format change is its own. A space or newline, a caret move or a
+-- different kind of edit starts a new step.
+------------------------------------------------------------------------------
+
 function InkAwayView:pushTextHistory()
     if not self.editing_text then return end
     self._text_undo = self._text_undo or {}
@@ -404,7 +386,10 @@ end
 function InkAwayView:textUndo() self:textRestore(self._text_undo, self._text_redo) end
 function InkAwayView:textRedo() self:textRestore(self._text_redo, self._text_undo) end
 
--- ---- text mutation (driven by the keyboard) ------------------------------
+------------------------------------------------------------------------------
+-- Typing (driven by the keyboard)
+------------------------------------------------------------------------------
+
 function InkAwayView:textDeleteSelIfAny()
     if self.text_sel and not Text.selEmpty(self.text_sel) then
         self.text_cur = Text.deleteRange(self.editing_text, self.text_sel)
@@ -417,7 +402,7 @@ end
 
 function InkAwayView:textAddChars(s)
     if not self.editing_text then return end
-    -- a space / newline closes the current word so the next one is its own step
+    -- a space or newline ends the word, so the next one is its own step
     self:textMark("type")
     if s == " " or s == "\n" then self._text_coalesce = nil end
     self:textDeleteSelIfAny()
@@ -445,7 +430,7 @@ function InkAwayView:textDelToBOL()
     self:afterTextEdit()
 end
 
--- Move the caret. dx: -1/+1 by char; dy: -1/+1 by line.
+-- Move the caret: dx by one character, dy by one line (-1 or +1).
 function InkAwayView:textMove(dx, dy)
     if not self.editing_text then return end
     local op, cur = self.editing_text, self.text_cur
@@ -486,7 +471,10 @@ function InkAwayView:textEnd()
     self:refreshTextBox("ui")
 end
 
--- ---- touch handling for the text tool ------------------------------------
+------------------------------------------------------------------------------
+-- Touch handling for the text tool
+------------------------------------------------------------------------------
+
 -- Find a committed text op under a canvas point (topmost first).
 function InkAwayView:textOpAt(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
@@ -498,10 +486,9 @@ function InkAwayView:textOpAt(cx, cy)
     end
 end
 
--- A gesture that lands on the on-screen keyboard must never reach the canvas.
--- The view is is_always_active while editing (so the toolbar keeps working), so
--- key taps the keyboard doesn't fully swallow would otherwise fall through here
--- and be treated as taps that create / commit boxes.
+-- Does a gesture land on the on-screen keyboard? The view is is_always_active
+-- while editing, so a key tap the keyboard does not swallow would otherwise reach
+-- the canvas and create or commit a box.
 function InkAwayView:inKeyboard(pos)
     return self._text_kb ~= nil and pos ~= nil and pos.y >= self:keyboardTop()
 end
@@ -512,9 +499,8 @@ function InkAwayView:textToolTouch(pos)
         local btns = self:textEditButtons()
         if InkGeom.inRect(pos.x, pos.y, btns.done) then self:finishTextEdit(true); return true end
         if InkGeom.inRect(pos.x, pos.y, btns.format) then
-            -- defer to release: opening on the final tap event (as the drag-select
-            -- path already does) stops the same tap from immediately closing the
-            -- menu as an outside-tap, which made the button flaky
+            -- open on release, so the same tap cannot close the new menu as a
+            -- tap outside it
             self._text_drag = { kind = "format" }
             return true
         end
@@ -584,23 +570,21 @@ function InkAwayView:textToolPan(pos)
     elseif d.kind == "resize" then
         local dw = (pos.x - d.sx) / self.view.zoom
         local old = self:textBoxScreenRect()
-        -- only the width is dragged; height stays automatic so the box always
-        -- grows to fit its (re-wrapped) text and the text can never overflow it
+        -- only the width is dragged; the height follows the re-wrapped text, so
+        -- the text never overflows the box
         self.editing_text.w = math.max(40, d.w0 + dw)
-        self:invalidateLayout()   -- width changed -> re-wrap (and auto-grow height)
+        self:invalidateLayout()   -- width changed: re-wrap (and grow the height)
         self:editTextLayout()     -- recompute now so op.h reflects the new wrap
-        -- refresh the union of the old and new box (shrinking would otherwise
-        -- leave the old, larger outline and text behind as ghost pixels)
+        -- refresh the union of the old and new box, so a shrink leaves no ghost
         self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast")
     elseif d.kind == "select" then
         local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()
         local cur = Text.hit(self.editing_text, lay, pos.x - r.x, pos.y - r.y,
             self:textCtx(self.editing_text, self.view.zoom))
-        -- Only act when the caret actually lands somewhere new. A pen held on the
-        -- glass sends a frame every few ms with a pixel of jitter; refreshing the
-        -- box for each one was wasted e-ink work, and it dismissed the paste bubble
-        -- the moment it appeared.
+        -- act only when the caret lands somewhere new: a pen held still sends
+        -- frames with a pixel of jitter, and each refresh would also dismiss the
+        -- paste bubble
         local last = d.last or d.anchor
         if cur.p == last.p and cur.o == last.o then return true end
         d.last = cur
@@ -618,12 +602,12 @@ function InkAwayView:textToolRelease(pos)
     self._text_drag = nil
     if not d then return true end
     if d.kind == "format" then
-        -- open the format menu on release (not on touch) so the same tap can't be
-        -- seen as an outside-tap on the just-shown menu, which would close it again
+        -- open the format menu on release, so the same tap cannot close it again
+        -- as a tap outside
         self:openTextFormatMenu()
     elseif d.kind == "move" or d.kind == "resize" then
-        -- re-align to the ruling once the drag ends (grid-snap boxes only); the
-        -- small settle can leave A2 residue, so clear it with a flashing refresh
+        -- re-align to the ruling once the drag ends (grid-snap boxes only), with a
+        -- flashing refresh to clear what the fast waveform left
         if d.kind == "move" and self.editing_text and self.editing_text.grid_snap then
             self:snapTextBoxToGrid(self.editing_text)
             self:invalidateLayout()
@@ -641,7 +625,10 @@ function InkAwayView:textToolRelease(pos)
     return true
 end
 
--- ---- overlay painting ----------------------------------------------------
+------------------------------------------------------------------------------
+-- Painting the box being edited
+------------------------------------------------------------------------------
+
 function InkAwayView:paintTextOverlay(bb, x, y)
     local op = self.editing_text
     local lay, ctx = self:editTextLayout()

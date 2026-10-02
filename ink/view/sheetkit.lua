@@ -123,13 +123,13 @@ function InkAwayView:setButtonLabel(button, widget)
     end
 end
 
--- Shared tile helpers, used by both the Shapes menu and its line/arrow/curve
--- child menu so they look identical.
+-- Path of a bundled icon.
 function InkAwayView:iconPath(name)
     return self:pluginDir() .. "ink/icons/" .. name .. ".svg"
 end
--- Transparent icon (tile colour shows through) when unselected; white-flattened +
--- whole-rect inverted when selected so black strokes read white on the black tile.
+
+-- A tile's icon: transparent (the tile colour shows through), or when selected
+-- flattened on white and inverted, so it reads white on the black tile.
 function InkAwayView:tileIcon(name, size, sel)
     local ok, w = pcall(function()
         if sel then
@@ -140,11 +140,11 @@ function InkAwayView:tileIcon(name, size, sel)
     end)
     return ok and w or nil
 end
--- A rounded tile button. Uses Button's native icon path (so `text` stays nil and
--- the tap-highlight takes the safe invert branch, not the text one which would
--- index a fgcolor our icon widget lacks), then swaps in a transparent icon,
--- optionally above a label and a small grey hint sublabel. `hold_cb` wires a
--- long-press action.
+
+-- A rounded tile button with an icon, optionally above a label and a small grey
+-- sublabel; `hold_cb` adds a long-press action. It is built as an icon Button
+-- (`text` stays nil, so the tap highlight inverts rather than reading a fgcolor
+-- the icon lacks), then the transparent icon is swapped in.
 function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_cb)
     local b = Button:new{ icon = "inkaway." .. name, icon_width = size, icon_height = size,
         width = w, height = h, bordersize = 0,
@@ -191,13 +191,12 @@ function InkAwayView:sheetHint(text, width, size)
         fgcolor = HINT }
 end
 
--- A full/any-width rounded action button (grey by default, black when `dark`).
+-- A rounded action button of any width, grey by default and black when `dark`.
 function InkAwayView:actionButton(label, w, cb, dark, big)
     local b = Button:new{ text = "", width = w, height = Screen:scaleBySize(48), bordersize = 0,
         radius = Screen:scaleBySize(14), background = dark and BLACK or TILE_BG,
         margin = 0, padding = 0, callback = cb, show_parent = self }
-    -- `big` marks a primary action (New drawing / New notebook): a larger bold
-    -- face so it reads heavier than the ordinary buttons around it
+    -- `big` marks a primary action (New drawing, New notebook) with a larger face
     self:setButtonLabel(b, TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17),
         bold = true, fgcolor = dark and WHITE or BLACK })
     return b
@@ -216,11 +215,10 @@ function InkAwayView:segmentedRow(options, current, width, onpick)
     return row
 end
 
--- A tappable rounded tile filled with `rgb`. A grey uses a Color8 fill (rounded in
--- C). A real colour cannot: KOReader rounds an RGB32 fill pixel by pixel in Lua,
--- which made the colour rows the slowest part of opening the pen menu on colour
--- screens. So the rounded colour tile is drawn once into an image (white corners,
--- like the sheet) and reused for every later opening and repaint.
+-- A tappable rounded tile filled with `rgb`. A grey uses a Color8 fill, rounded
+-- in C. KOReader rounds an RGB32 fill pixel by pixel in Lua, which is slow, so a
+-- colour tile is drawn once into an image (white corners, like the sheet) and
+-- reused for every later paint.
 function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     local fill = uiFill(rgb)
     if not isChromatic(fill) then
@@ -255,9 +253,9 @@ function InkAwayView:cachedColourTile(rgb, w, h, radius)
     return bb
 end
 
--- A colour swatch tile: a colour-filled rounded square with a thin black border
--- (thicker when selected, so white/light swatches stay visible). Optional
--- hold_cb for deleting a saved custom colour.
+-- A colour swatch tile: a rounded colour square with a thin black border (thicker
+-- when selected, so light swatches stay visible). The optional hold_cb deletes a
+-- saved colour.
 function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb, h)
     local inner = w - Screen:scaleBySize(8)
     local inner_h = (h or w) - Screen:scaleBySize(8)
@@ -283,9 +281,9 @@ function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
     return b
 end
 
--- The brush samples never change while the canvas is open (a textured one costs a
--- few ms to rasterize), so the pen menu reuses them instead of redrawing every one
--- on each opening. Keyed by style table, so an edited custom brush redraws.
+-- A brush sample from the cache: samples do not change while the canvas is open,
+-- and a textured one takes a few ms to draw. Keyed by style table, so an edited
+-- custom brush is drawn again.
 function InkAwayView:cachedBrushWave(key, w, h, sel)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
@@ -306,8 +304,8 @@ function InkAwayView:freeWaveCache()
     end
 end
 
--- Render a sample stroke for brush `key` into a fresh blitbuffer. White wave on a
--- dark tile when selected, black on grey else.
+-- Render a sample stroke for brush `key` into a new buffer: a white wave on a
+-- dark tile when selected, else black on grey.
 function InkAwayView:renderBrushWave(key, w, h, sel)
     local st = Raster.STYLES[key] or Raster.STYLES.solid
     local bb = Blitbuffer.new(w, h, Screen.bb:getType())

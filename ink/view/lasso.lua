@@ -21,9 +21,8 @@ local translateOp = Canvas.translateOp
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
--- Lasso select: loop around ink/shapes/fills to pick them, then drag the whole
--- group freely, or duplicate / delete them. Works the same on a plain canvas
--- and on a notebook page (both are just ops lists).
+-- Lasso select. A drawing and a notebook page are both op lists, so it works the
+-- same on either.
 ------------------------------------------------------------------------------
 
 -- Forget the selection and any loop in progress, without repainting.
@@ -109,7 +108,7 @@ function InkAwayView:selMoveCommit(sdx, sdy)
     self:recompose()
 end
 
--- Duplicate / delete the current selection, from its tap-menu.
+-- Duplicate or delete the current selection, from its menu.
 function InkAwayView:selDuplicate()
     if not self.selection then return end
     self.canvas:pushHistory()
@@ -157,7 +156,7 @@ function InkAwayView:openSelectionMenu()
     UIManager:show(dlg)
 end
 
--- The selection box as a screen rect at drag offset (dx,dy), padded. Nil if none.
+-- The selection box as a screen rect at drag offset (dx, dy), padded, or nil.
 function InkAwayView:selBoxScreenRect(dx, dy)
     local b = self.selection and self.selection.bbox
     if not b then return nil end
@@ -171,8 +170,8 @@ function InkAwayView:selBoxScreenRect(dx, dy)
              h = math.floor(math.abs(y1 - y0)) + pad * 2 }
 end
 
--- Refresh just the box's old and new footprints (a "fast" e-ink update), which
--- is far cheaper than the whole area and does not pile up refreshes.
+-- Refresh just the box's old and new footprints, far cheaper than the whole
+-- area.
 function InkAwayView:selRefreshNow()
     self._sel_refresh_pending = false
     if not (self.sel_press and self.selection) then return end
@@ -180,8 +179,8 @@ function InkAwayView:selRefreshNow()
     if not cur then return end
     local last = self._sel_last_rect or cur
     self._sel_last_rect = cur
-    -- "ui" (not the A2 "fast" waveform) keeps the moving box clean with no
-    -- smear trail; the region is small (just the box), so it never floods
+    -- "ui" rather than the fast waveform leaves no smear behind the moving box;
+    -- the region is small, so it never floods the panel
     self:refreshRectUnion(cur, last, 0, "ui")
 end
 
@@ -221,9 +220,8 @@ function InkAwayView:lassoPan(pos)
     if self.lassoing and self.lasso_scr then
         self.lasso_scr[#self.lasso_scr + 1] = pos.x
         self.lasso_scr[#self.lasso_scr + 1] = pos.y
-        -- refresh only a small fixed box around the new point (never a whole
-        -- segment, which on a fast stroke is huge and floods the e-ink queue);
-        -- the trail from earlier points stays on the panel
+        -- refresh only a small box around the new point (a whole segment of a
+        -- fast stroke is huge and floods the panel); earlier points stay shown
         UIManager:setDirty(self, "fast", GeomUI:new{ x = pos.x - 14, y = pos.y - 14, w = 28, h = 28 })
         return true
     end

@@ -26,19 +26,18 @@ function InkAwayView:opColor(op)
 end
 
 -- Compose a page into `dst` (a canvas-sized bitmap): white paper, optional
--- background picture, notebook ruling, then the ink ops. Shared by the live
--- master bitmap and by the page-overview thumbnails, so a thumbnail always
--- matches exactly what the page looks like.
+-- background picture, notebook ruling, then the ops. The master and the page
+-- thumbnails both use it, so a thumbnail always matches its page.
 -- `reveal_resolved` means the caller already built the reveal buffers (see
--- composeCanvas), so the reveal_pic/reveal_text it passed are final (nil = not
--- needed); without it, composeInto builds its own (the page thumbnails do this).
+-- composeCanvas) and the reveal_pic and reveal_text it passed are final (nil when
+-- not needed); otherwise composeInto builds its own, as the thumbnails do.
 function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local found = Canvas.scanOps(ops)
     local page_copy, owns_bare = nil, false
     if template then
-        -- a notebook page composed on its own (page thumbnails): paper colour or the
-        -- PDF page, then the ruling -- the same paper the live page shows
+        -- a notebook page composed on its own (a thumbnail): paper colour or the
+        -- PDF page, then the ruling, as on the live page
         local pic = bg_bb
         paintPaper(dst, W, H, template, pic)
         local function pageCopy()
@@ -49,7 +48,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
             return page_copy
         end
         -- erasing reveals that paper (ruling included), never plain white; a hard
-        -- erase reveals the bare paper, without the picture/PDF page
+        -- erase reveals the bare paper, without the picture or PDF page
         if found.soft_erase and not reveal_pic then bg_bb = pageCopy() end
         if found.hard_erase and not bare then
             if pic then
@@ -64,10 +63,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         dst:paintRect(0, 0, W, H, WHITE)
         if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
     end
-    -- reveal_pic = the plain page with placed images stamped on it, so a soft erase
-    -- keeps the images (like it keeps the background). Built here from these ops
-    -- when the caller did not pass one (e.g. page thumbnails), so it is always
-    -- correct for whatever is being composed. dst currently holds the plain base.
+    -- reveal_pic: the plain page with the placed images on it, so a soft erase
+    -- keeps them as it keeps the background. Built here from these ops when the
+    -- caller passed none; dst holds the plain base at this point.
     local owns_rp = false
     if not reveal_resolved and not reveal_pic and found.image and found.soft_erase then
         reveal_pic = Blitbuffer.new(W, H, dst:getType())
@@ -75,12 +73,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         self:stampOps(reveal_pic, ops, "image")
         owns_rp = true
     end
-    -- A text-protecting erase op (op.spare_text) reveals a copy of the page that
-    -- INCLUDES the text (built once here if the caller didn't pass it), so it rubs
-    -- out ink but leaves text; a normal erase reveals the plain page and removes
-    -- both. Whether an erase spares text is baked into the op at draw time, so the
-    -- setting is never retroactive. dst currently holds the plain base (paper /
-    -- background / ruling), so a copy of it now is exactly the plain reveal.
+    -- reveal_text: the page including its text, revealed by an erase that spares
+    -- text (op.spare_text, fixed when the erase was drawn), so it removes ink but
+    -- leaves text. A normal erase reveals the plain page and removes both.
     local owns_rt = false
     if not reveal_resolved and not reveal_text and found.text and found.spare_text then
         reveal_text = Blitbuffer.new(W, H, dst:getType())
@@ -89,10 +84,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         owns_rt = true
     end
     local refx, refy = Symmetry.canvasRefs(W, H)
-    -- Only skip the selected image from the master while it is actively being
-    -- dragged or rotated (then it is drawn live as the overlay). A merely selected,
-    -- still image stays in the master so it renders through the exact same path as
-    -- everything else -- no sub-pixel jump when it is picked or dropped.
+    -- skip the selected image only while it is dragged or rotated (it is drawn
+    -- as a live overlay then); a still one stays here, so selecting or dropping
+    -- it causes no sub-pixel jump
     local dragging = (self._img_drag and self._img_drag.began) or self.image_rotating
     local skip = dragging and self.active_image and self.active_image.op or nil
     for _, op in ipairs(ops) do
@@ -127,10 +121,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     if owns_bare then bare:free() end
 end
 
--- The buffer the eraser reveals under the ink: in a notebook that is the paper
--- (colour + ruling + any PDF page), so erasing takes away ink but leaves the
--- ruling -- just like the drawing-mode grid, which the eraser also can't touch.
--- In plain drawing mode it is the optional background image (or nil = white).
+-- The buffer the eraser reveals under the ink. In a notebook that is the paper
+-- (colour, ruling and any PDF page), so erasing never removes the ruling; in a
+-- drawing it is the background image, or nil for white.
 function InkAwayView:eraseRevealBB()
     -- while protection is on, a live erase stroke spares text, so it reveals the
     -- page-with-text buffer; otherwise it reveals the plain page
@@ -167,10 +160,9 @@ function InkAwayView:buildRevealBuffer(field, needed, base, kind)
     self:stampOps(bb, self.canvas.ops, kind)
 end
 
--- What a "hard" erase (Erase pictures on) reveals in a notebook: the bare paper,
--- colour and ruling, without the picture or PDF page. The ruling belongs to the
--- paper, so no eraser ever removes it. Without a picture that is just the paper
--- buffer; with one, a second buffer is built on first use.
+-- What a hard erase (Erase pictures on) reveals in a notebook: the bare paper,
+-- colour and ruling, without the picture or PDF page. Without a picture that is
+-- the paper buffer itself; with one, a second buffer is built on first use.
 function InkAwayView:barePaperBB()
     if not (self.notebook and self.canvas_bb) then return nil end
     if not self.bg_bb then
@@ -190,8 +182,8 @@ function InkAwayView:barePaperBB()
     return bp
 end
 
--- Build (once per compose) the notebook paper: paper colour or PDF page, then the
--- ruling on top. Kept as its own buffer so the eraser can restore it.
+-- Build the notebook paper (once per compose): paper colour or PDF page, then the
+-- ruling on top. It is its own buffer so the eraser can restore it.
 function InkAwayView:buildNotebookPaper()
     if not (self.notebook and self.canvas_bb) then
         if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
@@ -205,26 +197,25 @@ function InkAwayView:buildNotebookPaper()
         self._paper_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
     end
     paintPaper(self._paper_bb, W, H, self.notebook.template, self.bg_bb)
-    -- a template/paper change rebuilds the bare paper on next use
+    -- a template or paper change rebuilds the bare paper on next use
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
 end
 
--- Rebuild the 1:1 master bitmap from the committed ops. Cost is proportional to
--- the ink drawn, not the zoom, and it only runs on open, undo, clear, or resize.
+-- Rebuild the 1:1 master bitmap from the committed ops. The cost follows the ink
+-- drawn, not the zoom; it runs on open, undo, clear and resize.
 function InkAwayView:composeCanvas()
     if not self.canvas_bb then return end
     local found = Canvas.scanOps(self.canvas.ops)
     local base, bare = self.bg_bb, nil
     if self.notebook then
-        -- paper (with ruling) is the base AND the erase-reveal source, so ruling
-        -- lives under the ink and the eraser restores it instead of whitening it
+        -- the paper (with ruling) is both the base and what the eraser reveals
         self:buildNotebookPaper()
         base = self._paper_bb
         if found.hard_erase then bare = self:barePaperBB() end
     end
-    -- What the eraser reveals: _reveal_pic_bb is the page with the placed images,
-    -- so a soft erase keeps them; _reveal_text_bb adds the text, for an erase that
-    -- spares it (protection is on now, or was when an erase was made).
+    -- what the eraser reveals: _reveal_pic_bb is the page with the placed images
+    -- (a soft erase keeps them); _reveal_text_bb adds the text, for an erase that
+    -- spares it (protection is on now, or was when an erase was made)
     self:buildRevealBuffer("_reveal_pic_bb", found.image, base, "image")
     self:buildRevealBuffer("_reveal_text_bb", found.text and (self.text_erase_protect or found.spare_text),
         self._reveal_pic_bb or base, "text")   -- text reveal keeps images too
@@ -244,7 +235,7 @@ function InkAwayView:stampOpIntoCanvas(op)
         self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
         return
     end
-    -- shared acc grows over every span written (base AND symmetry mirrors), so the
+    -- one acc grows over every span written (base and symmetry mirrors), so the
     -- panel-order mirror is resynced over exactly the op's footprint
     local cacc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
     local put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
@@ -263,11 +254,9 @@ function InkAwayView:stampOpIntoCanvas(op)
     self:markCanvasDirtyAcc(cacc)
 end
 
--- After a committed op is stamped into canvas_bb, get it onto the on-screen area_bb.
--- A full renderView rebuilds the WHOLE area (a full-area rotated blit into the
--- panel-order area_bb -- tens of ms in landscape), but only the op's rectangle
--- changed, so re-render just that region. Mirrored (symmetry) ops land in several
--- places, so fall back to a full render there. sx0..sy1 are the op's SCREEN bounds.
+-- Show an op just stamped into canvas_bb by re-rendering only its rectangle of
+-- area_bb (a full render costs tens of ms in landscape). A symmetric op lands in
+-- several places and gets a full redraw. sx0..sy1 are the op's screen bounds.
 function InkAwayView:renderCommittedOp(op, sx0, sy0, sx1, sy1)
     if op and op.sym and op.sym ~= "off" then
         self:redraw()

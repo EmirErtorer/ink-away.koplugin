@@ -1,18 +1,16 @@
 --[[
-Saving and reopening an editable drawing. Because the drawing is just a list of
-ops (strokes, shapes, fills), a project file is that list written out, so a
-reopened project is fully editable, not a flat image.
-
-The file is a small Lua chunk ("return { ... }"), loaded back in a sandbox with
-no access to globals, so a tampered file can define data but cannot run code.
+Editable project files. A drawing is a list of ops, so a project is that list
+written out, and a reopened project stays fully editable. The file is a small Lua
+chunk ("return { ... }") loaded in a sandbox with no globals, so a tampered file
+can define data but cannot run code.
 ]]
 
 local Project = {}
 
 Project.EXT = "inkaway"
 
--- Serialize a Lua value (numbers, booleans, strings, and tables with an array
--- part and/or string keys -- which is all an ops list is) into `out`.
+-- Serialize a Lua value into `out`: numbers, booleans, strings, and tables with
+-- an array part and string keys, which is all an ops list holds.
 local function ser(v, out)
     local t = type(v)
     if t == "number" then

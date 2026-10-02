@@ -12,12 +12,11 @@ local UIManager = require("ui/uimanager")
 local Screen = Device.screen
 
 local FontMenu = Menu:extend{}
--- The base Menu paints its popup at the top-left: InputContainer:paintTo
--- overwrites self.dimen.x/y with the paint origin (0,0), so setting them in
--- init alone is discarded. Instead we paint at a centred offset inside
--- `center_rect` (the drawing area, so the popup clears the toolbar and the
--- page-nav strip). Painting there sets self.dimen to match, so the refresh
--- region and the button hit-boxes both follow.
+-- The base Menu paints its popup at the top left: InputContainer:paintTo resets
+-- self.dimen to the paint origin, so a position set in init is lost. The popup is
+-- painted centred inside `center_rect` (the drawing area, clear of the toolbar and
+-- the notebook bar) instead, and self.dimen follows, so refreshes and hit boxes
+-- match.
 function FontMenu:init()
     Menu.init(self)
     local cr = self.center_rect
@@ -54,7 +53,7 @@ function FontMenu:updateItems(select_number, no_recalculate_dimen)
             margin = 0,
             radius = 0,
             padding_v = 0,
-            padding_h = Screen:scaleBySize(16),   -- a little breathing room at the left
+            padding_h = Screen:scaleBySize(16),   -- some room at the left
             callback = item.callback,
             show_parent = self.show_parent,
         }

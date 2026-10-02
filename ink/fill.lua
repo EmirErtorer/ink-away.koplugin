@@ -1,15 +1,10 @@
 --[[
-Flood fill (the paint-bucket). Given a tightly packed 8-bit grey buffer of the
-current drawing (transparent areas are white, ink is dark), it finds the region
-of connected pixels whose grey is close to the tapped pixel's and stops at the
-darker ink around it -- exactly like a paint program filling an enclosed area.
-
-The result is returned as run-length data: a flat list { x, y, len, x, y, len, ... }
-of horizontal runs. That is stored on a "fill" op, so a fill undoes and exports
-like any other op, and it is compact even for a large area (about one run per row).
-
-The scan-line flood fill visits each pixel of the region once, over a raw FFI
-byte buffer, so LuaJIT keeps it fast even for a full screen.
+Flood fill for the paint bucket. Over an 8-bit grey buffer of the drawing (white
+where empty, dark where inked) it finds the connected pixels close to the tapped
+one's grey, stopping at the ink around them. The result is a flat list of
+horizontal runs { x, y, len, ... }, stored on a "fill" op so it undoes and
+exports like any other op; it is about one run per row. The scanline flood
+visits each pixel once over raw FFI bytes, so a full screen stays fast.
 ]]
 
 local ffi = require("ffi")
@@ -55,8 +50,9 @@ end
 
 Fill.scan = scan
 
--- buf: uint8_t[w*h] grey. Returns the flat run list, or nil if the seed is out
--- of bounds. `tol` is how far a pixel's grey may differ from the seed's.
+-- Fill from (sx, sy) in `buf`, a uint8_t[w*h] grey buffer. `tol` is how far a
+-- pixel's grey may differ from the seed's. Returns the flat run list, or nil if
+-- the seed is out of bounds.
 function Fill.compute(buf, w, h, sx, sy, tol)
     sx, sy = math.floor(sx), math.floor(sy)
     if sx < 0 or sy < 0 or sx >= w or sy >= h then return nil end
