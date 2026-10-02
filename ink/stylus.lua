@@ -85,6 +85,7 @@ end
 Stylus.ROLE_PEN   = "pen"     -- a trusted stylus: draw or erase with it
 Stylus.ROLE_PALM  = "palm"    -- a palm promoted to a stylus tool number: discard
 Stylus.ROLE_TOUCH = "touch"   -- an ordinary finger that only reached us in passing
+Stylus.ROLE_PEN_OUT = "pen_out" -- the pen leaving range on its dedicated slot: end the stroke
 function Stylus.classify(slot, facts)
     if not slot then return Stylus.ROLE_TOUCH end
     facts = facts or {}
@@ -94,6 +95,15 @@ function Stylus.classify(slot, facts)
     local learned = facts.learned_slot
     local on_pen_slot = (pen_slot ~= nil and slot.slot == pen_slot)
                      or (learned ~= nil and slot.slot == learned)
+
+    -- 0. On a Wacom device the pen has a slot of its own, and KOReader writes FINGER
+    --    into it when the pen leaves range (BTN_TOOL_PEN 0). That frame is the pen
+    --    going away, never a finger. When the pen is lifted and taken out of range in
+    --    one quick motion it is also the ONLY lift we get (the frame carries id -1 with
+    --    tool 0, or the lift was lost outright), so it must end the stroke. Treating it
+    --    as a finger left the stroke open, and the next pen-down drew a straight line
+    --    from the old stroke to the new one (Kindle Scribe gen 1, "tool=0 slot=4").
+    if facts.wacom and on_pen_slot and not stylus_tool then return Stylus.ROLE_PEN_OUT end
 
     -- 1. A real pen tip is unambiguous on every device: always the pen.
     if tool == Stylus.TOOL_PEN then return Stylus.ROLE_PEN end
@@ -142,9 +152,13 @@ end
 --   state: {x, y, drops} carried across ONE stroke (pass a fresh {} at pen-down)
 --   dt_ms: elapsed ms since the last sample, or nil when no reliable clock exists
 --   scale: Screen DPI factor so the pixel thresholds are resolution-independent
--- Returns true to ACCEPT the sample, false to DROP it. Pure / unit-testable. When
--- dt_ms is missing it accepts unconditionally (no clock -> no filtering, never worse
--- than not having the filter at all).
+-- Returns true to ACCEPT the sample, false to DROP it, plus a second value `restart`
+-- that is true when the accepted sample cannot belong to the same line: the drop
+-- limit was hit, or the pen reappears far away after a gap no drawing pen leaves
+-- (a lift that never reached us). The caller then ends the stroke and starts a new
+-- one at this point instead of joining them with a straight segment. Pure /
+-- unit-testable. When dt_ms is missing it accepts unconditionally (no clock -> no
+-- filtering, never worse than not having the filter at all).
 function Stylus.acceptMove(state, x, y, dt_ms, scale, tune)
     tune = tune or {}
     scale = scale or 1
@@ -160,19 +174,38 @@ function Stylus.acceptMove(state, x, y, dt_ms, scale, tune)
     local speed = tune.max_speed  or 6           -- px per ms a real nib can move
     local gap   = tune.max_gap_ms or 120         -- cap dt so a long gap can't allow anything
     local limit = tune.limit      or 8
+    local dx, dy = x - state.x, y - state.y
+    local d2 = dx * dx + dy * dy
+    -- A pen on the glass reports continuously; a long silence followed by a point
+    -- well away from the last one is a new contact whose lift we never saw.
+    if dt_ms > gap and d2 > (base * scale) * (base * scale) then
+        state.x, state.y, state.drops = x, y, 0
+        return true, true
+    end
     local dt = dt_ms < gap and dt_ms or gap
     local allowed = (base + dt * speed) * scale
-    local dx, dy = x - state.x, y - state.y
-    if dx * dx + dy * dy <= allowed * allowed then
+    if d2 <= allowed * allowed then
         state.x, state.y, state.drops = x, y, 0
         return true
     end
     state.drops = (state.drops or 0) + 1
-    if state.drops >= limit then                  -- escape hatch: accept and restart
+    if state.drops >= limit then                  -- escape hatch: accept, as a NEW stroke
         state.x, state.y, state.drops = x, y, 0
-        return true
+        return true, true
     end
     return false
+end
+
+-- Milliseconds from a slot's timestamp. KOReader stamps slots with
+-- time.timeval(ev.time), an fts number in MICROSECONDS; very old builds used a
+-- {sec, usec} table. Returns nil when there is no usable stamp.
+function Stylus.timevMs(tv)
+    if type(tv) == "number" then return tv / 1000 end
+    if type(tv) == "table" then
+        local sec, usec = tv.tv_sec or tv.sec, tv.tv_usec or tv.usec
+        if sec then return sec * 1000 + (usec or 0) / 1000 end
+    end
+    return nil
 end
 
 -- Fresh per-pen tracking state.

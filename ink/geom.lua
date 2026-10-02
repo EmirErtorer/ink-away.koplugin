@@ -170,8 +170,16 @@ function Geom.rdp(pts, tol)
             local split, maxd = -1, tol
             for j = a + 1, b - 1 do
                 local px, py = pts[2 * j - 1], pts[2 * j]
-                -- how far point j sits from the line through a and b
-                local d = math.abs((py - ay) * vx - (px - ax) * vy) * inv
+                -- how far point j sits from the line through a and b; when a and b
+                -- are the same point (a loop that closes on its start) there is no
+                -- line, so use the distance from that point, or the whole loop
+                -- collapses to a dot
+                local d
+                if len > 0 then
+                    d = math.abs((py - ay) * vx - (px - ax) * vy) * inv
+                else
+                    d = math.sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay))
+                end
                 if d > maxd then maxd, split = d, j end
             end
             if split > 0 then
