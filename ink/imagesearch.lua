@@ -1,47 +1,40 @@
 --[[
-Online image search for the image tool -- a tiny, offline-optional client over
-keyless image APIs. Ink Away never *needs* a network; this is used only when the
-reader explicitly chooses to browse online.
+Online image search for the image tool: a small client over keyless image APIs,
+used only when the reader chooses to browse online.
 
-The pure pieces (URL building, query encoding, JSON normalising) live at the top
-and are unit-tested without a KOReader environment. The network fetch and image
-decoding lazily require KOReader modules, so the file still loads for the tests.
+The pure pieces (URL building, query encoding, JSON normalising) come first and
+are unit-tested without KOReader. The network fetch and image decoding require
+KOReader modules lazily, so the file still loads in the tests.
 
-Providers (both keyless, HTTPS, safe-for-work); the reader switches between them
-in the browser:
-  * openverse -- api.openverse.org, a broad, varied catalogue (Flickr, museums,
-    galleries), filters to PNG with extension=png, mature=false by default.
-  * commons   -- Wikimedia Commons MediaWiki API, encyclopedic but with the most
-    reliable thumbnails (KOReader's own Wikipedia lookup uses this same API),
-    filters to PNG with filemime:image/png.
+Providers (both keyless, HTTPS, safe for work):
+  * openverse: api.openverse.org, a broad catalogue (Flickr, museums, galleries);
+    PNG filter extension=png, mature=false by default.
+  * commons: the Wikimedia Commons MediaWiki API (the one KOReader's Wikipedia
+    lookup uses), with the most reliable thumbnails; PNG filter
+    filemime:image/png.
 
-There is deliberately no "web-wide" search engine here: DuckDuckGo, Bing and
-Google all gate their image-results endpoints behind a signature computed by
-their in-page JavaScript, which a plain HTTP client (no JS engine) cannot mint --
-they answer such requests with an immediate 403. So the two keyless catalogue
-APIs above are what actually works on-device.
+Web search engines (DuckDuckGo, Bing, Google) sign their image endpoints with
+in-page JavaScript, which a plain HTTP client cannot run, and answer 403.
 
-A "transparent only" search maps to a PNG-format filter: these catalogues'
-PNG results are dominated by transparent graphics (icons, stickers, clip-art).
-Format is all an API can filter on -- true per-pixel alpha is only knowable after
-decoding the full image, which is too costly for a grid, so we don't claim more.
+"Transparent only" maps to a PNG filter: PNG results in these catalogues are
+mostly transparent graphics. Real per-pixel alpha is only known after decoding
+the full image, which is too costly for a grid.
 ]]
 
 local ImageSearch = {}
 
-ImageSearch.PAGE_SIZE = 6        -- results per page (a snappy 3-wide, 2-tall grid;
-                                 -- fetched one image at a time in the main loop, so
-                                 -- a smaller page stays responsive)
+ImageSearch.PAGE_SIZE = 6        -- results per page (a 3 by 2 grid; images are
+                                 -- fetched one at a time in the main loop, so a
+                                 -- small page stays responsive)
 ImageSearch.THUMB_MAX = 240      -- px, longest side of a grid thumbnail
-ImageSearch.FULL_MAX  = 1400     -- px cap on the added image when "full res" is off
+ImageSearch.FULL_MAX  = 1400     -- px cap on the added image when full resolution is off
 ImageSearch.USER_AGENT = "InkAway/3 KOReader plugin (https://github.com/EmirErtorer/ink-away.koplugin)"
--- A browser-like agent for the CDN image (thumbnail/full) fetches: some image
--- hosts reject or throttle a plainly non-browser agent.
+-- A browser-like agent for the image downloads: some image hosts reject or
+-- throttle a plainly non-browser agent.
 ImageSearch.BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 
--- The two keyless catalogues. When the reader hasn't chosen one, searchPage tries
--- them in this order (Openverse first, for its broader mix); when they have, only
--- their choice is queried so the source toggle is exact.
+-- The two catalogues, in the order searchPage tries them when no provider is
+-- given (Openverse first, for its broader mix).
 ImageSearch.PROVIDERS = { "openverse", "commons" }
 
 -- URL-encode one component (keep RFC 3986 unreserved, percent-escape the rest).
@@ -143,12 +136,12 @@ function ImageSearch.parse(provider, body, decode)
 end
 
 ------------------------------------------------------------------------------
--- Network + decoding (lazy KOReader requires; not exercised by the unit tests).
+-- Network and decoding (lazy KOReader requires; not exercised by the unit tests)
 ------------------------------------------------------------------------------
 
--- Blocking-but-bounded HTTPS GET into memory. Returns body, or nil, err. Mirrors
--- KOReader's Wikipedia fetch: socket.http auto-routes https, socketutil bounds
--- the time. A curl fallback covers platforms where LuaSec is flaky (some Android).
+-- A blocking but time-bounded HTTPS GET into memory, like KOReader's Wikipedia
+-- fetch (socket.http routes https, socketutil bounds the time). Falls back to
+-- curl where LuaSec is unreliable. Returns body, or nil and an error.
 function ImageSearch.httpGet(url, block_to, total_to, headers)
     headers = headers or { ["User-Agent"] = ImageSearch.USER_AGENT, ["Accept"] = "*/*" }
     local ok_http, http = pcall(require, "socket/http")
@@ -170,13 +163,13 @@ function ImageSearch.httpGet(url, block_to, total_to, headers)
             if code >= 200 and code <= 299 and body ~= "" then return body end
             return nil, "http " .. tostring(code)       -- a valid non-2xx: no point trying curl
         end
-        -- only a genuine socket/SSL failure (threw, or no numeric code) falls through
+        -- only a socket or SSL failure (an error, or no numeric code) falls through
     end
     return ImageSearch._curlGet(url, headers)
 end
 
--- Last-resort GET via the system curl (guards platforms where LuaSec fails). All
--- pcall/io.popen-guarded, so it degrades to nil on sandboxes without a shell.
+-- A last-resort GET through the system curl. Fully guarded, so it returns nil
+-- where there is no shell.
 function ImageSearch._curlGet(url, headers)
     local ok, body = pcall(function()
         local ua = (headers and headers["User-Agent"]) or ImageSearch.USER_AGENT
@@ -194,8 +187,8 @@ function ImageSearch._curlGet(url, headers)
     return nil, "network unavailable"
 end
 
--- Decode image bytes to a BlitBuffer, scaled so its longest side is <= max_side
--- (nil = no scaling). pcall-guarded; returns the buffer or nil.
+-- Decode image bytes to a BlitBuffer, scaled so its longest side is at most
+-- max_side (nil for no scaling). Returns the buffer or nil.
 function ImageSearch.decode(bytes, max_side)
     if type(bytes) ~= "string" or bytes == "" then return nil end
     local ok_ri, RenderImage = pcall(require, "ui/renderimage")
@@ -217,17 +210,14 @@ function ImageSearch.decode(bytes, max_side)
     return bb
 end
 
--- Fetch and parse one page of search results in the CALLER's process, under
--- Trapper. When opts.provider names a catalogue ("openverse" | "commons") only
--- that one is queried, so the reader's source choice is honoured exactly;
--- otherwise both are tried in PROVIDERS order as a fallback. Returns
+-- Fetch and parse one page of search results in the caller's process, under
+-- Trapper. opts.provider ("openverse" or "commons") queries just that catalogue;
+-- without it both are tried in PROVIDERS order. Returns
 --   { net_ok, provider, page_count, results = { {thumb, full, w, h, mime,
---     title, source} ... } }  with plain URLs; the caller downloads thumbnails.
--- Deliberately NOT run in a forked subprocess: LuaSec's SSL crashes hard inside a
--- fork on some builds (which pcall can't catch), and a small subprocess return is
--- also silently dropped -- so the network is done in the main loop, kept
--- responsive by a small page and short per-request timeouts with a cancel check
--- between each.
+--     title, source} ... } }
+-- with plain URLs; the caller downloads the thumbnails. It runs in the main
+-- process because LuaSec's SSL can crash a forked one on some builds (beyond
+-- pcall's reach); small pages and short timeouts keep it responsive.
 function ImageSearch.searchPage(query, opts)
     opts = opts or {}
     local order

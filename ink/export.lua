@@ -1,41 +1,32 @@
 --[[
-Saves the canvas to a real image file. Normally that is the whole W x H canvas,
-but an optional crop rectangle lets you export just a part (say a signature in
-the middle of the page) at its own size.
+Export: the canvas (or a crop of it) as PNG or JPEG, and a notebook as PDF.
 
-PNG is written as true RGBA: pixels you never touched have alpha 0, so they are
-genuinely transparent and good for sleep screen overlays, while ink pixels are
-opaque. JPEG has no alpha, so there the ink is laid over a solid white
-background instead.
+PNG is true RGBA: untouched pixels are fully transparent (good for sleep screen
+overlays). JPEG has no alpha, so the ink is laid over white. A loaded background
+can be included or left out; the on-screen grid is never exported.
 
-If a background image is loaded, the save can either include it (your ink
-composited on top of the picture) or leave it out (just the ink). A grid is
-never part of the export; it is only ever a guide on screen.
-
-The pixel buffers are plain FFI byte arrays (uint8_t[w*h*n]), packed tightly in
-exactly the layout the encoders want. They are built when you save and thrown
-away afterwards, so the big image buffer is never sitting in memory while you
-draw. FFI cdata is also invisible to the Lua garbage collector.
-
-Encoding goes through KOReader's own FFI wrappers:
+Pixels are built from the ops into tightly packed FFI byte arrays at save time
+and dropped afterwards, so no export-sized buffer lives on while drawing.
+Encoding goes through KOReader's FFI wrappers:
     ffi/png.encodeToFile(path, mem, w, h, 4)              -> LCT_RGBA
     ffi/jpeg.encodeToFile(path, mem, w, h, 3, q, stride)  -> TJPF_RGB
-They are required lazily so the buffer building logic can be tested on a
-computer, where the native libraries are not present.
+They are required lazily, so the buffer building is testable without them.
 ]]
 
 local ffi = require("ffi")
 local bit = require("bit")
+local Canvas = require("ink/canvas")
+local Fill = require("ink/fill")
+local Pdf = require("ink/pdf")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
-local Fill = require("ink/fill")
 local Symmetry = require("ink/symmetry")
+local Template = require("ink/template")
 
 local Export = {}
 
--- A tiny 5x7 bitmap font (digits, slash, space) so the exporter can stamp a
--- page-number footer without any font/text dependency (keeps this file usable
--- headlessly and identical on every device). Each glyph is 7 rows of 5 bits.
+-- A tiny 5x7 bitmap font (digits, slash, space) for the page-number footer, so
+-- the exporter needs no fonts. Each glyph is 7 rows of 5 bits.
 local GLYPHS = {
     ["0"] = { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },
     ["1"] = { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },
@@ -51,8 +42,8 @@ local GLYPHS = {
     [" "] = { 0, 0, 0, 0, 0, 0, 0 },
 }
 
--- Stamp `text` (digits / slash / space) centred near the bottom of an ow x oh
--- RGB buffer, at grey level `lvl`. Used for the optional page-number footer.
+-- Stamp `text` (digits, slash, space) centred near the bottom of an ow x oh RGB
+-- buffer at grey level `lvl`: the optional page-number footer.
 function Export.drawFooter(buf, ow, oh, text, lvl)
     if not text or text == "" then return end
     lvl = lvl or 90
@@ -109,28 +100,24 @@ local function opRGB(op)
     return c[1] or 0, c[2] or 0, c[3] or 0
 end
 
--- Replay every committed op into `buf`. `ink_put(r,g,b,alpha)` gives back the
--- span writer for an ink stroke of that colour and opacity; `erase_put` clears.
--- Each op's put is wrapped for its own symmetry mode, so mirrored copies come
--- out of the same replay with no extra bookkeeping. Everything (the RGBA and RGB
--- builders, and the fill's grey buffer) shares this, so all stay pixel for pixel
--- identical to the rasterizer.
--- `erase_put_for(op)` is a factory returning the span writer for an erase op, so
--- a "hard" erase (one that also removes the background) can behave differently
--- from an ordinary one.
+-- Replay every committed op. `ink_put(r,g,b,alpha)` returns the span writer for
+-- ink of that colour and opacity, and `erase_put_for(op)` the writer for an erase
+-- (a hard erase, which also removes the background, differs from a soft one).
+-- Each op's writer is wrapped for its own symmetry mode. The RGBA and RGB
+-- builders and the fill's grey buffer all replay through here, so they match the
+-- rasterizer pixel for pixel.
 local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
         if op.kind == "text" then
-            -- text has no vector geometry; it is composited from a rasteriser the
-            -- view injects (Export.text_raster). Drawn here in z-order; a text-
-            -- sparing erase (op.spare_text) reveals a text-bearing buffer, so what
-            -- reaches the file matches the screen without a separate pass.
+            -- text comes from a rasteriser the view injects (Export.text_raster),
+            -- in z-order; a text-sparing erase reveals a copy with the text, so
+            -- the file matches the screen
             if text_put and not op.hidden then text_put(op) end
         elseif op.kind == "image" then
-            -- a placed picture: composited in z-order from a scaled RGBA buffer the
-            -- view injects (Export.image_raster), same idea as text.
+            -- a placed picture, from the RGBA buffer the view injects
+            -- (Export.image_raster), in z-order
             if image_put and not op.hidden then image_put(op) end
         else
             local put, fill_put
@@ -152,10 +139,10 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
 end
 
 -- Walk the glyph pixels of a text op. The view sets Export.text_raster to a
--- function(op) -> (uint8 level buffer, w, h) where 255 is untouched (white) and
--- lower values are ink/highlight shades on white. `cb(x, y, level)` gets each
--- non-white pixel in canvas coordinates. A no-op when no rasteriser is set (so
--- the headless export tests, which have no fonts, simply skip text).
+-- function(op) returning (uint8 level buffer, w, h), where 255 is untouched white
+-- and lower values are ink and highlight shades. `cb(x, y, level)` gets each
+-- non-white pixel in canvas coordinates. Without a rasteriser (the headless
+-- tests have no fonts) text is skipped.
 function Export.eachTextPixel(op, cb)
     if not Export.text_raster then return end
     local raster, w, h = Export.text_raster(op)
@@ -171,12 +158,11 @@ function Export.eachTextPixel(op, cb)
 end
 
 -- Walk the pixels of an image op. The view sets Export.image_raster to a
--- function(op) -> (rgba_uint8_buffer, w, h, ox, oy) holding the picture already
--- oriented (flipped / rotated) and scaled to the op's on-page size (w*h*4 bytes,
--- r,g,b,alpha), with (ox,oy) its top-left in canvas coordinates -- which differs
--- from op.x/op.y once the picture is rotated (its bounding box grows). `cb(x, y,
--- r, g, b, a)` gets each pixel (in canvas coordinates) whose alpha is non-zero. A
--- no-op when no rasteriser is set (headless export tests have no image decoder).
+-- function(op) returning (rgba buffer, w, h, ox, oy): the picture flipped,
+-- rotated and scaled to its on-page size, with (ox, oy) its top-left in canvas
+-- coordinates (not op.x, op.y once rotated). `cb(x, y, r, g, b, a)` gets each
+-- pixel with non-zero alpha, in canvas coordinates. Without a rasteriser (the
+-- headless tests have no decoder) images are skipped.
 function Export.eachImagePixel(op, cb)
     if not Export.image_raster then return end
     local buf, w, h, rx, ry = Export.image_raster(op)
@@ -200,16 +186,15 @@ local function dims(canvas, rect)
     return canvas.w, canvas.h, 0, 0
 end
 
--- Build a tightly packed RGBA buffer (ow*oh*4 bytes), transparent where no ink.
--- `rect` optionally crops to {x,y,w,h}. `clear_mask` (optional, ow*oh bytes) is
--- set to 1 wherever a "hard" erase (op.ebg) clears, so the background composite
--- can leave those pixels transparent. Returns buf, byte_count, ow, oh.
-function Export.buildRGBA(canvas, rect, clear_mask, template)
-    local ow, oh, offx, offy = dims(canvas, rect)
-    local n = ow * oh * 4
-    local buf = ffi.new("uint8_t[?]", n)  -- starts all zero, so fully transparent
-    -- returns the crop-local x, y and clipped length, or nil when fully outside
-    local function clamp_run(x, y, len)
+-- Does this notebook template draw a ruling?
+local function ruled(template)
+    return template and template.style and template.style ~= "blank"
+end
+
+-- A function mapping a canvas run (x, y, len) into an ow x oh output offset by
+-- (offx, offy). Returns the output x, y and clipped length, or nil when outside.
+local function clipper(ow, oh, offx, offy)
+    return function(x, y, len)
         x = x - offx; y = y - offy
         if y < 0 or y >= oh then return end
         if x < 0 then len = len + x; x = 0 end
@@ -217,45 +202,100 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
         if len <= 0 then return end
         return x, y, len
     end
-    -- notebook ruling, opaque grey, so it prints on top of any background too
-    if template and template.style and template.style ~= "blank" then
-        local Template = require("ink/template")
-        local g = template.gray or 210
-        local tput = function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
-            if not cx then return end
-            local base = (cy * ow + cx) * 4
-            for i = 0, clen - 1 do
-                local o = base + i * 4
-                buf[o] = g; buf[o + 1] = g; buf[o + 2] = g; buf[o + 3] = 255
-            end
-        end
-        Template.render(template.style, canvas.w, canvas.h, template.size or 40, tput)
-    end
-    local function ink_put(r, g, b, alpha)
+end
+
+-- A span writer that fills runs with one colour, in an RGBA (bpp 4) or RGB
+-- (bpp 3) buffer.
+local function fillRun(buf, ow, bpp, clip, r, g, b, a)
+    if bpp == 4 then
         return function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
+            local cx, cy, clen = clip(x, y, len)
             if not cx then return end
             local base = (cy * ow + cx) * 4
             for i = 0, clen - 1 do
                 local o = base + i * 4
-                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b; buf[o + 3] = alpha
+                buf[o] = r; buf[o + 1] = g; buf[o + 2] = b; buf[o + 3] = a
             end
         end
     end
-    local function text_put(op)
-        Export.eachTextPixel(op, function(x, y, L)
-            local cx, cy = clamp_run(x, y, 1)
-            if not cx then return end
-            local o = (cy * ow + cx) * 4
-            buf[o] = L; buf[o + 1] = L; buf[o + 2] = L; buf[o + 3] = 255
-        end)
+    return function(x, y, len)
+        local cx, cy, clen = clip(x, y, len)
+        if not cx then return end
+        local base = (cy * ow + cx) * 3
+        for i = 0, clen - 1 do
+            local o = base + i * 3
+            buf[o] = r; buf[o + 1] = g; buf[o + 2] = b
+        end
     end
-    -- A placed image, source-over onto whatever is already there (so a transparent
-    -- PNG shows the ink beneath it and the page stays transparent where it is).
-    local function put_image_into(dst, op)
+end
+
+-- A span writer that copies runs from `src`, a buffer of the same layout: how an
+-- erase reveals the page underneath.
+local function copyRun(buf, src, ow, bpp, clip)
+    return function(x, y, len)
+        local cx, cy, clen = clip(x, y, len)
+        if not cx then return end
+        local o = (cy * ow + cx) * bpp   -- the clip keeps the run inside both buffers
+        ffi.copy(buf + o, src + o, clen * bpp)
+    end
+end
+
+-- A pixel writer for text: grey level L, opaque.
+local function textPixel(buf, ow, bpp, clip)
+    return function(x, y, L)
+        local cx, cy = clip(x, y, 1)
+        if not cx then return end
+        local o = (cy * ow + cx) * bpp
+        buf[o] = L; buf[o + 1] = L; buf[o + 2] = L
+        if bpp == 4 then buf[o + 3] = 255 end
+    end
+end
+
+-- What an erase reveals, as on screen: a copy of the page so far (paper and
+-- ruling) with the placed images on it, and for a text-sparing erase a second
+-- copy with the text on top. Both nil when nothing is erased.
+local function revealSources(canvas, buf, n, ow, bpp, clip, putImage)
+    local flags = Canvas.scanOps(canvas.ops)
+    if not flags.erase then return nil, nil end
+    local base = ffi.new("uint8_t[?]", n)
+    ffi.copy(base, buf, n)
+    if flags.image then
+        for _, op in ipairs(canvas.ops) do
+            if not op.hidden and op.kind == "image" then putImage(base, op) end
+        end
+    end
+    local text
+    if flags.spare_text and flags.text then
+        text = ffi.new("uint8_t[?]", n)
+        ffi.copy(text, base, n)
+        local px = textPixel(text, ow, bpp, clip)
+        for _, op in ipairs(canvas.ops) do
+            if not op.hidden and op.kind == "text" then Export.eachTextPixel(op, px) end
+        end
+    end
+    return base, text
+end
+
+-- Build a packed RGBA buffer (ow*oh*4 bytes), transparent where there is no ink.
+-- `rect` optionally crops to {x,y,w,h}. The optional `clear_mask` (ow*oh bytes)
+-- gets 1 wherever a hard erase (op.ebg) clears, so the background composite
+-- leaves those pixels transparent. Returns buf, byte_count, ow, oh.
+function Export.buildRGBA(canvas, rect, clear_mask, template)
+    local ow, oh, offx, offy = dims(canvas, rect)
+    local n = ow * oh * 4
+    local buf = ffi.new("uint8_t[?]", n)  -- starts all zero, so fully transparent
+    local clip = clipper(ow, oh, offx, offy)
+    -- notebook ruling, opaque grey, so it prints on top of any background too
+    if ruled(template) then
+        local g = template.gray or 210
+        Template.render(template.style, canvas.w, canvas.h, template.size or 40,
+            fillRun(buf, ow, 4, clip, g, g, g, 255))
+    end
+    -- a placed image, source-over onto what is there (a transparent PNG shows the
+    -- ink beneath, and the page stays transparent where the PNG is)
+    local function putImage(dst, op)
         Export.eachImagePixel(op, function(x, y, r, g, b, a)
-            local cx, cy = clamp_run(x, y, 1)
+            local cx, cy = clip(x, y, 1)
             if not cx then return end
             local o = (cy * ow + cx) * 4
             if a >= 255 then
@@ -276,55 +316,11 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             dst[o + 3] = math.floor(outa * 255 + 0.5)
         end)
     end
-    local function image_put(op) put_image_into(buf, op) end
-    -- A hard erase (op.ebg) clears to fully transparent and marks the background
-    -- to be dropped too. A soft erase reveals the page-so-far (the ruling stays,
-    -- everything else transparent) -- and, when it spares text, the ruling+text --
-    -- so on-screen and exported erasing match. Snapshots built only when needed
-    -- and left to the GC (plain Lua cdata) after the replay.
-    local has_erase, has_spare, has_text, has_image = false, false, false, false
-    for _, op in ipairs(canvas.ops) do
-        if not op.hidden then
-            if op.kind == "erase" then has_erase = true; if op.spare_text then has_spare = true end
-            elseif op.kind == "text" then has_text = true
-            elseif op.kind == "image" then has_image = true end
-        end
-    end
-    local base_buf, text_buf
-    if has_erase then
-        base_buf = ffi.new("uint8_t[?]", n); ffi.copy(base_buf, buf, n)
-        -- a soft erase keeps placed images (unless op.ebg), so the plain reveal is
-        -- the page WITH the images composited on it
-        if has_image then
-            for _, op in ipairs(canvas.ops) do
-                if not op.hidden and op.kind == "image" then put_image_into(base_buf, op) end
-            end
-        end
-        if has_spare and has_text then
-            text_buf = ffi.new("uint8_t[?]", n); ffi.copy(text_buf, base_buf, n)
-            for _, op in ipairs(canvas.ops) do
-                if not op.hidden and op.kind == "text" then
-                    Export.eachTextPixel(op, function(x, y, L)
-                        local cx, cy = clamp_run(x, y, 1)
-                        if not cx then return end
-                        local o = (cy * ow + cx) * 4
-                        text_buf[o] = L; text_buf[o + 1] = L; text_buf[o + 2] = L; text_buf[o + 3] = 255
-                    end)
-                end
-            end
-        end
-    end
-    local function soft_erase_from(src)
-        return function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
-            if not cx then return end
-            -- clamp_run keeps the run inside both n-byte buffers
-            local o = (cy * ow + cx) * 4
-            ffi.copy(buf + o, src + o, clen * 4)
-        end
-    end
+    -- a soft erase reveals the page so far; a hard one (op.ebg) clears to fully
+    -- transparent and marks the background to be dropped too
+    local base_buf, text_buf = revealSources(canvas, buf, n, ow, 4, clip, putImage)
     local function hard_erase(x, y, len)
-        local cx, cy, clen = clamp_run(x, y, len)
+        local cx, cy, clen = clip(x, y, len)
         if not cx then return end
         local base = (cy * ow + cx) * 4
         for i = 0, clen - 1 do
@@ -336,25 +332,29 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             for i = 0, clen - 1 do clear_mask[mb + i] = 1 end
         end
     end
-    local plain_erase = base_buf and soft_erase_from(base_buf)
-    local spare_erase = text_buf and soft_erase_from(text_buf) or plain_erase
-    replay(canvas, ink_put, function(op)
-        if op.ebg then return hard_erase end
-        if op.spare_text and spare_erase then return spare_erase end
-        return plain_erase or hard_erase
-    end, text_put, image_put)
+    local plain_erase = base_buf and copyRun(buf, base_buf, ow, 4, clip)
+    local spare_erase = text_buf and copyRun(buf, text_buf, ow, 4, clip) or plain_erase
+    local text_px = textPixel(buf, ow, 4, clip)
+    replay(canvas,
+        function(r, g, b, alpha) return fillRun(buf, ow, 4, clip, r, g, b, alpha) end,
+        function(op)
+            if op.ebg then return hard_erase end
+            if op.spare_text and spare_erase then return spare_erase end
+            return plain_erase or hard_erase
+        end,
+        function(op) Export.eachTextPixel(op, text_px) end,
+        function(op) putImage(buf, op) end)
     return buf, n, ow, oh
 end
 
--- Build a tightly packed RGB buffer (ow*oh*3 bytes) with ink composited over a
--- solid white background (for JPEG, which has no transparency). `rect` optional.
--- `template` (optional {style,size}) draws a light grey notebook ruling under
--- the ink, so a lined/grid/dotted page prints its paper too.
+-- Build a packed RGB buffer (ow*oh*3 bytes) with the ink over white, for JPEG.
+-- `rect` optionally crops; `template` (optional {style,size}) draws the notebook
+-- ruling under the ink, so a ruled page prints its paper too.
 function Export.buildRGB(canvas, rect, template)
     local ow, oh, offx, offy = dims(canvas, rect)
     local n = ow * oh * 3
     local buf = ffi.new("uint8_t[?]", n)
-    -- paper colour: white unless the template asks for a tint (e.g. sandpaper)
+    -- paper colour: white unless the template asks for a tint
     local pr, pg, pb = 255, 255, 255
     if template and template.paper then
         pr, pg, pb = template.paper[1], template.paper[2], template.paper[3]
@@ -364,42 +364,11 @@ function Export.buildRGB(canvas, rect, template)
     else
         for i = 0, ow * oh - 1 do local o = i * 3; buf[o] = pr; buf[o + 1] = pg; buf[o + 2] = pb end
     end
-    local function clamp_run(x, y, len)
-        x = x - offx; y = y - offy
-        if y < 0 or y >= oh then return end
-        if x < 0 then len = len + x; x = 0 end
-        if x + len > ow then len = ow - x end
-        if len <= 0 then return end
-        return x, y, len
-    end
-    -- JPEG has no alpha, so lay the ink over white. Each channel becomes
-    -- 255 - alpha*(255-c)/255, which is exactly how the ink looks on the white
-    -- canvas (a partly transparent black pen turns into the matching grey).
-    local function ink_put(r, g, b, alpha)
-        local function over(c) return math.floor(255 - alpha * (255 - c) / 255 + 0.5) end
-        local orr, og, ob = over(r), over(g), over(b)
-        return function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
-            if not cx then return end
-            local base = (cy * ow + cx) * 3
-            for i = 0, clen - 1 do
-                local o = base + i * 3
-                buf[o] = orr; buf[o + 1] = og; buf[o + 2] = ob
-            end
-        end
-    end
-    local function text_put(op)
-        Export.eachTextPixel(op, function(x, y, L)
-            local cx, cy = clamp_run(x, y, 1)
-            if not cx then return end
-            local o = (cy * ow + cx) * 3
-            buf[o] = L; buf[o + 1] = L; buf[o + 2] = L
-        end)
-    end
+    local clip = clipper(ow, oh, offx, offy)
     -- a placed image over the (opaque) buffer, blended by its alpha
-    local function put_image_into(dst, op)
+    local function putImage(dst, op)
         Export.eachImagePixel(op, function(x, y, r, g, b, a)
-            local cx, cy = clamp_run(x, y, 1)
+            local cx, cy = clip(x, y, 1)
             if not cx then return end
             local o = (cy * ow + cx) * 3
             if a >= 255 then
@@ -412,119 +381,64 @@ function Export.buildRGB(canvas, rect, template)
             dst[o + 2] = math.floor(b * sa + dst[o + 2] * (1 - sa) + 0.5)
         end)
     end
-    local function image_put(op) put_image_into(buf, op) end
     -- notebook ruling first, so ink and erase sit on top of the paper
-    if template and template.style and template.style ~= "blank" then
-        local Template = require("ink/template")
+    if ruled(template) then
         local g = template.gray or 210
-        local tput = function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
-            if not cx then return end
-            local base = (cy * ow + cx) * 3
-            for i = 0, clen - 1 do
-                local o = base + i * 3
-                buf[o] = g; buf[o + 1] = g; buf[o + 2] = g
-            end
-        end
-        Template.render(template.style, canvas.w, canvas.h, template.size or 40, tput)
+        Template.render(template.style, canvas.w, canvas.h, template.size or 40,
+            fillRun(buf, ow, 3, clip, g, g, g))
     end
-    -- The eraser reveals the paper AND the ruling (exactly like on screen), so a
-    -- snapshot of the page-so-far (paper + ruling) is the plain reveal source; a
-    -- text-sparing erase reveals paper + ruling + text. Build them only if there
-    -- is anything to erase / spare, and free the copies after the replay.
-    local has_erase, has_spare, has_text, has_image = false, false, false, false
-    for _, op in ipairs(canvas.ops) do
-        if not op.hidden then
-            if op.kind == "erase" then has_erase = true; if op.spare_text then has_spare = true end
-            elseif op.kind == "text" then has_text = true
-            elseif op.kind == "image" then has_image = true end
-        end
-    end
-    local base_buf, text_buf
-    if has_erase then
-        base_buf = ffi.new("uint8_t[?]", n); ffi.copy(base_buf, buf, n)
-        if has_image then   -- a soft erase reveals the page WITH images (keeps them)
-            for _, op in ipairs(canvas.ops) do
-                if not op.hidden and op.kind == "image" then put_image_into(base_buf, op) end
-            end
-        end
-        if has_spare and has_text then
-            text_buf = ffi.new("uint8_t[?]", n); ffi.copy(text_buf, base_buf, n)
-            for _, op in ipairs(canvas.ops) do
-                if not op.hidden and op.kind == "text" then
-                    Export.eachTextPixel(op, function(x, y, L)
-                        local cx, cy = clamp_run(x, y, 1)
-                        if not cx then return end
-                        local o = (cy * ow + cx) * 3
-                        text_buf[o] = L; text_buf[o + 1] = L; text_buf[o + 2] = L
-                    end)
-                end
-            end
-        end
-    end
-    local function erase_from(src)
-        return function(x, y, len)
-            local cx, cy, clen = clamp_run(x, y, len)
-            if not cx then return end
-            -- clamp_run guarantees 0<=cx, cx+clen<=ow and cy<oh, so this run stays
-            -- inside both buffers (both are exactly n = ow*oh*3 bytes)
-            local o = (cy * ow + cx) * 3
-            ffi.copy(buf + o, src + o, clen * 3)
-        end
-    end
-    local plain_erase = base_buf and erase_from(base_buf)
-    local spare_erase = text_buf and erase_from(text_buf) or plain_erase
-    local function fallback_erase(x, y, len)   -- no snapshot (no erase ops): paper
-        local cx, cy, clen = clamp_run(x, y, len)
-        if not cx then return end
-        local base = (cy * ow + cx) * 3
-        for i = 0, clen - 1 do local o = base + i * 3; buf[o] = pr; buf[o + 1] = pg; buf[o + 2] = pb end
-    end
-    replay(canvas, ink_put, function(op)
-        if op.spare_text and spare_erase then return spare_erase end
-        return plain_erase or fallback_erase
-    end, text_put, image_put)
+    local base_buf, text_buf = revealSources(canvas, buf, n, ow, 3, clip, putImage)
+    local plain_erase = base_buf and copyRun(buf, base_buf, ow, 3, clip)
+    local spare_erase = text_buf and copyRun(buf, text_buf, ow, 3, clip) or plain_erase
+    local paper_erase = fillRun(buf, ow, 3, clip, pr, pg, pb)
+    local text_px = textPixel(buf, ow, 3, clip)
+    -- JPEG has no alpha, so ink is laid over white: each channel becomes
+    -- 255 - alpha * (255 - c) / 255, which is how the ink looks on the white canvas.
+    replay(canvas,
+        function(r, g, b, alpha)
+            local function over(c) return math.floor(255 - alpha * (255 - c) / 255 + 0.5) end
+            return fillRun(buf, ow, 3, clip, over(r), over(g), over(b))
+        end,
+        function(op)
+            if op.spare_text and spare_erase then return spare_erase end
+            return plain_erase or paper_erase
+        end,
+        function(op) Export.eachTextPixel(op, text_px) end,
+        function(op) putImage(buf, op) end)
     return buf, n, ow, oh
 end
 
--- Build a tightly packed 8-bit grey buffer of the drawing over white (ink dark,
--- untouched areas white). Used by the flood fill to find an enclosed area, so it
--- sees the mirrored ink too when symmetry is on.
+-- Build a packed 8-bit grey buffer of the drawing over white, for the flood fill
+-- to find an enclosed area (mirrored ink included).
 function Export.buildGray(canvas)
     local w, h = canvas.w, canvas.h
     local n = w * h
     local buf = ffi.new("uint8_t[?]", n)
     ffi.fill(buf, n, 0xFF)
-    local function clamp_run(x, y, len)
-        if y < 0 or y >= h then return end
-        if x < 0 then len = len + x; x = 0 end
-        if x + len > w then len = w - x end
-        if len <= 0 then return end
-        return x, len
-    end
+    local clip = clipper(w, h, 0, 0)
     local function ink_put(r, g, b, alpha)
         local lum = 0.299 * r + 0.587 * g + 0.114 * b
         local g8 = math.floor(255 - alpha * (255 - lum) / 255 + 0.5)
         return function(x, y, len)
-            local cx, clen = clamp_run(x, y, len)
+            local cx, cy, clen = clip(x, y, len)
             if not cx then return end
-            local base = y * w + cx
+            local base = cy * w + cx
             for i = 0, clen - 1 do buf[base + i] = g8 end
         end
     end
     local function erase_put(x, y, len)
-        local cx, clen = clamp_run(x, y, len)
+        local cx, cy, clen = clip(x, y, len)
         if not cx then return end
-        local base = y * w + cx
+        local base = cy * w + cx
         for i = 0, clen - 1 do buf[base + i] = 0xFF end
     end
     replay(canvas, ink_put, function() return erase_put end)
     return buf
 end
 
--- Composite the ink RGBA layer `ink` over the background RGBA `bg` (both packed
--- ow*oh*4). `bg` is canvas sized; `offx,offy` place the crop within it. Writes
--- the result back into `ink`. Standard "source over" alpha compositing.
+-- Composite the RGBA ink layer `ink` over the RGBA background `bg` (source over),
+-- writing the result into `ink`. `bg` is canvas sized and (offx, offy) place the
+-- crop within it.
 local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy, clear_mask)
     for y = 0, oh - 1 do
         local by = (y + offy)
@@ -594,21 +508,14 @@ local function upscaleMask(src, ow, oh, s)
     return dst
 end
 
--- Save the canvas as a JPEG on a white background. `opts` may carry `rect`,
--- `template`, `bg`, `footer`, and `scale` (integer >1 renders the page at a
--- higher pixel resolution: the background is expected pre-rendered at that
--- size, the ink layer is upscaled to match, so text-heavy PDF pages stay crisp).
--- Returns ok, err, pixel_w, pixel_h.
 -- The RGB pixels a JPEG export encodes (see saveJPEG for `opts`). Returns rgb, w, h.
 function Export.buildJPEGRGB(canvas, opts)
     opts = opts or {}
     local ow, oh, rgb, _
-    local tmpl = opts.template
-    local ruled = tmpl and tmpl.style and tmpl.style ~= "blank"
-    if opts.bg and not opts.rect and not ruled and not opts.no_fast and not Export.hasVisibleOps(canvas) then
-        -- Nothing is drawn on this page (most pages of an imported PDF): the result
-        -- is just the background flattened onto white. Exactly what the general
-        -- path below produces for an empty ink layer, without building it.
+    if opts.bg and not opts.rect and not ruled(opts.template) and not opts.no_fast
+            and not Export.hasVisibleOps(canvas) then
+        -- nothing drawn on this page (most pages of an imported PDF): the result
+        -- is the background flattened onto white, as the general path would give
         local s = opts.scale or 1
         ow, oh = canvas.w * s, canvas.h * s
         local bg = opts.bg
@@ -662,16 +569,17 @@ function Export.hasVisibleOps(canvas)
     return false
 end
 
+-- Save the canvas as a JPEG on white. `opts` may carry `rect`, `template`, `bg`,
+-- `footer` and `scale`: an integer above 1 renders at that pixel multiple (the
+-- background comes rendered at that size and the ink is upscaled to match), so
+-- text in an imported PDF stays crisp. Returns ok, err, pixel_w, pixel_h.
 function Export.saveJPEG(canvas, path, quality, opts)
     local Jpeg = require("ffi/jpeg")
     opts = opts or {}
-    local tmpl = opts.template
-    local ruled = tmpl and tmpl.style and tmpl.style ~= "blank"
-    if opts.bg and opts.bg_opaque and not opts.footer and not opts.rect and not ruled
+    if opts.bg and opts.bg_opaque and not opts.footer and not opts.rect and not ruled(opts.template)
             and not opts.no_fast and not Export.hasVisibleOps(canvas) then
-        -- An empty page over an opaque background (a page of an imported PDF with
-        -- no ink): the JPEG is the background itself, so encode it as it is --
-        -- no copy, no per-pixel pass.
+        -- an empty page over an opaque background (an imported PDF page with no
+        -- ink) is the background itself, encoded as it is
         local s = opts.scale or 1
         local ow, oh = canvas.w * s, canvas.h * s
         local ok, err = Jpeg.encodeToFile(path, opts.bg, ow, oh, 4, quality or 90, ow * 4)
@@ -682,36 +590,18 @@ function Export.saveJPEG(canvas, path, quality, opts)
     return ok, err, ow, oh
 end
 
--- Assemble a notebook (a list of per-page ops lists) into a single PDF at
--- `path`, one fixed-size page each, with the shared `template` ruling. Pages
--- are rendered to JPEG one at a time through a scratch file in `tmp_dir`, so
--- memory stays flat no matter how many pages. `bg` is an optional background:
--- either one RGBA buffer shared by every page, or a function(i) -> RGBA buffer
--- that renders each page's own background on demand (used for PDF import).
--- Returns ok, err.
--- `opts` (optional): { footer = bool (stamp "i / n" page numbers),
--- scale = integer (render pages at this pixel multiplier for crisp PDF text) }.
-function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg, opts)
-    local job, err = Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
-    if not job then return false, err end
-    while true do
-        local state, e = job:step()
-        if state == "done" then return true end
-        if not state then return false, e end
-    end
-end
-
--- The same export as a job that does ONE page per step(), so a long document can
--- be exported a page at a time between UI updates (with progress and a way to
--- stop) instead of freezing the reader for minutes. Each page is rendered, written
--- straight into the PDF on disk, and its buffers released before the next one, so
--- memory stays flat at any page count. step() returns "page", i, n while working,
--- "done" when the file is complete, or nil, err (the partial file is removed).
--- cancel() stops and deletes the partial file.
+-- Export a notebook (a list of per-page op lists) to a PDF at `path`: one page
+-- each with the shared `template` ruling, as a job that does one page per step()
+-- so the UI can show progress and stop it. Each page goes through a JPEG scratch
+-- file in `tmp_dir` straight into the PDF, so memory stays flat.
+--   bg:   optional background, one RGBA buffer for every page or a
+--         function(i, scale) -> RGBA buffer rendering each page's own
+--   opts: { footer = stamp "i / n" page numbers, scale = pixel multiplier,
+--           bg_opaque = the background has no transparency }
+-- step() returns "page", i, n while working, "done" when the file is complete,
+-- or nil, err (the partial file is removed). cancel() stops and deletes it.
 function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
     opts = opts or {}
-    local Pdf = require("ink/pdf")
-    local Canvas = require("ink/canvas")
     local scale = opts.scale or 1
     tmp_dir = tmp_dir or "/tmp"
     local stream, err = Pdf.openStream(path)

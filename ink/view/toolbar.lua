@@ -1,0 +1,443 @@
+--[[
+The toolbar, switching tools, and the floating controls (the zoom pill and the
+bar collapse chevrons) that fade while drawing near them.
+Part of InkAwayView (see ink/view.lua).
+]]
+
+local Blitbuffer = require("ffi/blitbuffer")
+local Button = require("ui/widget/button")
+local Device = require("device")
+local FrameContainer = require("ui/widget/container/framecontainer")
+local GeomUI = require("ui/geometry")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local IconWidget = require("ui/widget/iconwidget")
+local InfoMessage = require("ui/widget/infomessage")
+local UIManager = require("ui/uimanager")
+local logger = require("logger")
+local _ = require("gettext")
+local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
+
+local Screen = Device.screen
+local HAIRLINE = Paint.HAIRLINE
+
+-- The floating zoom pill: e-ink cannot show a see-through fill, so it is a light
+-- opaque pill with a soft border and dark glyphs, and it hides while drawing
+-- near it so the canvas underneath stays reachable.
+local FAB_FILL   = Blitbuffer.ColorRGB32(0xF0, 0xF0, 0xF0, 0xFF)
+local FAB_BORDER = Blitbuffer.ColorRGB32(0xB4, 0xB4, 0xB4, 0xFF)
+local FAB_GLYPH  = Blitbuffer.ColorRGB32(0x33, 0x34, 0x36, 0xFF)
+
+-- The floating controls: the fabRect name, the flag set while one is hidden, and
+-- the callback (made by initFabs) that brings it back.
+local FABS = {
+    { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
+    { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
+    { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
+}
+
+local InkAwayView = {}
+
+------------------------------------------------------------------------------
+-- Toolbar
+------------------------------------------------------------------------------
+
+function InkAwayView:buildToolbar()
+    local specs = {
+        -- the first tap selects a tool; a tap on the active tool opens its options
+        { id = "pen",   label = _("Pen"),   tool = true, cb = function()
+            if self.tool == "pen" then self:openPenSettings() else self:setTool("pen") end
+        end },
+        { id = "erase", label = _("Erase"), tool = true, cb = function()
+            if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
+        end },
+        { id = "shape", label = _("Shapes"), tool = true, cb = function()
+            if self.tool == "shape" then self:openShapePicker() else self:setTool("shape") end
+        end },
+        { id = "text",  label = _("Text"),  tool = true, cb = function()
+            -- tapping Text while a box is open finishes it (and closes the keyboard);
+            -- once the tool is active, a second tap opens the font and size options
+            if self.editing_text then self:finishTextEdit(true)
+            elseif self.tool == "text" then self:openTextSettings()
+            else self:setTool("text") end
+        end },
+        -- placing an image, one tap away
+        { id = "image", label = _("Image"), cb = function() self:chooseImage() end },
+        { id = "pan",   label = _("Pan"),   tool = true, cb = function() self:setTool("pan") end },
+        { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
+        { id = "redo",  label = _("Redo"),  cb = function() self:redo() end },
+        { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
+        { id = "save",  label = _("Save"),  cb = function() self:onSave() end },
+        { id = "exit",  label = _("Exit"),  cb = function() self:promptExit() end },
+    }
+    -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
+    local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",
+        image = "image", pan = "pan",
+        undo = "undo", redo = "redo", menu = "menu", save = "save", exit = "exit" }
+    self:ensureUserIcons()   -- so the Buttons can render the icons by name
+    local n = #specs
+    local btn_w = math.floor(Screen:getWidth() / n)
+    -- the button height, which is also the active pill's; the toolbar is taller by
+    -- twice the button margin, so the pill clears the top and bottom edges
+    local bar_h = math.max(Screen:scaleBySize(32), math.min(Screen:scaleBySize(46), math.floor(btn_w * 0.66)))
+    self._btn_w, self._bar_h = btn_w, bar_h   -- for the active-tool pill in paintTo
+    -- centre of the last (Exit) button, so the collapse chevron lines up under it
+    self._last_btn_center = math.floor(btn_w * (n - 1) + (Screen:getWidth() - btn_w * (n - 1)) / 2)
+    -- every icon is centred in a cell of the same height, well inside it, so the
+    -- active pill looks the same behind each tool
+    local isz = math.max(20, math.floor(bar_h * 0.66))
+    self._icon_sz = isz   -- the notebook bottom bar uses the same icon size
+    self.tool_buttons = {}
+    self._toolbar_icons = {}
+    local row = {}
+    for i, s in ipairs(specs) do
+        local w = (i == n) and (Screen:getWidth() - btn_w * (n - 1)) or btn_w
+        -- The icon belongs to the Button, so the Button repaints it itself,
+        -- including its tap feedback (an inverted region). Each action is guarded:
+        -- an error is shown, and the tap feedback still clears.
+        local raw_cb = s.cb
+        local guarded_cb = function()
+            local ok, err = xpcall(raw_cb, debug.traceback)
+            if not ok then
+                logger.warn("Ink Away toolbar '" .. s.id .. "' failed: " .. tostring(err))
+                UIManager:show(InfoMessage:new{
+                    text = _("Something went wrong opening that tool. Please report this.") ..
+                        "\n\n" .. tostring(err):match("[^\n]*") })
+            end
+        end
+        local b = Button:new{
+            icon = "inkaway." .. ICON[s.id],
+            icon_width = isz,
+            icon_height = isz,
+            callback = guarded_cb,
+            width = w,
+            height = bar_h,
+            -- borderless icons on a clean bar; the active tool gets a pill drawn
+            -- behind it in paintTo (see drawActiveToolPill)
+            bordersize = 0,
+            radius = 0,
+            background = nil,
+            margin = Screen:scaleBySize(4),
+            padding = 0,
+            show_parent = self,
+        }
+        -- Load the icon from the plugin's own SVG by path. IconWidget's name lookup
+        -- searches the user-icon dir only if it existed when KOReader started, so on
+        -- a first run (ensureUserIcons creates it later) every name would resolve to
+        -- the not-found triangle until a restart.
+        local icon_path = self:pluginDir() .. "ink/icons/" .. ICON[s.id] .. ".svg"
+        local ok_icon, file_icon = pcall(function()
+            return IconWidget:new{ file = icon_path, width = isz, height = isz }
+        end)
+        if ok_icon and file_icon then self:setButtonLabel(b, file_icon) end
+        -- no fill: KOReader gives a borderless button a white one, which would
+        -- cover the active pill painted behind it
+        if b.frame then b.frame.background = nil end
+        if s.tool then self.tool_buttons[s.id] = { button = b } end
+        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true }
+        row[i] = b
+    end
+    self.toolbar = FrameContainer:new{
+        background = nil,   -- transparent bar; the screen's white shows through
+        bordersize = 0,
+        padding = 0,
+        margin = 0,
+        HorizontalGroup:new(row),
+    }
+    -- the real bar height includes each button's margin, so the hairline and the
+    -- drawing area sit at the true bottom edge (not one margin too high)
+    self._bar_h = self.toolbar:getSize().h
+    self:updateToolbarActive()   -- give the current tool its pill
+end
+
+-- Mark the active tool: remember its button index (paintTo draws a black pill
+-- behind it) and invert its icon, which renders on an opaque white ground, so it
+-- shows white on the pill.
+function InkAwayView:updateToolbarActive()
+    if not self._toolbar_icons then return end
+    local active = (self.tool == "fill") and "shape" or self.tool
+    self._active_btn_idx = nil
+    for i, e in ipairs(self._toolbar_icons) do
+        if e.tool and e.button then
+            local on = (e.id == active)
+            if on then self._active_btn_idx = i end
+            if e.button.label_widget then e.button.label_widget.invert = on end
+        end
+    end
+end
+
+-- Paint the active tool's pill: a black rounded rect inset within its cell.
+-- Called from paintTo before the transparent toolbar, so the icon lands on top.
+function InkAwayView:drawActiveToolPill(bb, ox, oy)
+    if self._toolbar_hidden or not self._active_btn_idx or not self._btn_w or not self._bar_h then return end
+    local m = Screen:scaleBySize(7)
+    local cx = ox + self._btn_w * (self._active_btn_idx - 1)
+    bb:paintRoundedRect(cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m,
+        Blitbuffer.COLOR_BLACK, Screen:scaleBySize(9))
+end
+
+-- Show the current tool as active. Only the toolbar needs repainting.
+function InkAwayView:refreshToolLabels()
+    self:updateToolbarActive()   -- move the pill to the current tool
+    UIManager:setDirty(self, "ui", self.toolbar and self.toolbar.dimen or nil)
+end
+
+-- The plugin's own directory, found from this file's path (it lives under ink/).
+function InkAwayView:pluginDir()
+    if self._plugin_dir then return self._plugin_dir end
+    local src = debug.getinfo(1, "S").source
+    self._plugin_dir = (src:match("^@(.*/)ink/")) or "./"
+    return self._plugin_dir
+end
+
+-- Copy the plugin's icons into KOReader's user-icon dir (refreshed when the
+-- plugin ships newer ones), so a Button can show them by the name "inkaway.<id>".
+function InkAwayView:ensureUserIcons()
+    -- once per session: the plugin's files cannot change while it runs
+    if self._icons_synced then return true end
+    local ok = pcall(function()
+        local lfs = require("libs/libkoreader-lfs")
+        local DataStorage = require("datastorage")
+        local dst_dir = DataStorage:getDataDir() .. "/icons"
+        if lfs.attributes(dst_dir, "mode") ~= "directory" then lfs.mkdir(dst_dir) end
+        local src_dir = self:pluginDir() .. "ink/icons/"
+        for _, name in ipairs({ "pen", "eraser", "shape", "text", "image", "pan",
+                                "undo", "redo", "menu", "save", "exit",
+                                "sh_line", "sh_rect", "sh_ellipse", "sh_triangle",
+                                "sh_curve", "sh_arrow", "sh_darrow", "sh_carrow", "sh_cdarrow",
+                                "bucket", "lasso", "caret" }) do
+            local src = src_dir .. name .. ".svg"
+            local dst = dst_dir .. "/inkaway." .. name .. ".svg"
+            local sa, da = lfs.attributes(src), lfs.attributes(dst)
+            if sa and (not da or (sa.modification or 0) > (da.modification or 0)) then
+                local fin = io.open(src, "rb")
+                if fin then
+                    local data = fin:read("*a"); fin:close()
+                    local fout = io.open(dst, "wb")
+                    if fout then fout:write(data); fout:close() end
+                end
+            end
+        end
+    end)
+    if ok then self._icons_synced = true end
+    return ok
+end
+
+-- Paint the hairline that separates the toolbar from the canvas, after the icons.
+function InkAwayView:drawToolbarIcons(bb)
+    if not self._bar_h then return end
+    local y = (self.dimen and self.dimen.y or 0) + self._bar_h - 1
+    bb:paintRect(0, y, self.screen_w, 1, HAIRLINE)
+end
+
+function InkAwayView:setTool(tool)
+    if self.tool == tool then return end
+    self:flushPending()        -- commit any stroke still in progress first
+    self:flushShape()          -- and place any finished-but-pending shape/curve
+    if self._hwr_ops then      -- recognise any pending handwriting before leaving the pen
+        if self._hwr_cb then UIManager:unschedule(self._hwr_cb) end
+        self:hwrRecognizePending()
+    end
+    if self.editing_text then self:finishTextEdit(true) end   -- bake any open text box
+    if self.active_image then self:finishImageEdit() end       -- settle a selected image
+    if self.selected then self:deselectShape() end             -- drop a picked shape
+    if self.selection or self.lassoing then self:clearSelection() end
+    self.pan_last = nil
+    self.tool = tool
+    self:refreshToolLabels()
+    -- the toolbar strip changes too (the pill moves), so clear any area-only flag
+    -- set by a nested deselect, or the next paint would skip the toolbar
+    self._area_only = false
+    UIManager:setDirty(self, "ui", GeomUI:new{
+        x = 0, y = 0, w = self.screen_w, h = self.view.area_y })
+end
+
+------------------------------------------------------------------------------
+-- Floating controls: a zoom pill at the bottom right and chevrons that collapse
+-- the toolbar (and, in a notebook, the bottom bar). They hide while drawing comes
+-- near them and return shortly after, so the canvas beneath stays reachable.
+-- They follow the drawing area, so they move when a bar collapses.
+------------------------------------------------------------------------------
+
+-- Make the callbacks that bring each control back once drawing near it has
+-- stopped (bound once, so they can be unscheduled).
+function InkAwayView:initFabs()
+    for _, f in ipairs(FABS) do
+        self[f.show] = function()
+            if self[f.hidden] then
+                self[f.hidden] = false
+                self:refreshFabRegion(self:fabRect(f.rect))
+            end
+        end
+    end
+end
+
+-- Cancel any control's pending return (on close).
+function InkAwayView:cancelFabs()
+    for _, f in ipairs(FABS) do
+        if self[f.show] then UIManager:unschedule(self[f.show]) end
+    end
+end
+
+-- Screen rect of a named control ("zoom", "bar" or "nbbar"), or nil.
+function InkAwayView:fabRect(which)
+    if not self.view then return nil end
+    local v = self.view
+    local m = Screen:scaleBySize(16)
+    local w = Screen:scaleBySize(46)
+    if which == "zoom" then
+        local h = Screen:scaleBySize(92)
+        return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
+    elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
+        -- bar's top left, anchored to the area bottom so it sits on the bar's top
+        -- edge when shown and near the screen bottom when collapsed
+        if not self.notebook then return nil end
+        local bw = Screen:scaleBySize(34)
+        local bh = Screen:scaleBySize(22)
+        local cx = v.area_x + Screen:scaleBySize(24)
+        return { x = math.floor(cx - bw / 2), y = v.area_y + v.area_h - bh - Screen:scaleBySize(2),
+                 w = bw, h = bh }
+    else -- "bar": a small bare chevron centred under the toolbar's Exit button
+        local bw = Screen:scaleBySize(34)
+        local bh = Screen:scaleBySize(22)
+        local cx = self._last_btn_center or (v.area_x + v.area_w - Screen:scaleBySize(24))
+        return { x = math.floor(cx - bw / 2), y = v.area_y + Screen:scaleBySize(2), w = bw, h = bh }
+    end
+end
+
+-- Repaint just a control's footprint (plus a margin): hiding reveals the canvas,
+-- showing draws the control, both without a full redraw.
+function InkAwayView:refreshFabRegion(r)
+    if not r then return end
+    self._blit_rect = nil   -- blit the whole area, so the canvas under the
+                            -- control is restored, not just a stroke's rect
+    local m = Screen:scaleBySize(4)
+    UIManager:setDirty(self, "ui", GeomUI:new{
+        x = r.x - m, y = r.y - m, w = r.w + 2 * m, h = r.h + 2 * m })
+end
+
+-- What a point hits: "zoomin" or "zoomout" (halves of the pill), "bar" or "nbbar"
+-- (the toggles), or nil. Hidden controls cannot be hit, so drawing passes through.
+function InkAwayView:fabHit(px, py)
+    if not self._zoom_hidden then
+        local r = self:fabRect("zoom")
+        if r and InkGeom.inRect(px, py, r) then
+            return (py < r.y + r.h / 2) and "zoomin" or "zoomout"
+        end
+    end
+    -- (not while a text box is open: the chevron would sit on its Done button)
+    if not self._bar_toggle_hidden and not self.editing_text then
+        local r = self:fabRect("bar")
+        if r and InkGeom.inRect(px, py, r) then
+            return "bar"
+        end
+    end
+    if self.notebook and not self._nbbar_toggle_hidden then
+        local r = self:fabRect("nbbar")
+        if r and InkGeom.inRect(px, py, r) then
+            return "nbbar"
+        end
+    end
+    return nil
+end
+
+-- Act on a completed tap of a control.
+function InkAwayView:fabAction(kind)
+    if kind == "zoomin" then self:zoomStep(1)
+    elseif kind == "zoomout" then self:zoomStep(-1)
+    elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden)
+    elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed) end
+end
+
+-- Called from the drawing handlers: if the active point comes near a control,
+-- fade it out and keep pushing back its return until drawing there stops.
+function InkAwayView:fabProximity(px, py)
+    for _, f in ipairs(FABS) do
+        local r = self:fabRect(f.rect)   -- nil for the notebook bar outside a notebook
+        local m = r and r.w              -- "near" = within one control width
+        if r and px >= r.x - m and px <= r.x + r.w + m and py >= r.y - m and py <= r.y + r.h + m then
+            if not self[f.hidden] then self[f.hidden] = true; self:refreshFabRegion(r) end
+            UIManager:unschedule(self[f.show]); UIManager:scheduleIn(0.6, self[f.show])
+        end
+    end
+end
+
+-- A small chevron centred in rect r (drawn at offset ox, oy): up = -1, down = 1.
+local function fabChevron(bb, r, ox, oy, dir)
+    local cx, cy = ox + r.x + math.floor(r.w / 2), oy + r.y + math.floor(r.h / 2)
+    local half, tk = math.floor(r.w * 0.28), math.max(2, Screen:scaleBySize(2))
+    local function seg(x0, y0, x1, y1)
+        local dx, dy = math.abs(x1 - x0), -math.abs(y1 - y0)
+        local sx, sy = x0 < x1 and 1 or -1, y0 < y1 and 1 or -1
+        local err, hb = dx + dy, math.floor(tk / 2)
+        while true do
+            bb:paintRect(x0 - hb, y0 - hb, tk, tk, FAB_GLYPH)
+            if x0 == x1 and y0 == y1 then break end
+            local e2 = 2 * err
+            if e2 >= dy then err = err + dy; x0 = x0 + sx end
+            if e2 <= dx then err = err + dx; y0 = y0 + sy end
+        end
+    end
+    -- dir -1 = up chevron (^, collapse); dir +1 = down chevron (v, expand)
+    local yTip = cy + dir * math.floor(half * 0.6)
+    local yEnd = cy - dir * math.floor(half * 0.6)
+    seg(cx - half, yEnd, cx, yTip)
+    seg(cx, yTip, cx + half, yEnd)
+end
+
+-- The zoom pill as an alpha sprite with transparent corners. A rounded colour
+-- fill is a slow per-pixel path, so the pill is drawn once and stamped with a C
+-- alpha-blit on each paint; it is rebuilt only when its size, the screen buffer
+-- type or night mode changes.
+function InkAwayView:zoomPillSprite(w, h)
+    local typ = Screen.bb:getType()
+    local inv = (Screen.bb.getInverse and Screen.bb:getInverse()) or 0
+    local c = self._zoom_pill
+    if c and c.w == w and c.h == h and c.type == typ and c.inv == inv then return c.bb end
+    if c and c.bb then c.bb:free() end
+    local S1 = math.max(1, Screen:scaleBySize(1))
+    local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8A or typ)   -- alpha: starts transparent
+    if bb.setInverse then bb:setInverse(inv) end   -- so software night mode still blits in C
+    local rad = math.floor(w / 2)
+    bb:paintRoundedRect(0, 0, w, h, FAB_FILL, rad)      -- fills only the rounded shape;
+    bb:paintBorder(0, 0, w, h, S1, FAB_BORDER, rad)     -- corners stay transparent
+    local midy = math.floor(h / 2)
+    bb:paintRect(Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
+    local gw = math.floor(w * 0.34)
+    local gt = math.max(2, Screen:scaleBySize(2))
+    local cx = math.floor(w / 2)
+    local cyTop, cyBot = math.floor(h / 4), math.floor(3 * h / 4)
+    bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+    bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
+    bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+    self._zoom_pill = { bb = bb, w = w, h = h, type = typ, inv = inv }
+    return bb
+end
+
+-- Paint the floating controls onto the screen buffer, last in paintTo so they
+-- sit on top.
+function InkAwayView:drawFabs(bb, ox, oy)
+    if self.selecting_crop then return end
+    -- zoom pill (+ over -), stamped from the cached sprite
+    if not self._zoom_hidden then
+        local r = self:fabRect("zoom")
+        if r then
+            local sprite = self:zoomPillSprite(r.w, r.h)
+            bb:alphablitFrom(sprite, ox + r.x, oy + r.y, 0, 0, r.w, r.h)
+        end
+    end
+    -- toolbar toggle: a bare chevron, up to collapse and down to expand; hidden
+    -- while a text box is edited, as its Done button sits in that corner
+    if not self._bar_toggle_hidden and not self.editing_text then
+        local r = self:fabRect("bar")
+        if r then fabChevron(bb, r, ox, oy, self._toolbar_hidden and 1 or -1) end   -- down = expand, up = collapse
+    end
+    -- notebook bottom-bar toggle: the same chevron at the bar's top left, down
+    -- to collapse and up to bring it back
+    if self.notebook and not self._nbbar_toggle_hidden then
+        local r = self:fabRect("nbbar")
+        if r then fabChevron(bb, r, ox, oy, self._nb_collapsed and -1 or 1) end   -- up = expand, down = collapse
+    end
+end
+
+return InkAwayView

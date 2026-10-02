@@ -1,14 +1,9 @@
 --[[
-A colour picker for choosing an exact colour beyond the preset swatches.
-
-It shows a hue/saturation wheel (hue around the rim, saturation toward the
-centre) with a separate brightness slider and a live preview. Pick a spot on the
-wheel, set the brightness, and either use the colour once or save it so it joins
-your own swatch rows in the pen menu.
-
-Like the brush maker it paints itself and reads its own touches. Everything on
-the wheel and the swatch is drawn with setPixel, because KOReader's paintRect
-flattens a fill colour to grey; setPixel keeps the colour.
+The colour wheel, for an exact colour beyond the swatches: hue around the rim,
+saturation toward the centre, a brightness slider and a live preview. A colour
+can be used once or saved to the pen menu's swatches. It paints itself and reads
+its own touches; fills go through Paint.fillRect, as paintRect flattens a colour
+to grey.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -21,15 +16,16 @@ local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local Device = require("device")
 local _ = require("gettext")
+local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
-local GREY  = Blitbuffer.COLOR_GRAY
 
 local floor, sqrt, atan2, cos, sin, pi = math.floor, math.sqrt, math.atan2, math.cos, math.sin, math.pi
 
--- HSV (0..1) -> R,G,B (0..255)
+-- Convert HSV (0..1) to R, G, B (0..255).
 local function hsv2rgb(h, s, v)
     local i = floor(h * 6)
     local f = h * 6 - i
@@ -45,7 +41,7 @@ local function hsv2rgb(h, s, v)
     return floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)
 end
 
--- R,G,B (0..255) -> H,S,V (0..1)
+-- Convert R, G, B (0..255) to H, S, V (0..1).
 local function rgb2hsv(r, g, b)
     r, g, b = r / 255, g / 255, b / 255
     local mx, mn = math.max(r, g, b), math.min(r, g, b)
@@ -144,7 +140,7 @@ function ColorPicker:selectedRGB()
     return hsv2rgb(self.h, self.s, self.v)
 end
 
--- geometry helpers (all in screen coords)
+-- Geometry helpers, all in screen coordinates.
 function ColorPicker:wheelRect()
     return self.box_x + self.pad, self.box_y + self.title_h, self.wheel_d, self.wheel_d
 end
@@ -167,12 +163,9 @@ function ColorPicker:buttonRects()
            { x = x0 + (third + self.pad) * 2, y = y, w = w - (third + self.pad) * 2, h = self.btn_h }
 end
 
--- fill a rectangle with a colour (setPixel, so the colour is kept)
+-- Fill a rectangle with a colour (Paint.fillRect keeps it a colour).
 local function fillColor(bb, x, y, w, h, r, g, b)
-    local col = Blitbuffer.ColorRGB32(r, g, b, 0xFF)
-    for yy = y, y + h - 1 do
-        for xx = x, x + w - 1 do bb:setPixel(xx, yy, col) end
-    end
+    Paint.fillRect(bb, x, y, w, h, Blitbuffer.ColorRGB32(r, g, b, 0xFF), true)
 end
 
 function ColorPicker:paintTo(bb, x, y)
@@ -184,7 +177,7 @@ function ColorPicker:paintTo(bb, x, y)
     title:paintTo(bb, bx + self.pad, by + floor((self.title_h - title:getSize().h) / 2))
     title:free()
 
-    -- wheel + selection marker
+    -- the wheel and its selection marker
     local wx, wy, D = self:wheelRect()
     wx, wy = wx + x, wy + y
     bb:blitFrom(self.wheel_bb, wx, wy, 0, 0, D, D)
@@ -206,7 +199,7 @@ function ColorPicker:paintTo(bb, x, y)
     local kx = sx + floor(self.v * (sw - 1))
     bb:paintBorder(kx - Screen:scaleBySize(4), cy - floor(th / 2) - 3, Screen:scaleBySize(8), th + 6, 2, BLACK)
 
-    -- preview swatch + rgb readout
+    -- preview swatch and RGB readout
     local pr = self:previewRect()
     local px, py = pr.x + x, pr.y + y
     local r, g, b = self:selectedRGB()
@@ -234,7 +227,7 @@ function ColorPicker:refresh()
     UIManager:setDirty(self, "ui", self.panel)
 end
 
--- update h,s from a point in the wheel; returns true if it was inside
+-- Set the hue and saturation from a point on the wheel; true if it was inside.
 function ColorPicker:setFromWheel(px, py)
     local wx, wy, D = self:wheelRect()
     local R = D / 2
@@ -265,7 +258,7 @@ function ColorPicker:onCpTap(_, ges)
     if self:setFromWheel(p.x, p.y) then return true end
     if self:setFromSlider(p.x, p.y) then return true end
     local use, save, cancel = self:buttonRects()
-    local function hit(r) return p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
+    local function hit(r) return InkGeom.inRect(p.x, p.y, r) end
     if hit(use) then
         UIManager:close(self); if self.on_pick then self.on_pick({ self:selectedRGB() }) end; return true
     elseif hit(save) then

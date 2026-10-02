@@ -1,18 +1,16 @@
 --[[
-Saving and reopening an editable drawing. Because the drawing is just a list of
-ops (strokes, shapes, fills), a project file is that list written out, so a
-reopened project is fully editable, not a flat image.
-
-The file is a small Lua chunk ("return { ... }"), loaded back in a sandbox with
-no access to globals, so a tampered file can define data but cannot run code.
+Editable project files. A drawing is a list of ops, so a project is that list
+written out, and a reopened project stays fully editable. The file is a small Lua
+chunk ("return { ... }") loaded in a sandbox with no globals, so a tampered file
+can define data but cannot run code.
 ]]
 
 local Project = {}
 
 Project.EXT = "inkaway"
 
--- Serialize a Lua value (numbers, booleans, strings, and tables with an array
--- part and/or string keys -- which is all an ops list is) into `out`.
+-- Serialize a Lua value into `out`: numbers, booleans, strings, and tables with
+-- an array part and string keys, which is all an ops list holds.
 local function ser(v, out)
     local t = type(v)
     if t == "number" then
@@ -73,22 +71,22 @@ function Project.isNotebook(data)
     return type(data) == "table" and type(data.pages) == "table"
 end
 
--- Write the canvas to a file at `path`. Returns ok, err.
-function Project.save(canvas, path)
+local function writeFile(path, s)
     local f, err = io.open(path, "wb")
     if not f then return false, err end
-    f:write(Project.serialize(canvas))
+    f:write(s)
     f:close()
     return true
 end
 
+-- Write the canvas to a file at `path`. Returns ok, err.
+function Project.save(canvas, path)
+    return writeFile(path, Project.serialize(canvas))
+end
+
 -- Write a notebook to a file at `path`. Returns ok, err.
 function Project.saveNotebook(nb, path)
-    local f, err = io.open(path, "wb")
-    if not f then return false, err end
-    f:write(Project.serializeNotebook(nb))
-    f:close()
-    return true
+    return writeFile(path, Project.serializeNotebook(nb))
 end
 
 -- Read a project file. Returns { w, h, ops } or nil, err.

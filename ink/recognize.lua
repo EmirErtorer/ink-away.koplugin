@@ -1,32 +1,24 @@
 --[[
-Shape assist (beautify): turn a rough freehand pen stroke into clean, straight,
-connected segments.
+Shape assist: turn a rough freehand stroke into clean, connected straight
+segments or a primitive shape.
 
-`detect` looks at one finished stroke (a flat {x,y,...} point list in canvas
-coordinates) and returns a NEW flat point path to draw in its place, or nil when
-the stroke is not confidently a straight/piecewise-straight/round shape (a smooth
-curve, a scribble, or handwriting is left exactly as drawn).
+detect takes one finished stroke (a flat {x,y,...} list in canvas coordinates)
+and returns a new flat path to draw in its place, or nil when the stroke is not
+confidently straight, piecewise straight or round (smooth curves, scribbles and
+handwriting stay as drawn). For a line, rectangle, ellipse or triangle it also
+returns a shape descriptor { shape = "line"|"rect"|"ellipse"|"poly", pts,
+closed }, which the caller turns into a shape op; other straightened paths (an L
+bend, a polygon) stay ink, with the brush they were drawn with.
 
-It returns a POINT PATH so an arbitrary many-segment stroke can be straightened as
-one connected path. When the stroke reads as one of the toolbar primitives (a
-straight line, rectangle, ellipse or triangle) it ALSO returns a second value: a
-compact shape descriptor { shape = "line"|"rect"|"ellipse"|"poly", pts = {..},
-closed = .. }. The caller turns those into a real shape op so they can be tapped,
-moved and edited exactly like a shape drawn from the toolbar; the straightened
-non-primitive paths (an L bend, a general polygon) have no descriptor and stay ink
-ops, keeping the pen/brush the user drew with.
-
-What it produces:
-  * a nearly straight stroke                -> one straight line (snapped to
-                                               horizontal/vertical within ~8 deg)
-  * a right-angle bend drawn in one stroke  -> two clean perpendicular arms
-                                               meeting at one corner (x/y axes)
-  * a closed 4-corner box near its bounds   -> a crisp axis-aligned rectangle
-  * a round closed loop                     -> a clean ellipse
-  * anything else piecewise-straight        -> its corners joined by straight
-                                               lines (open or closed), preserving
-                                               orientation and proportions
-Closed paths repeat the first point at the end so the loop is drawn closed.
+  * a nearly straight stroke            one line, snapped to horizontal or
+                                        vertical within ~8 degrees
+  * a right-angle bend in one stroke    two perpendicular arms on the x/y axes
+  * a closed box near its bounds        an axis-aligned rectangle
+  * a round closed loop                 an ellipse
+  * a closed three-cornered loop        a triangle with its own corners
+  * anything else piecewise straight    its corners joined by straight lines,
+                                        keeping orientation and proportions
+Closed paths repeat the first point at the end.
 ]]
 
 local Geom = require("ink/geom")
@@ -96,8 +88,8 @@ local function ellipseError(p, cx, cy, rx, ry)
 end
 
 -- Corner vertices of a closed loop. RDP cannot run on the loop directly (its
--- first and last points coincide, so the baseline is degenerate and it collapses
--- to nothing), so split it at its two farthest-apart points and RDP each arc.
+-- first and last points coincide, so the baseline is degenerate), so the loop is
+-- split at its two farthest-apart points and each arc is simplified.
 local function closedVertices(p, tol)
     local n = floor(#p / 2)
     if n < 3 then return {} end
@@ -136,8 +128,8 @@ local function closedVertices(p, tol)
     return verts
 end
 
--- Straight-line deviation (0 = straight through, 90 = right angle) at vertex k
--- of a vertex list, using neighbours (wrapping when closed).
+-- The turn in degrees (0 straight through, 90 a right angle) at vertex k of a
+-- vertex list, from its neighbours (wrapping when closed).
 local function cornerDev(v, k, closed)
     local n = #v
     local pk, nk
@@ -166,8 +158,8 @@ local function segLen(v, k, closed)
     return dist(v[k][1], v[k][2], v[nk][1], v[nk][2])
 end
 
--- Drop vertices that are not real corners: nearly straight (small deviation) or
--- that make a too-short segment. Endpoints of an open path are always kept.
+-- Drop vertices that are not real corners: nearly straight ones, or ones that
+-- make a too-short segment. The ends of an open path are always kept.
 local function pruneCorners(v, closed, dev_min, min_seg)
     while true do
         local n = #v
@@ -191,12 +183,7 @@ end
 
 -- Distance from a point to a segment (clamped to the segment).
 local function ptSeg(px, py, ax, ay, bx, by)
-    local dx, dy = bx - ax, by - ay
-    local L2 = dx * dx + dy * dy
-    if L2 < 1e-9 then return dist(px, py, ax, ay) end
-    local t = ((px - ax) * dx + (py - ay) * dy) / L2
-    if t < 0 then t = 0 elseif t > 1 then t = 1 end
-    return dist(px, py, ax + t * dx, ay + t * dy)
+    return sqrt(Geom.segDist2(px, py, ax, ay, bx, by))
 end
 
 -- Largest distance from any original point to the vertex polyline.
@@ -217,14 +204,14 @@ local function polyFaithful(pts, v, closed)
     return worst
 end
 
--- flat {x,y,...} -> list of {x,y}
+-- Convert a flat {x,y,...} list to a list of {x,y} points.
 local function toVerts(flat)
     local v = {}
     for i = 1, #flat - 1, 2 do v[#v + 1] = { flat[i], flat[i + 1] } end
     return v
 end
 
--- {x,y} list -> flat, appending the first point when closed to draw the loop shut
+-- Convert {x,y} points to a flat list, repeating the first point when closed.
 local function toFlat(v, closed)
     local out = {}
     for i = 1, #v do out[#out + 1] = v[i][1]; out[#out + 1] = v[i][2] end
@@ -233,18 +220,17 @@ local function toFlat(v, closed)
 end
 
 -- Try to straighten a stroke into connected corner-to-corner segments. Returns a
--- flat path or nil when the corners do not faithfully capture the stroke (i.e. it
--- was a smooth curve, not a set of straight pieces).
+-- flat path, or nil when the corners do not capture the stroke (a smooth curve
+-- rather than straight pieces).
 local function cornerPath(pts, diag, closed)
     local raw = closed and closedVertices(pts, max(2, 0.03 * diag))
                         or Geom.rdp(pts, max(2, 0.03 * diag))
     local v = toVerts(raw)
     v = pruneCorners(v, closed, 22, 0.05 * diag)
     if #v < 3 or #v > 16 then return nil end
-    -- The straightened polyline must still hug the stroke closely. A genuine
-    -- piecewise-straight stroke does (nothing worth pruning was pruned); a smooth
-    -- curve does NOT -- pruning its gentle vertices pulls the polyline off the
-    -- arc -- so this is what keeps arcs and gentle waves freehand.
+    -- The straightened polyline must still hug the stroke. A piecewise-straight
+    -- stroke does; on a smooth curve, pruning the gentle vertices pulls the
+    -- polyline off the arc, so arcs and gentle waves stay freehand.
     if polyFaithful(pts, v, closed) > 0.045 * diag then return nil end
     return toFlat(v, closed)
 end
@@ -254,10 +240,10 @@ local function triArea2(a, b, c)
     return abs((b[1] - a[1]) * (c[2] - a[2]) - (c[1] - a[1]) * (b[2] - a[2]))
 end
 
--- Snap a closed stroke to a clean triangle by keeping the 3 corners that enclose
--- the most area (which are the real corners even when a wobbly or overshooting
--- corner adds stray vertices), then verifying those 3 straight edges still hug the
--- whole stroke. Returns a closed 3-corner path, or nil when it is not a triangle.
+-- Snap a closed stroke to a triangle: keep the 3 vertices that enclose the most
+-- area (the real corners, even when a wobbly corner adds stray vertices) and check
+-- that those 3 edges still hug the whole stroke. Returns a closed 3-corner path,
+-- or nil when it is not a triangle.
 local function triangleSnap(pts, diag)
     local v = toVerts(closedVertices(pts, max(2, 0.03 * diag)))
     local n = #v
@@ -274,16 +260,17 @@ local function triangleSnap(pts, diag)
     end
     if not bi then return nil end
     local tv = { v[bi], v[bj], v[bk] }
-    -- a real triangle, not a near-straight degenerate one (a line handles that)...
+    -- a real triangle, not a nearly straight one (a line handles that)...
     if barea < 0.05 * diag * diag then return nil end
-    -- ...and its 3 edges must still capture the whole stroke (else it is a quad,
-    -- pentagon, curve, etc., where a 4th corner would stick out).
+    -- ...whose 3 edges capture the whole stroke (otherwise a 4th corner of a
+    -- quad, pentagon or curve sticks out)
     if polyFaithful(pts, tv, true) > 0.075 * diag then return nil end
     return toFlat(tv, true)
 end
 
--- pts: flat {x,y,...} canvas coordinates of a finished stroke.
--- opts.min_size: ignore strokes smaller than this (canvas px). Defaults to 28.
+-- Recognise a finished stroke (see the top of this file). `pts` is a flat
+-- {x,y,...} list in canvas coordinates; strokes smaller than opts.min_size
+-- (canvas px, 28 by default) are ignored.
 function Recognize.detect(pts, opts)
     opts = opts or {}
     local min_size = opts.min_size or 28
@@ -301,13 +288,13 @@ function Recognize.detect(pts, opts)
     local L = pathLen(pts)
     if L < min_size then return nil end
 
-    -- 1) STRAIGHT LINE
+    -- 1) a straight line
     if gap >= 0.80 * L and maxPerp(pts, fx, fy, lx, ly) <= max(2, 0.08 * gap) then
         local a, b, c, d = snapLine(fx, fy, lx, ly)
         return { a, b, c, d }, { shape = "line", pts = { a, b, c, d } }
     end
 
-    -- 2) CLOSED SHAPES: returns near its start and encloses area.
+    -- 2) a closed shape: ends near its start and encloses an area
     if gap <= 0.30 * diag and L >= 1.4 * diag then
         local cv = closedVertices(pts, max(2, 0.07 * diag))
         local V = #cv / 2
@@ -329,16 +316,15 @@ function Recognize.detect(pts, opts)
         end
         local tri = triangleSnap(pts, diag)                              -- crisp triangle
         if tri then
-            -- an arbitrary (possibly scalene) triangle: carry its 3 real corners as
-            -- a closed poly shape, so it is not distorted into the toolbar's
-            -- isosceles bounding-box triangle.
+            -- any triangle (scalene too) keeps its 3 corners as a closed poly
+            -- shape, rather than becoming the toolbar's isosceles triangle
             return tri, { shape = "poly", closed = true,
                           pts = { tri[1], tri[2], tri[3], tri[4], tri[5], tri[6] } }
         end
         return cornerPath(pts, diag, true)                               -- general polygon
     end
 
-    -- 3) RIGHT-ANGLE BEND ("L", i.e. x/y axes): two straight arms about one corner.
+    -- 3) a right-angle bend (an L on the x/y axes): two straight arms on one corner
     local simp = Geom.rdp(pts, max(2, 0.06 * diag))
     if #simp / 2 == 3 then
         local ax, ay = simp[1], simp[2]
@@ -364,7 +350,7 @@ function Recognize.detect(pts, opts)
         end
     end
 
-    -- 4) GENERAL PIECEWISE-STRAIGHT open stroke -> connected straight segments.
+    -- 4) any other piecewise-straight open stroke: connected straight segments
     return cornerPath(pts, diag, false)
 end
 

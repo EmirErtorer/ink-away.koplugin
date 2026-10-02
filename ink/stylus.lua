@@ -1,29 +1,13 @@
 --[[
-Pen / stylus helpers for palm rejection, kept pure so they can be unit tested
-without a KOReader environment.
+Pure pen helpers for palm rejection, testable without KOReader.
 
-KOReader hands a plugin raw stylus events through `Input:registerStylusCallback`
-(frontend/device/input.lua). The callback runs BEFORE gesture detection, once per
-input frame the pen is present, with a slot table `{slot, id, x, y, tool, timev}`,
-and returning true "dominates" the event so it never becomes a normal gesture.
+KOReader hands a plugin raw stylus events through Input:registerStylusCallback
+(frontend/device/input.lua). The callback runs before gesture detection, once per
+input frame while the pen is present, with a slot table {slot, id, x, y, tool,
+timev}; returning true "dominates" the event so it never becomes a gesture.
 
-Two pure pieces live here:
-
-  * `rotate(x, y, mode, w, h)` reproduces GestureDetector:translateCoordinates, the
-    ONLY coordinate adjustment applied to a gesture after the raw slot position
-    (verified against the engine: a gesture's pos is exactly the slot x/y, then
-    this rotation). The stylus callback fires before that step, so a plugin that
-    draws from raw slot coordinates must apply this itself or strokes are wrong in
-    any rotated orientation. `mode` is normalised: 0 upright, 1 clockwise,
-    2 upside down, 3 counter-clockwise; `w`/`h` are the CURRENT (rotated) screen
-    width/height.
-
-  * a tiny down/move/up state machine (`new`/`step`) driven by the slot tracking
-    `id` (>= 0 while the pen touches, -1 on lift), so the caller gets clean
-    "the pen just went down / moved / lifted" transitions.
-
-Tool type values are the ABS_MT_TOOL_TYPE constants KOReader uses (Elan panels):
-finger 0, pen 1, eraser 2, highlighter 3.
+Tool values are the ABS_MT_TOOL_TYPE constants KOReader uses: finger 0, pen 1,
+eraser 2, highlighter 3.
 ]]
 
 local Stylus = {}
@@ -33,8 +17,12 @@ Stylus.TOOL_PEN = 1
 Stylus.TOOL_ERASER = 2
 Stylus.TOOL_HIGHLIGHTER = 3
 
--- Apply the screen-rotation coordinate transform (mirrors
--- GestureDetector:translateCoordinates) to a raw slot position. Returns tx, ty.
+-- Apply the screen rotation to a raw slot position, as
+-- GestureDetector:translateCoordinates does for a gesture (its only adjustment
+-- after the raw position). The stylus callback fires before that step, so raw
+-- coordinates need it. `mode` is 0 upright, 1 clockwise, 2 upside down or 3
+-- counter-clockwise; `w` and `h` are the current (rotated) screen size.
+-- Returns tx, ty.
 function Stylus.rotate(x, y, mode, w, h)
     if mode == 1 then          -- clockwise (landscape)
         return w - y, x
@@ -53,35 +41,26 @@ function Stylus.isPen(tool)
         or tool == Stylus.TOOL_HIGHLIGHTER
 end
 
--- What a routed slot physically is. KOReader's Input:routeStylusEvents hands the
--- stylus callback ANY slot whose tool is PEN/ERASER/HIGHLIGHTER, OR which sits on
--- the dedicated pen slot -- so a slot arriving at the callback is not necessarily
--- the pen. The trap: Linux reports a rejected touch as MT_TOOL_PALM, whose value
--- (2) is the SAME number as TOOL_TYPE_ERASER, so a resting palm reaches the
--- callback wearing the eraser's tool. Believing it is what draws/erases from a
--- palm. The reliable signal is the slot: a Wacom digitizer owns one dedicated pen
--- slot, and a stylus-valued tool on any other slot is a promoted palm.
+-- What a routed slot physically is. Input:routeStylusEvents hands the callback
+-- any slot with a pen, eraser or highlighter tool, or on the dedicated pen slot,
+-- so a routed slot is not necessarily the pen: Linux reports a rejected touch as
+-- MT_TOOL_PALM, the same value (2) as the eraser, so a resting palm arrives
+-- looking like the eraser.
+--
+-- The tool type comes first. A pen tip always reports TOOL_PEN (1) and no finger
+-- or palm ever does, so TOOL_PEN is trusted even where Input.pen_slot is never
+-- set. The slot only settles the ambiguous eraser value: a stylus tool on the
+-- pen's own slot (preset by the runtime, or learned from the first real pen
+-- frame) or with a barrel-button latch is the pen; any other bare 2 or 3 is a
+-- promoted palm.
 --
 -- `facts` carries what only the live Input object knows:
 --   pen_slot          the digitizer's dedicated slot number (or nil)
---   learned_slot      the slot a genuine TOOL_PEN frame was last seen on this
---                     session (the caller learns it dynamically; see below)
+--   learned_slot      the slot a genuine TOOL_PEN frame was last seen on
 --   wacom             true on a Wacom protocol device (Kindle Scribe, reMarkable)
 --   eraser_latch      Input.stylus_eraser_active (a held barrel button)
 --   highlighter_latch Input.stylus_highlighter_active
--- Returns one of ROLE_PEN / ROLE_PALM / ROLE_TOUCH.
---
--- The primary signal is the TOOL TYPE, not the slot number. A genuine pen tip
--- always reports TOOL_PEN (1), and no finger or palm ever does -- Linux reuses the
--- ERASER value (2) for MT_TOOL_PALM, but never the PEN value. So TOOL_PEN can be
--- trusted unconditionally, which means the pen draws even on a device/firmware that
--- never populates Input.pen_slot (the Kindle Scribe gen 1 "the pen doesn't work"
--- report: the old code required a preset pen_slot and, finding it nil, classified
--- the real pen as a palm so nothing drew). The slot number is only a secondary hint
--- for disambiguating the ERASER value (rear tip vs resting palm): we trust a stylus
--- tool on the pen's OWN slot -- preset by the runtime, or learned from the first
--- real pen frame -- and the barrel-button latch, and treat any other bare 2/3 as a
--- promoted palm.
+-- Returns one of the ROLE_ values below.
 Stylus.ROLE_PEN   = "pen"     -- a trusted stylus: draw or erase with it
 Stylus.ROLE_PALM  = "palm"    -- a palm promoted to a stylus tool number: discard
 Stylus.ROLE_TOUCH = "touch"   -- an ordinary finger that only reached us in passing
@@ -96,13 +75,11 @@ function Stylus.classify(slot, facts)
     local on_pen_slot = (pen_slot ~= nil and slot.slot == pen_slot)
                      or (learned ~= nil and slot.slot == learned)
 
-    -- 0. On a Wacom device the pen has a slot of its own, and KOReader writes FINGER
-    --    into it when the pen leaves range (BTN_TOOL_PEN 0). That frame is the pen
-    --    going away, never a finger. When the pen is lifted and taken out of range in
-    --    one quick motion it is also the ONLY lift we get (the frame carries id -1 with
-    --    tool 0, or the lift was lost outright), so it must end the stroke. Treating it
-    --    as a finger left the stroke open, and the next pen-down drew a straight line
-    --    from the old stroke to the new one (Kindle Scribe gen 1, "tool=0 slot=4").
+    -- 0. On a Wacom device KOReader writes the finger tool into the pen's own
+    --    slot when the pen leaves range (BTN_TOOL_PEN 0). That frame is the pen
+    --    going away, never a finger, and when the pen is lifted out of range in
+    --    one quick motion it is the only lift we get, so it must end the stroke;
+    --    otherwise the next pen-down draws a line from the previous stroke.
     if facts.wacom and on_pen_slot and not stylus_tool then return Stylus.ROLE_PEN_OUT end
 
     -- 1. A real pen tip is unambiguous on every device: always the pen.
@@ -110,27 +87,24 @@ function Stylus.classify(slot, facts)
     -- 2. On the pen's own slot (preset or learned) a stylus tool is the pen, its
     --    rear eraser, or a held barrel button.
     if on_pen_slot and stylus_tool then return Stylus.ROLE_PEN end
-    -- 3. KOReader rewrites the pen's tool to ERASER/HIGHLIGHTER while a side button
-    --    is held; trust that latch even if slot bookkeeping lags.
+    -- 3. KOReader rewrites the pen's tool to ERASER or HIGHLIGHTER while a side
+    --    button is held; trust that latch even if the slot bookkeeping lags.
     if tool == Stylus.TOOL_ERASER and facts.eraser_latch then return Stylus.ROLE_PEN end
     if tool == Stylus.TOOL_HIGHLIGHTER and facts.highlighter_latch then return Stylus.ROLE_PEN end
-    -- 4. Any other stylus tool number is a promoted palm (a bare 2/3 == MT_TOOL_PALM,
-    --    or a stylus tool on a slot that is not the pen's). Everything else is an
+    -- 4. Any other stylus tool number is a promoted palm (a bare 2 or 3, or a
+    --    stylus tool on a slot that is not the pen's). Everything else is an
     --    ordinary finger that only reached the callback in passing.
     if stylus_tool then return Stylus.ROLE_PALM end
     return Stylus.ROLE_TOUCH
 end
 
--- What a trusted pen contact should DO, from its tool value and the live button
--- latches. Called only for slots that already classified as ROLE_PEN. KOReader
--- rewrites the routed slot's tool to ERASER while the primary barrel button
--- (BTN_STYLUS -> Input.stylus_eraser_active) is held, so the SAME tool value (2)
--- means two different things: a held side button, or the pen's real rear-eraser
--- end. The latch tells them apart. Mapping:
---   * primary side button held  -> ACT_SELECT (lasso select)
---   * rear eraser end (tool ERASER, no latch) -> ACT_ERASE
---   * anything else             -> ACT_DRAW (draw with the current tool)
--- Pure / unit-testable.
+-- What a trusted pen contact should do, for slots already classified ROLE_PEN.
+-- KOReader rewrites the tool to ERASER while the primary barrel button
+-- (BTN_STYLUS, Input.stylus_eraser_active) is held, so the value 2 means either a
+-- held side button or the pen's real rear eraser; the latch tells them apart:
+--   primary side button held                  ACT_SELECT (lasso select)
+--   rear eraser end (tool ERASER, no latch)   ACT_ERASE
+--   anything else                             ACT_DRAW (the current tool)
 Stylus.ACT_DRAW   = "draw"
 Stylus.ACT_ERASE  = "erase"
 Stylus.ACT_SELECT = "select"
@@ -141,24 +115,21 @@ function Stylus.penAction(slot, facts)
     return Stylus.ACT_DRAW
 end
 
--- Kinematic palm filter: a real nib cannot teleport. Some Wacom panels (the Kindle
--- Scribe among them) share one slot table between the pen digitizer and the
--- capacitive panel, so a resting palm's coordinates get written into the pen's slot
--- and arrive as the nib "jumping" across the page -- the "sometimes weird lines"
--- report. Physics tells them apart: a sample more than `base + dt*speed` (pixels)
--- from the last accepted point in the elapsed time `dt_ms` is not the pen, so it is
--- dropped rather than drawn to. After `limit` consecutive drops we accept one anyway
--- so a genuine unreported lift/re-touch can never wedge the stroke shut.
---   state: {x, y, drops} carried across ONE stroke (pass a fresh {} at pen-down)
---   dt_ms: elapsed ms since the last sample, or nil when no reliable clock exists
---   scale: Screen DPI factor so the pixel thresholds are resolution-independent
--- Returns true to ACCEPT the sample, false to DROP it, plus a second value `restart`
--- that is true when the accepted sample cannot belong to the same line: the drop
--- limit was hit, or the pen reappears far away after a gap no drawing pen leaves
--- (a lift that never reached us). The caller then ends the stroke and starts a new
--- one at this point instead of joining them with a straight segment. Pure /
--- unit-testable. When dt_ms is missing it accepts unconditionally (no clock -> no
--- filtering, never worse than not having the filter at all).
+-- Kinematic palm filter: a real nib cannot teleport. Some Wacom panels (the
+-- Kindle Scribe among them) share one slot table between the pen digitizer and the
+-- touch panel, so a resting palm's coordinates land in the pen's slot and look like
+-- the nib jumping across the page. A sample further than `base + dt * speed`
+-- pixels from the last accepted point is not the pen and is dropped. After `limit`
+-- drops in a row one is accepted anyway, so a lift that was never reported cannot
+-- wedge the stroke.
+--   state  {x, y, drops} for one stroke (pass a fresh {} at pen-down)
+--   dt_ms  elapsed ms since the last sample, or nil when there is no clock
+--   scale  the screen DPI factor, so the thresholds hold at any resolution
+-- Returns whether to accept the sample, and `restart`: true when an accepted
+-- sample cannot continue the line (the drop limit was hit, or the pen reappears
+-- far away after a gap no drawing pen leaves). The caller then ends the stroke and
+-- starts a new one there instead of joining them. Without dt_ms every sample is
+-- accepted.
 function Stylus.acceptMove(state, x, y, dt_ms, scale, tune)
     tune = tune or {}
     scale = scale or 1
@@ -189,7 +160,7 @@ function Stylus.acceptMove(state, x, y, dt_ms, scale, tune)
         return true
     end
     state.drops = (state.drops or 0) + 1
-    if state.drops >= limit then                  -- escape hatch: accept, as a NEW stroke
+    if state.drops >= limit then                  -- escape hatch: accept, as a new stroke
         state.x, state.y, state.drops = x, y, 0
         return true, true
     end
@@ -197,7 +168,7 @@ function Stylus.acceptMove(state, x, y, dt_ms, scale, tune)
 end
 
 -- Milliseconds from a slot's timestamp. KOReader stamps slots with
--- time.timeval(ev.time), an fts number in MICROSECONDS; very old builds used a
+-- time.timeval(ev.time), an fts number in microseconds; very old builds used a
 -- {sec, usec} table. Returns nil when there is no usable stamp.
 function Stylus.timevMs(tv)
     if type(tv) == "number" then return tv / 1000 end
@@ -208,14 +179,14 @@ function Stylus.timevMs(tv)
     return nil
 end
 
--- Fresh per-pen tracking state.
+-- Fresh per-pen tracking state for step.
 function Stylus.new()
     return { down = false }
 end
 
--- Advance the state machine with the slot's tracking id and return the
--- transition: "down" (first contact), "move" (still down), "up" (just lifted),
--- or nil (still up, nothing to do). An id of nil or < 0 means "not touching".
+-- Advance the down/move/up state machine with the slot's tracking id (>= 0 while
+-- touching, nil or -1 when not) and return the transition: "down" (first
+-- contact), "move" (still down), "up" (just lifted), or nil (still up).
 function Stylus.step(st, id)
     local touching = id ~= nil and id >= 0
     if touching then

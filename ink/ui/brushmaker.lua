@@ -1,28 +1,23 @@
 --[[
-The brush maker: a small studio for building your own brush. A sample stroke is
-drawn live at the top with the brush as it stands, and below it a row of sliders
-sets each aspect of the feel: how much ink it lays down, how coarse the grain is,
-how soft the edge is, how far it spreads, and how much the paper tooth breaks it
-up. Drag a slider and the sample redraws at once, so you tune by eye rather than
-by typing numbers. When it looks right, name it and it joins the pen menu.
-
-It paints itself and reads its own touches, so the sliders and the preview are
-one piece. Everything is clipped to the panel, and the sample stroke is rendered
-through the very same rasterizer the pen uses, so what you tune is exactly what
-you will draw with.
+The brush maker: a panel with a live sample stroke above sliders for the ink
+amount, grain, edge, spread and paper tooth. The sample redraws as a slider moves,
+through the same rasterizer the pen uses; a named brush joins the pen menu. It
+paints itself and reads its own touches.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local InputDialog = require("ui/widget/inputdialog")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local Device = require("device")
-local Raster = require("ink/raster")
 local Brushes = require("ink/brushes")
+local InkGeom = require("ink/geom")
+local Paint = require("ink/paint")
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -38,11 +33,9 @@ local BrushMaker = InputContainer:extend{
 local WHITE = Blitbuffer.COLOR_WHITE
 local BLACK = Blitbuffer.COLOR_BLACK
 local GREY  = Blitbuffer.COLOR_GRAY
--- Greys as Color8, so their rounded corners are drawn in C (an RGB32 colour takes
--- KOReader's per-pixel Lua corner path, many times slower).
-local TILE  = Blitbuffer.Color8(0xE6)   -- secondary button fill
-local TRACK = Blitbuffer.Color8(0xCF)   -- slider track
-local KNOB  = Blitbuffer.Color8(0x99)   -- slider knob edge
+local TILE  = Paint.TILE_BG     -- secondary button fill
+local TRACK = Paint.TRACK_BG
+local KNOB  = Paint.KNOB_EDGE
 
 function BrushMaker:init()
     self.params = self.params or Brushes.defaults()
@@ -59,8 +52,8 @@ function BrushMaker:init()
                      + rows * self.row_h + self.btn_h + self.pad * 2
     end
     measure()
-    -- if the panel is taller than the screen (high-DPI devices), shrink its
-    -- parts to fit so the title and the Save/Cancel buttons are never clipped
+    -- shrink the parts of a panel taller than the screen (high-DPI devices), so
+    -- the title and the Save and Cancel buttons are never clipped
     local avail = sh - Screen:scaleBySize(24)
     if self.box_h > avail then
         local k = avail / self.box_h
@@ -73,9 +66,8 @@ function BrushMaker:init()
     end
     self.box_x = math.floor((sw - self.box_w) / 2)
     self.box_y = math.max(Screen:scaleBySize(12), math.floor((sh - self.box_h) / 2))
-    -- span the whole screen so the panel is always inside the painted and
-    -- refreshed region (a box-sized dimen let the edges fall outside on some
-    -- devices); keep the box rect separately for the cheap slider refreshes
+    -- span the whole screen, so the panel is always inside the painted and
+    -- refreshed region; the box rect is kept for the small slider refreshes
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.panel = Geom:new{ x = self.box_x, y = self.box_y, w = self.box_w, h = self.box_h }
 
@@ -83,10 +75,9 @@ function BrushMaker:init()
     self:renderPreview()
 
     if Device:isTouchDevice() then
-        -- capture the whole screen so a touch outside the panel cannot fall
-        -- through and draw on the canvas behind it. Rate-limit the pan with
-        -- GestureRange's own `rate` (KOReader's built-in mechanism, tuned per
-        -- device via Screen.low_pan_rate) rather than a hand-rolled timer.
+        -- capture the whole screen, so a touch outside the panel cannot draw on
+        -- the canvas behind it; pans are rate-limited by GestureRange's `rate`
+        -- (tuned per device through Screen.low_pan_rate)
         local full = Geom:new{ x = 0, y = 0, w = sw, h = sh }
         local pan_rate = Screen.low_pan_rate and 2.0 or 30.0
         self.ges_events = {
@@ -97,9 +88,8 @@ function BrushMaker:init()
     end
 end
 
--- Refresh the whole panel when first shown, so it renders in full straight away
--- (otherwise only the region left by the closing pen popup gets refreshed, which
--- clips the title and buttons until the first slider move).
+-- Refresh the whole panel when first shown, rather than only the region the
+-- closing pen sheet leaves.
 function BrushMaker:onShow()
     UIManager:setDirty(self, "ui", self.panel)
     return true
@@ -116,7 +106,7 @@ function BrushMaker:trackRect(i)
     return tx, y + math.floor(self.row_h / 2), tw, y, w, x
 end
 
--- The two bottom buttons as screen rects: returns save{}, cancel{}.
+-- The two bottom buttons as screen rects: save, cancel.
 function BrushMaker:buttonRects()
     local y = self.box_y + self.box_h - self.btn_h - self.pad
     local w = self.box_w - self.pad * 2
@@ -128,30 +118,11 @@ end
 -- Render the sample stroke with the current params into preview_bb.
 function BrushMaker:renderPreview()
     local bb = self.preview_bb
-    local w, h = bb:getWidth(), bb:getHeight()
-    bb:paintRect(0, 0, w, h, WHITE)
+    bb:paintRect(0, 0, bb:getWidth(), bb:getHeight(), WHITE)
     local st = {}
     for k, v in pairs(self.params) do st[k] = v end
-    local function put(x, y, len)
-        if y < 0 or y >= h then return end
-        if x < 0 then len = len + x; x = 0 end
-        if x + len > w then len = w - x end
-        if len > 0 then bb:paintRect(x, y, len, 1, BLACK) end
-    end
     -- a gentle S so the stroke shows body, edge and taper
-    local pts = {}
-    local n = 40
-    for i = 0, n do
-        local u = i / n
-        pts[#pts + 1] = self.pad + u * (w - self.pad * 2)
-        pts[#pts + 1] = h / 2 + math.sin(u * math.pi * 2) * (h * 0.24)
-    end
-    local r = math.max(6, Screen:scaleBySize(9))
-    if st.solid then
-        Raster.path(pts, r, put)
-    else
-        Raster.pathTex(pts, r, put, st, 12345)
-    end
+    Paint.brushSample(bb, st, BLACK, self.pad, math.max(6, Screen:scaleBySize(9)), 0.24, 40)
 end
 
 function BrushMaker:paintTo(bb, x, y)
@@ -173,7 +144,7 @@ function BrushMaker:paintTo(bb, x, y)
     bb:paintBorder(bx + self.pad, by + self.title_h, self.preview_bb:getWidth(),
         self.preview_bb:getHeight(), 1, GREY, pv_r)
 
-    -- sliders (pill track + black fill + round white knob, like the tool sheets)
+    -- sliders: a pill track, black fill and round white knob, like the sheets
     for i, f in ipairs(Brushes.FIELDS) do
         local tx, cy, tw, ry, w, rx = self:trackRect(i)
         tx = tx + x; cy = cy + y; ry = ry + y; rx = rx + x
@@ -199,7 +170,7 @@ function BrushMaker:paintTo(bb, x, y)
         vw:free()
     end
 
-    -- buttons (rounded; Save filled black, Cancel grey)
+    -- buttons: Save black, Cancel grey
     local save, cancel = self:buttonRects()
     local br = Screen:scaleBySize(14)
     for _, b in ipairs({ { save, _("Save brush"), true }, { cancel, _("Cancel"), false } }) do
@@ -213,7 +184,7 @@ function BrushMaker:paintTo(bb, x, y)
     end
 end
 
--- Which slider (if any) a screen point falls on, with a generous vertical band.
+-- The slider a screen point falls on, with a generous vertical band, or nil.
 function BrushMaker:sliderAt(px, py)
     for i, f in ipairs(Brushes.FIELDS) do
         local tx, cy, tw = self:trackRect(i)
@@ -232,8 +203,7 @@ function BrushMaker:setSlider(px, py)
     local f, val = self:sliderAt(px, py)
     if not f then return false end
     if self.params[f.id] ~= val then
-        -- Pan events are already rate-limited by the GestureRange, so we can
-        -- redraw the sample directly here without a separate throttle.
+        -- pans are rate-limited by the GestureRange, so redraw directly
         self.params[f.id] = val
         self:renderPreview()
         UIManager:setDirty(self, "fast", self.panel)
@@ -246,9 +216,8 @@ function BrushMaker:onBmTap(_, ges)
     if not p then return true end
     if self:setSlider(p.x, p.y) then return true end
     local save, cancel = self:buttonRects()
-    local function hit(r) return p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
-    if hit(save) then self:promptName(); return true end
-    if hit(cancel) then UIManager:close(self); return true end
+    if InkGeom.inRect(p.x, p.y, save) then self:promptName(); return true end
+    if InkGeom.inRect(p.x, p.y, cancel) then UIManager:close(self); return true end
     -- a tap outside the panel dismisses it
     if p.x < self.box_x or p.x > self.box_x + self.box_w
        or p.y < self.box_y or p.y > self.box_y + self.box_h then
@@ -265,12 +234,10 @@ end
 BrushMaker.onBmHoldPan = BrushMaker.onBmPan
 
 function BrushMaker:promptName()
-    -- Close the full-screen maker FIRST, then show the name entry. Otherwise the
-    -- entry (and, on a device, the on-screen keyboard) is drawn behind this
-    -- full-screen modal and gets hidden. Capture what we need before closing.
+    -- close the full-screen maker before showing the name entry, which would
+    -- otherwise open behind it (keyboard included)
     local on_save, params, init_name = self.on_save, self.params, self.init_name
     UIManager:close(self)
-    local InputDialog = require("ui/widget/inputdialog")
     local dlg
     dlg = InputDialog:new{
         title = _("Name this brush"),
@@ -292,11 +259,9 @@ end
 
 function BrushMaker:onCloseWidget()
     if self.preview_bb then self.preview_bb:free(); self.preview_bb = nil end
-    -- The maker is a floating panel over the canvas; when it leaves, repaint the
-    -- whole screen so its frame is wiped and the canvas underneath is restored.
-    -- "all" re-runs every remaining widget's paintTo (nil would only refresh the
-    -- e-ink from the stale buffer). Without this the panel's edges linger and the
-    -- name entry that opens next leaves a panel-shaped hole where it was.
+    -- repaint the whole screen as the panel leaves: "all" runs every remaining
+    -- widget's paintTo, where nil would only refresh the panel from the stale
+    -- buffer and leave the panel's edges behind
     UIManager:setDirty("all", "full")
 end
 

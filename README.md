@@ -20,7 +20,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 
 ## Features
 
-- **Pen**: size, opacity, color (greys everywhere, full color + a wheel on color screens) and brusg styles (you can make your own brushes too).
+- **Pen**: size, opacity, color (greys everywhere, full color + a wheel on color screens) and brush styles (you can make your own brushes too).
 - **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline): hold one in Pan mode to edit; plus a **paint bucket** for one-tap fills.
 - **Eraser** that removes ink (back to transparent) instead of painting white.
 - **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
@@ -30,7 +30,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - **Projects & autosave**, undo/redo, zoom & pan, and an optional grid.
 - And more!
 
-Toolbar: Pen, Shapes, Eraser, Pan, Zoom, Text, Undo/Redo, and Settings for more detailed customization.
+Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, Save and Exit. Zoom is the floating +/− control in the corner.
 
 
 ## Installation

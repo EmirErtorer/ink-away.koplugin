@@ -27,10 +27,11 @@ measuring, so they run under the headless tests. Only render() touches KOReader
 
 local Text = {}
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- UTF-8 helpers (LuaJIT has no utf8 library). One pattern matches one glyph's
 -- bytes: an ASCII/lead byte followed by any continuation bytes.
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
 local UTF8 = "[%z\1-\127\194-\253][\128-\191]*"
 
 local function chars(s)
@@ -58,9 +59,10 @@ end
 
 Text.chars, Text.ulen, Text.usub = chars, ulen, usub
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Style helpers
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
 local STYLE_KEYS = { "b", "i", "u", "s", "hl", "sz" }
 
 local function copyStyle(st)
@@ -68,7 +70,6 @@ local function copyStyle(st)
     if st then for _, k in ipairs(STYLE_KEYS) do o[k] = st[k] end end
     return o
 end
-Text.copyStyle = copyStyle
 
 local function sameStyle(a, b)
     for _, k in ipairs(STYLE_KEYS) do
@@ -77,9 +78,10 @@ local function sameStyle(a, b)
     return true
 end
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Construction and normalisation
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
 local function emptyPara(bullet)
     return { bullet = bullet, spans = { { t = "" } } }
 end
@@ -126,9 +128,8 @@ local function normalizePara(p)
     if #out == 0 then out[1] = { t = "" } end
     p.spans = out
 end
-Text.normalizePara = normalizePara
 
--- The plain text of the whole op (for search / measuring emptiness).
+-- The plain text of the whole op (for search and emptiness checks).
 function Text.plain(op)
     local t = {}
     for _, p in ipairs(op.paras) do t[#t + 1] = paraText(p) end
@@ -150,10 +151,11 @@ function Text.isEmpty(op)
     return #op.paras == 1 and paraText(op.paras[1]) == ""
 end
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Cursor addressing. A cursor is { p = <paragraph idx>, o = <char offset> }.
 -- Selections are { a = cur, b = cur }; orderSel returns them start..end.
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
 local function curLE(a, b)   -- a <= b ?
     if a.p ~= b.p then return a.p < b.p end
     return a.o <= b.o
@@ -208,9 +210,9 @@ function Text.styleAt(op, cur)
     return copyStyle(p.spans[#p.spans])
 end
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Editing operations. Each mutates op.paras and returns the new cursor.
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 -- Delete a (non-empty) selection; returns the collapsed cursor.
 function Text.deleteRange(op, sel)
@@ -276,8 +278,11 @@ function Text.insert(op, cur, str, style)
     for i = 2, #pieces - 1 do
         insertAt = insertAt + 1
         local np = { bullet = p.bullet, spans = {} }
-        if pieces[i] ~= "" then np.spans[1] = { t = pieces[i], b = style.b, i = style.i,
-            u = style.u, s = style.s, hl = style.hl, sz = style.sz } else np.spans[1] = { t = "" } end
+        if pieces[i] ~= "" then
+            local sp = copyStyle(style); sp.t = pieces[i]; np.spans[1] = sp
+        else
+            np.spans[1] = { t = "" }
+        end
         table.insert(op.paras, insertAt, np)
     end
     insertAt = insertAt + 1
@@ -309,25 +314,6 @@ function Text.deleteBack(op, cur)
     return { p = cur.p - 1, o = prevLen }
 end
 
--- Forward delete (Del key): delete the char after the cursor.
-function Text.deleteForward(op, cur)
-    local p = op.paras[cur.p]
-    local len = Text.paraLen(p)
-    if cur.o < len then
-        return Text.deleteRange(op, { a = cur, b = { p = cur.p, o = cur.o + 1 } })
-    end
-    if cur.p >= #op.paras then return cur end
-    -- join the next paragraph onto this one
-    local nextp = op.paras[cur.p + 1]
-    local spans = {}
-    for _, sp in ipairs(p.spans) do spans[#spans + 1] = sp end
-    for _, sp in ipairs(nextp.spans) do spans[#spans + 1] = sp end
-    p.spans = spans
-    normalizePara(p)
-    table.remove(op.paras, cur.p + 1)
-    return cur
-end
-
 -- Apply a style change across a selection. `key` is one of the style keys;
 -- `value` the value to set (for a toggle, pass the new boolean). Returns nothing;
 -- op.paras is edited in place with spans split at the range boundaries.
@@ -335,14 +321,9 @@ function Text.applyStyle(op, sel, key, value)
     local a, b = Text.orderSel(sel)
     local function styleParaRange(pi, o0, o1)
         local p = op.paras[pi]
-        local left = splitSpans(p, o0)
-        local mid, right
-        do
-            local _, afterLeft = splitSpans(p, o0)
-            -- re-split the right part at (o1 - o0) within its own coordinates
-            local tmp = { spans = afterLeft }
-            mid, right = splitSpans(tmp, o1 - o0)
-        end
+        local left, after = splitSpans(p, o0)
+        -- split the rest again at (o1 - o0), in its own coordinates
+        local mid, right = splitSpans({ spans = after }, o1 - o0)
         for _, sp in ipairs(mid) do sp[key] = value or nil end
         local spans = {}
         for _, sp in ipairs(left) do spans[#spans + 1] = sp end
@@ -362,7 +343,7 @@ function Text.applyStyle(op, sel, key, value)
     end
 end
 
--- Is `key` set on every char of the selection? (used to decide toggle direction)
+-- Is `key` set on every char of the selection? Decides which way a toggle goes.
 function Text.styleCovers(op, sel, key)
     local a, b = Text.orderSel(sel)
     if Text.selEmpty(sel) then
@@ -395,7 +376,7 @@ function Text.setBullet(op, sel, kind)
     for pi = a.p, b.p do op.paras[pi].bullet = kind end
 end
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Layout. `ctx` supplies all measuring so this stays pure:
 --   ctx.measure(text, style)  -> pixel width of that text in that style
 --   ctx.lineHeight(style)     -> line box height in px for that style
@@ -405,7 +386,7 @@ end
 -- Returns { lines = {...}, width = op.w, height = <total px> }. Each line:
 --   { para, first, top, height, baseline, text_x, o_start, o_end,
 --     bullet = { text, style, x } | nil, segs = { {t, style, x, w, o0} } }
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 -- Break one paragraph's spans into tokens split on spaces and style, each
 -- carrying its char offset within the paragraph.
@@ -521,11 +502,10 @@ function Text.layout(op, ctx)
             local top, adv, baseline = y, lh, y + asc
             if ctx.gridStep and ctx.gridStep > 0 then
                 local step = ctx.gridStep
-                -- Rows are counted from the ASCENT (baseline to top of the tall
-                -- letters), not the full line box: that box carries leading and
-                -- descender space that would otherwise force big-but-still-one-row
-                -- text onto two rows. The font is sized so the ascent nearly fills
-                -- a row, so the letters reach up toward the line above.
+                -- Rows are counted from the ascent (baseline to the top of the tall
+                -- letters), not the full line box, whose leading and descender
+                -- space would push large one-row text onto two rows. The font is
+                -- sized so the ascent nearly fills a row.
                 adv = math.max(1, math.ceil((asc - 0.5) / step)) * step
                 baseline = y + adv           -- sit on the ruling at the row bottom
             end
@@ -587,6 +567,16 @@ local function lineOfCursor(layout, cur)
     return fallback or 1
 end
 
+-- Width of a laid-out line's text.
+local function lineContentWidth(line)
+    local w = 0
+    for _, sg in ipairs(line.segs) do w = w + sg.w end
+    return w
+end
+
+Text.caretX = caretXOnLine
+Text.lineContentWidth = lineContentWidth
+
 -- Caret geometry {x, y, h} in op-local pixels for the cursor.
 function Text.caret(op, layout, cur, ctx)
     local i = lineOfCursor(layout, cur)
@@ -618,7 +608,7 @@ function Text.hit(op, layout, lx, ly, ctx)
     return { p = pick.para, o = best_o }
 end
 
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Rendering. Draws the laid-out text into a blitbuffer at (ox, oy) in that
 -- buffer's pixels. `rctx` supplies KOReader bits so layout stays testable:
 --   rctx.face(style)   -> font face for a style
@@ -627,7 +617,8 @@ end
 --   rctx.lineWidth     -> px thickness for underline / strike / bullet rules
 -- Underline, strikethrough and highlight are drawn by us; bold/size come from
 -- the face; italic uses an italic face when rctx.face provides one.
--- ---------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
 function Text.render(op, layout, bb, ox, oy, ctx, rctx)
     local RenderText = require("ui/rendertext")
     local Blitbuffer = require("ffi/blitbuffer")
@@ -644,9 +635,8 @@ function Text.render(op, layout, bb, ox, oy, ctx, rctx)
                 math.ceil(sg.w), math.ceil(h), hlcolor)
         end
         if sg.style.i and sg.t ~= "" then
-            -- Synthetic italic: render the run to a coverage buffer, then blit it
-            -- one scanline at a time with a slant offset (no italic font needed,
-            -- and only ~one blit per row, so it stays cheap on e-ink).
+            -- synthetic italic: render the run to a coverage buffer, then blit it
+            -- one row at a time with a slant offset (no italic font needed)
             local h = math.ceil(ctx.lineHeight(sg.style))
             local slant = 0.2
             local wseg = math.ceil(sg.w) + 2
