@@ -135,6 +135,17 @@ function Text.plain(op)
     return table.concat(t, "\n")
 end
 
+-- The plain text of a selection (paragraphs joined with "\n"), for copying.
+function Text.plainRange(op, sel)
+    local a, b = Text.orderSel(sel)
+    local out = {}
+    for pi = a.p, b.p do
+        local t = paraText(op.paras[pi])
+        out[#out + 1] = usub(t, (pi == a.p) and a.o or 0, (pi == b.p) and b.o or nil)
+    end
+    return table.concat(out, "\n")
+end
+
 function Text.isEmpty(op)
     return #op.paras == 1 and paraText(op.paras[1]) == ""
 end

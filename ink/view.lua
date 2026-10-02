@@ -847,6 +847,13 @@ function InkAwayView:init()
     -- Bound once so it can be scheduled and unscheduled by identity.
     self._finalize = function() self:finalizeStroke() end
     self._live_flush_cb = function() self:liveFlush() end
+    self._pen_hold_cb = function()
+        local at = self._pen_hold_at
+        self._pen_hold_at = nil
+        if at and not self._clip_press and self._pen_state and self._pen_state.down then
+            self:textHoldAt(at)
+        end
+    end
     self._reconcile_cb = function() self:runReconcile() end
     -- Coalesced refresh while dragging a lasso selection: many pan events collapse
     -- into at most one small refresh per interval, so the e-ink panel is never
@@ -1326,6 +1333,17 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._autosave_tick)
     UIManager:unschedule(self._live_flush_cb)
     UIManager:unschedule(self._reconcile_cb)
+    UIManager:unschedule(self._pen_hold_cb)
+    self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
+    local tm = self._text_btn_metrics
+    if tm then
+        for _, w in ipairs({ tm.fw, tm.dw }) do if w and w.free then w:free() end end
+        self._text_btn_metrics = nil
+    end
+    if self._clip_widget then
+        if self._clip_widget.free then self._clip_widget:free() end
+        self._clip_widget = nil
+    end
     if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     if self._show_zoom_fab then UIManager:unschedule(self._show_zoom_fab) end
     if self._show_bar_toggle then UIManager:unschedule(self._show_bar_toggle) end
@@ -3004,7 +3022,8 @@ function InkAwayView:fabHit(px, py)
             return (py < r.y + r.h / 2) and "zoomin" or "zoomout"
         end
     end
-    if not self._bar_toggle_hidden then
+    -- (not while a text box is open: the chevron would sit on its Done button)
+    if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
         if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
             return "bar"
@@ -3119,8 +3138,9 @@ function InkAwayView:drawFabs(bb, ox, oy)
             bb:alphablitFrom(sprite, ox + r.x, oy + r.y, 0, 0, r.w, r.h)
         end
     end
-    -- toolbar toggle: a bare chevron (no pill) -- up to collapse, down to expand
-    if not self._bar_toggle_hidden then
+    -- toolbar toggle: a bare chevron (no pill) -- up to collapse, down to expand.
+    -- Hidden while a text box is being edited, whose Done button sits in that corner.
+    if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
         if r then
             local x, y, w, h = ox + r.x, oy + r.y, r.w, r.h
@@ -7817,6 +7837,8 @@ function InkAwayView:resetPenState()
     self._pen_last_ms = nil
     self._learned_pen_slot = nil
     self._stylus_input = nil
+    self._pen_hold_at = nil
+    UIManager:unschedule(self._pen_hold_cb)
 end
 
 -- True while finger input must be ignored. Latched on PHYSICAL presence -- the pen
@@ -8081,12 +8103,28 @@ function InkAwayView:penMove(slot)
     if not self._pen_started then
         self._pen_started = true
         self:feedPen("down", x, y)
+        -- The pen never produces KOReader's hold gesture, so time a long press
+        -- ourselves: held still in a text box being edited -> the paste bubble.
+        if self.editing_text and not self._clip_press then
+            self._pen_hold_at = { x = x, y = y }
+            UIManager:unschedule(self._pen_hold_cb)
+            UIManager:scheduleIn(0.5, self._pen_hold_cb)
+        end
     else
+        local h = self._pen_hold_at
+        if h and math.abs(x - h.x) + math.abs(y - h.y) > Screen:scaleBySize(12) then
+            self._pen_hold_at = nil
+            UIManager:unschedule(self._pen_hold_cb)
+        end
         self:feedPen("move", x, y)
     end
 end
 
 function InkAwayView:penUp()
+    if self._pen_hold_at then
+        self._pen_hold_at = nil
+        UIManager:unschedule(self._pen_hold_cb)
+    end
     if self._pen_started then
         self:feedPen("up", self._pen_last_x or 0, self._pen_last_y or 0)
         self:flushPending()      -- the pen lift is clean; commit now, no coalesce wait
@@ -8266,6 +8304,11 @@ function InkAwayView:onIaTouch(_, ges)
     -- a multi-touch that began as a raw stroke: its per-finger touches never draw
     if not self._pen_feeding and self._raw and self._raw.ignore_slot ~= nil then return true end
     local pos = ges.pos
+    -- the paste bubble: a press on it pastes on release; any other touch dismisses it
+    if self._clip_bubble then
+        if self:inClipBubble(pos) then self._clip_press = true; return true end
+        self:hideClipBubble()
+    end
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
     -- floating controls: a tap on one acts; a drag off it (below) draws instead
@@ -8315,6 +8358,7 @@ end
 
 function InkAwayView:onIaPan(_, ges)
     if self:fingerRejected() then self:holdReject(); return true end
+    if self._clip_press then return true end   -- the release decides (paste or cancel)
     local pos = ges.pos
     if self._fab_press then           -- a drag off a control is a draw, not a tap
         self._fab_press = nil
@@ -8351,6 +8395,11 @@ InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
     if self:fingerRejected() then return true end
+    if self._clip_press then
+        self._clip_press = nil
+        if self:inClipBubble(ges and ges.pos) then self:textPaste() end
+        return true
+    end
     if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.rotating then return self:rotateEnd() end
@@ -8375,6 +8424,7 @@ InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
     if self:fingerRejected() then return true end
+    if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.rotating then return self:rotateEnd() end
@@ -8404,6 +8454,11 @@ InkAwayView.onIaMultiSwipe = InkAwayView.onIaSwipe
 
 function InkAwayView:onIaTap(_, ges)
     if self:fingerRejected() then return true end
+    if self._clip_press then
+        self._clip_press = nil
+        if self:inClipBubble(ges and ges.pos) then self:textPaste() end
+        return true
+    end
     -- floating controls: complete a tap begun on one of them
     if self._fab_press then
         local kind = self._fab_press; self._fab_press = nil
@@ -8451,7 +8506,10 @@ end
 
 function InkAwayView:onIaHold(_, ges)
     if self:fingerRejected() then return true end
+    if self._clip_press then return true end
     if self._fab_press then self._fab_press = nil; return true end
+    -- a long press in the text box being edited offers to paste there
+    if self.editing_text and self:textHoldAt(ges and ges.pos) then return true end
     -- A hold on a placed image or shape picks it and opens its edit menu (a tap
     -- does the same via onIaTouch; hold is here for when the touch missed). We
     -- soak up other holds inside the area so they don't become a long press menu.
@@ -8923,25 +8981,28 @@ function InkAwayView:textEditButtons()
     local v = self.view
     local m = self._text_btn_metrics
     if not m then
-        local dlabel = "\u{2713} " .. _("Done")
-        local dw_ = self:labelWidget(dlabel)
-        local ds = dw_:getSize(); dw_:free()
-        local fw_ = self:labelWidget(_("Format"))
-        local fs = fw_:getSize(); fw_:free()
-        m = { ds = { w = ds.w, h = ds.h }, fs = { w = fs.w, h = fs.h }, dlabel = dlabel }
+        -- the same look as the sheets: a grey rounded "Format" button and the black
+        -- "Done" pill. The labels are built once and reused on every paint.
+        local Font = require("ui/font")
+        local TextWidget = require("ui/widget/textwidget")
+        local face = Font:getFace("cfont", 15)
+        local fw = TextWidget:new{ text = _("Format"), face = face, bold = true, fgcolor = Blitbuffer.COLOR_BLACK }
+        local dw = TextWidget:new{ text = _("Done"), face = face, bold = true, fgcolor = WHITE }
+        local fs, ds = fw:getSize(), dw:getSize()
+        local hpad = Screen:scaleBySize(16)
+        local h = math.max(Screen:scaleBySize(34), math.max(fs.h, ds.h) + Screen:scaleBySize(12))
+        m = { fw = fw, dw = dw, h = h, fwid = fs.w + 2 * hpad,
+              dwid = math.max(Screen:scaleBySize(84), ds.w + 2 * hpad),
+              radius = Screen:scaleBySize(11), gap = Screen:scaleBySize(8) }
         self._text_btn_metrics = m
     end
-    local ds, fs = m.ds, m.fs
-    local pad = math.floor(ds.h * 0.5)
-    local h = ds.h + 2 * math.floor(ds.h * 0.35)
-    local dwid = ds.w + 2 * pad
-    local fwid = fs.w + 2 * pad
-    local y = v.area_y + 8
-    local dx = v.area_x + v.area_w - dwid - 8
-    local fx = dx - fwid - 10
+    local edge = Screen:scaleBySize(8)
+    local y = v.area_y + edge
+    local dx = v.area_x + v.area_w - m.dwid - edge
+    local fx = dx - m.fwid - m.gap
     return {
-        done   = { x = dx, y = y, w = dwid, h = h, label = m.dlabel },
-        format = { x = fx, y = y, w = fwid, h = h, label = _("Format") },
+        done   = { x = dx, y = y, w = m.dwid, h = m.h, dark = true },
+        format = { x = fx, y = y, w = m.fwid, h = m.h },
     }
 end
 
@@ -8968,6 +9029,7 @@ end
 
 -- Refresh just the box's rectangle (plus a margin for the frame / handles).
 function InkAwayView:refreshTextBox(mode)
+    self:hideClipBubble()   -- any change to the box (typing, caret, selection) dismisses it
     local v = self.view
     local r = self:textBoxScreenRect()
     local pad = TEXT_HANDLE + 4
@@ -9120,6 +9182,7 @@ end
 -- Leave edit mode, baking the box in (commit) or dropping the edit (cancel).
 function InkAwayView:finishTextEdit(commit)
     if not self.editing_text then return end
+    self:hideClipBubble()
     if commit == nil then commit = true end
     local op = self.editing_text
     local committed_op   -- the op that ended up on the ops list (for undo history)
@@ -9373,38 +9436,227 @@ end
 -- keyboard had its buttons' tap regions in the wrong place).
 function InkAwayView:openTextFormatMenu()
     if not self.editing_text then return end
-    local ButtonDialog = require("ui/widget/buttondialog")
     if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
+    self:hideClipBubble()
     self:hideTextKeyboard()
-    local sel = self:textEffectiveSel()
-    local target = sel and _("word / selection") or _("new text")
-    -- close the menu and bring the keyboard back so the styled result shows
-    local function close()
-        if self._text_fmt then UIManager:close(self._text_fmt); self._text_fmt = nil end
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local gap = Screen:scaleBySize(10)
+    local content_w = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    local vspan = function(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+    -- close the sheet and bring the keyboard back so the result shows while typing
+    local function done()
+        if self._text_fmt then
+            local d = self._text_fmt
+            self._text_fmt = nil
+            UIManager:close(d)
+        end
         if self.editing_text then self:showTextKeyboard() end
     end
-    local function mk(label, key)
-        return { text = (self:textStyleActive(key) and "\u{2713} " or "") .. label,
-                 callback = function() self:textToggleStyle(key); close() end }
+    local build = function()
+        local sel = self:textEffectiveSel()
+        local has_clip = self:clipboardText() ~= nil
+        -- a row of equal buttons filling content_w exactly
+        local function row(items)
+            local n = #items
+            local bw = math.floor((content_w - (n - 1) * gap) / n)
+            local g = HorizontalGroup:new{ align = "center" }
+            for i, it in ipairs(items) do
+                local w = (i == n) and (content_w - (n - 1) * (bw + gap)) or bw
+                local enabled = it.enabled ~= false
+                local b = self:actionButton(it.label, w, enabled and it.cb or function() end, it.active)
+                if not enabled then
+                    b.enabled = false                                   -- no tap flash either
+                    if b.label_widget then b.label_widget.fgcolor = Blitbuffer.Color8(0xA0) end
+                end
+                g[#g + 1] = b
+                if i < n then g[#g + 1] = HorizontalSpan:new{ width = gap } end
+            end
+            return g
+        end
+        local function style(label, key)
+            return { label = label, active = self:textStyleActive(key),
+                     cb = function() self:textToggleStyle(key); done() end }
+        end
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) content[#content + 1] = w end
+        add(self:sheetTitle(_("Format"), content_w, _("Done"), done))
+        add(vspan(4))
+        add(TextWidget:new{ text = sel and _("Applies to the selected word or text")
+                or _("Applies to what you type next"),
+            face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.Color8(0x66) })
+        add(vspan(12))
+        add(row({ style(_("Bold"), "b"), style(_("Italic"), "i"), style(_("Underline"), "u") }))
+        add(vspan(8))
+        add(row({ style(_("Strike"), "s"), style(_("Highlight"), "hl"),
+            { label = "A\u{2212}", cb = function() self:textStepSize(-1); done() end },
+            { label = "A+", cb = function() self:textStepSize(1); done() end } }))
+        add(vspan(8))
+        add(row({ { label = "\u{2022} " .. _("List"), cb = function() self:textToggleBullet("disc"); done() end },
+                  { label = "1. " .. _("List"), cb = function() self:textToggleBullet("number"); done() end } }))
+        add(vspan(8))
+        add(row({ { label = _("Copy"), enabled = sel ~= nil, cb = function() self:textCopy(false); done() end },
+                  { label = _("Cut"), enabled = sel ~= nil, cb = function() self:textCopy(true); done() end },
+                  { label = _("Paste"), enabled = has_clip, cb = function() self:textPaste(); done() end } }))
+        return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
+            radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
     end
-    local buttons = {
-        {{ text = _("Format: ") .. target, enabled = false }},
-        { mk(_("Bold"), "b"), mk(_("Italic"), "i"), mk(_("Underline"), "u") },
-        { mk(_("Strike"), "s"), mk(_("Highlight"), "hl"),
-          { text = "A-", callback = function() self:textStepSize(-1); close() end },
-          { text = "A+", callback = function() self:textStepSize(1); close() end } },
-        { { text = "\u{2022} " .. _("List"), callback = function() self:textToggleBullet("disc"); close() end },
-          { text = "1. " .. _("List"), callback = function() self:textToggleBullet("number"); close() end } },
-        { { text = _("Close"), callback = close } },
-    }
-    local dlg = ButtonDialog:new{ buttons = buttons,
-        -- restore the keyboard if the menu is dismissed by tapping outside it
-        tap_close_callback = function()
+    -- The keyboard is hidden while the sheet is open, so the sheet takes its place
+    -- at the bottom of the drawing area, leaving the text box visible above it.
+    local v = self.view
+    self._text_fmt = IconMenu:new{ build = build, bottom_y = v.area_y + v.area_h,
+        on_close = function()       -- tapped outside / Back
             self._text_fmt = nil
             if self.editing_text then self:showTextKeyboard() end
         end }
-    self._text_fmt = dlg
-    UIManager:show(dlg)
+    UIManager:show(self._text_fmt)
+end
+
+-- ---- clipboard: paste bubble, copy / cut ---------------------------------
+-- A long press inside the text box being edited shows a small "Paste" bubble
+-- above the finger, the way phones do; tapping it inserts KOReader's clipboard
+-- (whatever was copied in the reader, a dictionary, another text field...) at
+-- the caret, replacing any selection. The format menu (a selection, or the Aa
+-- button) also has Copy / Cut / Paste. The bubble is drawn by the canvas itself,
+-- so the keyboard below keeps working while it shows.
+local CLIP_MAX = 5000   -- longest paste, in characters (a huge one would stall the layout)
+
+-- A short, non-blocking message.
+function InkAwayView:showNotice(text)
+    local ok, Notification = pcall(require, "ui/widget/notification")
+    if ok and Notification then
+        UIManager:show(Notification:new{ text = text })
+    else
+        UIManager:show(InfoMessage:new{ text = text, timeout = 2 })
+    end
+end
+
+-- KOReader's clipboard text cleaned up for a text box (line breaks unified, tabs
+-- as spaces, other control characters dropped, capped at CLIP_MAX characters).
+-- Returns the text and whether it was shortened, or nil when there is none.
+function InkAwayView:clipboardText()
+    local inp = Device.input
+    if not (inp and inp.getClipboardText) then return nil end
+    local ok, s = pcall(inp.getClipboardText)
+    if not ok or type(s) ~= "string" or s == "" then return nil end
+    s = s:gsub("\r\n", "\n"):gsub("\r", "\n"):gsub("\t", "    "):gsub("[%z\1-\8\11-\31\127]", "")
+    if s == "" then return nil end
+    if Text.ulen(s) > CLIP_MAX then return Text.usub(s, 0, CLIP_MAX), true end
+    return s, false
+end
+
+function InkAwayView:textPaste()
+    self:hideClipBubble()
+    if not self.editing_text then return end
+    local s, shortened = self:clipboardText()
+    if not s then self:showNotice(_("The clipboard is empty.")); return end
+    self:textBreakCoalesce()
+    self:textMark("paste")            -- the whole paste is one undo step
+    self:textDeleteSelIfAny()
+    local style = self._text_pending_style or nil
+    self.text_cur = Text.insert(self.editing_text, self.text_cur, s, style)
+    self._text_pending_style = nil
+    self:textBreakCoalesce()          -- typing after it starts a new step
+    self:afterTextEdit()
+    if shortened then
+        self:showNotice(string.format(_("Pasted the first %d characters."), CLIP_MAX))
+    end
+end
+
+-- Copy (or cut) the selection -- or the word under the caret -- to the clipboard.
+function InkAwayView:textCopy(cut)
+    self:hideClipBubble()
+    if not self.editing_text then return end
+    local sel = self:textEffectiveSel()
+    if not sel or Text.selEmpty(sel) then return end
+    local s = Text.plainRange(self.editing_text, sel)
+    if s == "" then return end
+    local inp = Device.input
+    if inp and inp.setClipboardText then pcall(inp.setClipboardText, s) end
+    if cut then
+        self:textBreakCoalesce()
+        self:textMark("delete")
+        self.text_cur = Text.deleteRange(self.editing_text, sel)
+        self.text_sel = nil
+        self:textBreakCoalesce()
+        self:afterTextEdit()
+    else
+        self:showNotice(_("Copied"))
+    end
+end
+
+-- The bubble widget: a black pill with the clipboard icon and "Paste". Built
+-- once and kept; only its position changes.
+function InkAwayView:clipBubbleWidget()
+    if self._clip_widget then return self._clip_widget end
+    local TextWidget = require("ui/widget/textwidget")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local isz = math.max(16, math.floor((self._icon_sz or Screen:scaleBySize(28)) * 0.8))
+    local icon = IconWidget:new{ file = self:pluginDir() .. "ink/icons/clipboard.svg",
+        width = isz, height = isz }
+    icon.invert = true   -- renders on white; inverted it reads white on the black pill
+    local label = TextWidget:new{ text = _("Paste"), face = self:faceAt("cfont", math.floor(isz * 0.85)),
+        fgcolor = WHITE, bold = true }
+    local pad = Screen:scaleBySize(10)
+    local h = math.max(isz, label:getSize().h) + 2 * pad
+    self._clip_widget = FrameContainer:new{
+        background = Blitbuffer.COLOR_BLACK, bordersize = 0, radius = math.floor(h / 2),
+        padding = pad, padding_left = math.floor(pad * 1.6), padding_right = math.floor(pad * 1.8),
+        margin = 0,
+        HorizontalGroup:new{ align = "center", icon, HorizontalSpan:new{ width = pad }, label },
+    }
+    return self._clip_widget
+end
+
+-- Show the bubble just above screen point (sx, sy), kept inside the drawing area
+-- and above the keyboard; below the finger when there is no room above.
+function InkAwayView:showClipBubble(sx, sy)
+    if not self.editing_text then return end
+    self:hideClipBubble()
+    local sz = self:clipBubbleWidget():getSize()
+    local w, h = sz.w, sz.h
+    local v = self.view
+    local gap, lift = Screen:scaleBySize(8), Screen:scaleBySize(40)
+    local x = math.floor(sx - w / 2)
+    x = math.max(v.area_x + gap, math.min(v.area_x + v.area_w - w - gap, x))
+    local bottom = math.min(v.area_y + v.area_h, self:keyboardTop()) - gap
+    local y = sy - lift - h
+    if y < v.area_y + gap then y = sy + lift end
+    y = math.max(v.area_y + gap, math.min(bottom - h, y))
+    self._clip_bubble = { x = x, y = y, w = w, h = h }
+    UIManager:setDirty(self, "ui", GeomUI:new{ x = x, y = y, w = w, h = h })
+end
+
+function InkAwayView:hideClipBubble()
+    local b = self._clip_bubble
+    if not b then return end
+    self._clip_bubble, self._clip_press = nil, nil
+    if not self.closing then
+        UIManager:setDirty(self, "ui", GeomUI:new{ x = b.x, y = b.y, w = b.w, h = b.h })
+    end
+end
+
+function InkAwayView:inClipBubble(pos)
+    local b = self._clip_bubble
+    return b and pos and pos.x >= b.x and pos.x <= b.x + b.w
+        and pos.y >= b.y and pos.y <= b.y + b.h or false
+end
+
+-- A long press at `pos` while a box is being edited: offer to paste there. The
+-- touch that began it has already put the caret under the finger.
+function InkAwayView:textHoldAt(pos)
+    if not (self.editing_text and pos) then return false end
+    if self:textZone(pos.x, pos.y) ~= "inside" then return false end
+    if self:textHasSel() then return false end   -- a selection gets the format menu
+    if not self:clipboardText() then
+        self:showNotice(_("The clipboard is empty."))
+        return true
+    end
+    self:showClipBubble(pos.x, pos.y)
+    return true
 end
 
 -- ---- touch handling for the text tool ------------------------------------
@@ -9525,6 +9777,13 @@ function InkAwayView:textToolPan(pos)
         local lay = self:editTextLayout()
         local cur = Text.hit(self.editing_text, lay, pos.x - r.x, pos.y - r.y,
             self:textCtx(self.editing_text, self.view.zoom))
+        -- Only act when the caret actually lands somewhere new. A pen held on the
+        -- glass sends a frame every few ms with a pixel of jitter; refreshing the
+        -- box for each one was wasted e-ink work, and it dismissed the paste bubble
+        -- the moment it appeared.
+        local last = d.last or d.anchor
+        if cur.p == last.p and cur.o == last.o then return true end
+        d.last = cur
         self.text_cur = cur
         self.text_sel = { a = d.anchor, b = cur }
         self:refreshTextBox("ui")
@@ -9598,20 +9857,18 @@ function InkAwayView:paintTextOverlay(bb, x, y)
         local c = Text.caret(op, lay, self.text_cur, ctx)
         bb:paintRect(math.floor(ox + c.x), math.floor(oy + c.y), 2, math.ceil(c.h), BLACKC)
     end
-    -- the always-visible Format and Done buttons (above the keyboard)
+    -- the always-visible Format and Done buttons (above the keyboard): rounded,
+    -- Color8 fills so the corners are drawn in C, and labels cached in the metrics
     local btns = self:textEditButtons()
-    local function drawBtn(rr)
+    local m = self._text_btn_metrics
+    local function drawBtn(rr, label)
         local bx, by = rr.x + x, rr.y + y
-        bb:paintRect(bx, by, rr.w, rr.h, Blitbuffer.COLOR_WHITE)
-        bb:paintRect(bx, by, rr.w, 2, BLACKC); bb:paintRect(bx, by + rr.h - 2, rr.w, 2, BLACKC)
-        bb:paintRect(bx, by, 2, rr.h, BLACKC); bb:paintRect(bx + rr.w - 2, by, 2, rr.h, BLACKC)
-        local w = self:labelWidget(rr.label)
-        local sz = w:getSize()
-        w:paintTo(bb, math.floor(bx + (rr.w - sz.w) / 2), math.floor(by + (rr.h - sz.h) / 2))
-        w:free()
+        bb:paintRoundedRect(bx, by, rr.w, rr.h, rr.dark and BLACKC or TILE_BG, m.radius)
+        local sz = label:getSize()
+        label:paintTo(bb, math.floor(bx + (rr.w - sz.w) / 2), math.floor(by + (rr.h - sz.h) / 2))
     end
-    drawBtn(btns.format)
-    drawBtn(btns.done)
+    drawBtn(btns.format, m.fw)
+    drawBtn(btns.done, m.dw)
 end
 
 -- helpers used by the selection highlight above (ctx passed in to avoid
@@ -9824,6 +10081,10 @@ function InkAwayView:paintTo(bb, x, y)
 
     -- text box being edited: live glyphs, its frame, caret and any selection
     if self.editing_text then self:paintTextOverlay(bb, x, y) end
+    if self._clip_bubble and self.editing_text then
+        local b = self._clip_bubble
+        self:clipBubbleWidget():paintTo(bb, x + b.x, y + b.y)
+    end
 
     -- image selected: its live overlay, frame, corner handles and Delete/Done pills
     if self.active_image then self:paintImageOverlay(bb, x, y) end
