@@ -599,11 +599,33 @@ end
 -- higher pixel resolution: the background is expected pre-rendered at that
 -- size, the ink layer is upscaled to match, so text-heavy PDF pages stay crisp).
 -- Returns ok, err, pixel_w, pixel_h.
-function Export.saveJPEG(canvas, path, quality, opts)
+-- The RGB pixels a JPEG export encodes (see saveJPEG for `opts`). Returns rgb, w, h.
+function Export.buildJPEGRGB(canvas, opts)
     opts = opts or {}
-    local Jpeg = require("ffi/jpeg")
     local ow, oh, rgb, _
-    if opts.bg then
+    local tmpl = opts.template
+    local ruled = tmpl and tmpl.style and tmpl.style ~= "blank"
+    if opts.bg and not opts.rect and not ruled and not opts.no_fast and not Export.hasVisibleOps(canvas) then
+        -- Nothing is drawn on this page (most pages of an imported PDF): the result
+        -- is just the background flattened onto white. Exactly what the general
+        -- path below produces for an empty ink layer, without building it.
+        local s = opts.scale or 1
+        ow, oh = canvas.w * s, canvas.h * s
+        local bg = opts.bg
+        rgb = ffi.new("uint8_t[?]", ow * oh * 3)
+        for i = 0, ow * oh - 1 do
+            local bo, o = i * 4, i * 3
+            local a = bg[bo + 3]
+            if a == 255 then
+                rgb[o], rgb[o + 1], rgb[o + 2] = bg[bo], bg[bo + 1], bg[bo + 2]
+            elseif a == 0 then
+                rgb[o], rgb[o + 1], rgb[o + 2] = 255, 255, 255
+            else
+                local fa = a / 255
+                for c = 0, 2 do rgb[o + c] = math.floor(bg[bo + c] * fa + 255 * (1 - fa) + 0.5) end
+            end
+        end
+    elseif opts.bg then
         -- composite ink over the background, then flatten the result onto white
         ow, oh = dims(canvas, opts.rect)
         local mask = ffi.new("uint8_t[?]", ow * oh)
@@ -629,6 +651,33 @@ function Export.saveJPEG(canvas, path, quality, opts)
         rgb, _, ow, oh = Export.buildRGB(canvas, opts.rect, opts.template)
     end
     if opts.footer then Export.drawFooter(rgb, ow, oh, opts.footer) end
+    return rgb, ow, oh
+end
+
+-- Is anything drawn on this canvas?
+function Export.hasVisibleOps(canvas)
+    for _, op in ipairs(canvas.ops or {}) do
+        if not op.hidden then return true end
+    end
+    return false
+end
+
+function Export.saveJPEG(canvas, path, quality, opts)
+    local Jpeg = require("ffi/jpeg")
+    opts = opts or {}
+    local tmpl = opts.template
+    local ruled = tmpl and tmpl.style and tmpl.style ~= "blank"
+    if opts.bg and opts.bg_opaque and not opts.footer and not opts.rect and not ruled
+            and not opts.no_fast and not Export.hasVisibleOps(canvas) then
+        -- An empty page over an opaque background (a page of an imported PDF with
+        -- no ink): the JPEG is the background itself, so encode it as it is --
+        -- no copy, no per-pixel pass.
+        local s = opts.scale or 1
+        local ow, oh = canvas.w * s, canvas.h * s
+        local ok, err = Jpeg.encodeToFile(path, opts.bg, ow, oh, 4, quality or 90, ow * 4)
+        return ok, err, ow, oh
+    end
+    local rgb, ow, oh = Export.buildJPEGRGB(canvas, opts)
     local ok, err = Jpeg.encodeToFile(path, rgb, ow, oh, 3, quality or 90, ow * 3)
     return ok, err, ow, oh
 end
@@ -643,30 +692,68 @@ end
 -- `opts` (optional): { footer = bool (stamp "i / n" page numbers),
 -- scale = integer (render pages at this pixel multiplier for crisp PDF text) }.
 function Export.notebookToPDF(pages, w, h, template, path, quality, tmp_dir, bg, opts)
+    local job, err = Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
+    if not job then return false, err end
+    while true do
+        local state, e = job:step()
+        if state == "done" then return true end
+        if not state then return false, e end
+    end
+end
+
+-- The same export as a job that does ONE page per step(), so a long document can
+-- be exported a page at a time between UI updates (with progress and a way to
+-- stop) instead of freezing the reader for minutes. Each page is rendered, written
+-- straight into the PDF on disk, and its buffers released before the next one, so
+-- memory stays flat at any page count. step() returns "page", i, n while working,
+-- "done" when the file is complete, or nil, err (the partial file is removed).
+-- cancel() stops and deletes the partial file.
+function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
     opts = opts or {}
-    local scale = opts.scale or 1
     local Pdf = require("ink/pdf")
     local Canvas = require("ink/canvas")
-    local doc = Pdf.new()
+    local scale = opts.scale or 1
     tmp_dir = tmp_dir or "/tmp"
-    for i, ops in ipairs(pages) do
-        local c = Canvas.new(w, h)
-        c:setOps(ops)
-        local page_bg = (type(bg) == "function") and bg(i, scale) or bg
-        local jopts = { template = template, bg = page_bg,
-            scale = (page_bg and scale) or 1,
-            footer = opts.footer and (tostring(i) .. " / " .. #pages) or nil }
-        local tmp = tmp_dir .. "/inkaway_page_" .. i .. ".jpg"
-        local ok, err, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)
-        if not ok then return false, err end
-        local f = io.open(tmp, "rb")
-        if not f then return false, "could not read rendered page" end
-        local bytes = f:read("*a")
-        f:close()
-        os.remove(tmp)
-        doc:addJPEGPage(bytes, w, h, pxw, pxh)
+    local stream, err = Pdf.openStream(path)
+    if not stream then return nil, err end
+    local job = { i = 0, n = #pages }
+    local tmp = tmp_dir .. "/inkaway_page.jpg"
+    local function fail(e)
+        stream:abort(); os.remove(tmp); job.over = true
+        return nil, e
     end
-    return doc:save(path)
+    function job.step()
+        if job.over then return nil, "finished" end
+        if job.i >= job.n then
+            local ok, e = stream:finish()
+            job.over = true
+            if not ok then return nil, e end
+            return "done"
+        end
+        job.i = job.i + 1
+        local i = job.i
+        local c = Canvas.new(w, h)
+        c:setOps(pages[i])
+        local page_bg = (type(bg) == "function") and bg(i, scale) or bg
+        local jopts = { template = template, bg = page_bg, bg_opaque = opts.bg_opaque,
+            scale = (page_bg and scale) or 1,
+            footer = opts.footer and (tostring(i) .. " / " .. job.n) or nil }
+        local ok, e, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)
+        if not ok then return fail(e or "could not render a page") end
+        ok, e = stream:addJPEGFile(tmp, w, h, pxw, pxh)
+        os.remove(tmp)
+        if not ok then return fail(e) end
+        -- release this page's buffers now (several MB each), not whenever the GC
+        -- gets round to it, so a long export never piles them up
+        page_bg, c, jopts = nil, nil, nil
+        collectgarbage("collect")
+        return "page", i, job.n
+    end
+    function job.cancel()
+        if job.over then return end
+        stream:abort(); os.remove(tmp); job.over = true
+    end
+    return job
 end
 
 return Export

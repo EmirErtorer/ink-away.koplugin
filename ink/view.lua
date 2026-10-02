@@ -850,6 +850,7 @@ function InkAwayView:init()
     -- Bound once so it can be scheduled and unscheduled by identity.
     self._finalize = function() self:finalizeStroke() end
     self._live_flush_cb = function() self:liveFlush() end
+    self._pdf_prefetch_cb = function() self:prefetchPdfPage() end
     self._pen_hold_cb = function()
         local at = self._pen_hold_at
         self._pen_hold_at = nil
@@ -1047,6 +1048,8 @@ function InkAwayView:free()
     if self.canvas_panel_bb then self.canvas_panel_bb:free(); self.canvas_panel_bb = nil end
     self._cpanel_dirty = nil
     if self.bg_bb then self.bg_bb:free(); self.bg_bb = nil end
+    self:freePdfCache()
+    self._bg_src = nil
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     self:freeWaveCache()
@@ -1337,6 +1340,8 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._live_flush_cb)
     UIManager:unschedule(self._reconcile_cb)
     UIManager:unschedule(self._pen_hold_cb)
+    UIManager:unschedule(self._pdf_prefetch_cb)
+    if self._export_job then self._export_job.cancel(); self._export_job = nil end
     self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
     local tm = self._text_btn_metrics
     if tm then
@@ -4105,6 +4110,10 @@ end
 function InkAwayView:renderView()
     if not (self.area_bb and self.canvas_bb) then return end
     self._blit_rect = nil   -- the whole area_bb is rebuilt; paintTo must blit it all
+    -- ...even if a stroke starts before that paint happens (a page turn and a pen
+    -- landing in the same input batch): the stroke's small rect must not replace
+    -- the full blit, or only the strip under the pen shows the new page.
+    self._full_blit = true
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
     -- keep the panel-order mirror allocated and in sync with canvas_bb before we
@@ -5314,6 +5323,7 @@ function InkAwayView:placeBackground(img, path)
     local bg = fitIntoCanvasBB(img, W, H)
     if self.bg_bb then self.bg_bb:free() end
     self.bg_bb = bg
+    self._bg_src = nil   -- a picture, not a cached PDF page
     self.bg_path = path
     self.export_bg = true
     self.bg_rgba = self:buildBgRGBA()
@@ -5335,7 +5345,7 @@ end
 
 function InkAwayView:removeBackground()
     if self.bg_bb then self.bg_bb:free() end
-    self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
+    self.bg_bb, self.bg_rgba, self.bg_path, self._bg_src = nil, nil, nil, nil
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "full")
 end
@@ -8307,6 +8317,15 @@ function InkAwayView:onIaTouch(_, ges)
     -- a multi-touch that began as a raw stroke: its per-finger touches never draw
     if not self._pen_feeding and self._raw and self._raw.ignore_slot ~= nil then return true end
     local pos = ges.pos
+    -- A new contact: any press left half-finished by an earlier gesture is void.
+    -- (The keyboard takes the TAP of a key press but not its touch, so a key typed
+    -- over the hidden zoom pill used to arm the pill, and the next tap anywhere --
+    -- tapping away from the text box -- zoomed the canvas in.)
+    self._fab_press, self._clip_press = nil, nil
+    UIManager:unschedule(self._pdf_prefetch_cb)   -- never pre-render in the way of a touch
+    self:showPendingKeyboard()   -- (if the lift of the touch that opened a box was missed)
+    -- touches on the on-screen keyboard belong to the keyboard, never the canvas
+    if self:inKeyboard(pos) then return false end
     -- the paste bubble: a press on it pastes on release; any other touch dismisses it
     if self._clip_bubble then
         if self:inClipBubble(pos) then self._clip_press = true; return true end
@@ -9166,7 +9185,10 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx, hit_pos)
     self.text_sel = nil
     self._text_edits = 0
     self._text_undo, self._text_redo, self._text_coalesce = {}, {}, nil
-    self:showTextKeyboard()
+    -- Opened by a touch (the finger is still down): wait for it to lift before
+    -- showing the keyboard. Otherwise a box placed low on the page brings the
+    -- keyboard up under the finger, and lifting it typed whatever key was there.
+    if self._kb_defer then self._kb_pending = true else self:showTextKeyboard() end
     -- Place the caret at the tapped point BEFORE the one scroll-into-view pass, so
     -- opening a box never pans (the tap is above the keyboard by construction) and
     -- there is no visible jump. We do not save/restore pan_y: leaving the scroll
@@ -9185,6 +9207,7 @@ end
 -- Leave edit mode, baking the box in (commit) or dropping the edit (cancel).
 function InkAwayView:finishTextEdit(commit)
     if not self.editing_text then return end
+    self._kb_pending = nil
     self:hideClipBubble()
     if commit == nil then commit = true end
     local op = self.editing_text
@@ -9730,13 +9753,26 @@ function InkAwayView:textToolTouch(pos)
     -- not editing (or just finished): edit an existing box, or start a new one
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     local op, idx = self:textOpAt(cx, cy)
+    self._kb_defer = true   -- the keyboard appears when this finger lifts
     if op then
         -- pass the tap so the caret lands there before the first scroll pass
         self:startTextEdit(op, { p = 1, o = 0 }, false, idx, pos)
     else
         self:newTextAt(pos)
     end
+    self._kb_defer = nil
     return true
+end
+
+-- Show the keyboard a box was opened with, now that the opening finger has lifted,
+-- and scroll the caret clear of it.
+function InkAwayView:showPendingKeyboard()
+    if not self._kb_pending then return end
+    self._kb_pending = nil
+    if self.editing_text then
+        self:showTextKeyboard()
+        self:ensureCaretVisible()
+    end
 end
 
 function InkAwayView:textToolPan(pos)
@@ -9800,6 +9836,7 @@ function InkAwayView:textToolPan(pos)
 end
 
 function InkAwayView:textToolRelease(pos)
+    self:showPendingKeyboard()   -- the finger that opened the box has lifted
     if self:inKeyboard(pos) and not self._text_drag then return true end
     local d = self._text_drag
     self._text_drag = nil
@@ -9914,6 +9951,7 @@ function InkAwayView:paintTo(bb, x, y)
     -- touch point was a big per-point cost -- this is what made landscape drawing,
     -- and shape creation especially, feel sluggish. A full paint (br nil) does it all.
     local br = self._blit_rect
+    if self._full_blit then br = nil end   -- the area was rebuilt since the last full blit
     -- An area-only refresh (areaScreenRect -- the 39 stroke-commit / shape / fill /
     -- selection / preview paths) covers ONLY the drawing area, never the toolbar
     -- strip above it or the notebook bar below it. On those paints we can skip
@@ -9960,6 +9998,7 @@ function InkAwayView:paintTo(bb, x, y)
         -- whole surface: the fast panel-order copy (a memcpy when the screen is
         -- software-rotated, instead of a per-pixel turn)
         self:blitAreaFull(bb, x + v.area_x, y + v.area_y)
+        self._full_blit = false
     end
     self._blit_rect = nil   -- consumed; default back to a full blit next paint
     -- grid guides on top, straight onto the screen buffer so they never mix into
@@ -10479,21 +10518,20 @@ function InkAwayView:nbLoad()
     self.selected, self.rotating = nil, nil
     self.selection, self.sel_press, self.lassoing, self.lasso_scr = nil, nil, false, nil
     self:composeCanvas(); self:renderView()
-    -- A page turn must not fire a full-screen colour FLASH every time: on a Kaleido
-    -- panel that costs ~1-2s even for a blank page. On colour, use a non-flashing
-    -- partial refresh and only flash occasionally to clear accumulated ghosting; on
-    -- grey e-ink this stays a plain full refresh, exactly as before.
-    if self:colourPanel() then
-        self._turns_since_full = (self._turns_since_full or 0) + 1
-        local every = (self.ghost_clean and self.ghost_clean > 0) and self.ghost_clean or 8
-        if self._turns_since_full >= every then
-            self._turns_since_full = 0
-            UIManager:setDirty(self, "full")
-        else
-            self:refresh(self, "full")   -- -> non-flashing "ui" on colour
-        end
-    else
+    -- A page turn does not flash the whole screen every time (on a colour panel a
+    -- flash costs ~1-2s even for a blank page, and on grey it is what made turning
+    -- pages feel slow). Like KOReader's own reader, turn with a non-flashing refresh
+    -- ("partial" on grey, which suits text pages; "ui" on colour) and flash only
+    -- every few turns to clear accumulated ghosting.
+    self._turns_since_full = (self._turns_since_full or 0) + 1
+    local every = (self.ghost_clean and self.ghost_clean > 0) and self.ghost_clean or 6
+    if self._turns_since_full >= every then
+        self._turns_since_full = 0
         UIManager:setDirty(self, "full")
+    elseif self:colourPanel() then
+        self:refresh(self, "full")   -- -> non-flashing "ui" on colour
+    else
+        UIManager:setDirty(self, "partial")
     end
 end
 
@@ -10511,6 +10549,8 @@ function InkAwayView:ensureNotebookPDF()
 end
 
 function InkAwayView:closeNotebookPDF()
+    self:freePdfCache()
+    self._bg_src = nil
     if self._nb_pdf_doc then pcall(function() self._nb_pdf_doc:close() end) end
     self._nb_pdf_doc, self._nb_pdf_path = nil, nil
 end
@@ -10524,12 +10564,83 @@ function InkAwayView:loadNotebookPageBackground()
     if not (t and t.pdf_path) then return end
     self:ensureNotebookPDF()
     local src = nb:currentSrc()      -- which source page this notebook page shows
-    local img = src and self:renderPdfPage(self._nb_pdf_doc, src) or nil
-    if self.bg_bb then self.bg_bb:free() end
+    -- Rendering a PDF page is the slow part of a page turn, so the page just left
+    -- is kept (turning back is instant) and the next one is rendered ahead while
+    -- you read (see prefetchPdfPage). A buffer is either the background or in the
+    -- cache, never both, so nothing else ever sees a cached buffer.
+    local cache = self._pdf_cache or {}
+    self._pdf_cache = cache
+    if self.bg_bb and self._bg_src and self._bg_src ~= src and not cache[self._bg_src] then
+        cache[self._bg_src] = self.bg_bb             -- keep the page we are leaving
+    elseif self.bg_bb then
+        self.bg_bb:free()
+    end
+    self.bg_bb = nil
+    local img = src and cache[src]
+    if img then cache[src] = nil
+    elseif src then img = self:renderPdfPage(self._nb_pdf_doc, src) end
     self.bg_bb = img            -- canvas-sized already; nil if the render failed
+    self._bg_src = img and src or nil
     self.bg_rgba = nil          -- built on demand at export, never per page turn
     self.bg_path = t.pdf_path
     self.export_bg = true
+    self:trimPdfCache()
+    UIManager:unschedule(self._pdf_prefetch_cb)
+    UIManager:scheduleIn(1.0, self._pdf_prefetch_cb)
+end
+
+-- The source pages of the notebook pages either side of the current one.
+function InkAwayView:pdfNeighbourSrcs()
+    local nb = self.notebook
+    local out = {}
+    if not nb then return out end
+    for _, d in ipairs({ 1, -1 }) do
+        local pg = nb.pages[nb.index + d]
+        if pg and pg.src then out[#out + 1] = pg.src end
+    end
+    return out
+end
+
+-- Keep only the neighbours of the current page (at most two pages) in the cache.
+function InkAwayView:trimPdfCache()
+    local cache = self._pdf_cache
+    if not cache then return end
+    local keep = {}
+    for _, s in ipairs(self:pdfNeighbourSrcs()) do keep[s] = true end
+    for s, bb in pairs(cache) do
+        if not keep[s] then bb:free(); cache[s] = nil end
+    end
+end
+
+-- Render the next page (then the previous) ahead of time, once the reader has been
+-- idle a moment after a page turn. Any touch or pen-down cancels a pending
+-- prefetch, so it never runs in the way of writing.
+function InkAwayView:prefetchPdfPage()
+    local nb = self.notebook
+    if self.closing or not (nb and nb.template and nb.template.pdf_path and self._nb_pdf_doc) then return end
+    if self.capturing or self.editing_text or (self._pen_state and self._pen_state.down)
+            or self._export_job then
+        return
+    end
+    local cache = self._pdf_cache or {}
+    self._pdf_cache = cache
+    for _, s in ipairs(self:pdfNeighbourSrcs()) do
+        if not cache[s] and s ~= self._bg_src then
+            local img = self:renderPdfPage(self._nb_pdf_doc, s)
+            if img then cache[s] = img end
+            -- one page per idle slot: if there is another to do, come back later
+            UIManager:scheduleIn(0.5, self._pdf_prefetch_cb)
+            return
+        end
+    end
+end
+
+function InkAwayView:freePdfCache()
+    UIManager:unschedule(self._pdf_prefetch_cb)
+    if self._pdf_cache then
+        for _, bb in pairs(self._pdf_cache) do bb:free() end
+        self._pdf_cache = nil
+    end
 end
 
 -- Step to another page (delta -1/+1). Syncs the current page out first.
@@ -10865,7 +10976,7 @@ end
 -- Remove any loaded background image (used when switching into notebook mode).
 function InkAwayView:clearBackground()
     if self.bg_bb then pcall(function() self.bg_bb:free() end) end
-    self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
+    self.bg_bb, self.bg_rgba, self.bg_path, self._bg_src = nil, nil, nil, nil
     self.export_bg = true
 end
 
@@ -11117,18 +11228,51 @@ function InkAwayView:doNotebookExport(path)
         bg = self.bg_rgba or self:buildBgRGBA()
     end
 
-    -- Rendering every page to JPEG is synchronous and can take a moment on a
-    -- long notebook, so show a wait message and let it paint before we block.
-    local wait = InfoMessage:new{ text = string.format(_("Exporting %d page(s)\u{2026}"), #sel) }
-    UIManager:show(wait)
-    UIManager:nextTick(function()
-        local eok, err = Export.notebookToPDF(pages_ops, nb.w, nb.h, template, path, quality, tmp_dir, bg,
-            { footer = self.nb_numbers and true or nil, scale = scale })
-        UIManager:close(wait)
-        if not eok then
-            UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(err) })
-            return
+    -- Export one page per UI step, with a progress bar and a way to stop. Doing it
+    -- in one go froze the reader for minutes on a long imported PDF and built the
+    -- whole file in memory, which could crash it; the job streams each page to
+    -- disk and frees it before the next.
+    local job, jerr = Export.notebookPDFJob(pages_ops, nb.w, nb.h, template, path, quality, tmp_dir, bg,
+        { footer = self.nb_numbers and true or nil, scale = scale,
+          bg_opaque = is_pdf and true or nil })   -- rendered PDF pages are drawn on white
+    if not job then
+        UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(jerr) })
+        return
+    end
+    self._export_job = job
+    local progress
+    local pok, ProgressbarDialog = pcall(require, "ui/widget/progressbardialog")
+    if pok and ProgressbarDialog then
+        progress = ProgressbarDialog:new{
+            title = string.format(_("Exporting %d page(s) to PDF"), #sel),
+            subtitle = _("Tap to stop"),
+            progress_max = #sel,
+            refresh_time_seconds = 1,
+            dismissable = true,
+            dismiss_text = _("Stop exporting? The PDF will not be saved."),
+            dismiss_callback = function()   -- closed by the reader (stop), not by us
+                if self._export_job == job and not job.over then
+                    job.cancel()
+                    self._export_job = nil
+                    UIManager:show(InfoMessage:new{ text = _("Export stopped."), timeout = 2 })
+                end
+            end,
+        }
+        progress:show()
+    else
+        progress = InfoMessage:new{ text = string.format(_("Exporting %d page(s)\u{2026}"), #sel) }
+        UIManager:show(progress)
+    end
+    local function closeProgress()
+        if progress then
+            local p = progress
+            progress = nil
+            if p.close then p:close() else UIManager:close(p) end
         end
+    end
+    local function finished()
+        self._export_job = nil
+        closeProgress()
         -- Also keep the editable notebook: save a project with the same name in
         -- the projects folder, so closing right after exporting never loses the
         -- work (people export the PDF and may not think to also "Save project").
@@ -11143,7 +11287,27 @@ function InkAwayView:doNotebookExport(path)
             ok_text = _("Open"),
             ok_callback = function() self:openExportedPDF(path) end,
         })
-    end)
+    end
+    local step
+    step = function()
+        if self._export_job ~= job or job.over and job.i < job.n then return end   -- stopped
+        local ok, state, a = pcall(job.step)
+        if not ok or not state then
+            job.cancel()
+            self._export_job = nil
+            closeProgress()
+            UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(ok and a or state) })
+            return
+        end
+        if state == "done" then
+            if progress and progress.reportProgress then pcall(progress.reportProgress, progress, #sel) end
+            finished()
+            return
+        end
+        if progress and progress.reportProgress then pcall(progress.reportProgress, progress, a) end
+        UIManager:scheduleIn(0.05, step)   -- let the screen update and taps through
+    end
+    UIManager:scheduleIn(0.2, step)        -- let the progress bar paint first
 end
 
 -- Save the current notebook as an editable .inkaway project in the notebook
