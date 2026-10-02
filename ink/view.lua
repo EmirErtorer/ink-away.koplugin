@@ -643,7 +643,7 @@ function InkAwayView:onIaTap(_, ges)
     -- the notebook bar below the drawing area (toolbar buttons take their own taps)
     local p = ges and ges.pos
     if self.notebook and self.nb_bar_h > 0 and p then
-        local function hit(r) return r and p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
+        local function hit(r) return r and InkGeom.inRect(p.x, p.y, r) end
         if hit(self._nb_plus) then self:nbAddPage(); return true end
         if hit(self._nb_prev) then self:nbGo(-1); return true end
         if hit(self._nb_next) then self:nbGo(1); return true end
@@ -751,9 +751,7 @@ function InkAwayView:undo()
     self.selected = nil
     self:resetLasso()
     self.dirty = true
-    self:composeCanvas()   -- rebuild the master from the restored ops
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()   -- rebuild the master from the restored ops
 end
 
 function InkAwayView:redo()
@@ -775,9 +773,7 @@ function InkAwayView:redo()
     self.selected = nil
     self:resetLasso()
     self.dirty = true
-    self:composeCanvas()
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 function InkAwayView:promptExit()

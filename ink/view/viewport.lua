@@ -184,19 +184,24 @@ function InkAwayView:relayout()
     local th = self.toolbar:getSize().h
     local v = self.view
     v.area_x, v.area_y, v.area_w, v.area_h = 0, th, W, H - th - self.nb_bar_h
+    self:refitArea()   -- the canvas keeps its size; only the on-screen buffer follows the screen
+    self._area_only = false   -- layout/chrome changed: the next paint must be full
+end
+
+-- Refit the view after the drawing area changed size, then reallocate the
+-- on-screen buffer and re-render it. The default is to cover the whole area (see
+-- InkGeom.coverZoom), so a page whose shape differs from the screen (a landscape
+-- drawing shown after rotating back to portrait) still fills it, with no
+-- undrawable margin and no stray page edge under the toolbar. A zoomed-in view is
+-- kept; only a view below "cover" is lifted up to it.
+function InkAwayView:refitArea()
+    local v = self.view
     self.zoom_min = InkGeom.fitZoom(v)
-    -- Default to covering the whole area (see InkGeom.coverZoom): a page whose
-    -- shape differs from the screen -- e.g. a landscape drawing shown after rotating
-    -- back to portrait -- then still fills the drawing area instead of being centred
-    -- with an undrawable margin/bar (and a stray page-edge line) under the toolbar.
-    -- A zoomed-in view is kept; only a view below "cover" is lifted up to it.
     v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
-    -- the canvas keeps its size; only the on-screen buffer follows the screen
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
     self:renderView()
-    self._area_only = false   -- layout/chrome changed: the next paint must be full
 end
 
 
@@ -217,8 +222,7 @@ function InkAwayView:setZoom(new_zoom, anchor_sx, anchor_sy)
     v.pan_x = acx - (anchor_sx - v.area_x) / v.zoom
     v.pan_y = acy - (anchor_sy - v.area_y) / v.zoom
     InkGeom.clampPan(v)
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:redraw()
     return true
 end
 
@@ -259,17 +263,7 @@ function InkAwayView:setToolbarHidden(hidden)
     -- when hidden, the toolbar buttons must not swallow taps in the freed strip
     -- (plain if/else: `hidden and nil or self.toolbar` would never yield nil)
     if hidden then self[1] = nil else self[1] = self.toolbar end
-    self.zoom_min = InkGeom.fitZoom(v)
-    -- Default to covering the whole area (see InkGeom.coverZoom): a page whose
-    -- shape differs from the screen -- e.g. a landscape drawing shown after rotating
-    -- back to portrait -- then still fills the drawing area instead of being centred
-    -- with an undrawable margin/bar (and a stray page-edge line) under the toolbar.
-    -- A zoomed-in view is kept; only a view below "cover" is lifted up to it.
-    v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
-    InkGeom.clampPan(v)
-    if self.area_bb then self.area_bb:free() end
-    self.area_bb = self:newAreaBuffer()
-    self:renderView()
+    self:refitArea()
     self:refresh(self, "full")
 end
 
@@ -286,17 +280,7 @@ function InkAwayView:setNbBarHidden(hidden)
     local th = self._toolbar_hidden and 0 or self.toolbar:getSize().h
     v.area_y = th
     v.area_h = self.screen_h - th - self.nb_bar_h
-    self.zoom_min = InkGeom.fitZoom(v)
-    -- Default to covering the whole area (see InkGeom.coverZoom): a page whose
-    -- shape differs from the screen -- e.g. a landscape drawing shown after rotating
-    -- back to portrait -- then still fills the drawing area instead of being centred
-    -- with an undrawable margin/bar (and a stray page-edge line) under the toolbar.
-    -- A zoomed-in view is kept; only a view below "cover" is lifted up to it.
-    v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
-    InkGeom.clampPan(v)
-    if self.area_bb then self.area_bb:free() end
-    self.area_bb = self:newAreaBuffer()
-    self:renderView()
+    self:refitArea()
     self:refresh(self, "full")
 end
 
@@ -311,8 +295,7 @@ function InkAwayView:panByScreen(dx, dy)
     v.pan_x = v.pan_x - dx / v.zoom
     v.pan_y = v.pan_y - dy / v.zoom
     InkGeom.clampPan(v)
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:redraw()
 end
 
 -- Recompute the drawing area (it shrinks by nb_bar_h in notebook mode) and the

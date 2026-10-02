@@ -15,6 +15,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
+local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 
 local Screen = Device.screen
@@ -326,20 +327,20 @@ end
 function InkAwayView:fabHit(px, py)
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
-        if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
+        if r and InkGeom.inRect(px, py, r) then
             return (py < r.y + r.h / 2) and "zoomin" or "zoomout"
         end
     end
     -- (not while a text box is open: the chevron would sit on its Done button)
     if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
-        if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
+        if r and InkGeom.inRect(px, py, r) then
             return "bar"
         end
     end
     if self.notebook and not self._nbbar_toggle_hidden then
         local r = self:fabRect("nbbar")
-        if r and px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h then
+        if r and InkGeom.inRect(px, py, r) then
             return "nbbar"
         end
     end

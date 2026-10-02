@@ -108,6 +108,7 @@ end
 
 local IMG_HANDLE = 44   -- touch target for the move / resize handles (screen px)
 local IMG_MIN    = 24   -- smallest image side, in canvas px
+local IMG_PAD    = IMG_HANDLE + 4   -- refresh margin around the frame and handles
 
 -- Free every decoded / scaled / oriented / display image buffer and drop the
 -- caches. Buffers can be shared (a scaled copy may BE its source when sizes
@@ -316,22 +317,14 @@ function InkAwayView:imageZone(sx, sy)
     if near(r.x + r.w, r.y) then return "ne" end
     if near(r.x, r.y + r.h) then return "sw" end
     if near(r.x + r.w, r.y + r.h) then return "se" end
-    if sx >= r.x and sx <= r.x + r.w and sy >= r.y and sy <= r.y + r.h then return "move" end
+    if InkGeom.inRect(sx, sy, r) then return "move" end
     return "outside"
 end
 
--- Refresh the union of two area-relative rects (plus handle margin), clamped to
--- the drawing area, with the given refresh mode.
-function InkAwayView:refreshImageUnion(a, b, mode)
-    local v = self.view
-    local pad = IMG_HANDLE + 4
-    local x0 = math.max(v.area_x, math.min(a.x, b.x) - pad)
-    local y0 = math.max(v.area_y, math.min(a.y, b.y) - pad)
-    local x1 = math.min(v.area_x + v.area_w, math.max(a.x + a.w, b.x + b.w) + pad)
-    local y1 = math.min(v.area_y + v.area_h, math.max(a.y + a.h, b.y + b.h) + pad)
-    if x1 > x0 and y1 > y0 then
-        UIManager:setDirty(self, mode or "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
-    end
+-- Refresh the selected image's rect, with room for its frame and handles.
+function InkAwayView:refreshImageRect(mode)
+    local r = self:imageScreenRect()
+    self:refreshRectUnion(r, r, IMG_PAD, mode)
 end
 
 -- Pick the image under a canvas point (topmost first). Uses the rotated bounding
@@ -377,10 +370,9 @@ function InkAwayView:selectImage(sel, fresh)
     self._img_drag = nil
     self:freeImageDisplay()
     if fresh then
-        self:composeCanvas(); self:renderView()
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:recompose()
     else
-        self:refreshImageUnion(self:imageScreenRect(), self:imageScreenRect(), "ui")
+        self:refreshImageRect("ui")
     end
 end
 
@@ -396,8 +388,7 @@ function InkAwayView:finishImageEdit()
     self._img_drag = nil
     self.image_rotating = nil
     self:freeImageDisplay()
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 function InkAwayView:deleteActiveImage()
@@ -413,8 +404,7 @@ function InkAwayView:deleteActiveImage()
     self.canvas:pushHistory()
     self.canvas:removeOp(sel.idx)
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 -- Copy-on-write before mutating the selected image, so the pre-drag / pre-edit
@@ -440,8 +430,7 @@ function InkAwayView:applyImageEdit(sel, mutate)
     sel.op = clone
     self.dirty = true
     self:freeImageDisplay()   -- size / orientation may have changed
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 -- Rotate a quarter turn clockwise about the image centre. op.w/op.h are the
@@ -469,8 +458,7 @@ function InkAwayView:imageToFront(sel)
     ops[#ops + 1] = op
     sel.idx = #ops
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     self:openImageMenu(sel)
 end
 
@@ -487,8 +475,7 @@ function InkAwayView:duplicateImage(sel)
     self._img_drag = nil
     self:freeImageDisplay()
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     self:openImageMenu(self.active_image)
 end
 
@@ -538,8 +525,7 @@ function InkAwayView:removeImageBackground(sel)
     self._img_drag = nil
     self:freeImageCache()   -- the path changed: drop the old decode, decode the cut-out
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     self:openImageMenu(sel)
 end
 
@@ -550,7 +536,7 @@ function InkAwayView:beginImageRotate(sel)
     self:composeCanvas(); self:renderView()   -- drop it from the master; preview draws it
     UIManager:show(InfoMessage:new{
         text = _("Drag to rotate the image; lift to finish."), timeout = 2 })
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:refreshArea()
 end
 
 function InkAwayView:imageRotateTouch(pos)
@@ -687,7 +673,7 @@ function InkAwayView:imagePan(pos)
         op.x = (d.corner == "nw" or d.corner == "sw") and (d.ax - nw) or d.ax
         op.y = (d.corner == "nw" or d.corner == "ne") and (d.ay - nh) or d.ay
     end
-    self:refreshImageUnion(old, self:imageScreenRect(), "fast")
+    self:refreshRectUnion(old, self:imageScreenRect(), IMG_PAD, "fast")
     return true
 end
 
@@ -698,7 +684,7 @@ function InkAwayView:imageRelease()
         local moved = self._img_drag.began
         self._img_drag = nil
         if moved then self:composeCanvas(); self:renderView() end   -- bake it back in
-        self:refreshImageUnion(self:imageScreenRect(), self:imageScreenRect(), "ui")
+        self:refreshImageRect("ui")
         if moved and self._image_menu then self:openImageMenu(self.active_image) end
     end
     return true

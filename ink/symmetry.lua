@@ -52,29 +52,53 @@ end
 
 -- Wrap a span writer so it also emits the mirrored spans for `mode`. `refx(x,len)`
 -- gives the reflected start of a span across the vertical axis; `refy(y)` gives
--- the reflected row across the horizontal axis. Returns `put` unchanged when the
--- mode is off, so there is no cost at all when symmetry is not in use.
-function Symmetry.wrap(put, mode, refx, refy)
+-- the reflected row across the horizontal axis. The mirrored spans go to `mirror`
+-- when given, else to `put`. Returns `put` unchanged when the mode is off, so
+-- there is no cost at all when symmetry is not in use.
+function Symmetry.wrap(put, mode, refx, refy, mirror)
     if not mode or mode == "off" then return put end
+    mirror = mirror or put
     local mx, my = mirrorsX(mode), mirrorsY(mode)
     if mx and my then
         return function(x, y, len)
             put(x, y, len)
-            put(refx(x, len), y, len)
-            put(x, refy(y), len)
-            put(refx(x, len), refy(y), len)
+            mirror(refx(x, len), y, len)
+            mirror(x, refy(y), len)
+            mirror(refx(x, len), refy(y), len)
         end
     elseif mx then
         return function(x, y, len)
             put(x, y, len)
-            put(refx(x, len), y, len)
+            mirror(refx(x, len), y, len)
         end
     else
         return function(x, y, len)
             put(x, y, len)
-            put(x, refy(y), len)
+            mirror(x, refy(y), len)
         end
     end
+end
+
+local function setRect(out, n, x0, y0, x1, y1)
+    local r = out[n]
+    if not r then r = {}; out[n] = r end
+    r.x0, r.y0, r.x1, r.y1 = x0, y0, x1, y1
+end
+
+-- The rect r ({x0, y0, x1, y1}) and its mirror images under `mode`, reflected
+-- across x = kx / 2 and y = ky / 2 (kx, ky are the canvas size on the canvas).
+-- The rects are written into `out` (reused when given, so a per-point caller
+-- allocates nothing); returns out and the count.
+function Symmetry.mirrorRects(r, mode, kx, ky, out)
+    out = out or {}
+    local x0, y0, x1, y1 = r.x0, r.y0, r.x1, r.y1
+    setRect(out, 1, x0, y0, x1, y1)
+    local n = 1
+    local mx, my = mirrorsX(mode), mirrorsY(mode)
+    if mx then n = n + 1; setRect(out, n, kx - x1, y0, kx - x0, y1) end
+    if my then n = n + 1; setRect(out, n, x0, ky - y1, x1, ky - y0) end
+    if mx and my then n = n + 1; setRect(out, n, kx - x1, ky - y1, kx - x0, ky - y0) end
+    return out, n
 end
 
 return Symmetry

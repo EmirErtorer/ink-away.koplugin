@@ -6,7 +6,6 @@ Part of InkAwayView (see ink/view.lua).
 
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
-local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -37,7 +36,7 @@ local InkAwayView = {}
 
 function InkAwayView:cropTouch(pos)
     self._crop_screen = { x0 = pos.x, y0 = pos.y, x1 = pos.x, y1 = pos.y }
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:refreshArea()
     return true
 end
 
@@ -49,14 +48,8 @@ function InkAwayView:cropMove(pos)
     -- refresh only the union of the old and new selection boxes, and use a fast
     -- (non-flashing) refresh so dragging stays smooth instead of queueing full
     -- grayscale updates
-    local v = self.view
-    local minx = math.max(v.area_x, math.min(ox0, ox1, c.x0, c.x1) - 3)
-    local miny = math.max(v.area_y, math.min(oy0, oy1, c.y0, c.y1) - 3)
-    local maxx = math.min(v.area_x + v.area_w, math.max(ox0, ox1, c.x0, c.x1) + 3)
-    local maxy = math.min(v.area_y + v.area_h, math.max(oy0, oy1, c.y0, c.y1) + 3)
-    if maxx > minx and maxy > miny then
-        UIManager:setDirty(self, "fast", GeomUI:new{ x = minx, y = miny, w = maxx - minx, h = maxy - miny })
-    end
+    self:refreshAreaBox("fast", math.min(ox0, ox1, c.x0, c.x1) - 3, math.min(oy0, oy1, c.y0, c.y1) - 3,
+        math.max(ox0, ox1, c.x0, c.x1) + 3, math.max(oy0, oy1, c.y0, c.y1) + 3)
     return true
 end
 
@@ -144,7 +137,7 @@ function InkAwayView:beginCropSelect()
     self._crop_screen = nil
     UIManager:show(InfoMessage:new{
         text = _("Drag a box around the part to export. A single tap keeps the whole page."), timeout = 3 })
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:refreshArea()
 end
 
 -- The notebook page indices chosen by the current export scope: all pages,

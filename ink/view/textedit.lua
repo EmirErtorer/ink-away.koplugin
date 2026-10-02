@@ -7,7 +7,6 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Font = require("ui/font")
-local GeomUI = require("ui/geometry")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
@@ -45,9 +44,7 @@ function InkAwayView:commitTextStep(idx, from, to)
     self._text_hist[op] = nil
     self._peel_op = nop                   -- we are actively peeling this box
     self.dirty = true
-    self:composeCanvas()
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     return true
 end
 
@@ -73,6 +70,7 @@ end
 ------------------------------------------------------------------------------
 
 local TEXT_HANDLE = 40   -- touch target for the move / resize handles (screen px)
+local TEXT_PAD = TEXT_HANDLE + 4   -- refresh margin around the frame and handles
 
 -- Lay the editing op out at the current zoom (so the overlay is crisp) and grow
 -- an auto-height box to fit. Returns layout, ctx and the width-scaled proxy the
@@ -155,25 +153,15 @@ function InkAwayView:textZone(sx, sy)
        and sy >= r.y - TEXT_HANDLE and sy <= r.y + TEXT_HANDLE then
         return "move"
     end
-    if sx >= r.x and sx <= r.x + r.w and sy >= r.y and sy <= r.y + r.h then
-        return "inside"
-    end
+    if InkGeom.inRect(sx, sy, r) then return "inside" end
     return "outside"
 end
 
 -- Refresh just the box's rectangle (plus a margin for the frame / handles).
 function InkAwayView:refreshTextBox(mode)
     self:hideClipBubble()   -- any change to the box (typing, caret, selection) dismisses it
-    local v = self.view
     local r = self:textBoxScreenRect()
-    local pad = TEXT_HANDLE + 4
-    local x0 = math.max(v.area_x, r.x - pad)
-    local y0 = math.max(v.area_y, r.y - pad)
-    local x1 = math.min(v.area_x + v.area_w, r.x + r.w + pad)
-    local y1 = math.min(v.area_y + v.area_h, r.y + r.h + pad)
-    if x1 > x0 and y1 > y0 then
-        UIManager:setDirty(self, mode or "ui", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
-    end
+    self:refreshRectUnion(r, r, TEXT_PAD, mode or "ui")
 end
 
 -- Every few edits, clear the fast-refresh ghosting the box leaves behind.
@@ -521,11 +509,9 @@ end
 function InkAwayView:textToolTouch(pos)
     if self:inKeyboard(pos) then return true end
     if self.editing_text then
-        local function inRect(rr) return pos.x >= rr.x and pos.x <= rr.x + rr.w
-            and pos.y >= rr.y and pos.y <= rr.y + rr.h end
         local btns = self:textEditButtons()
-        if inRect(btns.done) then self:finishTextEdit(true); return true end
-        if inRect(btns.format) then
+        if InkGeom.inRect(pos.x, pos.y, btns.done) then self:finishTextEdit(true); return true end
+        if InkGeom.inRect(pos.x, pos.y, btns.format) then
             -- defer to release: opening on the final tap event (as the drag-select
             -- path already does) stops the same tap from immediately closing the
             -- menu as an outside-tap, which made the button flaky
@@ -594,16 +580,7 @@ function InkAwayView:textToolPan(pos)
         self.editing_text.x = d.x0 + dx
         self.editing_text.y = d.y0 + dy
         -- refresh the union of the old and new positions so no ghost is left
-        local new = self:textBoxScreenRect()
-        local v = self.view
-        local pad = TEXT_HANDLE + 4
-        local x0 = math.max(v.area_x, math.min(old.x, new.x) - pad)
-        local y0 = math.max(v.area_y, math.min(old.y, new.y) - pad)
-        local x1 = math.min(v.area_x + v.area_w, math.max(old.x + old.w, new.x + new.w) + pad)
-        local y1 = math.min(v.area_y + v.area_h, math.max(old.y + old.h, new.y + new.h) + pad)
-        if x1 > x0 and y1 > y0 then
-            UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
-        end
+        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast")
     elseif d.kind == "resize" then
         local dw = (pos.x - d.sx) / self.view.zoom
         local old = self:textBoxScreenRect()
@@ -614,16 +591,7 @@ function InkAwayView:textToolPan(pos)
         self:editTextLayout()     -- recompute now so op.h reflects the new wrap
         -- refresh the union of the old and new box (shrinking would otherwise
         -- leave the old, larger outline and text behind as ghost pixels)
-        local new = self:textBoxScreenRect()
-        local v = self.view
-        local pad = TEXT_HANDLE + 4
-        local x0 = math.max(v.area_x, math.min(old.x, new.x) - pad)
-        local y0 = math.max(v.area_y, math.min(old.y, new.y) - pad)
-        local x1 = math.min(v.area_x + v.area_w, math.max(old.x + old.w, new.x + new.w) + pad)
-        local y1 = math.min(v.area_y + v.area_h, math.max(old.y + old.h, new.y + new.h) + pad)
-        if x1 > x0 and y1 > y0 then
-            UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
-        end
+        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast")
     elseif d.kind == "select" then
         local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()

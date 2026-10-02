@@ -69,35 +69,20 @@ function InkAwayView:refreshPreview()
     end
     self._preview_rect = r
     if not u then return end
-    local v = self.view
-    local x = math.max(0, u.x)
-    local yy = math.max(v.area_y, u.y)
-    local x2 = math.min(self.screen_w, u.x2)
-    local y2 = math.min(v.area_y + v.area_h, u.y2)
-    if x2 > x and y2 > yy then
-        UIManager:setDirty(self, "fast", GeomUI:new{ x = x, y = yy, w = x2 - x, h = y2 - yy })
-        -- Region fast-path (see paintTo): while CREATING a shape (a live drag or the
-        -- curve's bend stage) with no symmetry mirror to track, re-blit only this
-        -- region instead of the whole surface + toolbar on every touch sample -- the
-        -- full-repaint branch was why shape creation felt much slower than freehand,
-        -- especially on a rotated landscape screen. Accumulate into any pending rect
-        -- (u already unions the previous preview) so a skipped paint never strands an
-        -- un-erased outline. Restricted to shape CREATION (not moving/rotating an
-        -- existing shape, which can carry selection chrome outside this rect) and to
-        -- symmetry off (previewRect covers only the un-mirrored shape).
-        if (self.shape_drag or self.curve_stage) and self.symmetry == "off" then
-            local nx0, ny0 = x - v.area_x, yy - v.area_y
-            local nx1, ny1 = x2 - v.area_x, y2 - v.area_y
-            local br = self._blit_rect
-            if br then
-                if nx0 < br.x0 then br.x0 = nx0 end
-                if ny0 < br.y0 then br.y0 = ny0 end
-                if nx1 > br.x1 then br.x1 = nx1 end
-                if ny1 > br.y1 then br.y1 = ny1 end
-            else
-                self._blit_rect = { x0 = nx0, y0 = ny0, x1 = nx1, y1 = ny1 }
-            end
-        end
+    local x0, y0, x1, y1 = self:refreshAreaBox("fast", u.x, u.y, u.x2, u.y2)
+    -- Region fast-path (see paintTo): while CREATING a shape (a live drag or the
+    -- curve's bend stage) with no symmetry mirror to track, re-blit only this
+    -- region instead of the whole surface + toolbar on every touch sample -- the
+    -- full-repaint branch was why shape creation felt much slower than freehand,
+    -- especially on a rotated landscape screen. Accumulate into any pending rect
+    -- (u already unions the previous preview) so a skipped paint never strands an
+    -- un-erased outline. Restricted to shape CREATION (not moving/rotating an
+    -- existing shape, which can carry selection chrome outside this rect) and to
+    -- symmetry off (previewRect covers only the un-mirrored shape).
+    if x0 and (self.shape_drag or self.curve_stage) and self.symmetry == "off" then
+        local v = self.view
+        self._blit_rect = InkGeom.growRect(self._blit_rect,
+            x0 - v.area_x, y0 - v.area_y, x1 - v.area_x, y1 - v.area_y)
     end
 end
 
@@ -312,8 +297,7 @@ function InkAwayView:doFill(pos)
         clone.fill_alpha = self.fill_alpha
         self.canvas:replaceOp(shp.idx, clone)
         self.dirty = true
-        self:composeCanvas(); self:renderView()
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:recompose()
         self:afterCommit()
         return
     end
@@ -325,8 +309,7 @@ function InkAwayView:doFill(pos)
     if self.symmetry ~= "off" then op.sym = self.symmetry end
     self:stampOpIntoCanvas(op)
     self.dirty = true
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:redraw()
     self:afterCommit()
 end
 
@@ -494,7 +477,7 @@ function InkAwayView:shapeMoveRelease()
             self:composeCanvas(); self:renderView()
         end
         if self._shape_menu then self:openShapeMenu(self.selected) end   -- re-anchor the menu
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:refreshArea()
     end
     return true
 end
@@ -508,8 +491,7 @@ function InkAwayView:applyEdit(sel, mutate)
     sel.op = clone
     if self.selected then self.selected.op = clone end
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 function InkAwayView:deleteSelected(sel)
@@ -520,9 +502,7 @@ function InkAwayView:deleteSelected(sel)
     self:setSelectionActive(false)
     self:resetLasso()
     self.dirty = true
-    self:composeCanvas()
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 -- Duplicate the selected shape, offset a little, and select the copy.
@@ -534,8 +514,7 @@ function InkAwayView:duplicateSelected(sel)
     self.canvas.ops[#self.canvas.ops + 1] = clone
     self.selected = { op = clone, idx = #self.canvas.ops }
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     self:openShapeMenu(self.selected)
 end
 
@@ -567,8 +546,7 @@ function InkAwayView:shapeToFront(sel)
     ops[#ops + 1] = op
     sel.idx = #ops
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     self:openShapeMenu(sel)
 end
 
@@ -627,7 +605,7 @@ function InkAwayView:beginRotate(sel)
     self.shape_preview = self:screenShapeFromOp(op, op.angle or 0)
     self._preview_rect = nil
     self:refreshPreview()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:refreshArea()
     UIManager:show(InfoMessage:new{
         text = _("Drag anywhere to rotate the shape; lift to finish."), timeout = 2 })
 end
@@ -680,9 +658,7 @@ function InkAwayView:rotateEnd()
         if self.selected then self.selected.op = clone end
         self.dirty = true
     end
-    self:composeCanvas()
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
     return true
 end
 

@@ -93,18 +93,11 @@ function InkAwayView:setupLiveWriters()
     -- on-screen writer, accumulating the base bbox into the reused acc table; the
     -- mirror images are painted through a writer that does NOT grow acc, so the
     -- refresh stays a few small rects (one per image) rather than one giant box.
-    local baseput = spanWriter(self.area_bb, v.area_w, v.area_h, area_color, self._lw_acc)
-    local aput = baseput
+    local aput = spanWriter(self.area_bb, v.area_w, v.area_h, area_color, self._lw_acc)
     if sym and sym ~= "off" then
         local arefx, arefy = Symmetry.areaRefs(v)
-        local mirror = spanWriter(self.area_bb, v.area_w, v.area_h, area_color, nil)
-        local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
-        aput = function(x, y, len)
-            baseput(x, y, len)
-            if mx then mirror(arefx(x, len), y, len) end
-            if my then mirror(x, arefy(y), len) end
-            if mx and my then mirror(arefx(x, len), arefy(y), len) end
-        end
+        aput = Symmetry.wrap(aput, sym, arefx, arefy,
+            spanWriter(self.area_bb, v.area_w, v.area_h, area_color, nil))
     end
     self._lw_aput = aput
 end
@@ -142,15 +135,7 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
         x0 = math.min(ax0, ax1) - zr, y0 = math.min(ay0, ay1) - zr,
         x1 = math.max(ax0, ax1) + zr, y1 = math.max(ay0, ay1) + zr,
     }
-    local sr = self._stroke_rect
-    if not sr then
-        self._stroke_rect = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
-    else
-        if acc.x0 < sr.x0 then sr.x0 = acc.x0 end
-        if acc.y0 < sr.y0 then sr.y0 = acc.y0 end
-        if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
-        if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
-    end
+    self._stroke_rect = InkGeom.growRect(self._stroke_rect, acc.x0, acc.y0, acc.x1, acc.y1)
     -- Re-render only the touched region (base + each mirror) from the restored
     -- master, instead of a full-screen crop-scale on every point.
     local rects, nr = self:symAreaRects(acc)
@@ -208,15 +193,7 @@ function InkAwayView:stampLive(cx, cy, fresh)
     self.last_ax, self.last_ay = ax, ay
     if acc.x1 >= acc.x0 then
         -- grow the whole-stroke (base) bbox for a tidy refresh at the end
-        local sr = self._stroke_rect
-        if not sr then
-            self._stroke_rect = { x0 = acc.x0, y0 = acc.y0, x1 = acc.x1, y1 = acc.y1 }
-        else
-            if acc.x0 < sr.x0 then sr.x0 = acc.x0 end
-            if acc.y0 < sr.y0 then sr.y0 = acc.y0 end
-            if acc.x1 > sr.x1 then sr.x1 = acc.x1 end
-            if acc.y1 > sr.y1 then sr.y1 = acc.y1 end
-        end
+        self._stroke_rect = InkGeom.growRect(self._stroke_rect, acc.x0, acc.y0, acc.x1, acc.y1)
         local rects, nr = self:symAreaRects(acc)
         for i = 1, nr do
             self:liveDirty(self._live_mode or "fast", rects[i], 1)
@@ -362,8 +339,7 @@ function InkAwayView:beautifyStroke(raw, committed)
     if not self:beautifyRecompose(raw, committed) then
         self:composeCanvas()
     end
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:redraw()
     return true
 end
 
@@ -406,17 +382,9 @@ function InkAwayView:beautifyRecompose(raw, committed)
     }
     -- the raw ink was mirrored into the master under symmetry, so restore every
     -- mirror of the footprint too (exact pixel reflection in canvas space)
-    local rects = { base }
-    local sym = committed.sym
-    if sym and sym ~= "off" then
-        local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
-        local function flipX(r) return { x0 = W - r.x1, y0 = r.y0, x1 = W - r.x0, y1 = r.y1 } end
-        local function flipY(r) return { x0 = r.x0, y0 = H - r.y1, x1 = r.x1, y1 = H - r.y0 } end
-        if mx then rects[#rects + 1] = flipX(base) end
-        if my then rects[#rects + 1] = flipY(base) end
-        if mx and my then rects[#rects + 1] = flipY(flipX(base)) end
-    end
-    for _, r in ipairs(rects) do
+    local rects, nr = Symmetry.mirrorRects(base, committed.sym, W, H)
+    for i = 1, nr do
+        local r = rects[i]
         local w, h = r.x1 - r.x0, r.y1 - r.y0
         if w > 0 and h > 0 then
             self.canvas_bb:blitFrom(self._pre_stroke_bb, r.x0, r.y0, r.x0, r.y0, w, h)
@@ -479,26 +447,21 @@ function InkAwayView:finalizeStroke()
             self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0)
         end
         self._live_preview = false
-        self._stroke_rect = nil
-        if self.hwr_enabled and self.tool == "pen" and committed and committed.kind == "ink" then
-            self:hwrCapture(committed)
-        end
-        self:afterCommit()
-        return
-    end
-    -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
-    -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
-    -- (which fully repaints black/white) to clear them.
-    local mode = was_erase and "flashui" or "ui"
-    if sr then
-        -- refresh the base rect and each mirror rect separately, so an erase
-        -- under symmetry flashes a few small areas rather than the whole screen
-        local rects, nr = self:symAreaRects(sr)
-        for i = 1, nr do
-            self:dirtyAreaRect(mode, rects[i], 2)
-        end
     else
-        UIManager:setDirty(self, mode, self:areaScreenRect())
+        -- Settle the fast-refresh ghosting over just the stroke's area. Erasing dark
+        -- or textured ink leaves grey ghosts, so an erase gets a flashing refresh
+        -- (which fully repaints black/white) to clear them.
+        local mode = was_erase and "flashui" or "ui"
+        if sr then
+            -- refresh the base rect and each mirror rect separately, so an erase
+            -- under symmetry flashes a few small areas rather than the whole screen
+            local rects, nr = self:symAreaRects(sr)
+            for i = 1, nr do
+                self:dirtyAreaRect(mode, rects[i], 2)
+            end
+        else
+            UIManager:setDirty(self, mode, self:areaScreenRect())
+        end
     end
     self._stroke_rect = nil
     -- Handwriting to text: buffer the pen stroke and (re)arm the pause timer.

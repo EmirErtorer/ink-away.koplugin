@@ -105,6 +105,22 @@ function Geom.mergeRect(a, b)
     return { x = x0, y = y0, w = x1 - x0, h = y1 - y0 }
 end
 
+-- Grow rect r ({x0, y0, x1, y1}) to cover x0..x1, y0..y1 as well. A nil r
+-- starts a new rect. Returns r.
+function Geom.growRect(r, x0, y0, x1, y1)
+    if not r then return { x0 = x0, y0 = y0, x1 = x1, y1 = y1 } end
+    if x0 < r.x0 then r.x0 = x0 end
+    if y0 < r.y0 then r.y0 = y0 end
+    if x1 > r.x1 then r.x1 = x1 end
+    if y1 > r.y1 then r.y1 = y1 end
+    return r
+end
+
+-- Is (px, py) inside the rect {x, y, w, h}, edges included?
+function Geom.inRect(px, py, r)
+    return px >= r.x and px <= r.x + r.w and py >= r.y and py <= r.y + r.h
+end
+
 -- Clip a rect to [0,w) x [0,h), rounding outward. Returns nil if empty.
 function Geom.clipRect(x, y, w, h, width, height)
     local x0 = math.max(0, math.floor(x))

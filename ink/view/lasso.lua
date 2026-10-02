@@ -32,8 +32,7 @@ end
 function InkAwayView:clearSelection()
     if self._sel_refresh_tick then self:stopSelRefresh() end
     self:resetLasso()
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:redraw()
 end
 
 -- Recompute the selection's bounding box (canvas coords) from its ops.
@@ -75,7 +74,7 @@ function InkAwayView:lassoFinish()
     local scr = self.lasso_scr
     self.lasso_scr = nil
     if not scr or #scr < 6 then    -- need at least 3 points for an area
-        self:renderView(); UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:redraw()
         return
     end
     local poly = {}
@@ -84,8 +83,7 @@ function InkAwayView:lassoFinish()
         poly[#poly + 1] = cx; poly[#poly + 1] = cy
     end
     local got = self:computeSelection(poly)
-    self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:redraw()
     if not got then
         UIManager:show(InfoMessage:new{ text = _("Nothing inside the loop."), timeout = 2 })
     end
@@ -97,7 +95,7 @@ function InkAwayView:selMoveCommit(sdx, sdy)
     local dx = sdx / self.view.zoom
     local dy = sdy / self.view.zoom
     if math.abs(dx) < 0.5 and math.abs(dy) < 0.5 then
-        self:renderView(); UIManager:setDirty(self, "ui", self:areaScreenRect()); return
+        self:redraw(); return
     end
     self.canvas:pushHistory()
     for _, idx in ipairs(self.selection.idxs) do
@@ -106,8 +104,7 @@ function InkAwayView:selMoveCommit(sdx, sdy)
     end
     self.dirty = true
     self:recomputeSelectionBBox()
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 -- Duplicate / delete the current selection, from its tap-menu.
@@ -128,8 +125,7 @@ function InkAwayView:selDuplicate()
     self.selection = { idxs = new_idxs }   -- the copies become the selection
     self:recomputeSelectionBBox()
     self.dirty = true
-    self:composeCanvas(); self:renderView()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
+    self:recompose()
 end
 
 function InkAwayView:selDelete()
@@ -180,25 +176,11 @@ function InkAwayView:selRefreshNow()
     if not (self.sel_press and self.selection) then return end
     local cur = self:selBoxScreenRect(self.sel_press.dx, self.sel_press.dy)
     if not cur then return end
-    local r = cur
-    local last = self._sel_last_rect
-    if last then
-        local x0, y0 = math.min(r.x, last.x), math.min(r.y, last.y)
-        local x1 = math.max(r.x + r.w, last.x + last.w)
-        local y1 = math.max(r.y + r.h, last.y + last.h)
-        r = { x = x0, y = y0, w = x1 - x0, h = y1 - y0 }
-    end
+    local last = self._sel_last_rect or cur
     self._sel_last_rect = cur
-    local v = self.view
-    local x0 = math.max(v.area_x, r.x)
-    local y0 = math.max(v.area_y, r.y)
-    local x1 = math.min(v.area_x + v.area_w, r.x + r.w)
-    local y1 = math.min(v.area_y + v.area_h, r.y + r.h)
-    if x1 > x0 and y1 > y0 then
-        -- "ui" (not the A2 "fast" waveform) keeps the moving box clean with no
-        -- smear trail; the region is small (just the box), so it never floods
-        UIManager:setDirty(self, "ui", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
-    end
+    -- "ui" (not the A2 "fast" waveform) keeps the moving box clean with no
+    -- smear trail; the region is small (just the box), so it never floods
+    self:refreshRectUnion(cur, last, 0, "ui")
 end
 
 function InkAwayView:scheduleSelRefresh()

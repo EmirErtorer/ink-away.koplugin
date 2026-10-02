@@ -10,12 +10,24 @@ local Device = require("device")
 local GeomUI = require("ui/geometry")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
+local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local strengthToLevel = Paint.strengthToLevel
+local growRect = InkGeom.growRect
+
+-- A w x h buffer stored in the panel's pixel order: physically turned by `rot`
+-- quarter turns, so drawing into it still uses ordinary (logical) coordinates.
+local function panelBuffer(w, h, rot, inv, typ)
+    if rot % 2 == 1 then w, h = h, w end
+    local bb = Blitbuffer.new(w, h, typ)
+    if bb.setRotation then bb:setRotation(rot) end
+    if bb.setInverse then bb:setInverse(inv) end
+    return bb
+end
 
 local InkAwayView = {}
 
@@ -55,15 +67,9 @@ function InkAwayView:screenBBInv() return Screen.bb.getInverse and Screen.bb:get
 -- relayout fires, but the pixel order flips).
 function InkAwayView:newAreaBuffer()
     local v = self.view
-    local aw, ah = v.area_w, v.area_h
     local rot, inv, typ = self:screenBBRot(), self:screenBBInv(), Screen.bb:getType()
-    local pw, ph = aw, ah
-    if rot % 2 == 1 then pw, ph = ah, aw end          -- a quarter turn swaps the physical dims
-    local bb = Blitbuffer.new(pw, ph, typ)
-    if bb.setRotation then bb:setRotation(rot) end
-    if bb.setInverse then bb:setInverse(inv) end
     self._area_rot, self._area_inv, self._area_type = rot, inv, typ
-    return bb
+    return panelBuffer(v.area_w, v.area_h, rot, inv, typ)
 end
 
 -- Rebuild area_bb (and re-render it) if the screen's rotation, inversion or buffer
@@ -77,6 +83,14 @@ function InkAwayView:matchAreaTarget()
         self.area_bb = self:newAreaBuffer()
         self:renderView()
     end
+end
+
+-- A rotation-0 view over another buffer's raw bytes, so a blit through it is a
+-- plain row copy rather than a rotated per-pixel one.
+function InkAwayView:physView(bb)
+    local p = Blitbuffer.new(bb.w, bb.h, bb:getType(), bb.data, bb.stride, bb.pixel_stride)
+    if p.setInverse then p:setInverse(bb:getInverse()) end
+    return p
 end
 
 -- Copy a sub-rect of area_bb -- logical (sx,sy,w,h) -- onto the screen so its
@@ -95,11 +109,7 @@ function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
     end
     local dpx, dpy, dpw, dph = bb:getPhysicalRect(dstx, dsty, w, h)
     local apx, apy = area:getPhysicalRect(sx, sy, w, h)
-    local sphys = Blitbuffer.new(bb.w, bb.h, bb:getType(), bb.data, bb.stride, bb.pixel_stride)
-    local aphys = Blitbuffer.new(area.w, area.h, area:getType(), area.data, area.stride, area.pixel_stride)
-    if sphys.setInverse then sphys:setInverse(bb:getInverse()) end
-    if aphys.setInverse then aphys:setInverse(area:getInverse()) end
-    sphys:blitFrom(aphys, dpx, dpy, apx, apy, dpw, dph)
+    self:physView(bb):blitFrom(self:physView(area), dpx, dpy, apx, apy, dpw, dph)
 end
 
 -- Copy the whole area_bb onto the screen at (dstx, dsty).
@@ -129,14 +139,6 @@ end
 -- differently on a transposed image) -- invisible, and never in the export.
 ------------------------------------------------------------------------------
 
--- A rotation-0 view over another buffer's raw bytes (same trick as blitAreaRect),
--- so a blit through it is a plain row copy rather than a rotated per-pixel one.
-function InkAwayView:physView(bb)
-    local p = Blitbuffer.new(bb.w, bb.h, bb:getType(), bb.data, bb.stride, bb.pixel_stride)
-    if p.setInverse then p:setInverse(bb:getInverse()) end
-    return p
-end
-
 -- Allocate the panel-order mirror at the CANVAS size, matching area_bb's rotation /
 -- inversion / type (they must agree for the physical-view copy to line up).
 function InkAwayView:newCanvasPanelBuffer()
@@ -150,14 +152,9 @@ function InkAwayView:newCanvasPanelBuffer()
     -- final copy into area_bb -- exactly as the old scaled->area_bb blit did -- so
     -- copying canvas_bb (inverse 0) in here must not flip the bytes.
     local inv = (self.canvas_bb and self.canvas_bb.getInverse and self.canvas_bb:getInverse()) or 0
-    local pw, ph = cw, ch
-    if rot % 2 == 1 then pw, ph = ch, cw end
-    local bb = Blitbuffer.new(pw, ph, typ)
-    if bb.setRotation then bb:setRotation(rot) end
-    if bb.setInverse then bb:setInverse(inv) end
     self._cpanel_rot, self._cpanel_type = rot, typ
     self._cpanel_cw, self._cpanel_ch = cw, ch
-    return bb
+    return panelBuffer(cw, ch, rot, inv, typ)
 end
 
 -- Ensure the mirror exists and matches the current rotation / size. In portrait
@@ -190,15 +187,7 @@ end
 -- render resyncs just that region of the mirror instead of the whole buffer.
 function InkAwayView:markCanvasDirty(x0, y0, x1, y1)
     if x1 <= x0 or y1 <= y0 then return end
-    local d = self._cpanel_dirty
-    if not d then
-        self._cpanel_dirty = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
-    else
-        if x0 < d.x0 then d.x0 = x0 end
-        if y0 < d.y0 then d.y0 = y0 end
-        if x1 > d.x1 then d.x1 = x1 end
-        if y1 > d.y1 then d.y1 = y1 end
-    end
+    self._cpanel_dirty = growRect(self._cpanel_dirty, x0, y0, x1, y1)
 end
 
 -- Same, from a spanWriter acc table ({x0,y0,x1,y1}, empty when x1 < x0).
@@ -269,6 +258,40 @@ function InkAwayView:areaScreenRect()
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
 
+-- Refresh the drawing area.
+function InkAwayView:refreshArea()
+    UIManager:setDirty(self, "ui", self:areaScreenRect())
+end
+
+-- Re-render the on-screen buffer from the master and refresh the drawing area.
+function InkAwayView:redraw()
+    self:renderView()
+    self:refreshArea()
+end
+
+-- Rebuild the master from the ops, then redraw.
+function InkAwayView:recompose()
+    self:composeCanvas()
+    self:redraw()
+end
+
+-- Refresh the screen box (x0, y0)-(x1, y1) clipped to the drawing area. Returns the
+-- clipped box, or nil when none of it is on the area.
+function InkAwayView:refreshAreaBox(mode, x0, y0, x1, y1)
+    local v = self.view
+    x0, y0 = math.max(v.area_x, x0), math.max(v.area_y, y0)
+    x1, y1 = math.min(v.area_x + v.area_w, x1), math.min(v.area_y + v.area_h, y1)
+    if x1 <= x0 or y1 <= y0 then return nil end
+    UIManager:setDirty(self, mode, GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+    return x0, y0, x1, y1
+end
+
+-- Refresh the union of two screen rects ({x, y, w, h}), each grown by `pad`.
+function InkAwayView:refreshRectUnion(a, b, pad, mode)
+    return self:refreshAreaBox(mode, math.min(a.x, b.x) - pad, math.min(a.y, b.y) - pad,
+        math.max(a.x + a.w, b.x + b.w) + pad, math.max(a.y + a.h, b.y + b.h) + pad)
+end
+
 -- True only on a colour (Kaleido) panel. Cached once: on grey e-ink a full-screen
 -- flash is cheap, but on a colour panel it costs ~1-2s of colour waveform whether
 -- or not any pixel changed, so colour needs a lighter refresh policy.
@@ -302,52 +325,32 @@ end
 function InkAwayView:symAreaRects(acc)
     local p = self._sar_pool
     if not p then p = { {}, {}, {}, {} }; self._sar_pool = p end
-    local b = p[1]
-    b.x0, b.y0, b.x1, b.y1 = acc.x0, acc.y0, acc.x1, acc.y1
-    local sym = self.symmetry
-    if not sym or sym == "off" then return p, 1 end
     local v = self.view
-    local kx = (v.canvas_w - 2 * v.pan_x) * v.zoom
-    local ky = (v.canvas_h - 2 * v.pan_y) * v.zoom
-    local mx, my = Symmetry.mirrorsX(sym), Symmetry.mirrorsY(sym)
-    local n = 1
-    if mx then
-        n = n + 1; local r = p[n]
-        r.x0, r.y0, r.x1, r.y1 = kx - b.x1, b.y0, kx - b.x0, b.y1
-    end
-    if my then
-        n = n + 1; local r = p[n]
-        r.x0, r.y0, r.x1, r.y1 = b.x0, ky - b.y1, b.x1, ky - b.y0
-    end
-    if mx and my then
-        n = n + 1; local r = p[n]
-        r.x0, r.y0, r.x1, r.y1 = kx - b.x1, ky - b.y1, kx - b.x0, ky - b.y0
-    end
-    return p, n
+    return Symmetry.mirrorRects(acc, self.symmetry, (v.canvas_w - 2 * v.pan_x) * v.zoom,
+        (v.canvas_h - 2 * v.pan_y) * v.zoom, p)
 end
 
--- Refresh one area-local rectangle (clipped to the drawing area) at `mode`.
-function InkAwayView:dirtyAreaRect(mode, r, pad)
+-- An area-local rect padded by `pad`, rounded outward and clipped to the drawing
+-- area; nil when nothing is left.
+local function clipToArea(v, r, pad)
     pad = pad or 0
-    local v = self.view
     local x0 = math.max(0, math.floor(r.x0) - pad)
     local y0 = math.max(0, math.floor(r.y0) - pad)
     local x1 = math.min(v.area_w, math.ceil(r.x1) + pad)
     local y1 = math.min(v.area_h, math.ceil(r.y1) + pad)
-    if x1 <= x0 or y1 <= y0 then return end
+    if x1 <= x0 or y1 <= y0 then return nil end
+    return x0, y0, x1, y1
+end
+
+-- Refresh one area-local rectangle (clipped to the drawing area) at `mode`.
+function InkAwayView:dirtyAreaRect(mode, r, pad)
+    local v = self.view
+    local x0, y0, x1, y1 = clipToArea(v, r, pad)
+    if not x0 then return end
     -- While a live stroke is drawing, only these sub-rects of area_bb change, so
     -- accumulate them and let paintTo blit ONLY this region instead of the whole
     -- drawing surface every point (see paintTo). Area-local coords.
-    if self.capturing then
-        local br = self._blit_rect
-        if not br then self._blit_rect = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
-        else
-            if x0 < br.x0 then br.x0 = x0 end
-            if y0 < br.y0 then br.y0 = y0 end
-            if x1 > br.x1 then br.x1 = x1 end
-            if y1 > br.y1 then br.y1 = y1 end
-        end
-    end
+    if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
     UIManager:setDirty(self, mode, GeomUI:new{
         x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
 end
@@ -369,34 +372,14 @@ end
 -- along with the next update. paintTo blits the union (_blit_rect) either way.
 function InkAwayView:liveDirty(mode, r, pad)
     if not self:colourPanel() then return self:dirtyAreaRect(mode, r, pad) end
-    pad = pad or 0
-    local v = self.view
-    local x0 = math.max(0, math.floor(r.x0) - pad)
-    local y0 = math.max(0, math.floor(r.y0) - pad)
-    local x1 = math.min(v.area_w, math.ceil(r.x1) + pad)
-    local y1 = math.min(v.area_h, math.ceil(r.y1) + pad)
-    if x1 <= x0 or y1 <= y0 then return end
-    if self.capturing then
-        local br = self._blit_rect
-        if not br then self._blit_rect = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
-        else
-            if x0 < br.x0 then br.x0 = x0 end
-            if y0 < br.y0 then br.y0 = y0 end
-            if x1 > br.x1 then br.x1 = x1 end
-            if y1 > br.y1 then br.y1 = y1 end
-        end
-    end
-    local p = self._live_pend
-    if not p then
-        self._live_pend = { x0 = x0, y0 = y0, x1 = x1, y1 = y1, mode = mode }
-    else
-        if x0 < p.x0 then p.x0 = x0 end
-        if y0 < p.y0 then p.y0 = y0 end
-        if x1 > p.x1 then p.x1 = x1 end
-        if y1 > p.y1 then p.y1 = y1 end
-        if mode ~= "fast" then p.mode = mode end
-    end
-    local gap = (self._live_pend.mode == "fast") and LIVE_FAST_MS or LIVE_UI_MS
+    local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
+    if not x0 then return end
+    if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
+    local fresh = not self._live_pend
+    local p = growRect(self._live_pend, x0, y0, x1, y1)
+    self._live_pend = p
+    if fresh or mode ~= "fast" then p.mode = mode end
+    local gap = (p.mode == "fast") and LIVE_FAST_MS or LIVE_UI_MS
     local elapsed = self:nowMs() - (self._live_last or -math.huge)
     if elapsed >= gap then
         self:liveFlush()
@@ -426,15 +409,7 @@ end
 -- it back, so handwriting never has a slow refresh running under the next letter.
 function InkAwayView:queueReconcile(r, pad)
     pad = pad or 0
-    local q = self._reconcile
-    local x0, y0, x1, y1 = r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad
-    if not q then self._reconcile = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
-    else
-        if x0 < q.x0 then q.x0 = x0 end
-        if y0 < q.y0 then q.y0 = y0 end
-        if x1 > q.x1 then q.x1 = x1 end
-        if y1 > q.y1 then q.y1 = y1 end
-    end
+    self._reconcile = growRect(self._reconcile, r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad)
     UIManager:unschedule(self._reconcile_cb)
     UIManager:scheduleIn(RECONCILE_SEC, self._reconcile_cb)
 end
@@ -668,14 +643,6 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
             cy = cy + g
         end
     end
-end
-
-------------------------------------------------------------------------------
--- Settings menu (gear): drawing aids, projects, autosave.
-------------------------------------------------------------------------------
-
-function InkAwayView:refreshArea()
-    UIManager:setDirty(self, "ui", self:areaScreenRect())
 end
 
 return InkAwayView

@@ -18,6 +18,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local InkGeom = require("ink/geom")
 local Text = require("ink/text")
 
 local Screen = Device.screen
@@ -496,8 +497,7 @@ end
 
 function InkAwayView:inClipBubble(pos)
     local b = self._clip_bubble
-    return b and pos and pos.x >= b.x and pos.x <= b.x + b.w
-        and pos.y >= b.y and pos.y <= b.y + b.h or false
+    return b and pos and InkGeom.inRect(pos.x, pos.y, b) or false
 end
 
 -- A long press at `pos` while a box is being edited: offer to paste there. The

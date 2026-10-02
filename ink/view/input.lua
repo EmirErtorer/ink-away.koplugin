@@ -389,8 +389,7 @@ function InkAwayView:penDropFingerOps()
         self.capturing = false
         self.canvas:cancelStroke()
         self.last_cx, self.last_cy = nil, nil
-        self:composeCanvas(); self:renderView()
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:recompose()
     end
     self:cancelShape()      -- drop a half-drawn shape
     self.pan_last = nil

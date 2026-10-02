@@ -5,8 +5,6 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local GeomUI = require("ui/geometry")
-local UIManager = require("ui/uimanager")
 local Export = require("ink/export")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
@@ -333,8 +331,7 @@ end
 -- places, so fall back to a full render there. sx0..sy1 are the op's SCREEN bounds.
 function InkAwayView:renderCommittedOp(op, sx0, sy0, sx1, sy1)
     if op and op.sym and op.sym ~= "off" then
-        self:renderView()
-        UIManager:setDirty(self, "ui", self:areaScreenRect())
+        self:redraw()
         return
     end
     local v = self.view
@@ -344,13 +341,7 @@ function InkAwayView:renderCommittedOp(op, sx0, sy0, sx1, sy1)
     local ax1 = math.max(sx0, sx1) - v.area_x + pad
     local ay1 = math.max(sy0, sy1) - v.area_y + pad
     self:renderViewRect(ax0, ay0, ax1, ay1)   -- small rotated write, not the whole area
-    local rx0 = math.max(v.area_x, v.area_x + ax0)
-    local ry0 = math.max(v.area_y, v.area_y + ay0)
-    local rx1 = math.min(v.area_x + v.area_w, v.area_x + ax1)
-    local ry1 = math.min(v.area_y + v.area_h, v.area_y + ay1)
-    if rx1 > rx0 and ry1 > ry0 then
-        UIManager:setDirty(self, "ui", GeomUI:new{ x = rx0, y = ry0, w = rx1 - rx0, h = ry1 - ry0 })
-    end
+    self:refreshAreaBox("ui", v.area_x + ax0, v.area_y + ay0, v.area_x + ax1, v.area_y + ay1)
 end
 
 return InkAwayView
