@@ -209,6 +209,27 @@ function Canvas:setOps(ops)
     self.redo_stack = {}
 end
 
+-- Which kinds of visible op a list holds: erase (soft_erase / hard_erase split by
+-- op.ebg, spare_text for text-protecting erases), text and image.
+function Canvas.scanOps(ops)
+    local f = {}
+    for _, op in ipairs(ops) do
+        if not op.hidden then
+            local kind = op.kind
+            if kind == "erase" then
+                f.erase = true
+                if op.ebg then f.hard_erase = true else f.soft_erase = true end
+                if op.spare_text then f.spare_text = true end
+            elseif kind == "text" then
+                f.text = true
+            elseif kind == "image" then
+                f.image = true
+            end
+        end
+    end
+    return f
+end
+
 -- Bounding rect {x,y,w,h} of an op in canvas coordinates, padded by half its width (plus
 -- a pixel of safety) so the whole stamped disc is covered. nil for empty ops.
 function Canvas:opRect(op, extra)

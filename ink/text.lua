@@ -68,7 +68,6 @@ local function copyStyle(st)
     if st then for _, k in ipairs(STYLE_KEYS) do o[k] = st[k] end end
     return o
 end
-Text.copyStyle = copyStyle
 
 local function sameStyle(a, b)
     for _, k in ipairs(STYLE_KEYS) do
@@ -126,7 +125,6 @@ local function normalizePara(p)
     if #out == 0 then out[1] = { t = "" } end
     p.spans = out
 end
-Text.normalizePara = normalizePara
 
 -- The plain text of the whole op (for search / measuring emptiness).
 function Text.plain(op)
@@ -276,8 +274,11 @@ function Text.insert(op, cur, str, style)
     for i = 2, #pieces - 1 do
         insertAt = insertAt + 1
         local np = { bullet = p.bullet, spans = {} }
-        if pieces[i] ~= "" then np.spans[1] = { t = pieces[i], b = style.b, i = style.i,
-            u = style.u, s = style.s, hl = style.hl, sz = style.sz } else np.spans[1] = { t = "" } end
+        if pieces[i] ~= "" then
+            local sp = copyStyle(style); sp.t = pieces[i]; np.spans[1] = sp
+        else
+            np.spans[1] = { t = "" }
+        end
         table.insert(op.paras, insertAt, np)
     end
     insertAt = insertAt + 1
@@ -309,25 +310,6 @@ function Text.deleteBack(op, cur)
     return { p = cur.p - 1, o = prevLen }
 end
 
--- Forward delete (Del key): delete the char after the cursor.
-function Text.deleteForward(op, cur)
-    local p = op.paras[cur.p]
-    local len = Text.paraLen(p)
-    if cur.o < len then
-        return Text.deleteRange(op, { a = cur, b = { p = cur.p, o = cur.o + 1 } })
-    end
-    if cur.p >= #op.paras then return cur end
-    -- join the next paragraph onto this one
-    local nextp = op.paras[cur.p + 1]
-    local spans = {}
-    for _, sp in ipairs(p.spans) do spans[#spans + 1] = sp end
-    for _, sp in ipairs(nextp.spans) do spans[#spans + 1] = sp end
-    p.spans = spans
-    normalizePara(p)
-    table.remove(op.paras, cur.p + 1)
-    return cur
-end
-
 -- Apply a style change across a selection. `key` is one of the style keys;
 -- `value` the value to set (for a toggle, pass the new boolean). Returns nothing;
 -- op.paras is edited in place with spans split at the range boundaries.
@@ -335,14 +317,9 @@ function Text.applyStyle(op, sel, key, value)
     local a, b = Text.orderSel(sel)
     local function styleParaRange(pi, o0, o1)
         local p = op.paras[pi]
-        local left = splitSpans(p, o0)
-        local mid, right
-        do
-            local _, afterLeft = splitSpans(p, o0)
-            -- re-split the right part at (o1 - o0) within its own coordinates
-            local tmp = { spans = afterLeft }
-            mid, right = splitSpans(tmp, o1 - o0)
-        end
+        local left, after = splitSpans(p, o0)
+        -- split the rest again at (o1 - o0), in its own coordinates
+        local mid, right = splitSpans({ spans = after }, o1 - o0)
         for _, sp in ipairs(mid) do sp[key] = value or nil end
         local spans = {}
         for _, sp in ipairs(left) do spans[#spans + 1] = sp end

@@ -17,6 +17,7 @@ A shape op looks like:
       pts = { x0,y0, x1,y1 [, cx,cy] } }   -- cx,cy is the curve control point
 ]]
 
+local Geom = require("ink/geom")
 local Raster = require("ink/raster")
 
 local Shapes = {}
@@ -77,11 +78,7 @@ local function boundary(op)
     if ang and ang ~= 0 then
         local cx, cy
         if s == "poly" then
-            local minx, miny, maxx, maxy = poly[1], poly[2], poly[1], poly[2]
-            for i = 1, #poly, 2 do
-                if poly[i] < minx then minx = poly[i] elseif poly[i] > maxx then maxx = poly[i] end
-                if poly[i + 1] < miny then miny = poly[i + 1] elseif poly[i + 1] > maxy then maxy = poly[i + 1] end
-            end
+            local minx, miny, maxx, maxy = Geom.bounds(poly)
             cx, cy = (minx + maxx) / 2, (miny + maxy) / 2
         else
             cx = (x0 + x1) / 2
@@ -188,32 +185,19 @@ end
 function Shapes.contains(op, px, py)
     local poly, closed = boundary(op)
     if not closed then return false end
-    local n = floor(#poly / 2)
-    local inside = false
-    local jx, jy = poly[2 * n - 1], poly[2 * n]
-    for i = 1, n do
-        local ix, iy = poly[2 * i - 1], poly[2 * i]
-        if ((iy > py) ~= (jy > py)) and
-           (px < (jx - ix) * (py - iy) / (jy - iy) + ix) then
-            inside = not inside
-        end
-        jx, jy = ix, iy
-    end
-    return inside
+    return Geom.pointInPoly(px, py, poly)
 end
 
 -- Bounding box {x0,y0,x1,y1} of the shape as actually drawn (rotation and any
 -- arrowheads included).
 function Shapes.bounds(op)
     local poly = boundary(op)
-    local x0, y0 = poly[1], poly[2]
-    local x1, y1 = x0, y0
-    local function grow(x, y)
+    local x0, y0, x1, y1 = Geom.bounds(poly)
+    for _, s in ipairs(arrowSegs(op, poly)) do
+        local x, y = s[3], s[4]
         if x < x0 then x0 = x elseif x > x1 then x1 = x end
         if y < y0 then y0 = y elseif y > y1 then y1 = y end
     end
-    for i = 3, #poly, 2 do grow(poly[i], poly[i + 1]) end
-    for _, s in ipairs(arrowSegs(op, poly)) do grow(s[3], s[4]) end
     return x0, y0, x1, y1
 end
 
@@ -225,29 +209,10 @@ end
 function Shapes.hit(op, px, py, tol)
     local poly, closed = boundary(op)
     local n = floor(#poly / 2)
-    if closed then
-        -- point in polygon (even-odd), plus a tolerance band on the edges
-        local inside = false
-        local jx, jy = poly[2 * n - 1], poly[2 * n]
-        for i = 1, n do
-            local ix, iy = poly[2 * i - 1], poly[2 * i]
-            if ((iy > py) ~= (jy > py)) and
-               (px < (jx - ix) * (py - iy) / (jy - iy) + ix) then
-                inside = not inside
-            end
-            jx, jy = ix, iy
-        end
-        if inside then return true end
-    end
-    -- distance to a segment, squared
+    if closed and Geom.pointInPoly(px, py, poly) then return true end
     local t2 = tol * tol
     local function nearSeg(ax, ay, bx, by)
-        local dx, dy = bx - ax, by - ay
-        local len2 = dx * dx + dy * dy
-        local t = len2 > 0 and ((px - ax) * dx + (py - ay) * dy) / len2 or 0
-        if t < 0 then t = 0 elseif t > 1 then t = 1 end
-        local ex, ey = ax + t * dx - px, ay + t * dy - py
-        return ex * ex + ey * ey <= t2
+        return Geom.segDist2(px, py, ax, ay, bx, by) <= t2
     end
     -- boundary segments
     local last = closed and n or (n - 1)

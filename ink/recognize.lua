@@ -191,12 +191,7 @@ end
 
 -- Distance from a point to a segment (clamped to the segment).
 local function ptSeg(px, py, ax, ay, bx, by)
-    local dx, dy = bx - ax, by - ay
-    local L2 = dx * dx + dy * dy
-    if L2 < 1e-9 then return dist(px, py, ax, ay) end
-    local t = ((px - ax) * dx + (py - ay) * dy) / L2
-    if t < 0 then t = 0 elseif t > 1 then t = 1 end
-    return dist(px, py, ax + t * dx, ay + t * dy)
+    return sqrt(Geom.segDist2(px, py, ax, ay, bx, by))
 end
 
 -- Largest distance from any original point to the vertex polyline.

@@ -115,11 +115,30 @@ function Geom.clipRect(x, y, w, h, width, height)
     return x0, y0, x1 - x0, y1 - y0
 end
 
--- Intersection test between rect {x,y,w,h} and (x,y,w,h), with optional padding.
-function Geom.rectsOverlap(r, x, y, w, h, pad)
-    pad = pad or 0
-    return r.x - pad < x + w and x < r.x + r.w + pad
-       and r.y - pad < y + h and y < r.y + r.h + pad
+-- Even-odd test: is (px, py) inside the polygon `poly` (flat x,y list)?
+function Geom.pointInPoly(px, py, poly)
+    local n = math.floor(#poly / 2)
+    if n < 3 then return false end
+    local inside = false
+    local jx, jy = poly[2 * n - 1], poly[2 * n]
+    for i = 1, n do
+        local ix, iy = poly[2 * i - 1], poly[2 * i]
+        if ((iy > py) ~= (jy > py)) and (px < (jx - ix) * (py - iy) / (jy - iy) + ix) then
+            inside = not inside
+        end
+        jx, jy = ix, iy
+    end
+    return inside
+end
+
+-- Squared distance from (px, py) to the segment (ax, ay)-(bx, by).
+function Geom.segDist2(px, py, ax, ay, bx, by)
+    local dx, dy = bx - ax, by - ay
+    local len2 = dx * dx + dy * dy
+    local t = len2 > 0 and ((px - ax) * dx + (py - ay) * dy) / len2 or 0
+    if t < 0 then t = 0 elseif t > 1 then t = 1 end
+    local ex, ey = ax + t * dx - px, ay + t * dy - py
+    return ex * ex + ey * ey
 end
 
 ------------------------------------------------------------------------------

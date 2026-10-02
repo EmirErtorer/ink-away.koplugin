@@ -73,22 +73,22 @@ function Project.isNotebook(data)
     return type(data) == "table" and type(data.pages) == "table"
 end
 
--- Write the canvas to a file at `path`. Returns ok, err.
-function Project.save(canvas, path)
+local function writeFile(path, s)
     local f, err = io.open(path, "wb")
     if not f then return false, err end
-    f:write(Project.serialize(canvas))
+    f:write(s)
     f:close()
     return true
 end
 
+-- Write the canvas to a file at `path`. Returns ok, err.
+function Project.save(canvas, path)
+    return writeFile(path, Project.serialize(canvas))
+end
+
 -- Write a notebook to a file at `path`. Returns ok, err.
 function Project.saveNotebook(nb, path)
-    local f, err = io.open(path, "wb")
-    if not f then return false, err end
-    f:write(Project.serializeNotebook(nb))
-    f:close()
-    return true
+    return writeFile(path, Project.serializeNotebook(nb))
 end
 
 -- Read a project file. Returns { w, h, ops } or nil, err.
