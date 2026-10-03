@@ -297,20 +297,16 @@ function InkAwayView:cleanMode()
     return self._clean_mode
 end
 
--- A page turn changes the drawing area and the page counter, nothing else, so
--- only they are refreshed. Kindle's page-turn waveform (REAGL) redraws every dark
+-- A page turn changes the drawing area and the page counter, so one refresh
+-- covers them, from the top of the drawing area to the bottom of the screen; the
+-- toolbar is left out. Kindle's page-turn waveform (REAGL) redraws every dark
 -- pixel of its region, changed or not, so a whole-screen refresh made the toolbar
--- and the bar's icons blink on every turn. The bar gets a "ui" refresh, which
--- redraws only the pixels that changed (the counter). It starts a row below the
--- area, on the bar's divider, which never changes: rects that touch would be
--- merged by KOReader into one.
+-- blink on every turn. The bar stays in the same refresh as the page: given its
+-- own, the controller ran it only after the page's had finished, and the page
+-- number lagged a second behind the page.
 function InkAwayView:refreshPageTurn(mode)
     local v = self.view
-    UIManager:setDirty(self, mode, GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h })
-    if self.nb_bar_h > 1 then
-        UIManager:setDirty(self, "ui", GeomUI:new{ x = 0, y = v.area_y + v.area_h + 1,
-            w = self.screen_w, h = self.nb_bar_h - 1 })
-    end
+    UIManager:setDirty(self, mode, GeomUI:new{ x = 0, y = v.area_y, w = self.screen_w, h = self.screen_h - v.area_y })
 end
 
 -- A stroke's changed rect (area-local) and one rect per mirror image of the current
