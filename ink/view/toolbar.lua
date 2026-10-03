@@ -155,7 +155,7 @@ end
 -- shows white on the pill.
 function InkAwayView:updateToolbarActive()
     if not self._toolbar_icons then return end
-    local active = (self.tool == "fill") and "shape" or self.tool
+    local active = (self.tool == "fill" or self.tool == "lasso") and "shape" or self.tool
     self._active_btn_idx = nil
     for i, e in ipairs(self._toolbar_icons) do
         if e.tool and e.button then

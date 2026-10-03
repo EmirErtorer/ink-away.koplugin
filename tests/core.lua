@@ -964,6 +964,31 @@ do
     ok(cw == 50 and ch == 30 and cr < 40, "a crop keeps its own size and offset")
 end
 
+------------------------------------------------------------------------------
+-- clipboard: copies that outlive the page they came from
+------------------------------------------------------------------------------
+do
+    local Clipboard = require("ink/clipboard")
+    Clipboard.clear()
+    ok(Clipboard.count() == 0 and #Clipboard.take(1, 1) == 0, "an empty clipboard pastes nothing")
+    local ops = { { kind = "ink", width = 4, pts = { 10, 10, 30, 20 } },
+                  { kind = "fill", runs = { 12, 14, 5 } },
+                  { kind = "image", x = 20, y = 18, w = 10, h = 10, path = "/a.png" } }
+    Clipboard.put(ops, { x0 = 10, y0 = 10, x1 = 30, y1 = 30 })
+    ops[1].pts[1] = 999
+    ok(Clipboard.count() == 3, "it holds what was put")
+    local same = Clipboard.take()
+    ok(same[1].pts[1] == 10, "it holds copies, not the ops themselves")
+    ok(same[3].x == 20 and same[2].runs[1] == 12, "without a point they paste where they were")
+    local moved = Clipboard.take(120, 220)
+    ok(moved[1].pts[1] == 110 and moved[1].pts[2] == 210, "with a point the box is centred on it")
+    ok(moved[2].runs[1] == 112 and moved[3].x == 120 and moved[3].y == 218, "fills and pictures move with it")
+    ok(Clipboard.take()[1].pts[1] == 10, "pasting leaves the clipboard as it was")
+    local half = Clipboard.take(20.4, 20.6)
+    ok(half[2].runs[1] == math.floor(half[2].runs[1]), "pasted fills stay on whole pixels")
+    Clipboard.clear()
+end
+
 -- A loop that closes exactly on its start must keep its shape when simplified.
 do
     local loop = {}

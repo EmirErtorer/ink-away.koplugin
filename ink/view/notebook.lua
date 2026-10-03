@@ -17,6 +17,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local Clipboard = require("ink/clipboard")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
 local Storage = require("ink/storage")
@@ -389,7 +390,12 @@ function InkAwayView:openPageMenu()
         add(row2(act(_("Move\u{2026}"), halfW, function() self:nbMovePrompt() end),
                  act(_("Paper\u{2026}"), halfW, function() self:nbPagePaper() end)))
         add(vspan(8))
-        add(act(_("Delete page"), content_w, function() self:nbDeletePage() end))
+        if Clipboard.count() > 0 then
+            add(row2(act(_("Paste"), halfW, function() self:pasteAt(nil) end),
+                     act(_("Delete page"), halfW, function() self:nbDeletePage() end)))
+        else
+            add(act(_("Delete page"), content_w, function() self:nbDeletePage() end))
+        end
         return content
     end
     -- the sheet's bottom sits on the top of the notebook bottom bar

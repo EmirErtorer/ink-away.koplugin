@@ -24,7 +24,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline): hold one in Pan mode to edit; plus a **paint bucket** for one-tap fills.
 - **Eraser** that removes ink (back to transparent) instead of painting white, or whole strokes at a time.
 - **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
-- **Lasso select**, four-way **symmetry**, and a **background image** to draw over.
+- **Lasso select**: move, duplicate, or cut and copy, then paste on any page of any notebook or drawing. Four-way **symmetry**, and a **background image** to draw over.
 - **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
 - **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF. Pages can have titles and stars, their own paper, and be moved, inserted or duplicated. The overview (one tap away in the bottom bar) shows the notebooks of a folder as coloured tabs, like a binder: browse their pages, filter starred ones, and move or copy pages between notebooks. With palm rejection on you can let finger swipes turn pages while the pen writes.
 - **Library**: every drawing and notebook is a file that saves itself as you go. Browse them by thumbnail, sort them into folders, rename, move, duplicate or delete them, all without a computer.

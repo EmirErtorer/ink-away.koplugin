@@ -2524,6 +2524,80 @@ do
     UIManager.reset()
 end
 
+-- ---- clipboard: cut, copy and paste with the lasso, across pages and documents
+do
+    local TestEnv = require("testenv")
+    local Clipboard = require("ink/clipboard")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    Clipboard.clear()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function selectAll(view)
+        view:computeSelection({ -10, -10, 5000, -10, 5000, 5000, -10, 5000 })
+    end
+    local function press(text)
+        for _, row in ipairs(ButtonDialog.last.buttons) do
+            for _, b in ipairs(row) do if b.text == text then b.callback(); return true end end
+        end
+    end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines")
+    stroke(view, 100, 100); stroke(view, 200, 150)
+    view.tool = "lasso"
+    selectAll(view)
+    view:openSelectionMenu()
+    ok(press("Copy") and Clipboard.count() == 2 and view.canvas:opCount() == 2, "clip: Copy keeps the ink and holds it")
+    view:clearSelection()
+    view:nbAddPage()
+    local v = view.view
+    view:lassoTap({ x = 500, y = v.area_y + 600 })
+    ok(ButtonDialog.last and ButtonDialog.last.title:find("2", 1, true), "clip: a lasso tap on an empty spot offers to paste")
+    press("Paste here")
+    ok(view.canvas:opCount() == 2 and view.selection and #view.selection.idxs == 2,
+        "clip: Paste here adds the ink on the new page, selected")
+    local b = view.selection.bbox
+    local cx, cy = (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2
+    local tx, ty = require("ink/geom").toCanvas(v, 500, v.area_y + 600)
+    ok(math.abs(cx - tx) <= 1 and math.abs(cy - ty) <= 1, "clip: centred where the lasso tapped")
+    view:undo()
+    ok(view.canvas:opCount() == 0, "clip: undo takes the paste back")
+    view:clearSelection()
+    view:openPageMenu()
+    ok(view._page_dialog ~= nil, "clip: the page menu opens")
+    view:closeSheet("_page_dialog")
+    view:pasteAt(nil)
+    ok(view.canvas:opCount() == 2 and view.notebook.pages[1].ops[1] ~= view.canvas.ops[1],
+        "clip: paste where it was makes new copies")
+
+    -- cut removes, and the clipboard outlives a switch to another document
+    view:nbGoTo(1)
+    view.tool = "lasso"
+    selectAll(view)
+    view:selCopy(true)
+    ok(view.canvas:opCount() == 0 and Clipboard.count() == 2, "clip: Cut removes the ink and holds it")
+    view:newDrawing()
+    view.tool = "lasso"
+    view:lassoTap({ x = 300, y = v.area_y + 300 })
+    press("Paste here")
+    ok(view.canvas:opCount() == 2 and not view.notebook, "clip: it pastes into another document")
+    view:clearSelection()
+    view.tool = "pen"
+    UIManager:close(view)
+    Clipboard.clear()
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

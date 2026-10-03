@@ -1,6 +1,7 @@
 --[[
 Lasso selection: loop around ink, shapes and fills to select them, then move,
-duplicate or delete the group.
+duplicate, delete, cut or copy the group; a lasso tap pastes what was cut or
+copied, on any page of any document.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -11,6 +12,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Canvas = require("ink/canvas")
+local Clipboard = require("ink/clipboard")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 
@@ -145,12 +147,61 @@ function InkAwayView:selDelete()
     self:refresh(self, "full")
 end
 
+-- Put the selection on the clipboard; `cut` also deletes it.
+function InkAwayView:selCopy(cut)
+    if not (self.selection and self.selection.bbox) then return end
+    local ops = {}
+    table.sort(self.selection.idxs)   -- keep their drawing order
+    for _, idx in ipairs(self.selection.idxs) do ops[#ops + 1] = self.canvas.ops[idx] end
+    Clipboard.put(ops, self.selection.bbox)
+    if cut then self:selDelete() end
+    self:showNotice(string.format(cut and _("Cut %d item(s). Tap with the lasso to paste.")
+        or _("Copied %d item(s). Tap with the lasso to paste."), #ops))
+end
+
+-- Paste the clipboard: centred on screen point `pos`, or where it was cut from.
+-- The pasted ops become the selection, ready to be dragged into place.
+function InkAwayView:pasteAt(pos)
+    if Clipboard.count() == 0 then return end
+    local cx, cy
+    if pos then cx, cy = InkGeom.toCanvas(self.view, pos.x, pos.y) end
+    self:flushPending()
+    self.canvas:pushHistory()
+    local idxs = {}
+    for _, op in ipairs(Clipboard.take(cx, cy)) do
+        self.canvas.ops[#self.canvas.ops + 1] = op
+        idxs[#idxs + 1] = #self.canvas.ops
+    end
+    if self.tool ~= "lasso" then self.tool = "lasso"; self:refreshToolLabels() end
+    self.selection = { idxs = idxs }
+    self:recomputeSelectionBBox()
+    self:markDirty()
+    self:composeCanvas(); self:renderView()
+    self:refresh(self, "full")
+end
+
+-- A lasso tap on empty canvas with something on the clipboard: offer to paste
+-- it there.
+function InkAwayView:openPasteMenu(pos)
+    local dlg
+    dlg = ButtonDialog:new{ title = string.format(_("%d item(s) on the clipboard"), Clipboard.count()),
+        title_align = "center", buttons = {
+            {{ text = _("Paste here"), callback = function() UIManager:close(dlg); self:pasteAt(pos) end }},
+            {{ text = _("Paste where it was"), callback = function() UIManager:close(dlg); self:pasteAt(nil) end }},
+            {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }},
+        } }
+    self._shape_menu = dlg
+    UIManager:show(dlg)
+end
+
 function InkAwayView:openSelectionMenu()
     if not self.selection then return end
     local dlg
     local n = #self.selection.idxs
     local buttons = {
         {{ text = string.format(_("%d item(s) selected"), n), enabled = false }},
+        {{ text = _("Cut"), callback = function() UIManager:close(dlg); self:selCopy(true) end },
+         { text = _("Copy"), callback = function() UIManager:close(dlg); self:selCopy(false) end }},
         {{ text = _("Duplicate"), callback = function() UIManager:close(dlg); self:selDuplicate() end }},
         {{ text = _("Delete"), callback = function() UIManager:close(dlg); self:selDelete() end }},
         {{ text = _("Deselect"), callback = function() UIManager:close(dlg); self:clearSelection() end }},
@@ -257,6 +308,8 @@ function InkAwayView:lassoTap(pos)
     if self.selection then
         if pos and self:inSelBBoxScreen(pos.x, pos.y) then self:openSelectionMenu()
         else self:clearSelection() end
+    elseif pos and Clipboard.count() > 0 then
+        self:openPasteMenu(pos)
     end
     return true
 end
