@@ -2820,6 +2820,65 @@ do
     UIManager.reset()
 end
 
+-- ---- every button in every sheet survives KOReader's tap highlight --------
+-- A text button whose label is swapped for a picture or a group must still have
+-- an fgcolor, or the highlight on a tap crashes KOReader.
+do
+    local TestEnv = require("testenv")
+    local Templates = require("ink/templates")
+    local LIB = TestEnv.libraryDir() .. "/sweep"
+    os.execute("mkdir -p '" .. LIB .. "'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local function buttons(w, out, seen)
+        if type(w) ~= "table" or seen[w] then return out end
+        seen[w] = true
+        if getmetatable(w) and w.highlightSafe then out[#out + 1] = w end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then buttons(val, out, seen) end
+        end
+        return out
+    end
+    local function sweep(name, field, open)
+        open()
+        local sheet = view[field]   -- its content is built when it opens
+        local bad, n = 0, 0
+        for _, b in ipairs(buttons(sheet, {}, {})) do
+            n = n + 1
+            if not b:highlightSafe() then bad = bad + 1 end
+        end
+        ok(sheet ~= nil and n > 0 and bad == 0, ("sweep: every button of the %s sheet can be tapped (%d of %d bad)")
+            :format(name, bad, n))
+        view:closeSheet(field)
+    end
+    view:newNotebook("lines", LIB)
+    Templates.save(LIB, "Plan", view.notebook.pages[1], view.notebook:pageTemplate(), 100, 100)
+    sweep("File", "_doc_dialog", function() view:openDocumentSheet() end)
+    sweep("New notebook", "_new_dialog", function() view:openNotebookPaper() end)
+    sweep("page paper", "_chooser_dialog", function() view:nbPagePaper() end)
+    sweep("page", "_page_dialog", function() view:openPageMenu() end)
+    sweep("settings", "_settings_dialog", function() view:openSettings() end)
+    sweep("pen", "_pen_dialog", function() view:openPenSettings() end)
+    sweep("eraser", "_eraser_dialog", function() view:openEraserSettings() end)
+    sweep("shapes", "_shape_dialog", function() view:openShapePicker() end)
+    sweep("text", "_text_settings", function() view:openTextSettings() end)
+    sweep("image", "_img_src_dialog", function() view:chooseImage() end)
+    sweep("go to page", "_goto_dialog", function() view:nbJumpPrompt() end)
+    view.canvas.ops[1] = { kind = "ink", width = 3, pts = { 1, 1, 9, 9 } }
+    sweep("export", "_save_dialog", function() view:openExport() end)
+    view:newDrawing(LIB)
+    sweep("background", "_bg_dialog", function() view:openBackground() end)
+    sweep("grid", "_grid_dialog", function() view:openGridSettings() end)
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

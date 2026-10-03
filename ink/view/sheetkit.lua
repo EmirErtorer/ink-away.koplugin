@@ -206,7 +206,9 @@ function InkAwayView:paperTile(style, label, w, h, sel, cb)
         pw = w - Screen:scaleBySize(16); ph = math.floor(pw / 0.75)
     end
     local ok, page = pcall(function() return self:cachedPaperPreview(style, pw, ph) end)
-    local vg = VerticalGroup:new{ align = "center" }
+    -- fgcolor is set for the tap highlight, which inverts it on a text button
+    -- (see imageLabel); the group itself draws nothing with it
+    local vg = VerticalGroup:new{ align = "center", fgcolor = sel and WHITE or BLACK }
     if ok and page then table.insert(vg, imageLabel(page, pw, ph)) end
     table.insert(vg, vspan(4))
     table.insert(vg, TextWidget:new{ text = label, face = Font:getFace("cfont", 15), bold = true,
