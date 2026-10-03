@@ -64,8 +64,9 @@ function InkAwayView:setAccent(rgb)
         for _, w in ipairs({ tm.fw, tm.dw }) do if w and w.free then w:free() end end
         self._text_btn_metrics = nil
     end
+    -- only the toolbar shows the colour on the canvas (its active tool)
     self:updateToolbarActive()
-    UIManager:setDirty(self, "ui")
+    UIManager:setDirty(self, "ui", self.toolbar and self.toolbar.dimen or nil)
 end
 
 -- The colours last picked on the wheel, newest first (at most two). A colour in

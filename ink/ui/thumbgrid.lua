@@ -46,6 +46,7 @@ local ThumbGrid = InputContainer:extend{
     on_tab_hold = nil,  -- function(tab) after a hold on a tab
     tab_footer = nil,   -- { label, cb }: a button under the tabs
     start = 1,          -- the item whose grid page shows first
+    flash_open = true,  -- flash when shown (over ink); not when it replaces another grid
     cols = nil,         -- 3 x 3 cards, or 4 x 2 on a wide screen, unless given
     rows = nil,
     -- not modal: its menus and prompts must open on top of it
@@ -194,10 +195,15 @@ function ThumbGrid:folderTile(sz, slot)
     return self[slot].bb
 end
 
+-- E-ink refreshes follow the sheets: opening over the drawing flashes on a grey
+-- panel, as ink would otherwise show through faintly; everything after that
+-- (page turns, tabs, closing) is a plain "ui" refresh, like KOReader's own file
+-- browser. A colour panel never flashes here: it takes a second or two, and on
+-- Kobo's controller the reader waits for it to finish.
 function ThumbGrid:onShow()
     self:showSelectedTab()
     self:prepare()
-    UIManager:setDirty(self, "full")
+    UIManager:setDirty(self, self.flash_open and "full" or "ui")
     return true
 end
 
@@ -380,7 +386,7 @@ function ThumbGrid:gridGo(delta)
     self:freeCache()          -- only the visible grid page is kept resident
     self.gpage = g
     self:prepare()
-    UIManager:setDirty(self, "full")
+    UIManager:setDirty(self, "ui")
 end
 
 -- The card under screen point p, if any.
@@ -467,7 +473,7 @@ function ThumbGrid:onCloseWidget()
         if self[slot] and self[slot].bb then self[slot].bb:free() end
         self[slot] = nil
     end
-    UIManager:setDirty("all", "full")   -- restore the canvas cleanly underneath
+    UIManager:setDirty("all", "ui")   -- repaint what is underneath, without a flash
     if self.on_close then self.on_close() end
 end
 

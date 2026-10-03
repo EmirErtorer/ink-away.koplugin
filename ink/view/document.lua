@@ -80,9 +80,10 @@ function InkAwayView:markDirty()
     self:wakeAutosave()
 end
 
--- Drop what the last save remembered about each page, for a document just
--- started or opened.
+-- Drop what was kept about each page (the save cache, the overview's
+-- thumbnails), for a document just started or opened.
 function InkAwayView:resetSaveState()
+    self:freePageThumbs()
     self._page_cache = setmetatable({}, { __mode = "k" })
     self._page_rev = self.canvas.rev
     self.dirty = false

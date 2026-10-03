@@ -2075,13 +2075,11 @@ do
     G_reader_settings.data.inkaway_start = "library"
     local v2 = InkAwayView:new{}
     UIManager:show(v2)
-    UIManager.fireScheduled()
-    ok(v2._library ~= nil, "lib: with the setting, Ink Away opens on the library")
+    ok(v2._library ~= nil, "lib: with the setting, Ink Away opens on the library as it shows (one flash)")
     v2._library:close(); UIManager:close(v2)
     G_reader_settings.data.inkaway_start = nil
     local v3 = InkAwayView:new{ show_library = true }
     UIManager:show(v3)
-    UIManager.fireScheduled()
     ok(v3._library ~= nil, "lib: the library gesture opens it on top")
     UIManager:close(v3)
     ok(v3._library == nil, "lib: closing Ink Away closes the library too")
@@ -3206,6 +3204,117 @@ do
     G_reader_settings.data.inkaway_accent = nil
     G_reader_settings.data.inkaway_orientation = had_orientation
     Accent.set(nil)
+    UIManager.reset()
+end
+
+-- ---- e-ink refreshes of the sheets and full-screen grids ---------------------
+-- A flash only where it clears ink: opening over the drawing on a grey panel.
+-- Page turns, tabs and closing never flash, and a colour panel never flashes
+-- here (a flash takes seconds there, and Kobo waits for it).
+do
+    local TestEnv = require("testenv")
+    local Device = require("device")
+    local LIB = TestEnv.libraryDir() .. "/refresh"
+    os.execute("mkdir -p '" .. LIB .. "/Folder'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function modes()
+        local out = {}
+        for _, r in ipairs(UIManager.refreshes) do
+            local m = r.mode
+            if type(m) == "function" then m = m() end
+            out[#out + 1] = tostring(m)
+        end
+        UIManager.refreshes = {}
+        return table.concat(out, ",")
+    end
+    local function flashes(list) return list:find("full", 1, true) or list:find("flash", 1, true) end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", LIB)
+    for _ = 1, 11 do view:nbAddPage() end
+    UIManager.fireScheduled(); UIManager.refreshes = {}
+
+    -- grey panel
+    view:openPenSettings()
+    local m = modes()
+    ok(m:find("flashui", 1, true) ~= nil, "refresh: a sheet flashes as it opens over ink on grey (" .. m .. ")")
+    view:closeSheet("_pen_dialog")
+    ok(not flashes(modes()), "refresh: and closes without a flash")
+    view:openOverview()
+    local ov = view._overview
+    m = modes()
+    ok(m:find("full", 1, true) ~= nil, "refresh: the overview flashes as it opens over ink on grey")
+    ov:gridGo(ov.gpage > 0 and -1 or 1)
+    m = modes()
+    ok(m ~= "" and not flashes(m), "refresh: a page of thumbnails turns without a flash (" .. m .. ")")
+    view:overviewGo(LIB .. "/Folder")
+    ok(not flashes(modes()), "refresh: going into a folder does not flash")
+    view:overviewGo(LIB)
+    ov.actions[2][2]()   -- Library
+    m = modes()
+    ok(view._library ~= nil and not flashes(m), "refresh: the library opens over the overview without a flash (" .. m .. ")")
+    view._library:close()
+    m = modes()
+    ok(m ~= "" and not flashes(m), "refresh: closing a grid does not flash (" .. m .. ")")
+
+    -- the open notebook's thumbnails are kept for the next overview
+    local drawn = 0
+    local real = view.renderPageThumb
+    view.renderPageThumb = function(...) drawn = drawn + 1; return real(...) end
+    view:freePageThumbs()   -- the overview opened above kept some
+    view:openOverview()
+    view._overview:paintTo(Screen.bb, 0, 0)
+    local first = drawn
+    view._overview:close()
+    drawn = 0
+    view:openOverview()
+    view._overview:paintTo(Screen.bb, 0, 0)
+    ok(first > 0 and drawn == 0, ("refresh: opening the overview again draws no thumbnail (%d, then %d)"):format(first, drawn))
+    view._overview:close()
+    local v = view.view
+    view:onIaTouch(nil, pos(100, v.area_y + 100))
+    view:onIaPan(nil, pos(160, v.area_y + 140))
+    view:onIaPanRelease(nil, pos(160, v.area_y + 140))
+    UIManager.fireScheduled()
+    drawn = 0
+    view:openOverview()
+    view._overview:paintTo(Screen.bb, 0, 0)
+    ok(drawn == 1, ("refresh: after drawing on a page only that page's thumbnail is drawn again (%d)"):format(drawn))
+    view._overview:close()
+    local kept = 0
+    for _ in ipairs(view._page_thumbs and view._page_thumbs.order or {}) do kept = kept + 1 end
+    ok(kept > 0 and kept <= 18, ("refresh: at most two grid pages of them are kept (%d)"):format(kept))
+    view.renderPageThumb = real
+
+    -- colour panel: no flashes for sheets and grids
+    local had = Device.hasColorScreen
+    Device.hasColorScreen = function() return true end
+    view._is_colour = nil
+    UIManager.refreshes = {}
+    view:openShapePicker()   -- (the pen sheet's colour swatches need real widgets)
+    m = modes()
+    ok(m ~= "" and not flashes(m), "refresh: on colour a sheet opens without a flash (" .. m .. ")")
+    view:closeSheet("_shape_dialog")
+    modes()
+    view:openOverview()
+    m = modes()
+    ok(m ~= "" and not flashes(m), "refresh: on colour the overview opens without a flash (" .. m .. ")")
+    view._overview:close()
+    modes()
+    view:openLibrary()
+    m = modes()
+    ok(m ~= "" and not flashes(m), "refresh: and the library too (" .. m .. ")")
+    view._library:close()
+    Device.hasColorScreen = had
+    view._is_colour = nil
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
     UIManager.reset()
 end
 

@@ -34,6 +34,7 @@ local IconMenu = InputContainer:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath
     build = nil,               -- function(menu) -> the sheet's content
+    flash = true,              -- flash on show (grey panels; see onShow)
     on_close = nil,
     top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
                                -- instead of centring it vertically
@@ -86,12 +87,15 @@ end
 
 -- UIManager:show without a refresh type only marks the widget dirty, so the sheet
 -- schedules its own refresh, reading the region in a closure because
--- movable.dimen is nil until the first paint. It must be a flashing "flashui":
--- the sheet opens over dark ink and grid lines, a plain "ui" fades them out
--- slowly, and the fast waveform does not clear them at all, so the ink would show
--- through the sheet.
+-- movable.dimen is nil until the first paint. On a grey panel it is a flashing
+-- "flashui": the sheet opens over dark ink and grid lines, a plain "ui" fades
+-- them out slowly, and the fast waveform does not clear them at all, so the ink
+-- would show through the sheet. A colour panel (`flash` false) gets "ui": a
+-- flash there takes a second or two, and on Kobo's controller the reader waits
+-- for it to finish.
 function IconMenu:onShow()
-    UIManager:setDirty(self, function() return "flashui", self.movable.dimen end)
+    local mode = self.flash and "flashui" or "ui"
+    UIManager:setDirty(self, function() return mode, self.movable.dimen end)
 end
 
 -- On close UIManager repaints the canvas underneath, and a plain "ui" brings it
@@ -107,7 +111,7 @@ end
 -- (picking a brush or a colour). When the footprint is unchanged, the usual case,
 -- only that region is refreshed with "ui" (the sheet is already opaque white on
 -- screen); when it changes, the uncovered canvas is repainted and the union
--- flashes.
+-- flashes (on a grey panel; see onShow).
 function IconMenu:rebuild()
     if not (self.movable and self.build) then return end
     local old = self.movable.dimen and self.movable.dimen:copy()
@@ -126,7 +130,8 @@ function IconMenu:rebuild()
         UIManager:setDirty(self, function() return "ui", new end)
     else
         local region = (old and new) and old:combine(new) or new
-        UIManager:setDirty("all", function() return "flashui", region end)
+        local mode = self.flash and "flashui" or "ui"
+        UIManager:setDirty("all", function() return mode, region end)
     end
 end
 

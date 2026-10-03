@@ -313,10 +313,9 @@ function InkAwayView:init()
     self:openStartDocument()   -- the last document, or a new drawing
     self:composeCanvas()
     self:renderView()
-    -- the library on top, when asked for (its gesture) or chosen in the settings
-    if self.show_library or self:getSetting("inkaway_start") == "library" then
-        UIManager:nextTick(function() if not self.closing then self:openLibrary() end end)
-    end
+    -- the library on top, when asked for (its gesture) or chosen in the settings;
+    -- it opens as the canvas is shown (see onShow)
+    self._library_on_show = self.show_library or self:getSetting("inkaway_start") == "library"
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
@@ -346,6 +345,7 @@ function InkAwayView:free()
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     self:freeWaveCache()
+    self:freePageThumbs()
     Accent.free()
     local ok_cp, ColorPicker = pcall(require, "ink/ui/colorpicker")   -- its colour wheel
     if ok_cp and ColorPicker.freeCache then ColorPicker.freeCache() end
@@ -365,6 +365,12 @@ end
 function InkAwayView:onShow()
     self:installRawFinger()
     UIManager:setDirty(self, "full")
+    -- opened here rather than a tick later, so its refresh joins the canvas's and
+    -- the screen flashes once, not twice
+    if self._library_on_show then
+        self._library_on_show = nil
+        self:openLibrary()
+    end
     return true
 end
 

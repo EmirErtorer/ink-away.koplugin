@@ -188,10 +188,11 @@ function InkAwayView:openOverview()
         start = start,
         tabs = tabs,
         folder_icon = self:iconPath("folder"),
+        flash_open = not self:colourPanel(),   -- (see ThumbGrid:onShow)
         empty_text = self:overviewEmptyText(),
         actions = {
             { "\u{2605}", function() self:overviewToggleStarred() end },
-            { _("Library"), function() local d = self._ov.dir; grid:close(); self:openLibrary(d) end },
+            { _("Library"), function() local d = self._ov.dir; grid:close(); self:openLibrary(d, true) end },
         },
         on_back = self:overviewUp(),
         render = function(it, w, h) return self:overviewThumb(it, w, h) end,
@@ -311,14 +312,65 @@ function InkAwayView:renderOtherPage(nb, i, maxw, maxh)
     return thumb
 end
 
--- The thumbnail of a card: a page of the open notebook is drawn live; a page of
--- another notebook is cached by its id and when it last changed, with the paper
--- it is on.
+
+-- A thumbnail of page i of the open notebook, drawn from the page and kept for
+-- the next time: the most recent two grid pages' worth, so turning between two
+-- pages of thumbnails and opening the overview again draw nothing. The grid gets
+-- a copy, as it frees what it is given. A page's copy goes when the page changes
+-- (see dropPageThumb) or is drawn on other paper.
+function InkAwayView:openPageThumb(i, maxw, maxh)
+    local nb = self.notebook
+    local page = nb and nb.pages[i]
+    if not page then return nil end
+    local t = nb:pageTemplate(i)
+    local sig = table.concat({ maxw, maxh, tostring(t.style), tostring(t.size), tostring(t.strength),
+        tostring(t.pdf_path), tostring(page.src) }, "|")
+    local kept = self._page_thumbs
+    if not kept then kept = { order = {} }; self._page_thumbs = kept end
+    local e = kept[page]
+    if not (e and e.sig == sig) then
+        self:dropPageThumb(page)
+        local bb = self:renderPageThumb(i, maxw, maxh)
+        if not bb then return nil end
+        e = { sig = sig, bb = bb }
+        kept[page] = e
+        table.insert(kept.order, 1, page)
+        local max = 2 * ((self._overview and self._overview.per) or 6)
+        while #kept.order > max do self:dropPageThumb(kept.order[#kept.order]) end
+    else
+        -- the most recently used goes to the front
+        for k, p in ipairs(kept.order) do if p == page then table.remove(kept.order, k); break end end
+        table.insert(kept.order, 1, page)
+    end
+    return e.bb:copy()
+end
+
+-- Forget the kept thumbnail of `page` (it changed).
+function InkAwayView:dropPageThumb(page)
+    local kept = self._page_thumbs
+    local e = kept and kept[page]
+    if not e then return end
+    e.bb:free()
+    kept[page] = nil
+    for k, p in ipairs(kept.order) do if p == page then table.remove(kept.order, k); break end end
+end
+
+-- Forget every kept thumbnail (another document, or closing).
+function InkAwayView:freePageThumbs()
+    local kept = self._page_thumbs
+    if not kept then return end
+    for _, p in ipairs(kept.order) do if kept[p] then kept[p].bb:free() end end
+    self._page_thumbs = nil
+end
+
+-- The thumbnail of a card: a page of the open notebook is drawn from the page
+-- (and kept for next time); a page of another notebook is cached on disk by its
+-- id and when it last changed, with the paper it is on.
 function InkAwayView:overviewThumb(it, maxw, maxh)
     local ov = self._ov
     local doc = self:overviewDoc(ov.path)
     if not doc.nb then return nil end
-    if doc.open then return self:renderPageThumb(it.index, maxw, maxh) end
+    if doc.open then return self:openPageThumb(it.index, maxw, maxh) end
     local page = it.page
     local t = doc.nb:pageTemplate(it.index)
     local name = string.format("%s-p%s-%d-%s%s%s-%dx%d.png", Library.pathCode(ov.path), tostring(page.id),

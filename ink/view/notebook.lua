@@ -142,6 +142,7 @@ function InkAwayView:nbSyncOut()
         self._page_rev = self.canvas.rev
         nb:touch()
         if self._page_cache then self._page_cache[nb.pages[nb.index]] = nil end
+        self:dropPageThumb(nb.pages[nb.index])
         self.dirty = true
     end
 end

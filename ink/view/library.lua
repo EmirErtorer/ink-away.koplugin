@@ -50,8 +50,10 @@ function InkAwayView:libraryItems(dir)
 end
 
 -- Open the library at folder `dir` (the open document's folder by default). The
--- open document is saved first, so the library shows it as it is.
-function InkAwayView:openLibrary(dir)
+-- open document is saved first, so the library shows it as it is. `over_grid`:
+-- it replaces another full-screen grid (the overview), so it opens without the
+-- flash that clears ink underneath.
+function InkAwayView:openLibrary(dir, over_grid)
     self:leaveDocument()
     local root = self:libraryDir()
     dir = dir or self:docDir()
@@ -66,6 +68,7 @@ function InkAwayView:openLibrary(dir)
         items = items,
         start = start,
         folder_icon = self:iconPath("folder"),
+        flash_open = not (over_grid or self:colourPanel()),   -- (see ThumbGrid:onShow)
         empty_text = _("Nothing here yet. Start a drawing or a notebook with the buttons above."),
         actions = {
             { "+ " .. _("Drawing"), function()
@@ -285,6 +288,7 @@ function InkAwayView:chooseLibraryFolder(moving, on_pick)
     grid = ThumbGrid:new{
         items = {},
         folder_icon = self:iconPath("folder"),
+        flash_open = false,   -- it opens over the library
         close_label = _("Cancel"),
         empty_text = _("No folders here."),
         actions = {
