@@ -1,6 +1,7 @@
 --[[
 The two row controls used in the sheets: ToggleRow (a label and a sliding switch)
-and SliderRow (a label, a draggable track and the value).
+and SliderRow (a label, a draggable track and the value). A switch that is on
+and a slider's filled part take the accent (see ink/accent.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -16,6 +17,7 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local Accent = require("ink/accent")
 local Paint = require("ink/paint")
 
 local Screen = Device.screen
@@ -26,6 +28,23 @@ local KNOB_EDGE = Paint.KNOB_EDGE
 local function pill(w, h, color)
     return FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, radius = math.floor(h / 2),
         background = color, WidgetContainer:new{ dimen = GeomUI:new{ w = w, h = h } } }
+end
+
+-- A bar of w x h in a chosen accent, painted by Accent: round at both ends, or
+-- (`bar`) only on the left, for a slider's fill, which then repaints at any width
+-- while it is dragged without drawing a new image each step.
+local AccentPill = WidgetContainer:extend{ bar = false }
+function AccentPill:getSize() return self.dimen end
+function AccentPill:paintTo(bb, x, y)
+    local w, h = self.dimen.w, self.dimen.h
+    if self.bar then Accent.paintBar(bb, x, y, w, h)
+    else Accent.paintRounded(bb, x, y, w, h, math.floor(h / 2)) end
+end
+
+-- A bar in the accent: black by default, as before.
+local function accentPill(w, h, bar)
+    if not Accent.get().custom then return pill(w, h, Blitbuffer.COLOR_BLACK) end
+    return AccentPill:new{ dimen = GeomUI:new{ w = w, h = h }, bar = bar }
 end
 
 -- The round white knob of diameter d, with a thin grey rim.
@@ -53,7 +72,7 @@ function ToggleRow:init()
 end
 function ToggleRow:_switch()
     local w, h = self.sw_w, self.sw_h
-    local track = pill(w, h, self.is_on and Blitbuffer.COLOR_BLACK or TRACK_BG)
+    local track = self.is_on and accentPill(w, h) or pill(w, h, TRACK_BG)
     local d = h - Screen:scaleBySize(6)
     local inset = Screen:scaleBySize(3)
     local thumb = knob(d)
@@ -129,7 +148,7 @@ function SliderRow:_build()
     local fillW = math.max(th, math.floor(track_w * frac))
     local track = pill(track_w, th, TRACK_BG)
     track.overlap_offset = { 0, ty }
-    local fill = pill(fillW, th, Blitbuffer.COLOR_BLACK)
+    local fill = accentPill(fillW, th, true)
     fill.overlap_offset = { 0, ty }
     local thumb = knob(kn)
     thumb.overlap_offset = { math.max(0, math.min(track_w - kn, math.floor(track_w * frac) - math.floor(kn / 2))), 0 }
@@ -138,7 +157,7 @@ function SliderRow:_build()
     self[1] = HorizontalGroup:new{ align = "center",
         labelw, HorizontalSpan:new{ width = gap }, trackGroup, HorizontalSpan:new{ width = gap }, valw }
     -- kept so _apply can update the moving parts without rebuilding the row
-    self._fill_wc, self._knob, self._valw = fill[1], thumb, valw
+    self._fill_wc, self._knob, self._valw = fill[1] or fill, thumb, valw
     local sz = self[1]:getSize()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.width, h = sz.h }
 end

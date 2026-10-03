@@ -18,6 +18,7 @@ local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -219,13 +220,15 @@ function ThumbGrid:paintTo(bb, x, y)
     local pill_y = y + math.floor(self.top_h / 2 - pill_h / 2)
     local pface = Font:getFace("cfont", 15)
     local right = x + sw - self.pad
+    local accent = Accent.get()
     local function pill(text, dark)
         local t = TextWidget:new{ text = text, face = pface, bold = true }
         local w = math.max(S(84), t:getSize().w + S(28))
         t:free()
         right = right - w
-        bb:paintRoundedRect(right, pill_y, w, pill_h, dark and BLACK or CARD, S(11))
-        label(text, right + w / 2, pill_y + pill_h / 2, pface, dark and WHITE or BLACK, nil, true)
+        if dark then Accent.paintRounded(bb, right, pill_y, w, pill_h, S(11))
+        else bb:paintRoundedRect(right, pill_y, w, pill_h, CARD, S(11)) end
+        label(text, right + w / 2, pill_y + pill_h / 2, pface, dark and accent.text or BLACK, nil, true)
         local r = { x = right, y = pill_y, w = w, h = pill_h }
         right = right - S(8)
         return r
@@ -263,7 +266,7 @@ function ThumbGrid:paintTo(bb, x, y)
             if t then
                 local rx, ry = x + r.x, y + r.y
                 if t.selected then
-                    bb:paintRoundedRect(rx, ry, r.w + self.pad, r.h, BLACK, S(12))
+                    Accent.paintRounded(bb, rx, ry, r.w + self.pad, r.h, S(12))
                     bb:paintRoundedRect(rx + S(2), ry + S(2), r.w + self.pad - S(2), r.h - S(4), WHITE, S(11))
                 else
                     bb:paintRoundedRect(rx, ry, r.w - self.pad, r.h, CARD, S(12))
@@ -301,8 +304,8 @@ function ThumbGrid:paintTo(bb, x, y)
         end
         if L.foot then
             local f = L.foot
-            bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, BLACK, S(12))
-            label(self.tab_footer[1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, WHITE, f.w - S(8), true)
+            Accent.paintRounded(bb, x + f.x, y + f.y, f.w, f.h, S(12))
+            label(self.tab_footer[1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, accent.text, f.w - S(8), true)
         end
         -- the line between the tabs and the grid, broken where the selected tab joins it
         bb:paintRect(x + self.tab_w, y + self.top_h, 1, sh - self.top_h - self.bot_h, GREY)
@@ -325,10 +328,10 @@ function ThumbGrid:paintTo(bb, x, y)
         local it = c.item
         if it then
             local cx, cy = x + c.x, y + c.y
-            -- a rounded light grey card; the selected one gets a black border (a
-            -- black card with an inset grey card)
+            -- a rounded light grey card; the selected one gets a border in the
+            -- accent (an accent card with an inset grey card)
             if it.selected then
-                bb:paintRoundedRect(cx, cy, c.w, c.h, BLACK, card_r)
+                Accent.paintRounded(bb, cx, cy, c.w, c.h, card_r)
                 local ins = S(3)
                 bb:paintRoundedRect(cx + ins, cy + ins, c.w - 2 * ins, c.h - 2 * ins, CARD, card_r)
             else

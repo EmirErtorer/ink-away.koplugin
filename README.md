@@ -28,6 +28,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
 - **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF, where titled pages become bookmarks. A whole folder can be exported as one PDF too, subfolders included, bookmarked by folder, notebook and titled page. Pages can have titles and stars, their own paper, and be moved, inserted or duplicated; save a page as a template (a planner, a meeting sheet) and start new pages from it. The overview (one tap away in the bottom bar) shows a folder like a binder: its subfolders and notebooks as coloured tabs (a folder tab goes into it, the back arrow goes up), the pages of the chosen notebook, a starred-only filter, and moving or copying pages to any notebook in any folder. With palm rejection on you can let finger swipes turn pages while the pen writes.
 - **Library**: every drawing and notebook is a file that saves itself as you go. Browse them by thumbnail, sort them into folders, rename, move, duplicate or delete them, all without a computer.
+- **Button colour** (color screens): pick a color on the same wheel as the pen, and the buttons, selected tiles, switches and active tool take it instead of black. Text on them turns black or white, whichever reads better.
 - Undo/redo, zoom & pan, and an optional grid.
 - And more!
 

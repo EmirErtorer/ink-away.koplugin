@@ -10,13 +10,13 @@ local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
 local Text = require("ink/text")
 
 local Screen = Device.screen
-local WHITE = Blitbuffer.COLOR_WHITE
 local TILE_BG = Paint.TILE_BG
 
 local TEXT_HANDLE = 40   -- touch target for the move / resize handles (screen px)
@@ -104,10 +104,11 @@ function InkAwayView:textEditButtons()
     local v = self.view
     local m = self._text_btn_metrics
     if not m then
-        -- the sheets' look: a grey rounded "Format" button and the black "Done" pill
+        -- the sheets' look: a grey rounded "Format" button and the "Done" pill in
+        -- the accent
         local face = Font:getFace("cfont", 15)
         local fw = TextWidget:new{ text = _("Format"), face = face, bold = true, fgcolor = Blitbuffer.COLOR_BLACK }
-        local dw = TextWidget:new{ text = _("Done"), face = face, bold = true, fgcolor = WHITE }
+        local dw = TextWidget:new{ text = _("Done"), face = face, bold = true, fgcolor = Accent.get().text }
         local fs, ds = fw:getSize(), dw:getSize()
         local hpad = Screen:scaleBySize(16)
         local h = math.max(Screen:scaleBySize(34), math.max(fs.h, ds.h) + Screen:scaleBySize(12))
@@ -665,12 +666,14 @@ function InkAwayView:paintTextOverlay(bb, x, y)
         bb:paintRect(math.floor(ox + c.x), math.floor(oy + c.y), 2, math.ceil(c.h), BLACKC)
     end
     -- the always-visible Format and Done buttons (above the keyboard): rounded,
-    -- Color8 fills so the corners are drawn in C, and labels cached in the metrics
+    -- Color8 fills so the corners are drawn in C (a colour accent is a cached
+    -- image), and labels cached in the metrics
     local btns = self:textEditButtons()
     local m = self._text_btn_metrics
     local function drawBtn(rr, label)
         local bx, by = rr.x + x, rr.y + y
-        bb:paintRoundedRect(bx, by, rr.w, rr.h, rr.dark and BLACKC or TILE_BG, m.radius)
+        if rr.dark then Accent.paintRounded(bb, bx, by, rr.w, rr.h, m.radius)
+        else bb:paintRoundedRect(bx, by, rr.w, rr.h, TILE_BG, m.radius) end
         local sz = label:getSize()
         label:paintTo(bb, math.floor(bx + (rr.w - sz.w) / 2), math.floor(by + (rr.h - sz.h) / 2))
     end

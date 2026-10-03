@@ -57,9 +57,10 @@ local function rgb2hsv(r, g, b)
 end
 
 local ColorPicker = InputContainer:extend{
+    title = nil,     -- the heading ("Custom colour" by default)
     color = nil,     -- initial {r,g,b}
     on_pick = nil,   -- function(rgb) apply the colour
-    on_save = nil,   -- function(rgb) save the colour, then apply
+    on_save = nil,   -- function(rgb) save the colour, then apply; no Save button without it
     modal = true,
     stop_events_propagation = true,
 }
@@ -153,14 +154,24 @@ function ColorPicker:previewRect()
     local y = self.box_y + self.title_h + self.wheel_d + self.pad + self.slider_h + self.pad
     return { x = self.box_x + self.pad, y = y, w = self.box_w - self.pad * 2, h = self.preview_h }
 end
-function ColorPicker:buttonRects()
+-- The bottom buttons as { rect, label, bold, action }: Use, Save (when there is
+-- an on_save) and Cancel, sharing the width.
+function ColorPicker:buttons()
+    local list = { { _("Use"), true, "use" } }
+    if self.on_save then list[#list + 1] = { _("Save"), true, "save" } end
+    list[#list + 1] = { _("Cancel"), false, "cancel" }
     local y = self.box_y + self.box_h - self.btn_h - self.pad
     local w = self.box_w - self.pad * 2
-    local third = floor((w - self.pad * 2) / 3)
-    local x0 = self.box_x + self.pad
-    return { x = x0, y = y, w = third, h = self.btn_h },
-           { x = x0 + third + self.pad, y = y, w = third, h = self.btn_h },
-           { x = x0 + (third + self.pad) * 2, y = y, w = w - (third + self.pad) * 2, h = self.btn_h }
+    local n = #list
+    local bw = floor((w - self.pad * (n - 1)) / n)
+    local x = self.box_x + self.pad
+    local out = {}
+    for i, e in ipairs(list) do
+        local rw = (i == n) and (self.box_x + self.pad + w - x) or bw
+        out[i] = { rect = { x = x, y = y, w = rw, h = self.btn_h }, label = e[1], bold = e[2], action = e[3] }
+        x = x + bw + self.pad
+    end
+    return out
 end
 
 -- Fill a rectangle with a colour (Paint.fillRect keeps it a colour).
@@ -173,7 +184,8 @@ function ColorPicker:paintTo(bb, x, y)
     bb:paintRect(bx, by, self.box_w, self.box_h, WHITE)
     bb:paintBorder(bx, by, self.box_w, self.box_h, Size.border.window or 2, BLACK)
 
-    local title = TextWidget:new{ text = _("Custom colour"), face = Font:getFace("tfont", 20), fgcolor = BLACK }
+    local title = TextWidget:new{ text = self.title or _("Custom colour"), face = Font:getFace("tfont", 20),
+        fgcolor = BLACK }
     title:paintTo(bb, bx + self.pad, by + floor((self.title_h - title:getSize().h) / 2))
     title:free()
 
@@ -212,11 +224,10 @@ function ColorPicker:paintTo(bb, x, y)
     txt:free()
 
     -- buttons
-    local use, save, cancel = self:buttonRects()
-    for _, e in ipairs({ { use, _("Use"), true }, { save, _("Save"), true }, { cancel, _("Cancel"), false } }) do
-        local rr, label = e[1], e[2]
+    for _, e in ipairs(self:buttons()) do
+        local rr, label = e.rect, e.label
         local rx, ry = rr.x + x, rr.y + y
-        bb:paintBorder(rx, ry, rr.w, rr.h, e[3] and 2 or 1, BLACK)
+        bb:paintBorder(rx, ry, rr.w, rr.h, e.bold and 2 or 1, BLACK)
         local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 17), fgcolor = BLACK }
         t:paintTo(bb, rx + floor((rr.w - t:getSize().w) / 2), ry + floor((rr.h - t:getSize().h) / 2))
         t:free()
@@ -257,14 +268,13 @@ function ColorPicker:onCpTap(_, ges)
     if not p then return true end
     if self:setFromWheel(p.x, p.y) then return true end
     if self:setFromSlider(p.x, p.y) then return true end
-    local use, save, cancel = self:buttonRects()
-    local function hit(r) return InkGeom.inRect(p.x, p.y, r) end
-    if hit(use) then
-        UIManager:close(self); if self.on_pick then self.on_pick({ self:selectedRGB() }) end; return true
-    elseif hit(save) then
-        UIManager:close(self); if self.on_save then self.on_save({ self:selectedRGB() }) end; return true
-    elseif hit(cancel) then
-        UIManager:close(self); return true
+    for _, e in ipairs(self:buttons()) do
+        if InkGeom.inRect(p.x, p.y, e.rect) then
+            UIManager:close(self)
+            local fn = (e.action == "use" and self.on_pick) or (e.action == "save" and self.on_save)
+            if fn then fn({ self:selectedRGB() }) end
+            return true
+        end
     end
     -- tap outside the panel dismisses
     if p.x < self.box_x or p.x > self.box_x + self.box_w or p.y < self.box_y or p.y > self.box_y + self.box_h then

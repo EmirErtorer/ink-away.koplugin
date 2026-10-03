@@ -1,12 +1,17 @@
 --[[
-The settings sheet (gear) and its sub-sheets: the grid and a list chooser.
+The settings sheet (gear) and its sub-sheets: the grid and a list chooser. On a
+colour screen it also sets the button colour (see ink/accent.lua).
 Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
+local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
 
@@ -41,6 +46,40 @@ function InkAwayView:chooseExportRoot()
         self:setSetting("inkaway_export_dir", dir)
         self:showNotice(string.format(_("Export folder: %s"), Storage.shortPath(self:defaultExportDir())))
     end)
+end
+
+-- Use colour {r,g,b} for the buttons, or black when nil, and remember it. Only
+-- the colour is kept; everything drawn in it is drawn again as it is needed.
+function InkAwayView:setAccent(rgb)
+    self:setSetting("inkaway_accent", rgb and { rgb[1], rgb[2], rgb[3] } or nil)
+    Accent.set(self:colorScreen() and rgb or nil)
+    -- what was built in the old colour: brush samples, the Paste bubble, the
+    -- text box's Done button and the active tool's icon
+    self:freeWaveCache()
+    if self._clip_widget then
+        if self._clip_widget.free then self._clip_widget:free() end
+        self._clip_widget = nil
+    end
+    local tm = self._text_btn_metrics
+    if tm then
+        for _, w in ipairs({ tm.fw, tm.dw }) do if w and w.free then w:free() end end
+        self._text_btn_metrics = nil
+    end
+    self:updateToolbarActive()
+    UIManager:setDirty(self, "ui")
+end
+
+-- Choose the button colour on the colour wheel the pen uses; Use applies it and
+-- the settings sheet comes back.
+function InkAwayView:chooseAccent()
+    local ok, ColorPicker = pcall(require, "ink/ui/colorpicker")
+    if not ok then return end
+    self:closeSheet("_settings_dialog")
+    UIManager:show(ColorPicker:new{
+        title = _("Button colour"),
+        color = Accent.get().rgb or { 0x1E, 0x6F, 0xD9 },
+        on_pick = function(rgb) self:setAccent(rgb); self:openSettings() end,
+    })
 end
 
 -- A "pick one" sub-sheet: a stack of full-width buttons, the current one black.
@@ -139,6 +178,26 @@ function InkAwayView:openSettings()
             add(self:segmentedRow({ { "portrait", _("Portrait") }, { "landscape", _("Landscape") } },
                 self:orientationClass(), content_w,
                 function(v) closeSelf(); self:setOrientation(v) end))
+            add(vspan(16))
+        end
+
+        -- the button colour, on a colour screen: a swatch of it (tap to change),
+        -- Choose for the colour wheel, and Black to go back
+        if self:colorScreen() then
+            local a = Accent.get()
+            add(self:sheetLabel(_("Button colour"), true))
+            add(vspan(6))
+            local gap = Screen:scaleBySize(12)
+            local sw = Screen:scaleBySize(56)
+            local bw = math.floor((content_w - sw - 2 * gap) / 2)
+            add(HorizontalGroup:new{ align = "center",
+                self:swatchTile(a.rgb or { 0, 0, 0 }, false, sw, function() self:chooseAccent() end, nil,
+                    Screen:scaleBySize(48)),
+                HorizontalSpan:new{ width = gap },
+                self:actionButton(_("Choose\u{2026}"), bw, function() self:chooseAccent() end),
+                HorizontalSpan:new{ width = gap },
+                self:actionButton(_("Black"), bw, function()
+                    self:setAccent(nil); self:openSettings() end, not a.custom) })
             add(vspan(16))
         end
 

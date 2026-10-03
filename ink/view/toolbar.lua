@@ -11,10 +11,12 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local IconWidget = require("ui/widget/iconwidget")
+local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 
@@ -135,7 +137,8 @@ function InkAwayView:buildToolbar()
         -- cover the active pill painted behind it
         if b.frame then b.frame.background = nil end
         if s.tool then self.tool_buttons[s.id] = { button = b } end
-        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true }
+        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true,
+            icon = ok_icon and file_icon or nil, path = icon_path, size = isz }
         row[i] = b
     end
     self.toolbar = FrameContainer:new{
@@ -151,9 +154,10 @@ function InkAwayView:buildToolbar()
     self:updateToolbarActive()   -- give the current tool its pill
 end
 
--- Mark the active tool: remember its button index (paintTo draws a black pill
--- behind it) and invert its icon, which renders on an opaque white ground, so it
--- shows white on the pill.
+-- Mark the active tool: remember its button index (paintTo draws the accent pill
+-- behind it) and show its icon so it reads on the pill. The icon renders on an
+-- opaque white ground: inverted, it shows white on black; on a chosen accent it
+-- is swapped for one drawn on the accent.
 function InkAwayView:updateToolbarActive()
     if not self._toolbar_icons then return end
     local active = (self.tool == "fill" or self.tool == "lasso") and "shape" or self.tool
@@ -162,19 +166,27 @@ function InkAwayView:updateToolbarActive()
         if e.tool and e.button then
             local on = (e.id == active)
             if on then self._active_btn_idx = i end
-            if e.button.label_widget then e.button.label_widget.invert = on end
+            local tinted = on and e.path and Accent.icon(e.path, e.size)
+            if tinted then
+                self:setButtonLabel(e.button, ImageWidget:new{ image = tinted, width = e.size, height = e.size,
+                    image_disposable = false })
+            elseif e.icon then
+                if e.button.label_widget ~= e.icon then self:setButtonLabel(e.button, e.icon) end
+                e.icon.invert = on
+            elseif e.button.label_widget then
+                e.button.label_widget.invert = on
+            end
         end
     end
 end
 
--- Paint the active tool's pill: a black rounded rect inset within its cell.
+-- Paint the active tool's pill: an accent rounded rect inset within its cell.
 -- Called from paintTo before the transparent toolbar, so the icon lands on top.
 function InkAwayView:drawActiveToolPill(bb, ox, oy)
     if self._toolbar_hidden or not self._active_btn_idx or not self._btn_w or not self._bar_h then return end
     local m = Screen:scaleBySize(7)
     local cx = ox + self._btn_w * (self._active_btn_idx - 1)
-    bb:paintRoundedRect(cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m,
-        Blitbuffer.COLOR_BLACK, Screen:scaleBySize(9))
+    Accent.paintRounded(bb, cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m, Screen:scaleBySize(9))
 end
 
 -- Show the current tool as active. Only the toolbar needs repainting.

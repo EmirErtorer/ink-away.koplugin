@@ -1,22 +1,25 @@
 --[[
 Building blocks shared by the sheets: opening and closing them, title row,
 buttons, icon tiles, colour swatches and brush samples (cached while the canvas
-is open).
+is open). What is filled black by default takes the accent (see ink/accent.lua).
 Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
+local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
+local Geom = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
+local OverlapGroup = require("ui/widget/overlapgroup")
 local PathChooser = require("ui/widget/pathchooser")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -25,6 +28,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Raster = require("ink/raster")
@@ -125,14 +129,35 @@ function InkAwayView:setButtonLabel(button, widget)
     end
 end
 
+-- A Button filled with a colour accent, `content` centred on it. The fill is the
+-- accent's cached image (a rounded colour fill is slow to paint), so it is built
+-- as an icon button: the tap highlight then inverts the whole button instead of
+-- reading a label colour.
+function InkAwayView:accentButton(w, h, radius, content, cb, hold_cb)
+    local b = Button:new{ icon = "inkaway.pen", icon_width = 1, icon_height = 1,
+        width = w, height = h, bordersize = 0, radius = radius, background = WHITE,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    local dimen = Geom:new{ w = w, h = h }
+    self:setButtonLabel(b, OverlapGroup:new{ dimen = dimen, allow_mirroring = false,
+        ImageWidget:new{ image = Accent.shape(w, h, radius), width = w, height = h, alpha = true,
+            image_disposable = false },
+        CenterContainer:new{ dimen = dimen, content } })
+    return b
+end
+
 -- Path of a bundled icon.
 function InkAwayView:iconPath(name)
     return self:pluginDir() .. "ink/icons/" .. name .. ".svg"
 end
 
 -- A tile's icon: transparent (the tile colour shows through), or when selected
--- flattened on white and inverted, so it reads white on the black tile.
+-- in the colour that reads on the accent: drawn on it when the accent is a
+-- chosen one, else flattened on white and inverted, so it reads white on black.
 function InkAwayView:tileIcon(name, size, sel)
+    if sel then
+        local bb = Accent.icon(self:iconPath(name), size)
+        if bb then return imageLabel(bb, bb:getWidth(), bb:getHeight()) end
+    end
     local ok, w = pcall(function()
         if sel then
             return IconWidget:new{ file = self:iconPath(name), width = size, height = size,
@@ -148,22 +173,26 @@ end
 -- (`text` stays nil, so the tap highlight inverts rather than reading a fgcolor
 -- the icon lacks), then the transparent icon is swapped in.
 function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_cb)
-    local b = Button:new{ icon = "inkaway." .. name, icon_width = size, icon_height = size,
-        width = w, height = h, bordersize = 0,
-        radius = Screen:scaleBySize(16), background = sel and BLACK or TILE_BG,
-        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    local a = Accent.get()
     local iw = self:tileIcon(name, size, sel)
     if iw and label then
         local vg = VerticalGroup:new{ align = "center", iw, vspan(6),
             TextWidget:new{ text = label, face = Font:getFace("cfont", 15),
-                bold = true, fgcolor = sel and WHITE or BLACK } }
+                bold = true, fgcolor = sel and a.text or BLACK } }
         if sublabel then
             table.insert(vg, vspan(3))
             table.insert(vg, TextWidget:new{ text = sublabel, face = Font:getFace("cfont", 11),
-                fgcolor = sel and Blitbuffer.ColorRGB32(0xC8, 0xC8, 0xC8, 0xFF) or HINT })
+                fgcolor = sel and a.note or HINT })
         end
         iw = vg
     end
+    if sel and a.chromatic and iw then
+        return self:accentButton(w, h, Screen:scaleBySize(16), iw, cb, hold_cb)
+    end
+    local b = Button:new{ icon = "inkaway." .. name, icon_width = size, icon_height = size,
+        width = w, height = h, bordersize = 0,
+        radius = Screen:scaleBySize(16), background = sel and a.fill or TILE_BG,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     if iw then self:setButtonLabel(b, iw) end
     return b
 end
@@ -172,33 +201,34 @@ end
 -- left, a bold title and a small note under it; `hold_cb` adds a long-press
 -- action (the note can say so).
 function InkAwayView:actionTile(icon, title, note, w, cb, hold_cb)
+    local a = Accent.get()
     local h = Screen:scaleBySize(76)
-    local b = Button:new{ icon = "inkaway." .. icon, icon_width = 1, icon_height = 1,
-        width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(16), background = BLACK,
-        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     local isz = Screen:scaleBySize(34)
     local pad = Screen:scaleBySize(20)
     local texts = VerticalGroup:new{ align = "left",
-        TextWidget:new{ text = title, face = Font:getFace("cfont", 20), bold = true, fgcolor = WHITE,
+        TextWidget:new{ text = title, face = Font:getFace("cfont", 20), bold = true, fgcolor = a.text,
             max_width = w - 3 * pad - isz },
         vspan(2),
         TextWidget:new{ text = note, face = Font:getFace("cfont", 13),
-            fgcolor = Blitbuffer.ColorRGB32(0xC8, 0xC8, 0xC8, 0xFF), max_width = w - 3 * pad - isz } }
+            fgcolor = a.note, max_width = w - 3 * pad - isz } }
     local iw = self:tileIcon(icon, isz, true) or HorizontalSpan:new{ width = isz }
     -- left aligned: the trailing span fills the rest of the tile
     local used = pad + isz + pad + texts:getSize().w
-    self:setButtonLabel(b, HorizontalGroup:new{ align = "center",
+    local row = HorizontalGroup:new{ align = "center",
         HorizontalSpan:new{ width = pad }, iw, HorizontalSpan:new{ width = pad }, texts,
-        HorizontalSpan:new{ width = math.max(0, w - used) } })
+        HorizontalSpan:new{ width = math.max(0, w - used) } }
+    if a.chromatic then return self:accentButton(w, h, Screen:scaleBySize(16), row, cb, hold_cb) end
+    local b = Button:new{ icon = "inkaway." .. icon, icon_width = 1, icon_height = 1,
+        width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(16), background = a.fill,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    self:setButtonLabel(b, row)
     return b
 end
 
 -- A paper tile: a small page drawn with the paper's ruling and its name under
 -- it; the selected one is black. Cached, as the papers never change.
 function InkAwayView:paperTile(style, label, w, h, sel, cb)
-    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
-        radius = Screen:scaleBySize(14), background = sel and BLACK or TILE_BG,
-        margin = 0, padding = 0, callback = cb, show_parent = self }
+    local a = Accent.get()
     local label_h = Screen:scaleBySize(26)
     local ph = h - label_h - Screen:scaleBySize(18)
     local pw = math.floor(ph * 0.75)
@@ -208,11 +238,15 @@ function InkAwayView:paperTile(style, label, w, h, sel, cb)
     local ok, page = pcall(function() return self:cachedPaperPreview(style, pw, ph) end)
     -- fgcolor is set for the tap highlight, which inverts it on a text button
     -- (see imageLabel); the group itself draws nothing with it
-    local vg = VerticalGroup:new{ align = "center", fgcolor = sel and WHITE or BLACK }
+    local vg = VerticalGroup:new{ align = "center", fgcolor = sel and a.text or BLACK }
     if ok and page then table.insert(vg, imageLabel(page, pw, ph)) end
     table.insert(vg, vspan(4))
     table.insert(vg, TextWidget:new{ text = label, face = Font:getFace("cfont", 15), bold = true,
-        fgcolor = sel and WHITE or BLACK })
+        fgcolor = sel and a.text or BLACK })
+    if sel and a.chromatic then return self:accentButton(w, h, Screen:scaleBySize(14), vg, cb) end
+    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
+        radius = Screen:scaleBySize(14), background = sel and a.fill or TILE_BG,
+        margin = 0, padding = 0, callback = cb, show_parent = self }
     self:setButtonLabel(b, vg)
     return b
 end
@@ -234,14 +268,21 @@ end
 -- with an ellipsis when long) and a filled black pill (Done / Back) on the
 -- right, spanning content_w.
 function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size)
+    local a = Accent.get()
     local pill_w = Screen:scaleBySize(84)
     local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true,
         max_width = content_w - pill_w - Screen:scaleBySize(8) }
-    local pill = Button:new{ text = "", width = pill_w, height = Screen:scaleBySize(34),
-        bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
-        callback = pill_cb, show_parent = self }
-    self:setButtonLabel(pill, TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
-        bold = true, fgcolor = WHITE })
+    local text = TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
+        bold = true, fgcolor = a.text }
+    local pill
+    if a.chromatic then
+        pill = self:accentButton(pill_w, Screen:scaleBySize(34), Screen:scaleBySize(11), text, pill_cb)
+    else
+        pill = Button:new{ text = "", width = pill_w, height = Screen:scaleBySize(34),
+            bordersize = 0, radius = Screen:scaleBySize(11), background = a.fill, margin = 0, padding = 0,
+            callback = pill_cb, show_parent = self }
+        self:setButtonLabel(pill, text)
+    end
     local g = content_w - titleW:getSize().w - pill:getSize().w
     return HorizontalGroup:new{ align = "center",
         titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), g) }, pill }
@@ -258,14 +299,19 @@ function InkAwayView:sheetHint(text, width, size)
         fgcolor = HINT }
 end
 
--- A rounded action button of any width, grey by default and black when `dark`.
+-- A rounded action button of any width, grey by default and in the accent
+-- (black unless the reader chose a colour) when `dark`.
 function InkAwayView:actionButton(label, w, cb, dark, big)
-    local b = Button:new{ text = "", width = w, height = Screen:scaleBySize(48), bordersize = 0,
-        radius = Screen:scaleBySize(14), background = dark and BLACK or TILE_BG,
-        margin = 0, padding = 0, callback = cb, show_parent = self }
+    local a = Accent.get()
+    local h, radius = Screen:scaleBySize(48), Screen:scaleBySize(14)
     -- `big` marks a primary action (New drawing, New notebook) with a larger face
-    self:setButtonLabel(b, TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17),
-        bold = true, fgcolor = dark and WHITE or BLACK })
+    local text = TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17),
+        bold = true, fgcolor = dark and a.text or BLACK }
+    if dark and a.chromatic then return self:accentButton(w, h, radius, text, cb) end
+    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
+        radius = radius, background = dark and a.fill or TILE_BG,
+        margin = 0, padding = 0, callback = cb, show_parent = self }
+    self:setButtonLabel(b, text)
     return b
 end
 
@@ -337,13 +383,17 @@ end
 -- A brush-style tile: a small rounded rectangle showing a sample wave rendered
 -- through the same rasterizer the pen uses, so it previews how the brush looks.
 function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
-    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
-        radius = Screen:scaleBySize(12), background = sel and BLACK or TILE_BG,
-        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    local a = Accent.get()
     -- render the sample wave into a bb sized to the inner tile
     local iw = w - Screen:scaleBySize(16)
     local ih = h - Screen:scaleBySize(16)
     local ok, wave = pcall(function() return self:cachedBrushWave(key, iw, ih, sel) end)
+    if sel and a.chromatic and ok and wave then
+        return self:accentButton(w, h, Screen:scaleBySize(12), imageLabel(wave, iw, ih), cb, hold_cb)
+    end
+    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
+        radius = Screen:scaleBySize(12), background = sel and a.fill or TILE_BG,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     if ok and wave then self:setButtonLabel(b, imageLabel(wave, iw, ih)) end
     return b
 end
@@ -355,7 +405,7 @@ function InkAwayView:cachedBrushWave(key, w, h, sel)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
     local st = Raster.STYLES[key] or Raster.STYLES.solid
-    local id = table.concat({ key, w, h, sel and 1 or 0, Screen.bb:getType() }, "|")
+    local id = table.concat({ key, w, h, sel and Accent.get().key or 0, Screen.bb:getType() }, "|")
     local e = cache[id]
     if e and e.st == st then return e.bb end
     if e then e.bb:free() end
@@ -371,13 +421,14 @@ function InkAwayView:freeWaveCache()
     end
 end
 
--- Render a sample stroke for brush `key` into a new buffer: a white wave on a
--- dark tile when selected, else black on grey.
+-- Render a sample stroke for brush `key` into a new buffer: on the accent in its
+-- text colour when selected, else black on grey.
 function InkAwayView:renderBrushWave(key, w, h, sel)
+    local a = Accent.get()
     local st = Raster.STYLES[key] or Raster.STYLES.solid
     local bb = Blitbuffer.new(w, h, Screen.bb:getType())
-    bb:paintRect(0, 0, w, h, sel and BLACK or TILE_BG)
-    Paint.brushSample(bb, st, sel and WHITE or BLACK,
+    Paint.fillRect(bb, 0, 0, w, h, sel and a.fill or TILE_BG, sel and a.chromatic)
+    Paint.brushSample(bb, st, sel and a.text or BLACK,
         Screen:scaleBySize(6), math.max(3, Screen:scaleBySize(5)), 0.26, 36)
     return bb
 end

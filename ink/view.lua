@@ -16,6 +16,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local Brushes = require("ink/brushes")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
@@ -202,6 +203,8 @@ function InkAwayView:init()
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
     self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes
+    -- the colour of what is black by default: a chosen one on a colour screen
+    Accent.set(self:colorScreen() and self:getSetting("inkaway_accent") or nil)
     self._strokes_since_full = 0
     -- The open document (see view/document.lua): its file, whether that file
     -- exists yet, and whether there are changes the canvas does not count.
@@ -343,6 +346,7 @@ function InkAwayView:free()
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     self:freeWaveCache()
+    Accent.free()
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
     if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end

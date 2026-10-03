@@ -3046,6 +3046,122 @@ do
     UIManager.reset()
 end
 
+-- ---- the button colour: colour screens only, remembered, every sheet in it ---
+do
+    local Device = require("device")
+    local Accent = require("ink/accent")
+    local ImageWidget = require("ui/widget/imagewidget")
+    G_reader_settings.data.inkaway_last_doc = nil
+    G_reader_settings.data.inkaway_accent = nil
+    local had_orientation = G_reader_settings.data.inkaway_orientation
+    G_reader_settings.data.inkaway_orientation = nil   -- an earlier block may leave landscape
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function says(w, text, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return false end
+        seen[w] = true
+        if w.text == text then return true end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" and says(val, text, seen) then return true end
+        end
+        return false
+    end
+    local function hasImage(w, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return false end
+        seen[w] = true
+        if getmetatable(w) == ImageWidget or w.image then return true end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" and hasImage(val, seen) then return true end
+        end
+        return false
+    end
+
+    -- a black-and-white screen has no such setting, and ignores a saved colour
+    G_reader_settings.data.inkaway_accent = { 30, 111, 217 }
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(not Accent.get().custom, "accent: a grey screen stays black, whatever is saved")
+    view:openSettings()
+    ok(not says(view._settings_dialog, "Button colour"), "accent: and its settings do not offer a colour")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_accent = nil
+
+    -- a colour screen offers it, through the pen's colour wheel
+    local had = Device.hasColorScreen
+    Device.hasColorScreen = function() return true end
+    UIManager.reset()
+    view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(not Accent.get().custom, "accent: black until one is chosen")
+    view:openSettings()
+    ok(says(view._settings_dialog, "Button colour"), "accent: a colour screen's settings offer it")
+    view:chooseAccent()
+    local picker = UIManager.shown
+    ok(picker and picker.title == "Button colour" and #picker:buttons() == 2 and view._settings_dialog == nil,
+        "accent: the colour wheel opens with Use and Cancel (no Save to the pen's swatches)")
+    picker.on_pick({ 30, 111, 217 })
+    local saved = G_reader_settings.data.inkaway_accent
+    ok(saved and saved[1] == 30 and saved[3] == 217, "accent: the colour is saved")
+    ok(Accent.get().chromatic and Accent.get().key == "30,111,217", "accent: and used straight away")
+    ok(view._settings_dialog ~= nil, "accent: the settings come back")
+    view:closeSheet("_settings_dialog")
+
+    -- what is black by default is drawn in it
+    local b = view:actionButton("Go", 300, function() end, true)
+    ok(hasImage(b.label_widget) and b.text == nil, "accent: a dark button is filled with it, tappable as a whole")
+    ok(not hasImage(view:actionButton("Go", 300, function() end, false).label_widget),
+        "accent: a grey button stays grey")
+    local title = view:sheetTitle("Pen", 600, "Done", function() end)
+    ok(hasImage(title[3].label_widget), "accent: the Done pill too")
+    ok(hasImage(view:actionTile("pen", "New drawing", "note", 600, function() end).label_widget),
+        "accent: and the large action tiles")
+
+    -- every sheet still survives a tap with it
+    local function buttons(w, out, seen)
+        if type(w) ~= "table" or seen[w] then return out end
+        seen[w] = true
+        if getmetatable(w) and w.highlightSafe then out[#out + 1] = w end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then buttons(val, out, seen) end
+        end
+        return out
+    end
+    local bad = 0
+    for _, s in ipairs({ { "_settings_dialog", function() view:openSettings() end },
+            { "_doc_dialog", function() view:openDocumentSheet() end },
+            { "_new_dialog", function() view:openNotebookPaper() end },
+            { "_shape_dialog", function() view:openShapePicker() end },
+            { "_eraser_dialog", function() view:openEraserSettings() end },
+            { "_grid_dialog", function() view:openGridSettings() end } }) do
+        s[2]()
+        for _, btn in ipairs(buttons(view[s[1]], {}, {})) do if not btn:highlightSafe() then bad = bad + 1 end end
+        view:closeSheet(s[1])
+    end
+    ok(bad == 0, "accent: every button of the sheets can be tapped in it")
+    BB.out_of_bounds = 0
+    view:drawActiveToolPill(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0 and view._active_btn_idx ~= nil, "accent: the active tool's pill paints in bounds")
+    UIManager:close(view)
+
+    -- opening again uses the saved colour without asking
+    UIManager.reset()
+    view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(Accent.get().key == "30,111,217", "accent: Ink Away opens with the saved colour")
+    view:setAccent(nil)
+    ok(G_reader_settings.data.inkaway_accent == nil and not Accent.get().custom, "accent: Black goes back")
+    UIManager:close(view)
+    Device.hasColorScreen = had
+    G_reader_settings.data.inkaway_accent = nil
+    G_reader_settings.data.inkaway_orientation = had_orientation
+    Accent.set(nil)
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)
