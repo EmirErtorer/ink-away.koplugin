@@ -143,6 +143,48 @@ Kindle size unless noted. "Cold" means no cached thumbnails yet.
   leaves the variable out for colour. The headless colour setup was not
   affected.
 
+## Results, 3 October 2026: e-ink refreshes
+
+What each action asks the e-ink panel to do, measured in the emulator by hooking
+the panel's refresh calls (so after KOReader merges requests), on main, on the
+branch before this round (`cce10a2`) and after it (`4dcea86`). The full table is
+[`results/2026-10-03-refresh/refresh.md`](results/2026-10-03-refresh/refresh.md).
+On a device the flashes matter most: about half a second to a second each on
+grey, and a second or two on colour, where Kobo's controller makes the reader
+wait for it to finish.
+
+Unchanged and already following the rules from earlier work: tool switches,
+undo and redo, page turns (a cleaning flash every sixth on grey, none on
+colour), and the sheets on grey (a flash over the sheet as it opens over ink,
+plain refreshes for everything inside it and for closing).
+
+What changed:
+
+| | before | after |
+|---|---|---|
+| Library or overview, page of thumbnails turned | flash | no flash |
+| Library or overview closed | flash | no flash |
+| Library opened from the overview | flash | no flash |
+| Library or overview opened on colour | flash | no flash |
+| Any sheet opened on colour | flash | no flash |
+| Opening Ink Away on the library | two flashes on grey | one |
+| Overview opened again, same notebook | 47 ms | 3 ms |
+| Overview star filter turned off | 48 ms | 3 ms |
+
+So a visit to the overview (open, turn a page, close) went from three flashes
+to one on grey and to none on colour, and browsing the library to a document
+from four to two on grey and one on colour.
+
+Kept as they were, on purpose:
+
+- Opening the library or overview over the drawing still flashes on grey, as a
+  sheet does: without it the ink shows faintly through.
+- Opening a document flashes (a page-wide content swap, as in 3.2.0).
+- The brush maker still flashes as it closes (older, rarely used).
+
+The emulator does not show ghosting, so whether the plain refreshes on page
+turns and closing leave visible traces is for a device to tell.
+
 ## Running it
 
 Both scripts need the KOReader emulator built, as described in
@@ -167,6 +209,11 @@ This replaces the emulator's copy of the plugin while it runs and installs the
 checkout again at the end. Each run uses a throwaway KOReader home with a small
 driver plugin (`emulator/drive.koplugin`), so your emulator settings are not
 touched.
+
+The e-ink refresh audit, about 15 minutes for 3 rounds of three versions:
+
+    tests/performance/emulator/refresh.sh 3 main=main before=cce10a2 after=HEAD
+    python3 tests/performance/refresh_compare.py tests/performance/out/refresh main before after
 
 Metric names in the results:
 

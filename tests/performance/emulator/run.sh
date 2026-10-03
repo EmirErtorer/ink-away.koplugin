@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# One run of perfemu.lua in the KOReader emulator:
+# One run of a scenario (perfemu.lua unless SCENARIO names another) in the
+# KOReader emulator:
 #
 #   emulator/run.sh <plugin_dir> <out_dir> [W H DPI]
 #
@@ -26,7 +27,7 @@ cd "$EMU"
 MONOENV=(env); [ "${MONO-1}" = "1" ] && MONOENV=(env INKAWAY_FORCE_MONO=1)
 set +e
 KO_HOME="$OUT/home" XDG_DOCUMENTS_DIR="$OUT/home/docs" "${MONOENV[@]}" \
-    INKAWAY_DRIVE_SCRIPT="$HERE/perfemu.lua" INKAWAY_DRIVE_OUT="$OUT" \
+    INKAWAY_DRIVE_SCRIPT="${SCENARIO:-$HERE/perfemu.lua}" INKAWAY_DRIVE_OUT="$OUT" \
     EMULATE_READER_W="$W" EMULATE_READER_H="$H" EMULATE_READER_DPI="$DPI" \
     $TIMEOUT_CMD "${TIMEOUT:-240}" ./luajit reader.lua "$OUT/home/docs" > "$OUT/emulator.log" 2>&1
 echo "emulator exit: $?"
