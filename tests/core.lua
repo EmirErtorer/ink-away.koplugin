@@ -595,6 +595,45 @@ do
     ok(s:find("MediaBox %[0 0 100 200%]") ~= nil, "fixed page box matches the image size")
 end
 
+------------------------------------------------------------------------------
+-- pdf: bookmarks, and titles in any language
+------------------------------------------------------------------------------
+do
+    local Pdf = require("ink/pdf")
+    ok(Pdf.text("Plain (one) \\ two") == "(Plain \\(one\\) \\\\ two)", "pdf text: ASCII is a literal, escaped")
+    ok(Pdf.text("Şekil") == "<FEFF015E0065006B0069006C>", "pdf text: other letters become UTF-16")
+    ok(Pdf.text("a\u{1F600}") == "<FEFF0061D83DDE00>", "pdf text: beyond the basic plane as a surrogate pair")
+
+    local tmpdir = os.getenv("TMPDIR") or "/tmp"
+    local out = tmpdir .. "/inkaway_outline_test.pdf"
+    local doc = assert(Pdf.openStream(out))
+    for i = 1, 3 do
+        local jp = tmpdir .. "/inkaway_outline_page.jpg"
+        local f = io.open(jp, "wb"); f:write("JPEG" .. i); f:close()
+        doc:addJPEGFile(jp, 100, 200)
+        os.remove(jp)
+    end
+    ok(doc:finish({ { title = "Mechanics", page = 1, kids = { { title = "Forces", page = 2 } } },
+                    { title = "Dalgalar", page = 3 } }), "pdf: a document with bookmarks is written")
+    local f = io.open(out, "rb"); local s = f:read("*a"); f:close(); os.remove(out)
+    ok(s:find("/Outlines", 1, true) and s:find("/PageMode /UseOutlines", 1, true),
+        "pdf: the catalog points at the bookmarks and opens them")
+    ok(s:find("/Title (Forces)", 1, true) and s:find("/Title (Dalgalar)", 1, true), "pdf: every bookmark is there")
+    ok(s:find("/Dest [8 0 R /Fit]", 1, true) ~= nil, "pdf: a bookmark goes to its page")
+    ok(s:find("/Type /Outlines /First %d+ 0 R /Last %d+ 0 R /Count 3") ~= nil, "pdf: three bookmarks show, all open")
+    -- every object sits exactly where the cross-reference table says
+    local size = tonumber(s:match("/Size (%d+)"))
+    local xref = s:find("xref\n", 1, true)
+    local good = size ~= nil and xref ~= nil
+    local i = 0
+    for off in s:sub(xref):gmatch("(%d%d%d%d%d%d%d%d%d%d) 00000 n") do
+        i = i + 1
+        local at = tonumber(off) + 1
+        if s:sub(at, at + #tostring(i) + 5) ~= i .. " 0 obj" then good = false end
+    end
+    ok(good and i == size - 1, ("pdf: all %d objects are where the xref says"):format(i))
+end
+
 -- The streaming writer (used by notebook export) writes pages straight to disk:
 -- every object must sit exactly where the xref says, and the page tree (written
 -- last) must list every page.

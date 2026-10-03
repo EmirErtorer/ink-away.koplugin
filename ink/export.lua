@@ -620,7 +620,8 @@ end
 --   bg:   optional background, one RGBA buffer for every page or a
 --         function(i, scale) -> RGBA buffer rendering each page's own
 --   opts: { footer = stamp "i / n" page numbers, scale = pixel multiplier,
---           bg_opaque = the background has no transparency }
+--           bg_opaque = the background has no transparency,
+--           outline = bookmarks, { title, page, kids } (see Pdf Stream:finish) }
 -- step() returns "page", i, n while working, "done" when the file is complete,
 -- or nil, err (the partial file is removed). cancel() stops and deletes it.
 function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
@@ -638,7 +639,7 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
     function job.step()
         if job.over then return nil, "finished" end
         if job.i >= job.n then
-            local ok, e = stream:finish()
+            local ok, e = stream:finish(opts.outline)
             job.over = true
             if not ok then return nil, e end
             return "done"
@@ -647,8 +648,12 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
         local i = job.i
         local c = Canvas.new(w, h)
         c:setOps(pages[i])
-        local page_bg = (type(bg) == "function") and bg(i, scale) or bg
-        local page_template = (type(template) == "function") and template(i) or template
+        -- a function gives each page its own; it may have none (a blank page
+        -- inserted into an imported PDF)
+        local page_bg = bg
+        if type(bg) == "function" then page_bg = bg(i, scale) end
+        local page_template = template
+        if type(template) == "function" then page_template = template(i) end
         local jopts = { template = page_template, bg = page_bg, bg_opaque = opts.bg_opaque,
             scale = (page_bg and scale) or 1,
             footer = opts.footer and (tostring(i) .. " / " .. job.n) or nil }

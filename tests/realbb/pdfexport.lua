@@ -73,5 +73,30 @@ do
     ok(#da > 0 and da == db, "an empty PDF page encoded directly is byte-identical to the general path")
     os.remove(a_path); os.remove(b_path)
 end
+-- pages with and without a background, and per-page templates and bookmarks: a
+-- page whose background function gives nothing (a blank page inserted into an
+-- imported PDF) is plain paper, and KOReader reads the bookmarks
+do
+    local mixed = { {}, { { kind = "ink", width = 6, alpha = 255, pts = { 100, 300, 600, 340 } } }, {} }
+    local job3 = assert(Export.notebookPDFJob(mixed, W, H,
+        function(i) return { style = (i == 2) and "lines" or "blank", size = 40, gray = 200 } end,
+        out, 85, tmp, function(i) if i ~= 2 then return bg(i) end end,
+        { outline = { { title = "Start", page = 1, kids = { { title = "Şekil 2", page = 2 } } } } }))
+    local okc, state, err
+    repeat okc, state, err = pcall(job3.step) until not okc or state ~= "page"
+    if not okc then state, err = nil, state end
+    ok(state == "done", "a mix of pages with and without backgrounds exports: " .. tostring(err))
+    if mok and state == "done" then
+        local dok, doc = pcall(Mupdf.openDocument, out)
+        ok(dok and doc and doc:getPages() == 3, "and MuPDF opens all three pages")
+        if dok and doc then
+            local toc = doc:getToc() or {}
+            ok(#toc == 2 and toc[1].title == "Start" and toc[2].title == "Şekil 2" and toc[2].page == 2,
+                "the bookmarks read back, nested and in Turkish")
+            doc:close()
+        end
+    end
+    os.remove(out)
+end
 print(("realbb pdfexport: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -1,7 +1,8 @@
 --[[
 Exporting: one sheet for drawings and notebooks, a PNG of the page (or a part
 of it) or a PDF of some or all pages, then a file name in the export folder.
-Also bookshelf ornaments.
+Titled pages become the PDF's bookmarks. Also a whole folder as one PDF, and
+bookshelf ornaments.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -14,10 +15,15 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
+local RenderImage = require("ui/renderimage")
 local Export = require("ink/export")
+local Folder = require("ink/folder")
 local ImageProc = require("ink/imageproc")
+local Library = require("ink/library")
+local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
+local Project = require("ink/project")
 local Storage = require("ink/storage")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -26,6 +32,7 @@ local PAPERS = Palette.PAPERS
 local existingDir = Storage.existingDir
 local strengthToLevel = Paint.strengthToLevel
 local bbToRGBA = ImageProc.bbToRGBA
+local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
@@ -257,31 +264,43 @@ function InkAwayView:promptExportRange()
     }
 end
 
--- Ask for the file name, starting from the last export's name (else the
--- document's), in the export folder; Folder... picks another folder for this
--- document. Then write it, asking first if that would replace a file.
-function InkAwayView:promptExportName(name, dir)
-    local o = self:exportOptions()
-    local ext = o.fmt
-    dir = dir or self:exportDir()
-    name = name or o.name or self:docName()
+-- Ask for an export file name in folder o.dir, with a Folder button to pick
+-- another, then call o.on_path(path) once writing there is fine (asking first
+-- if it would replace a file). `o` holds title, name, default, dir, ext, and
+-- on_dir(dir) for a folder picked on the way.
+function InkAwayView:askExportPath(o)
     self:promptText{
-        title = ext == "pdf" and _("Export as PDF") or _("Export as PNG"),
-        input = name, default = self:docName(),
-        description = string.format(_("Into %s"), Storage.shortPath(dir)),
+        title = o.title, input = o.name, default = o.default,
+        description = string.format(_("Into %s"), Storage.shortPath(o.dir)),
         ok_text = _("Export"),
         extra = { text = _("Folder\u{2026}"), callback = function(text)
-            self:pickFolder(dir, function(d)
-                o.dir = d
-                self:promptExportName(text, d)
+            self:pickFolder(o.dir, function(d)
+                if o.on_dir then o.on_dir(d) end
+                o.dir, o.name = d, text
+                self:askExportPath(o)
             end)
         end },
         on_ok = function(text)
-            local path = Storage.join(dir, Storage.fileName(text, ext))
-            self:confirmReplace(path, function()
-                o.name = Storage.stem(path)
-                if ext == "pdf" then self:writePDF(path) else self:writePNG(path) end
-            end)
+            local path = Storage.join(o.dir, Storage.fileName(text, o.ext))
+            self:confirmReplace(path, function() o.on_path(path) end)
+        end,
+    }
+end
+
+-- Ask for the file name, starting from the last export's name (else the
+-- document's), in the export folder; Folder... picks another folder for this
+-- document. Then write it.
+function InkAwayView:promptExportName(name, dir)
+    local o = self:exportOptions()
+    local ext = o.fmt
+    self:askExportPath{
+        title = ext == "pdf" and _("Export as PDF") or _("Export as PNG"),
+        name = name or o.name or self:docName(), default = self:docName(),
+        dir = dir or self:exportDir(), ext = ext,
+        on_dir = function(d) o.dir = d end,
+        on_path = function(path)
+            o.name = Storage.stem(path)
+            if ext == "pdf" then self:writePDF(path) else self:writePNG(path) end
         end,
     }
 end
@@ -295,14 +314,29 @@ end
 -- out. A copy, so nothing sticks to the notebook.
 function InkAwayView:exportTemplate(i)
     local o = self:exportOptions()
-    local nb = self.notebook
+    return self:pageExportTemplate(self.notebook, i, o.paper, o.include_bg)
+end
+
+-- The export template of page i of notebook nb, on paper colour `paper`, with or
+-- without its ruling (`ruled`).
+function InkAwayView:pageExportTemplate(nb, i, paper, ruled)
     local template = {}
     for k, v in pairs(nb.template) do template[k] = v end
     template.style = nb:pageTemplate(i).style
-    template.paper = PAPERS[o.paper or "white"] or PAPERS.white
+    template.paper = PAPERS[paper or "white"] or PAPERS.white
     template.gray = strengthToLevel(template.strength)
-    if not o.include_bg and not template.pdf_path then template.style = "blank" end
+    if not ruled and not template.pdf_path then template.style = "blank" end
     return template
+end
+
+-- Bookmarks for the titled pages among `pages` (notebook pages, in export
+-- order): { title, page } each.
+local function titledPages(pages)
+    local out = {}
+    for j, page in ipairs(pages) do
+        if page.title then out[#out + 1] = { title = page.title, page = j } end
+    end
+    return out
 end
 
 -- Export.savePNG options for the page shown: the area, the paper or background
@@ -337,13 +371,15 @@ end
 function InkAwayView:writePDF(path)
     local o = self:exportOptions()
     local nb = self.notebook
-    local pages_ops, template, bg, w, h
+    local pages_ops, template, bg, w, h, outline
     local bg_opaque, quality = false, 85
     if nb then
         self:nbSyncOut()
         local sel = self:selectedNotebookPages()
+        local pages = {}
         pages_ops = {}
-        for j = 1, #sel do pages_ops[j] = nb.pages[sel[j]].ops end
+        for j = 1, #sel do pages[j] = nb.pages[sel[j]]; pages_ops[j] = pages[j].ops end
+        outline = titledPages(pages)
         w, h = nb.w, nb.h
         template = function(j) return self:exportTemplate(sel[j]) end
         if nb.template.pdf_path then
@@ -368,18 +404,95 @@ function InkAwayView:writePDF(path)
         template = { style = "blank", paper = PAPERS[o.paper or "white"] or PAPERS.white }
         if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
     end
-    self:runPdfJob(path, pages_ops, w, h, template, bg, bg_opaque, o.numbers, quality)
+    self:runPdfJob(path, { pages = pages_ops, w = w, h = h, template = template, bg = bg,
+        bg_opaque = bg_opaque, numbers = o.numbers, quality = quality, outline = outline })
+end
+
+-- Export every document of folder `dir`, in the overview's tab order, as one
+-- PDF: each notebook's pages on their own paper, each drawing a page, and a
+-- bookmark per document with its titled pages under it.
+function InkAwayView:exportFolderPDF(dir)
+    self:leaveDocument()   -- so the open document's latest changes are in its file
+    local docs = Folder.arrange(Folder.load(dir), select(2, Library.list(dir, self:libraryDir())))
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local pages, templates, sources, outline = {}, {}, {}, {}
+    for _, d in ipairs(docs) do
+        local data = Project.load(d.path)
+        if data then
+            local item = { title = Storage.stem(d.name), page = #pages + 1, kids = {} }
+            if Project.isNotebook(data) then
+                local nb = Notebook.fromData(data)
+                for i, page in ipairs(nb.pages) do
+                    pages[#pages + 1] = page.ops
+                    templates[#pages] = self:pageExportTemplate(nb, i, "white", true)
+                    if nb.template.pdf_path and page.src then
+                        sources[#pages] = { pdf = nb.template.pdf_path, src = page.src }
+                    end
+                    if page.title then item.kids[#item.kids + 1] = { title = page.title, page = #pages } end
+                end
+            else
+                pages[#pages + 1] = data.ops or {}
+                templates[#pages] = { style = "blank", paper = PAPERS.white }
+                if type(data.bg) == "string" and Storage.exists(data.bg) then sources[#pages] = { image = data.bg } end
+            end
+            outline[#outline + 1] = item
+        end
+    end
+    if #pages == 0 then
+        UIManager:show(InfoMessage:new{ text = _("There is nothing to export in this folder."), timeout = 3 })
+        return
+    end
+    -- page backgrounds are rendered as each page is written: a PDF page from its
+    -- document (kept open until the export ends) or a drawing's picture
+    local docs_open = {}
+    local function bg(j, s)
+        local b = sources[j]
+        if not b then return nil end
+        s = s or 1
+        local img
+        if b.pdf then
+            if docs_open[b.pdf] == nil then
+                local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(b.pdf) end)
+                docs_open[b.pdf] = ok and doc or false
+            end
+            img = docs_open[b.pdf] and self:renderPdfPage(docs_open[b.pdf], b.src, W * s, H * s)
+        else
+            local ok, raw = pcall(function() return RenderImage:renderImageFile(b.image, false) end)
+            img = ok and raw and fitIntoCanvasBB(raw, W * s, H * s) or nil
+        end
+        if not img then return nil end
+        local rgba = bbToRGBA(img, W * s, H * s)
+        img:free()
+        return rgba
+    end
+    local function closeDocs()
+        for _, doc in pairs(docs_open) do if doc then pcall(function() doc:close() end) end end
+        docs_open = {}
+    end
+    self:askExportPath{
+        title = _("Export the folder as PDF"), name = Storage.baseName(dir), default = Storage.baseName(dir),
+        dir = self:defaultExportDir(), ext = "pdf",
+        on_path = function(path)
+            self:runPdfJob(path, { pages = pages, w = W, h = H, bg = bg, outline = outline,
+                template = function(j) return templates[j] end, done = closeDocs })
+        end,
+    }
 end
 
 -- Write a PDF one page per UI step, with a progress bar and a way to stop, then
--- offer to open it. `bg` is one RGBA buffer for every page or a function
--- rendering each page's own (see Export.notebookPDFJob).
-function InkAwayView:runPdfJob(path, pages_ops, w, h, template, bg, bg_opaque, numbers, quality)
+-- offer to open it. `spec` holds pages (op lists), w, h, template (one, or a
+-- function of the page), bg (one RGBA buffer, or a function rendering each
+-- page's own), bg_opaque, numbers, quality, outline and done(), called when the
+-- job ends however it ends (see Export.notebookPDFJob).
+function InkAwayView:runPdfJob(path, spec)
+    local pages_ops = spec.pages
     -- each page streams to disk and is freed before the next, so a long
     -- imported PDF neither freezes the reader nor builds the whole file in memory
-    local job, jerr = Export.notebookPDFJob(pages_ops, w, h, template, path, quality, Storage.settingsDir(), bg,
-        { footer = numbers or nil, bg_opaque = bg_opaque or nil })
+    local job, jerr = Export.notebookPDFJob(pages_ops, spec.w, spec.h, spec.template, path, spec.quality or 85,
+        Storage.settingsDir(), spec.bg,
+        { footer = spec.numbers or nil, bg_opaque = spec.bg_opaque or nil, outline = spec.outline })
     if not job then
+        if spec.done then spec.done() end
         UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(jerr) })
         return
     end
@@ -397,6 +510,7 @@ function InkAwayView:runPdfJob(path, pages_ops, w, h, template, bg, bg_opaque, n
             dismiss_callback = function()   -- closed by the reader (stop), not by us
                 if self._export_job == job and not job.over then
                     job.cancel()
+                    if spec.done then spec.done() end
                     self._export_job = nil
                     UIManager:show(InfoMessage:new{ text = _("Export stopped."), timeout = 2 })
                 end
@@ -417,6 +531,7 @@ function InkAwayView:runPdfJob(path, pages_ops, w, h, template, bg, bg_opaque, n
     local function finished()
         self._export_job = nil
         closeProgress()
+        if spec.done then spec.done() end
         -- make the PDF open as a full page with no auto-crop the first time
         self:seedPdfView(path)
         self:markDirty()   -- keep the export settings with the document
@@ -433,6 +548,7 @@ function InkAwayView:runPdfJob(path, pages_ops, w, h, template, bg, bg_opaque, n
         local ok, state, a = pcall(job.step)
         if not ok or not state then
             job.cancel()
+            if spec.done then spec.done() end
             self._export_job = nil
             closeProgress()
             UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(ok and a or state) })

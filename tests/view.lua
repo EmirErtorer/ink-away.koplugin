@@ -2598,6 +2598,88 @@ do
     UIManager.reset()
 end
 
+-- ---- bookmarks and folder export ------------------------------------------
+do
+    local TestEnv = require("testenv")
+    local Export = require("ink/export")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/folderpdf"
+    local DIR = LIB .. "/Physics"
+    os.execute("mkdir -p '" .. DIR .. "'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local savedJob, job = Export.notebookPDFJob, nil
+    Export.notebookPDFJob = function(pages, w, h, template, path, quality, tmp, bg, opts)
+        job = { pages = pages, template = template, bg = bg, opts = opts, path = path }
+        return { i = 0, n = #pages, step = function() return "done" end, cancel = function() end }
+    end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", DIR)
+    stroke(view, 100, 100)
+    view:nbAddPage(); stroke(view, 200, 200)
+    view:nbAddPage()
+    view.notebook.pages[2].title = "Forces"
+    view:renameDocument("Mechanics")
+    view:writePDF(LIB .. "/mech.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(job and #job.pages == 3 and #job.opts.outline == 1 and job.opts.outline[1].title == "Forces"
+        and job.opts.outline[1].page == 2, "bookmarks: a titled page becomes a bookmark to its page")
+    view:exportOptions().scope = "ink"
+    view:writePDF(LIB .. "/mech.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(#job.pages == 2 and job.opts.outline[1].page == 2, "bookmarks: numbered within the pages exported")
+    view:exportOptions().scope = "all"
+    view:saveDocument()
+
+    view:newDrawing(DIR)
+    stroke(view, 100, 100)
+    view:renameDocument("Sketch"); view:saveDocument()
+    view:newNotebook("grid", DIR)
+    stroke(view, 150, 150)
+    view:renameDocument("Waves")   -- left unsaved: the folder export saves it first
+
+    view:openLibrary(LIB)
+    view:libraryItemMenu(view._library.items[1])
+    local found
+    for _, row in ipairs(ButtonDialog.last.buttons) do
+        for _, b in ipairs(row) do if b.text:find("Export as PDF", 1, true) then found = b end end
+    end
+    ok(found ~= nil, "folder: a folder's menu offers Export as PDF")
+    found.callback()
+    ok(InputDialog.last and InputDialog.last.input == "Physics", "folder: the PDF is named after the folder")
+    InputDialog.last.buttons[1][3].callback()
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(job and #job.pages == 5, "folder: every page of every document is in it (3 + 1 + 1)")
+    local o = job.opts.outline
+    ok(#o == 3 and o[1].title == "Mechanics" and o[2].title == "Sketch" and o[3].title == "Waves",
+        "folder: one bookmark per document, in tab order")
+    ok(o[1].page == 1 and o[2].page == 4 and o[3].page == 5, "folder: each going to its first page")
+    ok(#o[1].kids == 1 and o[1].kids[1].title == "Forces" and o[1].kids[1].page == 2,
+        "folder: titled pages are bookmarks under their notebook")
+    ok(job.template(1).style == "lines" and job.template(4).style == "blank" and job.template(5).style == "grid",
+        "folder: each page on its own paper")
+    ok(job.path:match("/Physics%.pdf$") ~= nil, "folder: written to the export folder")
+    Export.notebookPDFJob = savedJob
+    if view._library then view._library:close() end
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

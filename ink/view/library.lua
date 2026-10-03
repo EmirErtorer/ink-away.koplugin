@@ -133,7 +133,8 @@ function InkAwayView:libraryItemMenu(it)
           act(_("Move to\u{2026}"), function() self:moveItem(it) end) },
     }
     if it.folder then
-        rows[#rows + 1] = { act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
+        rows[#rows + 1] = { act(_("Export as PDF\u{2026}"), function() self:exportFolderPDF(it.path) end),
+            act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
     else
         rows[1][2] = act(_("Export\u{2026}"), function()
             self:libraryPick(it)
