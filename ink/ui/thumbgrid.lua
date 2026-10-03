@@ -44,7 +44,7 @@ local ThumbGrid = InputContainer:extend{
     tabs = nil,         -- list of { label, color = Blitbuffer colour or nil, selected = bool, folder = bool }
     on_tab = nil,       -- function(tab) after a tap on a tab
     on_tab_hold = nil,  -- function(tab) after a hold on a tab
-    tab_footer = nil,   -- { label, cb }: a button under the tabs
+    tab_footer = nil,   -- { { label, cb }, ... }: buttons under the tabs, the last one lowest
     start = 1,          -- the item whose grid page shows first
     flash_open = true,  -- flash when shown (over ink); not when it replaces another grid
     cols = nil,         -- 3 x 3 cards, or 4 x 2 on a wide screen, unless given
@@ -104,14 +104,18 @@ function ThumbGrid:setItems(items, title, tabs)
 end
 
 -- The tab column's layout: tab height and gap, how many tabs fit, and the rects
--- of the paging arrows and the footer button.
+-- of the paging arrows and the buttons under the tabs.
 function ThumbGrid:tabLayout()
     local th, gap = Screen:scaleBySize(52), Screen:scaleBySize(8)
     local top = self.top_h + self.pad
     local bottom = self.sh - self.bot_h
     local x, w = self.pad, self.tab_w - self.pad
-    local foot = self.tab_footer and { x = x, y = bottom - th, w = w - self.pad, h = th } or nil
-    local avail = (foot and foot.y - gap or bottom) - top
+    local foot = {}
+    local n = self.tab_footer and #self.tab_footer or 0
+    for i = 1, n do
+        foot[i] = { x = x, y = bottom - (n - i + 1) * th - (n - i) * gap, w = w - self.pad, h = th }
+    end
+    local avail = (n > 0 and foot[1].y - gap or bottom) - top
     local fit = math.max(1, math.floor((avail + gap) / (th + gap)))
     local arrows
     if #self.tabs > fit then
@@ -229,14 +233,16 @@ function ThumbGrid:paintTo(bb, x, y)
     local accent = Accent.get()
     local function pill(text, dark)
         local t = TextWidget:new{ text = text, face = pface, bold = true }
-        local w = math.max(S(84), t:getSize().w + S(28))
+        -- a word gets a pill at least as wide as "Close"; a lone symbol a small one
+        local glyph = #text <= 4 and not text:find("%w")
+        local w = math.max(glyph and S(52) or S(84), t:getSize().w + S(22))
         t:free()
         right = right - w
         if dark then Accent.paintRounded(bb, right, pill_y, w, pill_h, S(11))
         else bb:paintRoundedRect(right, pill_y, w, pill_h, CARD, S(11)) end
         label(text, right + w / 2, pill_y + pill_h / 2, pface, dark and accent.text or BLACK, nil, true)
         local r = { x = right, y = pill_y, w = w, h = pill_h }
-        right = right - S(8)
+        right = right - S(6)
         return r
     end
     self._close = pill(self.close_label or _("Close"), true)
@@ -253,8 +259,18 @@ function ThumbGrid:paintTo(bb, x, y)
         self._back = { x = tx - self.pad, y = y, w = bw + self.pad, h = self.top_h }
         tx = tx + bw
     end
-    local title = TextWidget:new{ text = self.title, face = Font:getFace("cfont", 22), bold = true,
-        max_width = math.max(S(40), right - tx) }
+    -- the title steps down a size before it is cut short, as a folder's name
+    -- shares the bar with its back arrow and the buttons
+    local room = math.max(S(40), right - tx)
+    local size
+    for _, pt in ipairs({ 22, 19, 17 }) do
+        size = pt
+        local t = TextWidget:new{ text = self.title, face = Font:getFace("cfont", pt), bold = true }
+        local fits = t:getSize().w <= room
+        t:free()
+        if fits then break end
+    end
+    local title = TextWidget:new{ text = self.title, face = Font:getFace("cfont", size), bold = true, max_width = room }
     local tsz = title:getSize()
     title:paintTo(bb, tx, y + math.floor(self.top_h / 2 - tsz.h / 2))
     title:free()
@@ -308,10 +324,9 @@ function ThumbGrid:paintTo(bb, x, y)
                 label("\u{25BC}", x + a.down.x + a.down.w / 2, y + a.down.y + a.down.h / 2, tface)
             end
         end
-        if L.foot then
-            local f = L.foot
+        for i, f in ipairs(L.foot) do
             Accent.paintRounded(bb, x + f.x, y + f.y, f.w, f.h, S(12))
-            label(self.tab_footer[1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, accent.text, f.w - S(8), true)
+            label(self.tab_footer[i][1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, accent.text, f.w - S(8), true)
         end
         -- the line between the tabs and the grid, broken where the selected tab joins it
         bb:paintRect(x + self.tab_w, y + self.top_h, 1, sh - self.top_h - self.bot_h, GREY)
@@ -402,11 +417,11 @@ end
 local function hit(r, p) return r and p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
 
 -- What of the tab column is at screen point p: a tab, "up" or "down" (paging),
--- "footer", or nil.
+-- the index of a button under the tabs, or nil.
 function ThumbGrid:tabAt(p)
     if not self.tabs or p.x > self.tab_w then return nil end
     local L = self:tabLayout()
-    if L.foot and hit(L.foot, p) then return "footer" end
+    for i, f in ipairs(L.foot) do if hit(f, p) then return i end end
     if L.arrows then
         if hit(L.arrows.up, p) and self.tpage > 0 then return "up" end
         if hit(L.arrows.down, p) and self.tpage < math.ceil(#self.tabs / L.fit) - 1 then return "down" end
@@ -428,7 +443,7 @@ function ThumbGrid:onTgTap(_, ges)
     local tab = self:tabAt(p)
     if tab == "up" then self.tpage = math.max(0, self.tpage - 1); UIManager:setDirty(self, "ui"); return true end
     if tab == "down" then self.tpage = self.tpage + 1; UIManager:setDirty(self, "ui"); return true end
-    if tab == "footer" then self.tab_footer[2](); return true end
+    if type(tab) == "number" then self.tab_footer[tab][2](); return true end
     if tab then
         if self.on_tab then self.on_tab(tab) end
         return true

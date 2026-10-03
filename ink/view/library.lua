@@ -1,7 +1,7 @@
 --[[
 The library: a full-screen grid of the folders and documents in the library
-folder. Tap to open, hold for rename, duplicate, move and delete; new folders,
-importing a PDF and sorting from its menu. Thumbnails are rendered from the files
+folder. Tap to open, hold for rename, duplicate, move and delete. New drawings,
+notebooks and folders from its header; importing a PDF and sorting from its menu. Thumbnails are rendered from the files
 and cached, so the grid only draws a document once per change.
 Part of InkAwayView (see ink/view.lua).
 ]]
@@ -77,6 +77,9 @@ function InkAwayView:openLibrary(dir, over_grid)
                 self:newDrawing(d)
             end, true },
             { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._lib_dir) end, true },
+            { "+ " .. _("Folder"), function()
+                self:promptNewFolder(self._lib_dir, function() self:refreshLibrary() end)
+            end, true },
             { "\u{22EF}", function() self:libraryMenu() end },
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,
@@ -110,13 +113,11 @@ function InkAwayView:libraryPick(it)
     self:openDocument(it.path)
 end
 
--- The library's menu: new folder, import a PDF, and the sort order.
+-- The library's menu: import a PDF, and the sort order.
 function InkAwayView:libraryMenu()
     local dialog
     local by_name = self:getSetting("inkaway_library_sort") == "name"
     dialog = ButtonDialog:new{ buttons = {
-        { { text = _("New folder"), callback = function()
-            UIManager:close(dialog); self:promptNewFolder(self._lib_dir, function() self:refreshLibrary() end) end } },
         { { text = _("Import a PDF\u{2026}"), callback = function()
             UIManager:close(dialog); self:openPdfAsNotebook(self._lib_dir) end } },
         { { text = by_name and _("Sort by date") or _("Sort by name"), callback = function()
@@ -292,7 +293,7 @@ function InkAwayView:chooseLibraryFolder(moving, on_pick)
         close_label = _("Cancel"),
         empty_text = _("No folders here."),
         actions = {
-            { _("New folder"), function() self:promptNewFolder(cur, function() go(cur) end) end },
+            { "+ " .. _("Folder"), function() self:promptNewFolder(cur, function() go(cur) end) end },
             { _("Move here"), function() grid:close(); on_pick(cur) end, true },
         },
         on_pick = function(it) go(it.path) end,

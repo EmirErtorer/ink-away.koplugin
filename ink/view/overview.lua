@@ -202,7 +202,12 @@ function InkAwayView:openOverview()
             if tab.folder then self:overviewGo(tab.path) else self:overviewShowTab(tab.path) end
         end,
         on_tab_hold = function(tab) self:overviewTabMenu(tab) end,
-        tab_footer = { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._ov.dir) end },
+        tab_footer = {
+            { "+ " .. _("Folder"), function()
+                self:promptNewFolder(self._ov.dir, function() self:refreshOverview() end)
+            end },
+            { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._ov.dir) end },
+        },
         on_close = function() self:closeOverviewDocs(); self._ov, self._overview = nil, nil end,
     }
     self._overview = grid

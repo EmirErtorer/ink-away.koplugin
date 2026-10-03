@@ -2004,8 +2004,11 @@ do
     lib:paintTo(Screen.bb, 0, 0)
     ok(BB.out_of_bounds == 0, "lib: the grid paints in bounds")
 
-    -- a new folder, then a new drawing made inside it
-    view:promptNewFolder(LIB, function() view:refreshLibrary() end)
+    -- a new folder from the header's + Folder, then a new drawing made inside it
+    local plus_folder
+    for _, a in ipairs(lib.actions) do if a[1] == "+ Folder" then plus_folder = a end end
+    ok(plus_folder and plus_folder[3], "lib: + Folder sits in the header, filled like + Drawing and + Notebook")
+    plus_folder[2]()
     answer("School")
     ok(Storage.isDir(LIB .. "/School") and labels(lib) == "/School,First", "lib: New folder makes a folder, listed first")
     view:libraryPick(lib.items[1])
@@ -2096,8 +2099,8 @@ do
     view:libraryItemMenu(view._library.items[1])
     ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: holding a card shows its menu")
     view:libraryMenu()
-    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: the library menu offers folder, import and sort")
-    ButtonDialog.last.buttons[3][1].callback()
+    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 2, "lib: the library menu offers import and sort")
+    ButtonDialog.last.buttons[2][1].callback()
     ok(G_reader_settings.data.inkaway_library_sort == "name", "lib: sorting by name is remembered")
     G_reader_settings.data.inkaway_library_sort = nil
 
@@ -2544,9 +2547,24 @@ do
         "overview: and the drawing keeps its place")
 
     -- + Notebook makes a new one in this folder
-    ov.tab_footer[2]()
+    ok(ov.tab_footer[2][1] == "+ Notebook", "overview: + Notebook is the lowest button under the tabs")
+    ov.tab_footer[2][2]()
     ok(view._new_dialog ~= nil, "overview: + Notebook opens the paper choice for this folder")
     view:closeSheet("_new_dialog")
+    -- + Folder above it makes a folder here, which shows as a tab at once
+    ok(ov.tab_footer[1][1] == "+ Folder", "overview: + Folder is above it")
+    ov.tab_footer[1][2]()
+    answer("Lab reports")
+    ok(Storage.isDir(DIR .. "/Lab reports") and ov.tabs[1].folder and ov.tabs[1].label == "Lab reports",
+        "overview: + Folder makes a folder in this one, shown as a tab")
+    BB.out_of_bounds = 0
+    ov:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "overview: the tab column with two buttons paints in bounds")
+    local L = ov:tabLayout()
+    local f1, f2 = L.foot[1], L.foot[2]
+    ok(f1.y + f1.h < f2.y and ov:tabAt({ x = f1.x + 5, y = f1.y + 5 }) == 1 and ov:tabAt({ x = f2.x + 5, y = f2.y + 5 }) == 2,
+        "overview: the two buttons are stacked apart and each answers its own taps")
+    Storage.removeTree(DIR .. "/Lab reports")
     ov:close()
 
     -- deleting the open notebook's tab
