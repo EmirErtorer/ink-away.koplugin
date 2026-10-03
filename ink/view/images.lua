@@ -58,7 +58,7 @@ function InkAwayView:placeBackground(img, path)
     self.bg_path = path
     self.export_bg = true
     self.bg_rgba = self:buildBgRGBA()
-    self.dirty = true
+    self:markDirty()
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "full")
 end
@@ -387,7 +387,7 @@ function InkAwayView:deleteActiveImage()
     self:clearImageSelection()
     self.canvas:pushHistory()
     self.canvas:removeOp(sel.idx)
-    self.dirty = true
+    self:markDirty()
     self:recompose()
 end
 
@@ -728,7 +728,7 @@ function InkAwayView:insertImage(path)
     op.y = math.max(0, math.min(v.canvas_h - op.h, ccy - op.h / 2))
     self.canvas:pushHistory()
     self.canvas.ops[#self.canvas.ops + 1] = op
-    self.dirty = true
+    self:markDirty()
     -- Switch to Pan with the picture selected and its menu open, as if it had been
     -- tapped there, so a new image is ready to move, resize or delete at once.
     self:setTool("pan")

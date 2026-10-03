@@ -108,7 +108,7 @@ function InkAwayView:selMoveCommit(sdx, sdy)
             self.canvas:replaceOp(idx, moved)
         end
     end
-    self.dirty = true
+    self:markDirty()
     self:recomputeSelectionBBox()
     self:recompose()
 end
@@ -130,7 +130,7 @@ function InkAwayView:selDuplicate()
     end
     self.selection = { idxs = new_idxs }   -- the copies become the selection
     self:recomputeSelectionBBox()
-    self.dirty = true
+    self:markDirty()
     self:recompose()
 end
 
@@ -140,7 +140,7 @@ function InkAwayView:selDelete()
     table.sort(self.selection.idxs, function(a, b) return a > b end)  -- remove high-to-low
     for _, idx in ipairs(self.selection.idxs) do self.canvas:removeOp(idx) end
     self.selection = nil
-    self.dirty = true
+    self:markDirty()
     self:composeCanvas(); self:renderView()
     self:refresh(self, "full")
 end

@@ -29,6 +29,16 @@ function Storage.isDir(p)
     return fs ~= nil and p ~= nil and fs.attributes(p, "mode") == "directory"
 end
 
+-- Is there a file or folder at `p`? Without lfs, only files are seen.
+function Storage.exists(p)
+    if not p then return false end
+    local fs = getLfs()
+    if fs then return fs.attributes(p, "mode") ~= nil end
+    local f = io.open(p, "rb")
+    if f then f:close(); return true end
+    return false
+end
+
 -- Make the directory `p` if it is missing. Returns whether it exists now.
 function Storage.ensureDir(p)
     local fs = getLfs()
@@ -49,14 +59,20 @@ function Storage.settingsDir()
     return (ds and ds:getSettingsDir()) or "/tmp"
 end
 
--- A folder under "ink away" in KOReader's data folder, made if missing, or nil
--- when it can't be made.
-function Storage.appDir(name)
+-- The "ink away" folder in KOReader's data folder, made if missing, or nil when
+-- it can't be made.
+function Storage.appRoot()
     local data = Storage.dataDir()
     if not data then return nil end
-    local parent = data .. "/ink away"
-    local dir = parent .. "/" .. name
-    Storage.ensureDir(parent)
+    local dir = data .. "/ink away"
+    return Storage.ensureDir(dir) and dir or nil
+end
+
+-- A folder under "ink away", made if missing, or nil when it can't be made.
+function Storage.appDir(name)
+    local root = Storage.appRoot()
+    if not root then return nil end
+    local dir = root .. "/" .. name
     return Storage.ensureDir(dir) and dir or nil
 end
 
@@ -65,12 +81,65 @@ function Storage.join(dir, name)
     return dir .. ((dir:sub(-1) == "/") and "" or "/") .. name
 end
 
+-- The folder part of a path, without the trailing slash.
+function Storage.dirName(path)
+    return path:match("^(.*)/[^/]*$") or "."
+end
+
+-- The last part of a path.
+function Storage.baseName(path)
+    return path:match("([^/]+)/*$") or path
+end
+
+-- The file name without its extension.
+function Storage.stem(path)
+    local base = Storage.baseName(path)
+    return base:match("^(.+)%.[^.]+$") or base
+end
+
 -- A file name from what was typed: path separators replaced, and ".ext" added
 -- unless it is already there.
 function Storage.fileName(name, ext)
     name = name:gsub("[/\\]", "_")
     if not name:lower():match("%." .. ext .. "$") then name = name .. "." .. ext end
     return name
+end
+
+-- A path in `dir` for `base`.`ext` that nothing uses yet: "base.ext", else
+-- "base (2).ext", "base (3).ext" and so on.
+function Storage.uniquePath(dir, base, ext)
+    base = base:gsub("[/\\]", "_")
+    local path = Storage.join(dir, base .. "." .. ext)
+    local n = 2
+    while Storage.exists(path) do
+        path = Storage.join(dir, string.format("%s (%d).%s", base, n, ext))
+        n = n + 1
+    end
+    return path
+end
+
+-- Write `s` to `path` without ever leaving a half-written file: it goes to a
+-- temporary file first, which is synced and then renamed over the old one.
+-- Returns ok, err.
+function Storage.writeAtomic(path, s)
+    local tmp = path .. ".tmp"
+    local f, err = io.open(tmp, "wb")
+    if not f then return false, err end
+    local wrote, werr = f:write(s)
+    if wrote then
+        local uok, util = pcall(require, "ffi/util")
+        if uok and util and util.fsyncOpenedFile then pcall(util.fsyncOpenedFile, f) end
+    end
+    f:close()
+    if not wrote then os.remove(tmp); return false, werr end
+    local ok, rerr = os.rename(tmp, path)
+    if not ok then
+        -- some file systems refuse to rename over an existing file
+        os.remove(path)
+        ok, rerr = os.rename(tmp, path)
+    end
+    if not ok then os.remove(tmp); return false, rerr end
+    return true
 end
 
 return Storage

@@ -5,6 +5,8 @@ chunk ("return { ... }") loaded in a sandbox with no globals, so a tampered file
 can define data but cannot run code.
 ]]
 
+local Storage = require("ink/storage")
+
 local Project = {}
 
 Project.EXT = "inkaway"
@@ -42,14 +44,44 @@ local function serializeRoot(root)
     return table.concat(out)
 end
 
--- Serialize a single-page canvas (v1) to a project string.
-function Project.serialize(canvas)
-    return serializeRoot({ v = 1, w = canvas.w, h = canvas.h, ops = canvas.ops })
+-- Copy the string-keyed fields of `extra` (background, notes about the file)
+-- into `root`.
+local function addExtra(root, extra)
+    if extra then
+        for k, v in pairs(extra) do root[k] = v end
+    end
+    return root
 end
 
--- Serialize a multi-page notebook (v2): the template plus one ops list per page.
-function Project.serializeNotebook(nb)
-    return serializeRoot({ v = 2, w = nb.w, h = nb.h, template = nb.template, pages = nb.pages })
+-- Serialize a single-page canvas (v1) to a project string. `extra` adds fields
+-- such as the background picture's path.
+function Project.serialize(canvas, extra)
+    return serializeRoot(addExtra({ v = 1, w = canvas.w, h = canvas.h, ops = canvas.ops }, extra))
+end
+
+-- Serialize a multi-page notebook (v2): the template plus one entry per page.
+-- `cache` (optional, keyed by page) keeps each page's text from the last save,
+-- so only pages missing from it are written out again; the caller drops a page
+-- from the cache whenever that page changes.
+function Project.serializeNotebook(nb, cache, extra)
+    local head = addExtra({ v = 2, w = nb.w, h = nb.h, template = nb.template }, extra)
+    local out = { "return " }
+    ser(head, out)
+    out[#out] = "[\"pages\"]={"   -- reopen the root table: replace its closing brace
+    for i = 1, #nb.pages do
+        local page = nb.pages[i]
+        local s = cache and cache[page]
+        if not s then
+            local p = {}
+            ser(page, p)
+            s = table.concat(p)
+            if cache then cache[page] = s end
+        end
+        out[#out + 1] = s
+        out[#out + 1] = ","
+    end
+    out[#out + 1] = "},}"
+    return table.concat(out)
 end
 
 -- Parse a project string. Returns a table { w, h, ops } or nil, error.
@@ -71,27 +103,21 @@ function Project.isNotebook(data)
     return type(data) == "table" and type(data.pages) == "table"
 end
 
-local function writeFile(path, s)
-    local f, err = io.open(path, "wb")
-    if not f then return false, err end
-    f:write(s)
-    f:close()
-    return true
-end
-
 -- Write the canvas to a file at `path`. Returns ok, err.
-function Project.save(canvas, path)
-    return writeFile(path, Project.serialize(canvas))
+function Project.save(canvas, path, extra)
+    return Storage.writeAtomic(path, Project.serialize(canvas, extra))
 end
 
 -- Write a notebook to a file at `path`. Returns ok, err.
-function Project.saveNotebook(nb, path)
-    return writeFile(path, Project.serializeNotebook(nb))
+function Project.saveNotebook(nb, path, cache, extra)
+    return Storage.writeAtomic(path, Project.serializeNotebook(nb, cache, extra))
 end
 
--- Read a project file. Returns { w, h, ops } or nil, err.
+-- Read a project file. Returns { w, h, ops } or nil, err. A save cut short
+-- after its temporary file was written leaves only that file; it is read then.
 function Project.load(path)
     local f, err = io.open(path, "rb")
+    if not f then f = io.open(path .. ".tmp", "rb") end
     if not f then return nil, err end
     local data = f:read("*a")
     f:close()

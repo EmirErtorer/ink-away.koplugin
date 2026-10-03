@@ -46,7 +46,7 @@ function InkAwayView:commitTextStep(idx, from, to)
     self._text_hist[nop] = h              -- carry the history onto the new identity
     self._text_hist[op] = nil
     self._peel_op = nop                   -- we are actively peeling this box
-    self.dirty = true
+    self:markDirty()
     self:recompose()
     return true
 end
@@ -328,7 +328,7 @@ function InkAwayView:finishTextEdit(commit)
     self._text_pending_style = nil
     self._lay_cache = nil
     self:closeSheet("_text_fmt")
-    self.dirty = true
+    self:markDirty()
     self:hideTextKeyboard()
     -- typing may have scrolled past the page end to keep the line above the
     -- keyboard (see ensureCaretVisible); bring the view back inside the page

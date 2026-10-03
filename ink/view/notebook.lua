@@ -19,6 +19,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
+local Storage = require("ink/storage")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -127,9 +128,19 @@ function InkAwayView:nbBarHeight()
     return isz + 2 * Screen:scaleBySize(4)
 end
 
--- Save the on-screen canvas back into the current notebook page.
+-- Save the on-screen canvas back into the current notebook page. A page whose
+-- ops changed since it was loaded or last synced is stamped and dropped from the
+-- save cache, so the next save writes it out again.
 function InkAwayView:nbSyncOut()
-    if self.notebook then self.notebook:setCurrentOps(self.canvas.ops) end
+    local nb = self.notebook
+    if not nb then return end
+    nb:setCurrentOps(self.canvas.ops)
+    if self.canvas.rev ~= self._page_rev then
+        self._page_rev = self.canvas.rev
+        nb:touch()
+        if self._page_cache then self._page_cache[nb.pages[nb.index]] = nil end
+        self.dirty = true
+    end
 end
 
 -- Load the current notebook page into the canvas and repaint.
@@ -140,6 +151,7 @@ function InkAwayView:nbLoad()
     self:freeImageCache()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
+    self._page_rev = self.canvas.rev
     self.selected, self.rotating = nil, nil
     self:resetLasso()
     self:composeCanvas(); self:renderView()
@@ -280,7 +292,6 @@ function InkAwayView:nbGoTo(target)
     self:nbSyncOut()
     nb:gotoPage(target)
     self:nbLoad()
-    self.dirty = true
 end
 
 -- Go to a page: a sheet with First and Last jumps and a button that opens the
@@ -334,7 +345,7 @@ function InkAwayView:nbDuplicatePage()
     self:nbSyncOut()
     self.notebook:duplicatePage()
     self:nbLoad()
-    self.dirty = true
+    self:markDirty()
 end
 
 -- The page menu, opened by tapping the page counter in the bottom bar: go to a
@@ -416,7 +427,7 @@ function InkAwayView:nbAddPage()
     self:nbSyncOut()
     self.notebook:addPage()
     self:nbLoad()
-    self.dirty = true
+    self:markDirty()
 end
 
 -- Remove the current page (with a confirm; never drops below one page).
@@ -432,22 +443,18 @@ function InkAwayView:nbDeletePage()
         ok_callback = function()
             self.notebook:deletePage()
             self:nbLoad()
-            self.dirty = true
+            self:markDirty()
         end,
     })
 end
 
--- Make `nb` the open notebook and show its current page. `keep` saves it to the
--- session at once, so a close before the next autosave still reopens it as a
--- notebook rather than the previous drawing.
-function InkAwayView:enterNotebook(nb, keep)
+-- Make `nb` the open notebook and show its current page.
+function InkAwayView:enterNotebook(nb)
     self.notebook = nb
     self.nb_bar_h = self:nbBarHeight()
     self:recomputeArea()
     self:nbLoad()
-    self.dirty = false
     self:resetTransientMemory()     -- reclaim the previous work's memory now
-    if keep and self.autosave ~= "off" then self:saveSession() end
 end
 
 -- Enter notebook mode with a fresh notebook using `template`
@@ -455,7 +462,7 @@ end
 function InkAwayView:startNotebook(template)
     self:clearBackground()
     self.save_area = nil
-    self:enterNotebook(Notebook.new(self.screen_w, self.screen_h, template), true)
+    self:enterNotebook(Notebook.new(self.screen_w, self.screen_h, template))
 end
 
 -- Rebuild notebook mode from a loaded v2 project.
@@ -485,8 +492,10 @@ function InkAwayView:exitNotebook()
     self:recomputeArea()
 end
 
--- Open an entire PDF as a notebook: one page per PDF page, each with the PDF
--- page as its background to write on. Pages are rendered lazily on demand.
+-- Open an entire PDF as a new notebook: one page per PDF page, each with the
+-- PDF page as its background to write on. Pages are rendered lazily on demand.
+-- It is saved at once, named after the PDF, so it is in the library straight
+-- away.
 function InkAwayView:startPdfNotebook(path)
     local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(path) end)
     if not ok or not doc then
@@ -496,45 +505,40 @@ function InkAwayView:startPdfNotebook(path)
     local pages = 1
     pcall(function() pages = doc:getPageCount() or 1 end)
     if not pages or pages < 1 then pages = 1 end
-    self:closeNotebookPDF()
-    self._nb_pdf_doc, self._nb_pdf_path = doc, path
-    self:clearBackground()
-    self.save_area = nil
-    local nb = Notebook.new(self.screen_w, self.screen_h, {
-        style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
-    })
-    local list = {}
-    for i = 1, pages do list[i] = { ops = {}, src = i } end   -- one ink layer per PDF page
-    nb.pages, nb.index = list, 1
-    self:enterNotebook(nb, true)
+    self:beginDocument("notebook", Storage.stem(path), function()
+        self:closeNotebookPDF()
+        self._nb_pdf_doc, self._nb_pdf_path = doc, path
+        self:clearBackground()
+        self:enterNotebook(Notebook.forPdf(self.screen_w, self.screen_h, {
+            style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
+        }, pages))
+    end)
+    self:saveDocument(true)
 end
 
--- Pick a PDF and open it as a notebook (confirming first if there is work open).
+-- Pick a PDF and open it as a new notebook.
 function InkAwayView:openPdfAsNotebook()
     self:pickFile(self:defaultDir(), function(path)
         if not path:lower():match("%.pdf$") then
             UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
             return
         end
-        self:confirmDiscard(_("Open this PDF as a notebook? The current work will be cleared."), _("Open"),
-            function() self:startPdfNotebook(path) end)
+        self:startPdfNotebook(path)
     end)
 end
 
 -- Start a new notebook: ask which ruling to use, then enter notebook mode.
 function InkAwayView:newNotebook()
-    local function begin(style)
+    local function go(style)
         self.nb_style = style
         self:setSetting("inkaway_nb_style", style)
         -- start from the last notebook's ruling (else the drawing grid's spacing
         -- and strength), so a new notebook matches the last one
-        self:startNotebook({ style = style,
-            size = self.nb_size or self.grid_size or 40,
-            strength = self.nb_strength or self.grid_strength or 45 })
-    end
-    local function go(style)
-        self:confirmDiscard(_("Start a new notebook? The current work will be cleared."), _("New"),
-            function() begin(style) end)
+        self:beginDocument("notebook", nil, function()
+            self:startNotebook({ style = style,
+                size = self.nb_size or self.grid_size or 40,
+                strength = self.nb_strength or self.grid_strength or 45 })
+        end)
     end
     self:closeSheet("_chooser_dialog")
     local content_w = self:sheetWidth()

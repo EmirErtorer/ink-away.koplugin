@@ -7,6 +7,7 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -27,6 +28,7 @@ local _ = require("gettext")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Raster = require("ink/raster")
+local Storage = require("ink/storage")
 local IconMenu = require("ink/ui/iconmenu")
 
 local Screen = Device.screen
@@ -351,6 +353,16 @@ end
 function InkAwayView:pickFolder(path, on_pick)
     UIManager:show(PathChooser:new{ select_directory = true, select_file = false, show_files = true,
         path = path, onConfirm = on_pick })
+end
+
+-- Run fn(), asking first when a file at `path` would be replaced.
+function InkAwayView:confirmReplace(path, fn)
+    if not Storage.exists(path) then fn(); return end
+    UIManager:show(ConfirmBox:new{
+        text = string.format(_("\u{201C}%s\u{201D} already exists. Replace it?"), Storage.baseName(path)),
+        ok_text = _("Replace"),
+        ok_callback = fn,
+    })
 end
 
 -- A short, non-blocking message.

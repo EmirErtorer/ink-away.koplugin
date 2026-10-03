@@ -9,7 +9,6 @@ paintTo copies to the screen.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
@@ -34,7 +33,9 @@ local function deferredCollect() collectgarbage("collect") end
 local function inNotebook(open)
     return function(v)
         if not v.notebook then
-            v:startNotebook({ style = "lines", size = v.grid_size or 40, strength = v.grid_strength or 45 })
+            v:beginDocument("notebook", nil, function()
+                v:startNotebook({ style = "lines", size = v.grid_size or 40, strength = v.grid_strength or 45 })
+            end)
         end
         open(v)
     end
@@ -196,7 +197,9 @@ function InkAwayView:init()
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
     self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes
     self._strokes_since_full = 0
-    self.autosave    = self:getSetting("inkaway_autosave", "exit")     -- off | exit | periodic
+    -- The open document (see view/document.lua): its file, whether that file
+    -- exists yet, and whether there are changes the canvas does not count.
+    self.doc_path, self.doc_written = nil, false
     self.dirty = false
     self._autosave_tick = function() self:autosaveTick() end
 
@@ -302,10 +305,9 @@ function InkAwayView:init()
     self.canvas_bb = Blitbuffer.new(self.view.canvas_w, self.view.canvas_h, bbtype)
     self.area_bb = self:newAreaBuffer()   -- in the panel's pixel order (see view/display.lua)
 
-    self:restoreSession()   -- reopen the last drawing if one was kept
+    self:openStartDocument()   -- the last document, or a new drawing
     self:composeCanvas()
     self:renderView()
-    self:scheduleAutosave()
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
@@ -398,7 +400,7 @@ function InkAwayView:onCloseWidget()
     self:hideTextKeyboard()
     Export.text_raster = nil   -- drop the closures over this view
     Export.image_raster = nil
-    if self.autosave ~= "off" then self:saveSession() end
+    self:saveDocument()
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
     for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
@@ -426,7 +428,7 @@ function InkAwayView:onCloseWidget()
 end
 
 function InkAwayView:onIaClose()
-    self:promptExit()
+    self:closeCanvas()
     return true
 end
 
@@ -732,7 +734,7 @@ function InkAwayView:undo()
     end
     self.selected = nil
     self:resetLasso()
-    self.dirty = true
+    self:markDirty()
     self:recompose()   -- rebuild the master from the restored ops
 end
 
@@ -754,21 +756,14 @@ function InkAwayView:redo()
     end
     self.selected = nil
     self:resetLasso()
-    self.dirty = true
+    self:markDirty()
     self:recompose()
 end
 
-function InkAwayView:promptExit()
+-- Leave Ink Away. Nothing to ask: the document saves itself on the way out.
+function InkAwayView:closeCanvas()
     self:flushPending()
-    if self.canvas:isEmpty() then
-        UIManager:close(self)
-        return
-    end
-    UIManager:show(ConfirmBox:new{
-        text = _("Leave Ink Away? Any unsaved drawing will be lost."),
-        ok_text = _("Leave"),
-        ok_callback = function() UIManager:close(self) end,
-    })
+    UIManager:close(self)
 end
 
 ------------------------------------------------------------------------------
@@ -847,7 +842,7 @@ end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
-    "textedit", "textformat", "lasso", "notebook", "save", "projects", "input", "toolbar", "menus",
+    "textedit", "textformat", "lasso", "notebook", "save", "document", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "wipe" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do

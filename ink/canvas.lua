@@ -38,6 +38,7 @@ function Canvas.new(w, h)
         live = nil,        -- stroke currently being drawn
         undo_stack = {},   -- past ops-list snapshots (shallow)
         redo_stack = {},
+        rev = 0,           -- counts every change to the ops, so a save can tell what changed
     }, Canvas)
 end
 
@@ -55,6 +56,7 @@ end
 -- history instead of a copy of the whole list, which would make a long drawing
 -- slower as it fills.
 local function pushEntry(self, entry)
+    self.rev = self.rev + 1
     local u = self.undo_stack
     u[#u + 1] = entry
     if #u > HISTORY_MAX then table.remove(u, 1) end
@@ -165,6 +167,7 @@ end
 function Canvas:undo()
     local entry = table.remove(self.undo_stack)
     if not entry then return false end
+    self.rev = self.rev + 1
     if entry.snap ~= nil then
         self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self) }
         self.ops = entry.snap
@@ -179,6 +182,7 @@ end
 function Canvas:redo()
     local entry = table.remove(self.redo_stack)
     if not entry then return false end
+    self.rev = self.rev + 1
     if entry.snap ~= nil then
         self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self) }
         self.ops = entry.snap
@@ -198,6 +202,7 @@ end
 
 -- Replace all ops (used when loading a project). Clears history.
 function Canvas:setOps(ops)
+    self.rev = self.rev + 1
     self.ops = ops or {}
     self.live = nil
     self.undo_stack = {}

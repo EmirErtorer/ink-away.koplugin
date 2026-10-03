@@ -68,7 +68,7 @@ function InkAwayView:buildToolbar()
         { id = "redo",  label = _("Redo"),  cb = function() self:redo() end },
         { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
         { id = "save",  label = _("Save"),  cb = function() self:onSave() end },
-        { id = "exit",  label = _("Exit"),  cb = function() self:promptExit() end },
+        { id = "exit",  label = _("Exit"),  cb = function() self:closeCanvas() end },
     }
     -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
     local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",

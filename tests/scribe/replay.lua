@@ -428,4 +428,5 @@ for _, row in ipairs(rows) do
 end
 for _, c in ipairs(uichecks) do ok(c[1], c[2]) end
 print(("scribe: %d checks, %d failures"):format(checks, failures))
+require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

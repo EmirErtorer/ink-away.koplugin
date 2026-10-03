@@ -17,7 +17,6 @@ local Export = require("ink/export")
 local ImageProc = require("ink/imageproc")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
-local Project = require("ink/project")
 local Storage = require("ink/storage")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -242,7 +241,8 @@ function InkAwayView:promptNotebookFilename(dir)
     local name = os.date("notebook-%Y%m%d-%H%M%S")
     self:promptText{ title = _("PDF name"), input = name, default = name, ok_text = _("Export"),
         on_ok = function(text)
-            self:doNotebookExport(Storage.join(dir, Storage.fileName(text, "pdf")))
+            local path = Storage.join(dir, Storage.fileName(text, "pdf"))
+            self:confirmReplace(path, function() self:doNotebookExport(path) end)
         end }
 end
 
@@ -334,13 +334,9 @@ function InkAwayView:doNotebookExport(path)
     local function finished()
         self._export_job = nil
         closeProgress()
-        -- also keep the editable notebook as a project of the same name, so
-        -- closing right after exporting never loses the work
-        local proj_saved = self:autoSaveNotebookProject(path)
         -- make the PDF open as a full page with no auto-crop the first time
         self:seedPdfView(path)
         local msg = string.format(_("Notebook exported:\n%s"), path)
-        if proj_saved then msg = msg .. string.format(_("\n\nEditable copy kept in:\n%s"), proj_saved) end
         UIManager:show(ConfirmBox:new{
             text = msg .. _("\n\nOpen the PDF now?"),
             ok_text = _("Open"),
@@ -369,19 +365,6 @@ function InkAwayView:doNotebookExport(path)
     UIManager:scheduleIn(0.2, step)        -- let the progress bar paint first
 end
 
--- Save the current notebook as an editable .inkaway project in the notebook
--- projects folder, using the PDF's base name. Returns the path or nil.
-function InkAwayView:autoSaveNotebookProject(pdf_path)
-    if not self.notebook then return nil end
-    local base = pdf_path:match("([^/\\]+)%.[Pp][Dd][Ff]$") or pdf_path:match("([^/\\]+)$") or "notebook"
-    local dir = self.nproj_dir or self.default_dir
-    if not dir then return nil end
-    local proj = Storage.join(dir, base .. "." .. Project.EXT)
-    self:nbSyncOut()
-    local ok = Project.saveNotebook(self.notebook, proj)
-    return ok and proj or nil
-end
-
 -- Seed a freshly exported PDF's sidecar so KOReader opens it as a whole page
 -- with no margin cropping (its defaults would zoom into the ink and clip it).
 -- Best effort.
@@ -405,8 +388,8 @@ function InkAwayView:openExportedPDF(path)
         UIManager:show(InfoMessage:new{ text = _("Saved. Open it from your library."), timeout = 3 })
         return
     end
+    self:leaveDocument()
     self.closing = true
-    self:saveSession()
     UIManager:close(self)
     UIManager:nextTick(function() ReaderUI:showReader(path) end)
 end
@@ -425,7 +408,10 @@ function InkAwayView:promptFilename(fmt, dir)
         title = _("File name"), input = default_name, hint = default_name, default = default_name,
         description = string.format(_("Saving to:\n%s\n\nExtension .%s will be added."), dir, ext),
         ok_text = _("Save"),
-        on_ok = function(name) self:writeFile(fmt, dir, name, ext) end,
+        on_ok = function(name)
+            self:confirmReplace(Storage.join(dir, Storage.fileName(name, ext)),
+                function() self:writeFile(fmt, dir, name, ext) end)
+        end,
     }
 end
 
@@ -447,12 +433,7 @@ function InkAwayView:writeFile(fmt, dir, name, ext)
     local ow = self.save_area and self.save_area.w or self.canvas.w
     local oh = self.save_area and self.save_area.h or self.canvas.h
     if ok then
-        -- also keep an editable project of the same name, so the drawing can be
-        -- reopened even if it was never saved as a project
-        local proj = self:autoSaveDrawingProject(name)
-        local msg = string.format(_("Saved %d × %d image:\n%s"), ow, oh, path)
-        if proj then msg = msg .. string.format(_("\n\nEditable copy kept in:\n%s"), proj) end
-        UIManager:show(InfoMessage:new{ text = msg })
+        UIManager:show(InfoMessage:new{ text = string.format(_("Saved %d × %d image:\n%s"), ow, oh, path) })
     else
         logger.warn("InkAway: save failed:", err)
         UIManager:show(InfoMessage:new{
@@ -530,7 +511,10 @@ function InkAwayView:promptOrnamentName(dir)
         title = _("Ornament name"), input = default_name, hint = default_name, default = default_name,
         description = _("Saved as a transparent PNG in the bookshelf ornaments folder.\nEnd the name with .invert for a dark-mode version."),
         ok_text = _("Save"),
-        on_ok = function(name) self:writeOrnament(dir, name) end,
+        on_ok = function(name)
+            self:confirmReplace(Storage.join(dir, Storage.fileName(name, "png")),
+                function() self:writeOrnament(dir, name) end)
+        end,
     }
 end
 
@@ -546,20 +530,6 @@ function InkAwayView:writeOrnament(dir, name)
             text = string.format(_("Could not save the ornament.\n%s"), tostring(err)),
             icon = "notice-warning" })
     end
-end
-
--- Save the current canvas as an editable .inkaway project in the drawing
--- projects folder, using the image's base name. Returns the path, or nil (also
--- for a blank canvas).
-function InkAwayView:autoSaveDrawingProject(image_name)
-    if self.canvas:isEmpty() then return nil end
-    local base = image_name:gsub("%.[^.]+$", "")
-    if base == "" then base = "ink" end
-    local dir = self.dproj_dir or self.default_dir
-    if not dir then return nil end
-    local proj = Storage.join(dir, base .. "." .. Project.EXT)
-    local ok = Project.save(self.canvas, proj)
-    return ok and proj or nil
 end
 
 -- The export area being chosen.

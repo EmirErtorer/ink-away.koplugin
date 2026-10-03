@@ -18,7 +18,7 @@ local KO = os.getenv("KO_SRC") or (os.getenv("HOME") .. "/koreader-emulator")
 local VERBOSE = os.getenv("V") == "1"
 
 _G.G_reader_settings = {
-    data = { inkaway_autosave = "off" },
+    data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
     isTrue = function() return false end, isFalse = function() return false end,

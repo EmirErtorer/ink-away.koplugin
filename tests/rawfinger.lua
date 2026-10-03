@@ -12,7 +12,7 @@ local UIManager = require("ui/uimanager")
 local Screen = Device.screen
 
 _G.G_reader_settings = {
-    data = { inkaway_autosave = "off" },
+    data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
 }
@@ -200,4 +200,5 @@ Device.input.wacom_protocol = true
 Device.input.pen_slot = saved_pen_slot
 
 print(("rawfinger: %d checks, %d failures"):format(checks, failures))
+require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

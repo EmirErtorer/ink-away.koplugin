@@ -119,7 +119,7 @@ function InkAwayView:openGridSettings()
 end
 
 -- The settings sheet (gear): file and page actions, orientation, the grid or
--- notebook paper, and the symmetry, autosave and ghosting options.
+-- notebook paper, and the symmetry and ghosting options.
 function InkAwayView:openSettings()
     if self.active_image then self:finishImageEdit() end   -- settle a selected image first
     -- the field may hold a dialog without a rebuild; close it and open fresh
@@ -146,8 +146,8 @@ function InkAwayView:openSettings()
         add(row2(act(_("New drawing"), halfW, function() self:newDrawing() end, false, true),
                  act(_("New notebook"), halfW, function() self:newNotebook() end, false, true)))
         add(vspan(8))
-        add(row2(act(_("Open project"), halfW, function() self:openProject() end),
-                 act(_("Save project"), halfW, function() self:saveProject() end)))
+        add(row2(act(_("Open\u{2026}"), halfW, function() self:chooseDocument() end),
+                 act(_("Rename\u{2026}"), halfW, function() self:promptRename() end)))
         add(vspan(8))
         add(row2(act(_("Open PDF"), halfW, function() self:openPdfAsNotebook() end),
                  act(_("Background"), halfW, function() self:openBackground() end)))
@@ -168,7 +168,7 @@ function InkAwayView:openSettings()
             local t = self.notebook.template
             add(act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), content_w, function()
                 self:openChooserSheet(_("Notebook paper"), self:notebookStyles(), t.style, function(v)
-                    t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self.dirty = true
+                    t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
                     self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
                 end)
             end))
@@ -176,12 +176,12 @@ function InkAwayView:openSettings()
             add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
                 width = content_w, parent = menu, format = pxfmt,
                 on_set = function(v) t.size = v; self.nb_size = v; self:setSetting("inkaway_nb_size", v)
-                    self.dirty = true; self:composeCanvas(); self:renderView(); self:refreshArea() end })
+                    self:markDirty(); self:composeCanvas(); self:renderView(); self:refreshArea() end })
             add(vspan(10))
             add(SliderRow:new{ label = _("Line strength"), value = t.strength or 45, min = 5, max = 100, step = 5,
                 width = content_w, parent = menu,
                 on_set = function(v) t.strength = v; self.nb_strength = v; self:setSetting("inkaway_nb_strength", v)
-                    self.dirty = true; self:composeCanvas(); self:renderView(); self:refreshArea() end })
+                    self:markDirty(); self:composeCanvas(); self:renderView(); self:refreshArea() end })
         else
             -- one button to the grid sub-sheet, labelled with the current grid
             local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
@@ -192,8 +192,7 @@ function InkAwayView:openSettings()
         end
         add(vspan(16))
 
-        -- symmetry and autosave rebuild the sheet in place with the highlight
-        -- moved
+        -- symmetry rebuilds the sheet in place with the highlight moved
         add(self:sheetLabel(_("Symmetry"), true))
         add(vspan(6))
         add(self:segmentedRow({ { "off", _("Off") }, { "vert", _("Vertical") }, { "horiz", _("Horizontal") },
@@ -209,12 +208,6 @@ function InkAwayView:openSettings()
                 self._strokes_since_full = 0 end })
         add(vspan(4))
         add(self:sheetHint(_("Fast strokes leave faint marks; a full refresh clears them this often."), content_w))
-        add(vspan(14))
-
-        add(self:sheetLabel(_("Autosave"), true))
-        add(vspan(6))
-        add(self:segmentedRow({ { "off", _("Off") }, { "exit", _("On exit") }, { "periodic", _("Every 3 min") } },
-            self.autosave, content_w, function(v) self:setAutosave(v); self:openSettings() end))
         return content
     end
     self:showSheet("_settings_dialog", build)

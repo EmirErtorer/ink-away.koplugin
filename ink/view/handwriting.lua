@@ -172,7 +172,7 @@ function InkAwayView:hwrInsertText(text, ink_ops, minx, miny, maxx, maxy)
         self.canvas.ops[#self.canvas.ops + 1] = op
         self._hwr_last = { op = op, top = miny, bottom = maxy }
     end
-    self.dirty = true
+    self:markDirty()
     self:composeCanvas(); self:renderView()
     self:refresh(self, "ui", self:areaScreenRect())
 end

@@ -204,7 +204,7 @@ function InkAwayView:commitShape()
         d.alpha or self.pen_alpha, d.color or self.pen_color)
     self:decorateShapeOp(op, d)
     self:stampOpIntoCanvas(op)
-    self.dirty = true
+    self:markDirty()
     local sx0, sy0, sx1, sy1 = d.x0, d.y0, d.x1, d.y1
     self.shape_drag = nil
     self.shape_preview = nil
@@ -223,7 +223,7 @@ function InkAwayView:commitCurve()
         (snap and snap.alpha) or self.pen_alpha, (snap and snap.color) or self.pen_color)
     self:decorateShapeOp(op, snap)
     self:stampOpIntoCanvas(op)
-    self.dirty = true
+    self:markDirty()
     -- the curve's screen extent = its two ends + control point (before they're cleared)
     local sx0 = math.min(self.curve_p0.x, self.curve_p1.x, self.curve_ctrl.x)
     local sy0 = math.min(self.curve_p0.y, self.curve_p1.y, self.curve_ctrl.y)
@@ -302,7 +302,7 @@ function InkAwayView:doFill(pos)
     local op = self.canvas:addFillOp(runs, self.fill_color, self.fill_alpha)
     if self.symmetry ~= "off" then op.sym = self.symmetry end
     self:stampOpIntoCanvas(op)
-    self.dirty = true
+    self:markDirty()
     self:redraw()
     self:afterCommit()
 end
@@ -320,7 +320,7 @@ function InkAwayView:editOp(idx, op, mutate)
     local clone = self.canvas:cloneOp(op)
     if mutate then mutate(clone) end
     self.canvas:replaceOp(idx, clone)
-    self.dirty = true
+    self:markDirty()
     return clone
 end
 
@@ -333,7 +333,7 @@ function InkAwayView:opToFront(sel)
     local op = table.remove(ops, sel.idx)
     ops[#ops + 1] = op
     sel.idx = #ops
-    self.dirty = true
+    self:markDirty()
     self:recompose()
 end
 
@@ -345,7 +345,7 @@ function InkAwayView:duplicateOp(sel)
     local d = self.grid_on and self.grid_size or 14
     translateOp(clone, d, d)
     self.canvas.ops[#self.canvas.ops + 1] = clone
-    self.dirty = true
+    self:markDirty()
     return { op = clone, idx = #self.canvas.ops }
 end
 
@@ -546,7 +546,7 @@ function InkAwayView:deleteSelected(sel)
     self.shape_move = nil
     self:setSelectionActive(false)
     self:resetLasso()
-    self.dirty = true
+    self:markDirty()
     self:recompose()
 end
 

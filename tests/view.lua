@@ -12,9 +12,9 @@ local Device = require("device")
 local UIManager = require("ui/uimanager")
 local Screen = Device.screen
 
--- Mock KOReader's global settings; autosave off so tests never touch disk.
+-- Mock KOReader's global settings, with a scratch library folder for saves.
 _G.G_reader_settings = {
-    data = { inkaway_autosave = "off" },
+    data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
 }
@@ -1749,5 +1749,167 @@ do
     view:onCloseWidget()
 end
 
+-- ---- documents: every drawing and notebook is a file that saves itself ---
+do
+    local TestEnv = require("testenv")
+    local Canvas = require("ink/canvas")
+    local Project = require("ink/project")
+    local Storage = require("ink/storage")
+    local LIB = TestEnv.libraryDir()
+    local function deepEqual(a, b)
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return a == b end
+        for k, val in pairs(a) do if not deepEqual(val, b[k]) then return false end end
+        for k in pairs(b) do if a[k] == nil then return false end end
+        return true
+    end
+    TestEnv.remember_last_doc = true
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    -- let the save timer run until it settles (it waits out a busy spell first)
+    local function settle() for _ = 1, 3 do UIManager.fireScheduled() end end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(view.doc_path and Storage.dirName(view.doc_path) == LIB, "doc: a new drawing is planned in the library")
+    ok(view.doc_path:match("/Drawing [%d%-]+ [%d%.]+[ %(%d%)]*%.inkaway$") ~= nil, "doc: named Drawing and the date")
+    ok(not view.doc_written and not Storage.exists(view.doc_path), "doc: no file before the first stroke")
+    settle()
+    ok(not Storage.exists(view.doc_path), "doc: an untouched drawing never gets a file")
+    stroke(view, 200, 200)
+    settle()
+    ok(view.doc_written and Storage.exists(view.doc_path), "doc: it saves itself once left alone")
+    local first = view.doc_path
+    ok(#Project.load(first).ops == 1, "doc: the saved file holds the stroke")
+    ok(G_reader_settings.data.inkaway_last_doc == first, "doc: it is remembered as the last document")
+
+    stroke(view, 300, 400)
+    view:closeCanvas()
+    ok(UIManager.stackCount() == 0, "doc: Exit closes at once, without asking")
+    ok(#Project.load(first).ops == 2, "doc: closing saves the latest change")
+
+    local view2 = InkAwayView:new{}
+    UIManager:show(view2)
+    ok(view2.doc_path == first and view2.canvas:opCount() == 2, "doc: the next open shows the last document")
+    view2:newDrawing()
+    ok(view2.doc_path ~= first and view2.canvas:isEmpty(), "doc: New starts an empty drawing under a new name")
+    ok(#Project.load(first).ops == 2, "doc: and leaves the previous one saved")
+    local untouched = view2.doc_path
+    view2:newDrawing()
+    ok(not Storage.exists(untouched), "doc: a new drawing left untouched leaves no file")
+
+    -- rename moves the file; a taken name is refused
+    stroke(view2, 200, 200)
+    view2:saveDocument()
+    local before = view2.doc_path
+    view2:renameDocument("  Shopping list ")
+    local shopping = LIB .. "/Shopping list.inkaway"
+    ok(view2.doc_path == shopping and Storage.exists(shopping) and not Storage.exists(before),
+        "doc: rename moves the file")
+    ok(G_reader_settings.data.inkaway_last_doc == shopping, "doc: and the last document follows it")
+    view2:renameDocument(Storage.stem(first))
+    ok(view2.doc_path == shopping and Storage.exists(first), "doc: a name already in use is refused")
+    local last = G_reader_settings.data.inkaway_last_doc
+    G_reader_settings.data.inkaway_last_doc = nil   -- so this view starts a new drawing
+    local planned = InkAwayView:new{}
+    G_reader_settings.data.inkaway_last_doc = last
+    planned:renameDocument("Not yet")
+    ok(planned.doc_path == LIB .. "/Not yet.inkaway" and not Storage.exists(planned.doc_path),
+        "doc: renaming a document with no file yet just changes its name")
+    planned:onCloseWidget()
+
+    -- opening another document saves the one being left first
+    stroke(view2, 500, 500)
+    ok(view2:openDocument(first), "doc: another document opens")
+    ok(view2.doc_path == first and view2.canvas:opCount() == 2, "doc: it shows that document")
+    ok(#Project.load(shopping).ops == 2, "doc: the one left was saved first")
+    ok(not view2:openDocument(LIB .. "/nope.inkaway") and view2.doc_path == first,
+        "doc: a failed open keeps the current document")
+
+    -- a drawing's background picture is saved with it
+    view2.bg_path = "/pics/photo.png"; view2:markDirty(); view2:saveDocument()
+    ok(Project.load(first).bg == "/pics/photo.png", "doc: the background picture's path is saved")
+    view2.bg_path = nil; view2:markDirty(); view2:saveDocument()
+    ok(Project.load(first).bg == nil, "doc: and dropped once it is removed")
+
+    -- notebooks: the cached save matches a full save, through page turns, undo
+    -- and new pages, and closing on a blank page keeps every page
+    view2:beginDocument("notebook", nil, function()
+        view2:startNotebook({ style = "lines", size = 40, strength = 45 })
+    end)
+    local nbpath = view2.doc_path
+    ok(nbpath:match("/Notebook [^/]+%.inkaway$") ~= nil, "doc: a new notebook is named Notebook and the date")
+    ok(#Project.load(first).ops == 2, "doc: starting a notebook leaves the drawing saved")
+    settle()
+    ok(not Storage.exists(nbpath), "doc: a blank new notebook gets no file")
+    stroke(view2, 200, 200)
+    view2:nbAddPage()
+    stroke(view2, 300, 300); stroke(view2, 320, 360)
+    view2:saveDocument()
+    view2:undo()
+    stroke(view2, 100, 600)
+    view2:nbGoTo(1)
+    stroke(view2, 400, 700)
+    view2:nbAddPage()              -- a blank page 2, after page 1
+    view2:nbGoTo(3)
+    view2:saveDocument()
+    local saved = Project.load(nbpath)
+    local full = Project.deserialize(Project.serializeNotebook(view2.notebook))
+    ok(saved and deepEqual(saved, full), "doc: the cached notebook save matches a full save")
+    ok(#saved.pages == 3 and #saved.pages[1].ops == 2 and #saved.pages[2].ops == 0 and #saved.pages[3].ops == 2,
+        "doc: every page holds its own changes")
+    ok(saved.pages[1].id ~= saved.pages[2].id and saved.pages[3].id ~= nil, "doc: each page has its own id")
+    view2:nbGoTo(2)
+    UIManager:close(view2)
+    local back = Project.load(nbpath)
+    ok(back and #back.pages == 3 and #back.pages[1].ops == 2 and #back.pages[3].ops == 2,
+        "doc: closing on a blank page keeps the whole notebook")
+    local view3 = InkAwayView:new{}
+    ok(view3.notebook and view3.doc_path == nbpath and view3.notebook:count() == 3,
+        "doc: the notebook reopens as a notebook")
+    view3:onCloseWidget()
+
+    -- replacing a file asks first
+    local ran = false
+    view3:confirmReplace(LIB .. "/never.png", function() ran = true end)
+    ok(ran, "doc: writing a new file does not ask")
+    ran = false
+    view3:confirmReplace(first, function() ran = true end)
+    ok(not ran and UIManager.shown and UIManager.shown.ok_callback ~= nil, "doc: replacing a file asks first")
+    UIManager.shown.ok_callback()
+    ok(ran, "doc: and goes ahead on Replace")
+
+    -- the old single session file comes back once, as a document of its own
+    local session = Storage.settingsDir() .. "/inkaway_session.inkaway"
+    if not Storage.exists(session) then
+        local c = Canvas.new(1072, 1448)
+        c:startStroke("ink", 6, 255); c:addPoint(10, 10); c:addPoint(90, 90); c:finishStroke()
+        local f = io.open(session, "wb"); f:write(Project.serialize(c)); f:close()
+        G_reader_settings.data.inkaway_session_migrated = nil
+        G_reader_settings.data.inkaway_autosave = "periodic"
+        local view4 = InkAwayView:new{}
+        ok(view4.doc_path:match("/Recovered [^/]+%.inkaway$") ~= nil and view4.doc_written,
+            "doc: an old session opens as a Recovered document")
+        ok(view4.canvas:opCount() == 1 and Storage.dirName(view4.doc_path) == LIB, "doc: in the library, with its ink")
+        ok(not Storage.exists(session), "doc: the old session file is gone")
+        ok(G_reader_settings.data.inkaway_session_migrated == true and G_reader_settings.data.inkaway_autosave == nil,
+            "doc: this happens once, and the autosave setting is dropped")
+        view4:onCloseWidget()
+    end
+
+    TestEnv.remember_last_doc = false
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
+require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

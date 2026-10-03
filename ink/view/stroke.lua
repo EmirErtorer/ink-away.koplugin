@@ -309,7 +309,7 @@ function InkAwayView:beautifyStroke(raw, committed)
         -- brush; only its points change
         committed.pts = pts
     end
-    self.dirty = true
+    self:markDirty()
     if not self:beautifyRecompose(raw, committed) then
         self:composeCanvas()
     end
@@ -399,7 +399,7 @@ function InkAwayView:finalizeStroke()
         self:afterCommit()
         return
     end
-    self.dirty = true
+    self:markDirty()
     local sr = self._stroke_rect
     if self:colourPanel() then
         -- show the last samples now, put the real colours back where the black

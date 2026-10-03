@@ -27,7 +27,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - **Lasso select**, four-way **symmetry**, and a **background image** to draw over.
 - **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
 - **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF.
-- **Projects & autosave**, undo/redo, zoom & pan, and an optional grid.
+- **Saves itself**: every drawing and notebook is a file that saves as you go, so nothing is ever lost. Undo/redo, zoom & pan, and an optional grid.
 - And more!
 
 Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, Save and Exit. Zoom is the floating +/− control in the corner.
@@ -47,7 +47,7 @@ Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawi
 ## Notes
 
 - Palm rejection needs KOReader 2026.07+.
-- Files go in an "ink away" folder; saving keeps an editable project automatically.
+- Drawings and notebooks are kept in an "ink away" folder and saved automatically; exported images and PDFs go in its subfolders.
 - On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.
 
 ## License

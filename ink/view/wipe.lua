@@ -51,7 +51,7 @@ function InkAwayView:wipeRemove(i)
     local op = table.remove(self.canvas.ops, i)
     w.removed = w.removed + 1
     w.boxes[op], w.areas[op] = nil, nil
-    self.dirty = true
+    self:markDirty()
     if op.sym and op.sym ~= "off" then   -- its copies can be anywhere on the page
         self:recompose()
         return
