@@ -2558,8 +2558,16 @@ do
     ok(Storage.isDir(DIR .. "/Lab reports") and ov.tabs[1].folder and ov.tabs[1].label == "Lab reports",
         "overview: + Folder makes a folder in this one, shown as a tab")
     BB.out_of_bounds = 0
+    local rects = {}
+    Screen.bb.paintRoundedRect = function(_, x, y, w, h) rects[#rects + 1] = { x = x, y = y, w = w, h = h } end
     ov:paintTo(Screen.bb, 0, 0)
+    Screen.bb.paintRoundedRect = nil
     ok(BB.out_of_bounds == 0, "overview: the tab column with two buttons paints in bounds")
+    local over = 0
+    for _, r in ipairs(rects) do
+        if r.x < ov.tab_w and r.x + r.w > ov.tab_w then over = over + 1 end
+    end
+    ok(#rects > 0 and over == 0, "overview: no tab, the selected one included, reaches over into the pages")
     local L = ov:tabLayout()
     local f1, f2 = L.foot[1], L.foot[2]
     ok(f1.y + f1.h < f2.y and ov:tabAt({ x = f1.x + 5, y = f1.y + 5 }) == 1 and ov:tabAt({ x = f2.x + 5, y = f2.y + 5 }) == 2,

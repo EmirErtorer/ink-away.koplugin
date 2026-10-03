@@ -277,7 +277,7 @@ function ThumbGrid:paintTo(bb, x, y)
     bb:paintRect(x, y + self.top_h - 1, sw, 1, GREY)
 
     -- the tab column: each tab a card with its colour as a strip on the left; the
-    -- selected one white, framed and reaching into the grid
+    -- selected one white, framed in the accent
     if self.tabs then
         local L = self:tabLayout()
         local tface = Font:getFace("cfont", 16)
@@ -288,8 +288,9 @@ function ThumbGrid:paintTo(bb, x, y)
             if t then
                 local rx, ry = x + r.x, y + r.y
                 if t.selected then
-                    Accent.paintRounded(bb, rx, ry, r.w + self.pad, r.h, S(12))
-                    bb:paintRoundedRect(rx + S(2), ry + S(2), r.w + self.pad - S(2), r.h - S(4), WHITE, S(11))
+                    local fw = S(3)
+                    Accent.paintRounded(bb, rx, ry, r.w - self.pad, r.h, S(12))
+                    bb:paintRoundedRect(rx + fw, ry + fw, r.w - self.pad - 2 * fw, r.h - 2 * fw, WHITE, S(12) - fw)
                 else
                     bb:paintRoundedRect(rx, ry, r.w - self.pad, r.h, CARD, S(12))
                 end
@@ -305,7 +306,7 @@ function ThumbGrid:paintTo(bb, x, y)
                 end
                 local tw = TextBoxWidget:new{ text = t.label, face = tface, bold = t.selected,
                     bgcolor = t.selected and WHITE or CARD,   -- it fills its box
-                    width = math.max(S(20), rx + r.w - self.pad - S(6) - lx), height = r.h - S(6),
+                    width = math.max(S(20), rx + r.w - self.pad - S(10) - lx), height = r.h - S(6),
                     height_adjust = true, height_overflow_show_ellipsis = true }
                 local twsz = tw:getSize()
                 tw:paintTo(bb, lx, ry + math.floor((r.h - twsz.h) / 2))
@@ -328,12 +329,8 @@ function ThumbGrid:paintTo(bb, x, y)
             Accent.paintRounded(bb, x + f.x, y + f.y, f.w, f.h, S(12))
             label(self.tab_footer[i][1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, accent.text, f.w - S(8), true)
         end
-        -- the line between the tabs and the grid, broken where the selected tab joins it
+        -- the line between the tabs and the grid
         bb:paintRect(x + self.tab_w, y + self.top_h, 1, sh - self.top_h - self.bot_h, GREY)
-        for i = 0, L.fit - 1 do
-            local r = self:tabRect(L, i)
-            if r.tab and r.tab.selected then bb:paintRect(x + self.tab_w, y + r.y + S(2), 1, r.h - S(4), WHITE) end
-        end
     end
 
     if #self.items == 0 and self.empty_text then
