@@ -133,9 +133,9 @@ function InkAwayView:saveDocument(force)
     end
     local ok, err
     if self.notebook then
-        ok, err = Project.saveNotebook(self.notebook, path, self._page_cache)
+        ok, err = Project.saveNotebook(self.notebook, path, self._page_cache, { export = self.export_opts })
     else
-        ok, err = Project.save(self.canvas, path, { bg = self.bg_path })
+        ok, err = Project.save(self.canvas, path, { bg = self.bg_path, export = self.export_opts })
     end
     if not ok then
         logger.warn("InkAway: saving failed:", path, err)
@@ -184,7 +184,7 @@ function InkAwayView:beginDocument(kind, name, setup, dir)
     self:leaveDocument()
     self.doc_path = Storage.uniquePath(dir, name or Library.defaultName(self:docKindLabel(kind)), Project.EXT)
     self.doc_written = false
-    self.save_area = nil
+    self.save_area, self.export_opts = nil, nil
     setup()
     self:resetSaveState()
 end
@@ -227,6 +227,7 @@ function InkAwayView:openDocument(path)
     end
     self:leaveDocument()
     self.save_area = nil
+    self.export_opts = type(data.export) == "table" and data.export or nil
     if Project.isNotebook(data) then
         self:openNotebookData(data)
     else
@@ -260,7 +261,8 @@ end
 function InkAwayView:adoptOldSession()
     if self:getSetting("inkaway_session_migrated") then return nil end
     self:setSetting("inkaway_session_migrated", true)
-    for _, key in ipairs({ "inkaway_autosave", "inkaway_last_dproj_dir", "inkaway_last_nproj_dir" }) do
+    for _, key in ipairs({ "inkaway_autosave", "inkaway_last_dproj_dir", "inkaway_last_nproj_dir",
+            "inkaway_last_dir", "inkaway_last_notebook_dir", "inkaway_last_project_dir" }) do
         self:setSetting(key, nil)
     end
     local old = Storage.join(Storage.settingsDir(), "inkaway_session." .. Project.EXT)
@@ -411,7 +413,7 @@ function InkAwayView:openDocumentSheet()
         add(row2(act(_("New\u{2026}"), halfW, function() self:openNewSheet() end),
                  act(_("Duplicate"), halfW, function() self:duplicateDocument() end)))
         add(vspan(8))
-        add(act(_("Export\u{2026}"), content_w, function() self:onSave() end, true))
+        add(act(_("Export\u{2026}"), content_w, function() self:openExport() end, true))
         return content
     end
     self:showSheet("_doc_dialog", build)
@@ -454,28 +456,6 @@ function InkAwayView:openNewSheet(dir)
         return content
     end
     self:showSheet("_new_dialog", build)
-end
-
-------------------------------------------------------------------------------
--- Folders
-------------------------------------------------------------------------------
-
--- The export folders under "ink away/": drawings (PNG and JPEG images) and
--- notebooks (exported PDFs). Returns the images path.
-function InkAwayView:ensureDefaultDir()
-    local base = Storage.dataDir() or "/"
-    self.notebooks_dir = Storage.appDir("notebooks") or base
-    return Storage.appDir("drawings") or base
-end
-
--- Where the image save dialog starts: last image folder used, else drawings.
-function InkAwayView:defaultDir()
-    return existingDir(self:getSetting("inkaway_last_dir")) or self.default_dir or "/"
-end
-
--- Remember the last image folder used, for next time.
-function InkAwayView:rememberDir(dir)
-    self:setSetting("inkaway_last_dir", dir)
 end
 
 return InkAwayView

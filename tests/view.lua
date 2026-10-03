@@ -457,19 +457,25 @@ for _, wh in ipairs(SIZES) do
         view:setTool("pen")
     end
 
-    -- save dialog wiring (no native encoders are called)
-    local ButtonDialog = require("ui/widget/buttondialog")
+    -- export sheet wiring (no native encoders are called)
     local PathChooser = require("ui/widget/pathchooser")
     local InputDialog = require("ui/widget/inputdialog")
     view:setTool("pen")
-    view:onSave()
-    ok(view._save_dialog ~= nil, tag .. ": Save opens the save sheet")
+    view:openExport()
+    ok(view._save_dialog ~= nil, tag .. ": Export opens the export sheet")
     view._save_dialog:onCloseMenu()
-    -- the sheet's Save button runs chooseDestination for the chosen format
-    view:chooseDestination(view.save_fmt or "png")
-    ok(PathChooser.last ~= nil and PathChooser.last.select_directory, tag .. ": Save leads to folder chooser")
+    ok(view:exportOptions().fmt == "png", tag .. ": a drawing exports a PNG by default")
+    -- the sheet's Export button asks for a name, with a button to pick a folder
+    view:promptExportName()
+    ok(InputDialog.last ~= nil and InputDialog.last.input == view:docName(), tag .. ": the name starts as the document's")
+    local folderBtn = InputDialog.last.buttons[1][2]
+    ok(folderBtn and folderBtn.callback and not folderBtn.is_enter_default, tag .. ": the prompt has a Folder button")
+    folderBtn.callback()
+    ok(PathChooser.last ~= nil and PathChooser.last.select_directory, tag .. ": Folder opens a folder chooser")
     PathChooser.last.onConfirm("/tmp")
-    ok(InputDialog.last ~= nil, tag .. ": folder choice leads to filename prompt")
+    ok(view:exportOptions().dir == "/tmp" and InputDialog.last.description:find("/tmp", 1, true),
+        tag .. ": the picked folder is kept for this document and the prompt comes back")
+    view:exportOptions().dir = nil
 
     view:paintTo(Screen.bb, 0, 0)
 
@@ -2082,6 +2088,138 @@ do
 
     TestEnv.remember_last_doc = false
     G_reader_settings.data.inkaway_last_doc = nil
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    UIManager.reset()
+end
+
+-- ---- export: one sheet for drawings and notebooks, PNG or PDF -------------
+do
+    local TestEnv = require("testenv")
+    local Export = require("ink/export")
+    local Project = require("ink/project")
+    local Storage = require("ink/storage")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/exporttest"
+    os.execute("mkdir -p '" .. LIB .. "/out'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_export_dir = LIB .. "/out"
+    TestEnv.remember_last_doc = true
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    -- stand-ins for the encoders, recording what they were asked to write
+    local savedPNG, savedPDF = Export.savePNG, Export.notebookPDFJob
+    local png, pdf
+    Export.savePNG = function(canvas, path, opts)
+        png = { canvas = canvas, path = path, opts = opts }
+        local f = io.open(path, "wb"); f:write("png"); f:close()
+        return true
+    end
+    Export.notebookPDFJob = function(pages, w, h, template, path, quality, tmp, bg, opts)
+        pdf = { pages = pages, template = template, path = path, bg = bg, opts = opts }
+        local job = { i = 0, n = #pages }
+        function job.step() job.over = true; return "done" end
+        function job.cancel() job.over = true end
+        return job
+    end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:openExport()
+    ok(view._save_dialog == nil, "export: an empty drawing has nothing to export")
+    stroke(view, 200, 200)
+    view:renameDocument("Cover")
+    view:openExport()
+    ok(view._save_dialog ~= nil, "export: the sheet opens once there is ink")
+    view:closeSheet("_save_dialog")
+    ok(view:exportDir() == LIB .. "/out", "export: files go to the export folder from the settings")
+
+    -- a PNG: transparent by default, white when asked, and named after the document
+    view:promptExportName()
+    ok(InputDialog.last.input == "Cover", "export: the name starts as the document's")
+    InputDialog.last.buttons[1][3].callback()
+    ok(png and png.path == LIB .. "/out/Cover.png" and png.opts.white == nil, "export: a transparent PNG is written")
+    view:exportOptions().transparent = false
+    view:promptExportName()
+    InputDialog.last.input = "Cover"
+    InputDialog.last.buttons[1][3].callback()
+    ok(UIManager.shown and UIManager.shown.ok_callback ~= nil, "export: writing over the last export asks first")
+    png = nil
+    UIManager.shown.ok_callback()
+    ok(png and png.opts.white == true, "export: Transparent off lays the PNG on white")
+
+    -- a drawing can be a one-page PDF
+    view:exportOptions().fmt = "pdf"
+    view:writePDF(LIB .. "/out/Cover.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(pdf and #pdf.pages == 1 and pdf.template.style == "blank", "export: a drawing makes a one-page PDF")
+
+    -- the export settings are kept in the document and come back with it
+    view:saveDocument()
+    local data = Project.load(view.doc_path)
+    ok(data.export and data.export.name == "Cover" and data.export.fmt == "pdf" and data.export.transparent == false,
+        "export: the last export's settings are saved in the document")
+    local coverPath = view.doc_path
+
+    -- a notebook: PDF by default, and the page scopes
+    view:newNotebook("lines", LIB)
+    ok(view:exportOptions().fmt == "pdf" and view:exportOptions().scope == "all", "export: a notebook defaults to a PDF of all pages")
+    stroke(view, 100, 100)
+    view:nbAddPage()
+    view:nbAddPage(); stroke(view, 300, 300)
+    view:nbGoTo(2)
+    local o = view:exportOptions()
+    local function sel() return table.concat(view:selectedNotebookPages(), ",") end
+    ok(sel() == "1,2,3", "export: All covers every page")
+    o.scope = "page"; ok(sel() == "2", "export: This page covers the page shown")
+    o.scope = "ink"; ok(sel() == "1,3", "export: With ink skips blank pages")
+    o.scope = "range"; o.range = { from = 2, to = 9 }; ok(sel() == "2,3", "export: a range is kept within the notebook")
+    o.scope = "all"
+    view:writePDF(LIB .. "/out/Notes.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(pdf and #pdf.pages == 3 and pdf.template.style == "lines" and pdf.template.gray ~= nil,
+        "export: the notebook PDF carries its ruling")
+    o.include_bg = false
+    view:writePDF(LIB .. "/out/Notes.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(pdf.template.style == "blank" and view.notebook.template.style == "lines",
+        "export: leaving the paper out drops the ruling, only from the export")
+    o.include_bg = true
+    -- a PNG of a notebook page draws its ruling under the ink, on white
+    o.fmt, o.transparent = "png", false
+    view:writePNG(LIB .. "/out/Page.png")
+    ok(png.opts.template and png.opts.template.style == "lines" and png.opts.white == true,
+        "export: a page PNG includes its paper")
+    ok(png.canvas == view.canvas, "export: a page PNG is the page shown")
+
+    -- the library's hold menu offers Export for documents
+    view:openLibrary(LIB)
+    local item
+    for _, it in ipairs(view._library.items) do if it.path == coverPath then item = it end end
+    view:libraryItemMenu(item)
+    local exportBtn = ButtonDialog.last.buttons[1][2]
+    ok(exportBtn and exportBtn.text:find("Export"), "export: the library offers Export")
+    exportBtn.callback()
+    ok(view.doc_path == coverPath and view._save_dialog ~= nil and view._library == nil,
+        "export: from the library it opens the document's export sheet")
+    ok(view:exportOptions().fmt == "pdf" and view:exportOptions().name == "Cover",
+        "export: with the settings it was last exported with")
+    view:closeSheet("_save_dialog")
+    UIManager:close(view)
+
+    Export.savePNG, Export.notebookPDFJob = savedPNG, savedPDF
+    TestEnv.remember_last_doc = false
+    G_reader_settings.data.inkaway_last_doc = nil
+    G_reader_settings.data.inkaway_export_dir = nil
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     UIManager.reset()
 end

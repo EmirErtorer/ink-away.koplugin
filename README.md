@@ -1,6 +1,6 @@
 # Ink Away
 
-A **drawing** & **note-taking** app for KOReader, with **palm rejection** for stylus users. Draw or write with finger or stylus, take notes across a notebook, or annotate any PDF. You can export to a transparent PNG, a white JPEG or a paged PDF at your exact screen size. 
+A **drawing** & **note-taking** app for KOReader, with **palm rejection** for stylus users. Draw or write with finger or stylus, take notes across a notebook, or annotate any PDF. You can export a transparent or white PNG, or a paged PDF, at your exact screen size. 
 
 ## Screenshots
 
@@ -48,7 +48,7 @@ Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawi
 ## Notes
 
 - Palm rejection needs KOReader 2026.07+.
-- Drawings and notebooks are kept in an "ink away" folder and saved automatically; exported images and PDFs go in its subfolders.
+- Drawings and notebooks are kept in an "ink away" folder and saved automatically; exported PNGs and PDFs go to "ink away/exports" unless you pick another folder.
 - On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.
 
 ## License

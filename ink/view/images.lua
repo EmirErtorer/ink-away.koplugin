@@ -56,7 +56,6 @@ function InkAwayView:placeBackground(img, path)
     self.bg_bb = bg
     self._bg_src = nil   -- a picture, not a cached PDF page
     self.bg_path = path
-    self.export_bg = true
     self.bg_rgba = self:buildBgRGBA()
     self:markDirty()
     self:composeCanvas(); self:renderView()
@@ -80,9 +79,9 @@ function InkAwayView:removeBackground()
     UIManager:setDirty(self, "full")
 end
 
--- Let the reader pick a PNG or JPEG, starting in the image folder.
+-- Let the reader pick a PNG or JPEG, starting in KOReader's home folder.
 function InkAwayView:pickImageFile(on_pick)
-    self:pickFile(self:defaultDir(), function(path)
+    self:pickFile(self:homeDir(), function(path)
         local lower = path:lower()
         if lower:match("%.png$") or lower:match("%.jpe?g$") then
             on_pick(path)
@@ -803,7 +802,6 @@ end
 function InkAwayView:clearBackground()
     if self.bg_bb then pcall(function() self.bg_bb:free() end) end
     self.bg_bb, self.bg_rgba, self.bg_path, self._bg_src = nil, nil, nil, nil
-    self.export_bg = true
 end
 
 return InkAwayView

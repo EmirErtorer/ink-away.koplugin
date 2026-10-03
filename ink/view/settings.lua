@@ -28,7 +28,18 @@ function InkAwayView:chooseLibraryRoot()
         dir = dir:gsub("/+$", "")
         if dir == Storage.appRoot() then dir = nil end
         self:setSetting("inkaway_library_dir", dir)
-        self:showNotice(string.format(_("Library folder: %s"), self:libraryDir()))
+        self:showNotice(string.format(_("Library folder: %s"), Storage.shortPath(self:libraryDir())))
+    end)
+end
+
+-- Choose the folder exports go to. Picking "ink away/exports" goes back to the
+-- default.
+function InkAwayView:chooseExportRoot()
+    self:pickFolder(self:defaultExportDir(), function(dir)
+        dir = dir:gsub("/+$", "")
+        if dir == Storage.appDir("exports") then dir = nil end
+        self:setSetting("inkaway_export_dir", dir)
+        self:showNotice(string.format(_("Export folder: %s"), Storage.shortPath(self:defaultExportDir())))
     end)
 end
 
@@ -183,6 +194,9 @@ function InkAwayView:openSettings()
         add(vspan(6))
         add(act(_("Library folder: ") .. Storage.baseName(self:libraryDir()), content_w,
             function() self:chooseLibraryRoot() end))
+        add(vspan(8))
+        add(act(_("Export folder: ") .. Storage.baseName(self:defaultExportDir()), content_w,
+            function() self:chooseExportRoot() end))
         add(vspan(10))
         add(self:sheetLabel(_("When Ink Away opens")))
         add(vspan(6))

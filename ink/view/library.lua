@@ -134,6 +134,10 @@ function InkAwayView:libraryItemMenu(it)
     if it.folder then
         rows[#rows + 1] = { act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
     else
+        rows[1][2] = act(_("Export\u{2026}"), function()
+            self:libraryPick(it)
+            if self.doc_path == it.path then self:openExport() end
+        end)
         rows[#rows + 1] = { act(_("Duplicate"), function() self:duplicateItem(it) end),
             act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
     end

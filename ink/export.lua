@@ -466,21 +466,43 @@ local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy, clear_mask)
     end
 end
 
--- Save the canvas as a PNG with a transparent background. `opts` may carry
--- `rect` (crop) and `bg` (a canvas sized RGBA FFI buffer to composite under the
--- ink). Returns ok, err.
-function Export.savePNG(canvas, path, opts)
+-- Lay a packed RGBA buffer onto opaque white.
+local function flattenOnWhite(buf, ow, oh)
+    for i = 0, ow * oh - 1 do
+        local o = i * 4
+        local a = buf[o + 3]
+        if a < 255 then
+            local k = a / 255
+            buf[o]     = math.floor(buf[o] * k + 255 * (1 - k) + 0.5)
+            buf[o + 1] = math.floor(buf[o + 1] * k + 255 * (1 - k) + 0.5)
+            buf[o + 2] = math.floor(buf[o + 2] * k + 255 * (1 - k) + 0.5)
+            buf[o + 3] = 255
+        end
+    end
+end
+
+-- The RGBA pixels a PNG export encodes. `opts` may carry `rect` (crop), `bg` (a
+-- canvas sized RGBA FFI buffer to composite under the ink), `template` (a
+-- notebook ruling under the ink) and `white` (lay it all on white instead of
+-- leaving the page transparent). Returns buf, w, h.
+function Export.buildPNGRGBA(canvas, opts)
     opts = opts or {}
-    local Png = require("ffi/png")
     local ow, oh = dims(canvas, opts.rect)
     local mask = opts.bg and ffi.new("uint8_t[?]", ow * oh) or nil
-    local buf = Export.buildRGBA(canvas, opts.rect, mask)
+    local buf = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
     if opts.bg then
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
         compositeOverBg(buf, ow, oh, opts.bg, canvas.w, offx, offy, mask)
     end
-    return Png.encodeToFile(path, buf, ow, oh, 4)
+    if opts.white then flattenOnWhite(buf, ow, oh) end
+    return buf, ow, oh
+end
+
+-- Save the canvas as a PNG (see buildPNGRGBA for `opts`). Returns ok, err.
+function Export.savePNG(canvas, path, opts)
+    local buf, ow, oh = Export.buildPNGRGBA(canvas, opts)
+    return require("ffi/png").encodeToFile(path, buf, ow, oh, 4)
 end
 
 -- Nearest-neighbour upscale of a packed RGBA buffer by integer factor s.

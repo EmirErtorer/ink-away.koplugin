@@ -45,7 +45,7 @@ local DEV_SHEETS = {
     eraser = function(v) v:openEraserSettings() end,
     text = function(v) v:openTextSettings() end,
     settings = function(v) v:openSettings() end,
-    save = function(v) v:onSave() end,
+    export = function(v) v:openExport() end,
     brush = function(v) v:openBrushMaker() end,
     shape = function(v) v:openShapePicker() end,
     shapeline = function(v) v:openShapePicker(); v:openShapeLineMenu() end,
@@ -63,7 +63,7 @@ local DEV_SHEETS = {
     file = function(v) v:openDocumentSheet() end,
     library = function(v) v:openLibrary() end,
     notebook = inNotebook(function() end),
-    export = inNotebook(function(v) v:exportNotebookPDF() end),
+    nbexport = inNotebook(function(v) v:openExport() end),
     pagemenu = inNotebook(function(v) v:openPageMenu() end),
     ["goto"] = inNotebook(function(v) v:nbJumpPrompt() end),
 }
@@ -223,12 +223,8 @@ function InkAwayView:init()
 
     -- Optional background picture the drawing sits on.
     self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
-    self.export_bg = true          -- include the background when saving
     self.save_area = nil           -- nil = whole page, or a crop rect in canvas px
     self.selecting_crop = false    -- dragging out an export area
-
-    -- The "ink away" folders (see ensureDefaultDir).
-    self.default_dir = self:ensureDefaultDir()
 
     -- Notebook mode: nil for a single drawing. nb_bar_h is the height of the bottom
     -- page bar, 0 outside notebooks.
@@ -848,7 +844,7 @@ end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
-    "textedit", "textformat", "lasso", "notebook", "save", "document", "library", "input", "toolbar", "menus",
+    "textedit", "textformat", "lasso", "notebook", "export", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "wipe" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do

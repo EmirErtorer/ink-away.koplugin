@@ -134,6 +134,14 @@ function Storage.removeTree(p)
     return not Storage.exists(p)
 end
 
+-- A path as the reader sees it: relative to KOReader's data folder when it is
+-- inside it ("ink away/exports"), else as it is.
+function Storage.shortPath(path)
+    local data = Storage.dataDir()
+    if data and Storage.within(path, data) and path ~= data then return path:sub(#data:gsub("/+$", "") + 2) end
+    return path
+end
+
 -- Is `path` the folder `dir` or inside it?
 function Storage.within(path, dir)
     if not (path and dir) then return false end

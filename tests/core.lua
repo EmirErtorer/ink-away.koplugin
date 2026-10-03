@@ -933,6 +933,37 @@ do
     ok(a_plain == 0, "an unfilled shape has a transparent interior")
 end
 
+------------------------------------------------------------------------------
+-- export: a PNG can carry the notebook ruling and be laid on white
+------------------------------------------------------------------------------
+do
+    local W, H = 120, 160
+    local c = Canvas.new(W, H)
+    c:startStroke("ink", 6, 255, { 0, 0, 0 }); c:addPoint(20, 20); c:addPoint(100, 20); c:finishStroke()
+    local function px(buf, w, x, y)
+        local o = (y * w + x) * 4
+        return buf[o], buf[o + 1], buf[o + 2], buf[o + 3]
+    end
+    local clear, w = Export.buildPNGRGBA(c)
+    local _, _, _, a0 = px(clear, w, 60, 120)
+    ok(a0 == 0, "a PNG is transparent where nothing is drawn")
+    local white, ww, wh = Export.buildPNGRGBA(c, { white = true })
+    local r, g, b, a = px(white, ww, 60, 120)
+    ok(ww == W and wh == H and r == 255 and g == 255 and b == 255 and a == 255, "laid on white, the empty page is white")
+    local ir, _, _, ia = px(white, ww, 60, 20)
+    ok(ir < 40 and ia == 255, "and the ink stays dark")
+    local ruled = Export.buildPNGRGBA(c, { template = { style = "lines", size = 20, gray = 100 } })
+    local lines = 0
+    for y = 0, H - 1 do
+        local lr, _, _, la = px(ruled, W, 5, y)
+        if la == 255 and lr == 100 then lines = lines + 1 end
+    end
+    ok(lines >= 4, ("a page with a template carries its ruling (%d rows)"):format(lines))
+    local crop, cw, ch = Export.buildPNGRGBA(c, { rect = { x = 10, y = 10, w = 50, h = 30 }, white = true })
+    local cr = px(crop, cw, 15, 10)
+    ok(cw == 50 and ch == 30 and cr < 40, "a crop keeps its own size and offset")
+end
+
 -- A loop that closes exactly on its start must keep its shape when simplified.
 do
     local loop = {}

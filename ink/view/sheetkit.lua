@@ -323,24 +323,33 @@ end
 -- Ask for a line of text in a stock InputDialog with Cancel and an OK button.
 -- `o` holds title, input, hint, description, input_type, ok_text and on_ok(text),
 -- plus optional on_cancel() and `default`, the text on_ok gets when the field is
--- left empty.
+-- left empty. `o.extra` ({ text, callback(text) }) adds a middle button that
+-- closes the dialog and gets what was typed so far.
 function InkAwayView:promptText(o)
     local dialog
+    local row = {
+        { text = _("Cancel"), id = "close", callback = function()
+            UIManager:close(dialog)
+            if o.on_cancel then o.on_cancel() end
+        end },
+    }
+    if o.extra then
+        row[#row + 1] = { text = o.extra.text, callback = function()
+            local text = dialog:getInputText()
+            UIManager:close(dialog)
+            o.extra.callback(text)
+        end }
+    end
+    row[#row + 1] = { text = o.ok_text, is_enter_default = true, callback = function()
+        local text = dialog:getInputText()
+        UIManager:close(dialog)
+        if o.default and (not text or text == "") then text = o.default end
+        o.on_ok(text)
+    end }
     dialog = InputDialog:new{
         title = o.title, input = o.input, input_hint = o.hint, input_type = o.input_type,
         description = o.description,
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function()
-                UIManager:close(dialog)
-                if o.on_cancel then o.on_cancel() end
-            end },
-            { text = o.ok_text, is_enter_default = true, callback = function()
-                local text = dialog:getInputText()
-                UIManager:close(dialog)
-                if o.default and (not text or text == "") then text = o.default end
-                o.on_ok(text)
-            end },
-        }},
+        buttons = { row },
     }
     UIManager:show(dialog)
     dialog:onShowKeyboard()

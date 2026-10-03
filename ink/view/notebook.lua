@@ -218,7 +218,6 @@ function InkAwayView:loadNotebookPageBackground()
     self._bg_src = img and src or nil
     self.bg_rgba = nil          -- built on demand at export, never per page turn
     self.bg_path = t.pdf_path
-    self.export_bg = true
     self:trimPdfCache()
     UIManager:unschedule(self._pdf_prefetch_cb)
     UIManager:scheduleIn(1.0, self._pdf_prefetch_cb)
