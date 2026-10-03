@@ -84,7 +84,7 @@ do
     view:onCloseWidget(); done()
 end
 
--- grey e-ink: unchanged (fast per sample for black, a ui settle at the lift)
+-- grey e-ink: fast per sample for black, and nothing more at the lift
 do
     local view, modes, tick, done = world(BB.TYPE_BB8)
     local v = view.view
@@ -94,7 +94,7 @@ do
     for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end
     ok(count(modes, "fast") >= 99, "grey: every sample still refreshes at once (unchanged)")
     view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
-    ok(count(modes, "ui") == 1, "grey: the lift still settles with one ui refresh (unchanged)")
+    ok(count(modes, "ui") == 0 and count(modes, "flashui") == 0, "grey: the lift adds no refresh (the live ones showed it)")
     view:onCloseWidget(); done()
 end
 

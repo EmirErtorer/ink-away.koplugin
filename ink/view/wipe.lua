@@ -67,7 +67,8 @@ function InkAwayView:wipeRemove(i)
 end
 
 -- The eraser lifted. Areas go only if no line did, so rubbing out writing on a
--- filled box keeps the box. Then the ghosts of what went are flashed away.
+-- filled box keeps the box. Then the ghosts of what went are cleaned away (see
+-- cleanMode).
 function InkAwayView:wipeEnd()
     local w = self._wipe
     if w.removed == 0 then
@@ -83,7 +84,7 @@ function InkAwayView:wipeEnd()
     if self:colourPanel() then
         self:liveFlush()
     elseif w.flash then
-        self:dirtyAreaRect("flashui", w.flash, 2)
+        self:dirtyAreaRect(self:cleanMode(), w.flash, 2)
     end
     self:afterCommit()
 end

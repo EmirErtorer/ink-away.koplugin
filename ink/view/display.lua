@@ -284,6 +284,19 @@ function InkAwayView:refresh(target, mode, region)
     UIManager:setDirty(target, mode, region)
 end
 
+-- The refresh that clears the faint ghost the fast waveform leaves where ink
+-- went back to white. Where KOReader's "partial" is a REAGL update of the whole
+-- rect (Kindle Paperwhite 2 and later, some older Kobos) it does that without a
+-- flash; elsewhere only a flashing refresh does.
+function InkAwayView:cleanMode()
+    if self._clean_mode == nil then
+        local reagl = Screen._isREAGLWaveFormMode and Screen.waveform_partial ~= nil
+            and Screen:_isREAGLWaveFormMode(Screen.waveform_partial)
+        self._clean_mode = reagl and "partial" or "flashui"
+    end
+    return self._clean_mode
+end
+
 -- A stroke's changed rect (area-local) and one rect per mirror image of the current
 -- symmetry, so a symmetric stroke refreshes a few small rects instead of one box
 -- spanning all of them. Runs for every drawn point, so it returns a reused pool:

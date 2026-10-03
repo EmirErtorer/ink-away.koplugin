@@ -3358,6 +3358,57 @@ do
     ok(kept > 0 and kept <= 18, ("refresh: at most two grid pages of them are kept (%d)"):format(kept))
     view.renderPageThumb = real
 
+    -- strokes and page turns on grey
+    local function list()
+        local out = {}
+        for _, r in ipairs(UIManager.refreshes) do out[#out + 1] = r end
+        UIManager.refreshes = {}
+        return out
+    end
+    view:setTool("pen")
+    UIManager.refreshes = {}
+    view:onIaTouch(nil, pos(100, v.area_y + 300))
+    view:onIaPan(nil, pos(200, v.area_y + 340))
+    view:onIaPanRelease(nil, pos(220, v.area_y + 350))
+    local live = list()
+    UIManager.fireScheduled()   -- the stroke commits
+    local after = list()
+    ok(#live > 0 and #after == 0, ("refresh: a pen stroke on grey is shown live and nothing is refreshed at the lift (%d live, %d after)"):format(#live, #after))
+    view:setTool("erase")
+    UIManager.refreshes = {}
+    view:onIaTouch(nil, pos(100, v.area_y + 300))
+    view:onIaPan(nil, pos(220, v.area_y + 350))
+    view:onIaPanRelease(nil, pos(220, v.area_y + 350))
+    list()
+    UIManager.fireScheduled()
+    after = list()
+    ok(#after >= 1 and after[1].mode == "flashui",
+        "refresh: an erase is cleaned at the lift, with a flash where nothing gentler clears the ghost")
+    view._clean_mode = nil
+    Screen._isREAGLWaveFormMode = function(_, wf) return wf == "reagl" end
+    Screen.waveform_partial = "reagl"
+    view.erase_whole = true
+    view:setTool("pen")
+    view:onIaTouch(nil, pos(100, v.area_y + 500))
+    view:onIaPan(nil, pos(300, v.area_y + 520))
+    view:onIaPanRelease(nil, pos(300, v.area_y + 520))
+    UIManager.fireScheduled()
+    view:setTool("erase")
+    UIManager.refreshes = {}
+    view:onIaTouch(nil, pos(200, v.area_y + 470))
+    view:onIaPan(nil, pos(200, v.area_y + 560))
+    view:onIaPanRelease(nil, pos(200, v.area_y + 560))
+    UIManager.fireScheduled()
+    local wl = list()
+    local wmodes = {}
+    for _, r in ipairs(wl) do wmodes[#wmodes + 1] = tostring(r.mode) end
+    ok(table.concat(wmodes, ","):find("partial", 1, true) and not table.concat(wmodes, ","):find("flash", 1, true),
+        "refresh: on a REAGL screen the whole-stroke eraser cleans up without a flash (" .. table.concat(wmodes, ",") .. ")")
+    Screen._isREAGLWaveFormMode, Screen.waveform_partial = nil, nil
+    view._clean_mode, view.erase_whole = nil, false
+    view:setTool("pen")
+
+
     -- colour panel: no flashes for sheets and grids
     local had = Device.hasColorScreen
     Device.hasColorScreen = function() return true end

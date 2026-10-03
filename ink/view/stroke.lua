@@ -418,10 +418,13 @@ function InkAwayView:finalizeStroke()
             self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0)
         end
         self._live_preview = false
-    else
-        -- settle the fast waveform's ghosting over the stroke's rects; an erase
-        -- over dark or textured ink needs a flashing refresh to clear it
-        local mode = was_erase and "flashui" or "ui"
+    elseif was_erase then
+        -- Taking ink back to white with the fast waveform leaves a faint grey
+        -- ghost, which one cleaning refresh over the erased rects removes. A pen
+        -- stroke needs nothing more: its live refreshes already showed it as it is
+        -- ("fast" for solid black, which that waveform shows exactly, "ui" for any
+        -- other ink), and refreshing it again only redrew the page under it.
+        local mode = self:cleanMode()
         if sr then
             local rects, nr = self:symAreaRects(sr)
             for i = 1, nr do
