@@ -20,7 +20,6 @@ local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
 local Storage = require("ink/storage")
-local ThumbGrid = require("ink/ui/thumbgrid")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -485,29 +484,6 @@ function InkAwayView:renderPageThumb(index, maxw, maxh)
     local thumb = RenderImage:scaleBlitBuffer(scratch, tw, th, false)
     scratch:free()
     return thumb
-end
-
--- The page overview grid: tap a thumbnail to jump to that page.
-function InkAwayView:openPageGrid()
-    local nb = self.notebook
-    if not nb then return end
-    self:nbSyncOut()      -- so the current page's latest ink is in its thumbnail
-    local items = {}
-    for i = 1, nb:count() do
-        local page = nb.pages[i]
-        items[i] = { label = page.title and string.format("%d  %s", i, page.title) or tostring(i),
-            index = i, selected = (i == nb.index), star = page.star }
-    end
-    local grid
-    grid = ThumbGrid:new{
-        title = string.format(_("Pages  (%d)"), nb:count()),
-        items = items,
-        start = nb.index,
-        render = function(it, w, h) return self:renderPageThumb(it.index, w, h) end,
-        on_pick = function(it) grid:close(); self:nbGoTo(it.index) end,
-    }
-    self._settings_dialog = grid
-    UIManager:show(grid)
 end
 
 -- Insert a blank page after the current one and move to it.

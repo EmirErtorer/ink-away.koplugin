@@ -62,6 +62,7 @@ local DEV_SHEETS = {
     new = function(v) v:openNewSheet() end,
     file = function(v) v:openDocumentSheet() end,
     library = function(v) v:openLibrary() end,
+    overview = inNotebook(function(v) v:openOverview() end),
     notebook = inNotebook(function() end),
     nbexport = inNotebook(function(v) v:openExport() end),
     pagemenu = inNotebook(function(v) v:openPageMenu() end),
@@ -408,7 +409,7 @@ function InkAwayView:onCloseWidget()
     self:saveDocument()
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview" }) do
         self:closeSheet(key)
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -642,7 +643,7 @@ function InkAwayView:onIaTap(_, ges)
     if self.notebook and self.nb_bar_h > 0 and p then
         local function hit(r) return r and InkGeom.inRect(p.x, p.y, r) end
         if hit(self._nb_plus) then self:nbAddPage(); return true end
-        if hit(self._nb_overview) then self:openPageGrid(); return true end
+        if hit(self._nb_overview) then self:openOverview(); return true end
         if hit(self._nb_prev) then self:nbGo(-1); return true end
         if hit(self._nb_next) then self:nbGo(1); return true end
         if hit(self._nb_count) then self:openPageMenu(); return true end
@@ -856,7 +857,7 @@ end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
-    "textedit", "textformat", "lasso", "notebook", "export", "document", "library", "input", "toolbar", "menus",
+    "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "wipe" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do

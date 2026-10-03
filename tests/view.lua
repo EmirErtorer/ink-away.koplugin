@@ -2268,9 +2268,8 @@ do
         "pages: the two icons sit the same distance either side of the middle")
     ok(ov.w == plus.w and ov.h == plus.h, "pages: and have the same size")
     view:onIaTap(nil, { pos = centre(ov) })
-    ok(view._settings_dialog and view._settings_dialog.items and #view._settings_dialog.items == 3,
-        "pages: the overview icon opens the page overview")
-    view._settings_dialog:close()
+    ok(view._overview and #view._overview.items == 3, "pages: the overview icon opens the page overview")
+    view._overview:close()
     view:onIaTap(nil, { pos = centre(cnt) })
     ok(view._page_dialog ~= nil, "pages: the counter opens the page menu")
     view:closeSheet("_page_dialog")
@@ -2284,10 +2283,10 @@ do
     view:saveDocument()
     local data = Project.load(view.doc_path)
     ok(data.pages[2].title == "Lab results" and data.pages[2].star == true, "pages: both are saved, cache or not")
-    view:openPageGrid()
-    local item = view._settings_dialog.items[2]
+    view:openOverview()
+    local item = view._overview.items[2]
     ok(item.star and item.label:find("Lab results", 1, true), "pages: the overview shows the title and star")
-    view._settings_dialog:close()
+    view._overview:close()
     view:nbRenamePage(); answer("")
     view:nbToggleStar()
     ok(nb.pages[2].title == nil and nb.pages[2].star == nil, "pages: an empty title and a second star clear them")
@@ -2359,6 +2358,169 @@ do
     view.tool = "pen"
     view.palm_reject, view.finger_turns = false, false
     UIManager:close(view)
+    UIManager.reset()
+end
+
+-- ---- overview: the folder's notebooks as tabs -----------------------------
+do
+    local TestEnv = require("testenv")
+    local Folder = require("ink/folder")
+    local Project = require("ink/project")
+    local Storage = require("ink/storage")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/binder"
+    local DIR = LIB .. "/Physics"
+    os.execute("mkdir -p '" .. DIR .. "'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function answer(text)
+        local d = InputDialog.last
+        d.input = text
+        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    end
+    local function tabNames(grid)
+        local t = {}
+        for _, tab in ipairs(grid.tabs) do t[#t + 1] = (tab.selected and "*" or "") .. tab.label end
+        return table.concat(t, ",")
+    end
+    local function press(dialog, text)
+        for _, row in ipairs(dialog.buttons) do
+            for _, b in ipairs(row) do if b.text == text then b.callback(); return true end end
+        end
+    end
+
+    -- three documents in one folder: two notebooks and a drawing
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", DIR)
+    stroke(view, 100, 100)
+    view:nbAddPage(); stroke(view, 200, 200)
+    view:renameDocument("Mechanics"); view:saveDocument()
+    view:newNotebook("grid", DIR)
+    stroke(view, 100, 100)
+    view:renameDocument("Waves"); view:saveDocument()
+    view:newDrawing(DIR)
+    stroke(view, 100, 100)
+    view:renameDocument("Sketch"); view:saveDocument()
+    view:openDocument(DIR .. "/Waves.inkaway")
+
+    view:openOverview()
+    local ov = view._overview
+    ok(ov and UIManager.shown == ov, "overview: it opens full screen")
+    ok(tabNames(ov) == "Mechanics,*Waves,Sketch", "overview: the folder's documents are tabs, the open one chosen")
+    ok(ov.title == "Library / Physics", "overview: the title says where the folder is")
+    ok(#ov.items == 1 and ov.items[1].selected, "overview: it shows the open notebook's pages")
+    BB.out_of_bounds = 0
+    ov:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "overview: tabs and cards paint in bounds")
+
+    -- another tab: its pages, from its file; a tap opens that page
+    view:overviewShowTab(DIR .. "/Mechanics.inkaway")
+    ok(#ov.items == 2 and tabNames(ov) == "*Mechanics,Waves,Sketch", "overview: a tap on a tab shows its pages")
+    ov:paintTo(Screen.bb, 0, 0)
+    local thumb = view:overviewThumb(ov.items[2], 200, 260)
+    ok(thumb ~= nil, "overview: another notebook's pages get thumbnails")
+    view:overviewPick(ov.items[2])
+    ok(view.doc_path == DIR .. "/Mechanics.inkaway" and view.notebook.index == 2 and view._overview == nil,
+        "overview: tapping a page opens its notebook at that page")
+
+    -- tab order and colour are kept in the folder
+    view:openOverview()
+    ov = view._overview
+    view:overviewTabMenu(ov.tabs[1])
+    press(ButtonDialog.last, "Move down")
+    ok(tabNames(ov) == "Waves,*Mechanics,Sketch", "overview: Move down reorders the tabs")
+    ok(Folder.load(DIR).order[1] == "Waves.inkaway", "overview: and the order is saved in the folder")
+    view:overviewTabColour(ov.tabs[2])
+    local chooser = view._chooser_dialog
+    ok(chooser ~= nil, "overview: Colour offers a choice")
+    view:closeSheet("_chooser_dialog")
+    local data = Folder.load(DIR)
+    data.colors["Mechanics.inkaway"] = { 0x88, 0x88, 0x88 }
+    Folder.save(DIR, data)
+    view:refreshOverview()
+    ok(ov.tabs[2].color ~= nil and ov.tabs[1].color == nil, "overview: a tab shows its colour")
+
+    -- renaming a tab keeps its place and colour
+    view:overviewTabMenu(ov.tabs[1])
+    press(ButtonDialog.last, "Rename\u{2026}")
+    answer("Optics")
+    ok(Storage.exists(DIR .. "/Optics.inkaway") and not Storage.exists(DIR .. "/Waves.inkaway"),
+        "overview: renaming a tab renames its file")
+    ok(tabNames(ov) == "Optics,*Mechanics,Sketch" and Folder.load(DIR).order[1] == "Optics.inkaway",
+        "overview: and keeps its place")
+
+    -- pages: star, rename, move and copy to another notebook
+    view:overviewShowTab(DIR .. "/Optics.inkaway")
+    view:overviewPageMenu(ov.items[1])
+    press(ButtonDialog.last, "Star")
+    ok(Project.load(DIR .. "/Optics.inkaway").pages[1].star == true, "overview: starring a page of another notebook saves it")
+    view:overviewShowTab(DIR .. "/Mechanics.inkaway")
+    view:overviewPageMenu(ov.items[1])
+    press(ButtonDialog.last, "Rename\u{2026}")
+    answer("Forces")
+    ok(view.notebook.pages[1].title == "Forces", "overview: renaming a page of the open notebook changes it there")
+    view:overviewPageMenu(ov.items[1])
+    press(ButtonDialog.last, "Move to\u{2026}")
+    local targets = ButtonDialog.last
+    ok(#targets.buttons == 1 and targets.buttons[1][1].text == "Optics", "overview: Move offers the other notebooks")
+    targets.buttons[1][1].callback()
+    ok(view.notebook:count() == 1 and view.notebook.pages[1].title == nil, "overview: the page leaves its notebook")
+    local optics = Project.load(DIR .. "/Optics.inkaway")
+    ok(#optics.pages == 2 and optics.pages[2].title == "Forces", "overview: and is added to the end of the other")
+    ok(optics.pages[2].paper == "lines", "overview: keeping the lined paper it was on")
+    ok(view:docHasContent() and Project.load(DIR .. "/Mechanics.inkaway") ~= nil, "overview: both notebooks are intact")
+    view:overviewPageMenu(ov.items[1])
+    press(ButtonDialog.last, "Copy to\u{2026}")
+    ButtonDialog.last.buttons[1][1].callback()
+    ok(view.notebook:count() == 1 and #Project.load(DIR .. "/Optics.inkaway").pages == 3,
+        "overview: Copy leaves the page where it was")
+    view:overviewPageMenu(ov.items[1])
+    press(ButtonDialog.last, "Move to\u{2026}")
+    ok(view.notebook:count() == 1, "overview: the last page of a notebook stays")
+
+    -- the starred filter
+    view:overviewShowTab(DIR .. "/Optics.inkaway")
+    view:overviewToggleStarred()
+    ok(#ov.items == 1 and ov.title == "Starred pages", "overview: the star shows only starred pages")
+    view:overviewToggleStarred()
+    ok(#ov.items == 3, "overview: and back to all of them")
+
+    -- a drawing tab is one page
+    view:overviewShowTab(DIR .. "/Sketch.inkaway")
+    ok(#ov.items == 1 and ov.items[1].label == "Sketch", "overview: a drawing is a single card")
+
+    -- + Notebook makes a new one in this folder
+    ov.tab_footer[2]()
+    ok(view._overview == nil and view._new_dialog ~= nil, "overview: + Notebook opens New for this folder")
+    view:closeSheet("_new_dialog")
+
+    -- deleting the open notebook's tab
+    view:openOverview()
+    ov = view._overview
+    local mech
+    for _, tab in ipairs(ov.tabs) do if tab.label == "Mechanics" then mech = tab end end
+    view:overviewTabMenu(mech)
+    press(ButtonDialog.last, "Delete\u{2026}")
+    UIManager.shown.ok_callback()
+    ok(not Storage.exists(DIR .. "/Mechanics.inkaway") and view.doc_path ~= DIR .. "/Mechanics.inkaway",
+        "overview: deleting the open tab removes it and starts a new drawing")
+    ok(not tabNames(ov):find("Mechanics", 1, true), "overview: the tab is gone")
+    ov:close()
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
     UIManager.reset()
 end
 

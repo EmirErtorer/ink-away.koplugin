@@ -2,7 +2,9 @@
 A full-screen grid of cards, paged: the page overview and the library. Each card
 is a folder or a thumbnail with a name under it; a tap picks it, a hold asks for
 its menu. Thumbnails come from a callback, and only the grid page on screen is
-rendered and kept, so a long notebook or a full folder stays light.
+rendered and kept, so a long notebook or a full folder stays light. An optional
+column of tabs on the left (the notebooks of a folder, in the overview) chooses
+what the grid shows.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -37,6 +39,11 @@ local ThumbGrid = InputContainer:extend{
     close_label = nil,  -- the close pill's text (Done by default)
     empty_text = nil,   -- shown when there are no items
     folder_icon = nil,  -- path of the SVG drawn on folder cards
+    on_title = nil,     -- function() for a tap on the title
+    tabs = nil,         -- list of { label, color = Blitbuffer colour or nil, selected = bool }
+    on_tab = nil,       -- function(tab) after a tap on a tab
+    on_tab_hold = nil,  -- function(tab) after a hold on a tab
+    tab_footer = nil,   -- { label, cb }: a button under the tabs
     start = 1,          -- the item whose grid page shows first
     cols = nil,         -- 3 x 3 cards, or 4 x 2 on a wide screen, unless given
     rows = nil,
@@ -52,6 +59,13 @@ function ThumbGrid:init()
     self.pad = Screen:scaleBySize(12)
     self.label_h = Screen:scaleBySize(22)
     local wide = sw > sh
+    -- with tabs, the cards share the width with the tab column
+    self.tab_w = self.tabs and math.floor(sw * (wide and 0.24 or 0.32)) or 0
+    self.tpage = 0
+    if self.tabs then
+        self.cols = self.cols or (wide and 3 or 2)
+        self.rows = self.rows or (wide and 2 or 3)
+    end
     self.cols = self.cols or (wide and 4 or 3)
     self.rows = self.rows or (wide and 2 or 3)
     self.per = self.cols * self.rows
@@ -77,13 +91,49 @@ function ThumbGrid:gridCount()
 end
 
 -- Replace the cards (after a rename, a move, a new folder...), keeping the grid
--- page when it still exists.
-function ThumbGrid:setItems(items, title)
+-- page when it still exists, and optionally the tabs.
+function ThumbGrid:setItems(items, title, tabs)
     self:freeCache()
     self.items = items or {}
     if title then self.title = title end
+    if tabs then self.tabs = tabs end
     self.gpage = math.min(self.gpage, self:gridCount() - 1)
     UIManager:setDirty(self, "ui")
+end
+
+-- The tab column's layout: tab height and gap, how many tabs fit, and the rects
+-- of the paging arrows and the footer button.
+function ThumbGrid:tabLayout()
+    local th, gap = Screen:scaleBySize(52), Screen:scaleBySize(8)
+    local top = self.top_h + self.pad
+    local bottom = self.sh - self.bot_h
+    local x, w = self.pad, self.tab_w - self.pad
+    local foot = self.tab_footer and { x = x, y = bottom - th, w = w - self.pad, h = th } or nil
+    local avail = (foot and foot.y - gap or bottom) - top
+    local fit = math.max(1, math.floor((avail + gap) / (th + gap)))
+    local arrows
+    if #self.tabs > fit then
+        fit = math.max(1, fit - 1)   -- a row for the arrows
+        local ay = top + fit * (th + gap)
+        local aw = math.floor((w - self.pad - gap) / 2)
+        arrows = { up = { x = x, y = ay, w = aw, h = th }, down = { x = x + aw + gap, y = ay, w = aw, h = th } }
+    end
+    return { th = th, gap = gap, top = top, x = x, w = w, fit = fit, foot = foot, arrows = arrows }
+end
+
+-- Screen rect of the tab in slot `i` (0-based) of the shown tab page, and the tab.
+function ThumbGrid:tabRect(L, i)
+    local tab = self.tabs[self.tpage * L.fit + i + 1]
+    return { x = L.x, y = L.top + i * (L.th + L.gap), w = L.w, h = L.th, tab = tab }
+end
+
+-- Show the tab page holding the selected tab.
+function ThumbGrid:showSelectedTab()
+    if not self.tabs then return end
+    local L = self:tabLayout()
+    for i, t in ipairs(self.tabs) do
+        if t.selected then self.tpage = math.floor((i - 1) / L.fit) end
+    end
 end
 
 -- Screen rect of cell `slot` (0-based) on the current grid page, plus the item
@@ -92,9 +142,10 @@ function ThumbGrid:cellRect(slot)
     local col = slot % self.cols
     local row = math.floor(slot / self.cols)
     local area_h = self.sh - self.top_h - self.bot_h
-    local cw = math.floor((self.sw - self.pad * (self.cols + 1)) / self.cols)
+    local area_w = self.sw - self.tab_w
+    local cw = math.floor((area_w - self.pad * (self.cols + 1)) / self.cols)
     local ch = math.floor((area_h - self.pad * (self.rows + 1)) / self.rows)
-    local x = self.pad + col * (cw + self.pad)
+    local x = self.tab_w + self.pad + col * (cw + self.pad)
     local y = self.top_h + self.pad + row * (ch + self.pad)
     return { x = x, y = y, w = cw, h = ch, item = self.items[self.gpage * self.per + slot + 1] }
 end
@@ -140,6 +191,7 @@ function ThumbGrid:folderTile(sz)
 end
 
 function ThumbGrid:onShow()
+    self:showSelectedTab()
     self:prepare()
     UIManager:setDirty(self, "full")
     return true
@@ -193,12 +245,64 @@ function ThumbGrid:paintTo(bb, x, y)
         max_width = math.max(S(40), right - tx) }
     local tsz = title:getSize()
     title:paintTo(bb, tx, y + math.floor(self.top_h / 2 - tsz.h / 2))
+    self._title = { x = tx, y = y, w = tsz.w, h = self.top_h }
     title:free()
     bb:paintRect(x, y + self.top_h - 1, sw, 1, GREY)
 
+    -- the tab column: each tab a card with its colour as a strip on the left; the
+    -- selected one white, framed and reaching into the grid
+    if self.tabs then
+        local L = self:tabLayout()
+        local tface = Font:getFace("cfont", 16)
+        local strip = S(8)
+        for i = 0, L.fit - 1 do
+            local r = self:tabRect(L, i)
+            local t = r.tab
+            if t then
+                local rx, ry = x + r.x, y + r.y
+                if t.selected then
+                    bb:paintRoundedRect(rx, ry, r.w + self.pad, r.h, BLACK, S(12))
+                    bb:paintRoundedRect(rx + S(2), ry + S(2), r.w + self.pad - S(2), r.h - S(4), WHITE, S(11))
+                else
+                    bb:paintRoundedRect(rx, ry, r.w - self.pad, r.h, CARD, S(12))
+                end
+                if t.color then bb:paintRect(rx + S(4), ry + S(8), strip, r.h - S(16), t.color) end
+                local tw = TextWidget:new{ text = t.label, face = tface, bold = t.selected,
+                    max_width = r.w - self.pad - strip - S(16) }
+                local twsz = tw:getSize()
+                tw:paintTo(bb, rx + strip + S(10), ry + math.floor((r.h - twsz.h) / 2))
+                tw:free()
+            end
+        end
+        if L.arrows then
+            local a = L.arrows
+            local pages = math.ceil(#self.tabs / L.fit)
+            if self.tpage > 0 then
+                bb:paintRoundedRect(x + a.up.x, y + a.up.y, a.up.w, a.up.h, CARD, S(12))
+                label("\u{25B2}", x + a.up.x + a.up.w / 2, y + a.up.y + a.up.h / 2, tface)
+            end
+            if self.tpage < pages - 1 then
+                bb:paintRoundedRect(x + a.down.x, y + a.down.y, a.down.w, a.down.h, CARD, S(12))
+                label("\u{25BC}", x + a.down.x + a.down.w / 2, y + a.down.y + a.down.h / 2, tface)
+            end
+        end
+        if L.foot then
+            local f = L.foot
+            bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, BLACK, S(12))
+            label(self.tab_footer[1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, WHITE, f.w - S(8), true)
+        end
+        -- the line between the tabs and the grid, broken where the selected tab joins it
+        bb:paintRect(x + self.tab_w, y + self.top_h, 1, sh - self.top_h - self.bot_h, GREY)
+        for i = 0, L.fit - 1 do
+            local r = self:tabRect(L, i)
+            if r.tab and r.tab.selected then bb:paintRect(x + self.tab_w, y + r.y + S(2), 1, r.h - S(4), WHITE) end
+        end
+    end
+
     if #self.items == 0 and self.empty_text then
-        label(self.empty_text, x + sw / 2, y + self.top_h + (sh - self.top_h - self.bot_h) / 2,
-            Font:getFace("cfont", 17), LABEL, sw - 4 * self.pad)
+        local aw = sw - self.tab_w
+        label(self.empty_text, x + self.tab_w + aw / 2, y + self.top_h + (sh - self.top_h - self.bot_h) / 2,
+            Font:getFace("cfont", 17), LABEL, aw - 4 * self.pad)
     end
 
     local card_r = S(16)
@@ -275,6 +379,22 @@ end
 
 local function hit(r, p) return r and p.x >= r.x and p.x <= r.x + r.w and p.y >= r.y and p.y <= r.y + r.h end
 
+-- What of the tab column is at screen point p: a tab, "up" or "down" (paging),
+-- "footer", or nil.
+function ThumbGrid:tabAt(p)
+    if not self.tabs or p.x > self.tab_w then return nil end
+    local L = self:tabLayout()
+    if L.foot and hit(L.foot, p) then return "footer" end
+    if L.arrows then
+        if hit(L.arrows.up, p) and self.tpage > 0 then return "up" end
+        if hit(L.arrows.down, p) and self.tpage < math.ceil(#self.tabs / L.fit) - 1 then return "down" end
+    end
+    for i = 0, L.fit - 1 do
+        local r = self:tabRect(L, i)
+        if r.tab and hit(r, p) then return r.tab end
+    end
+end
+
 function ThumbGrid:onTgTap(_, ges)
     local p = ges and ges.pos
     if not p then return true end
@@ -283,6 +403,15 @@ function ThumbGrid:onTgTap(_, ges)
         if hit(r, p) then self.actions[i][2](); return true end
     end
     if hit(self._back, p) then self.on_back(); return true end
+    if self.on_title and hit(self._title, p) then self.on_title(); return true end
+    local tab = self:tabAt(p)
+    if tab == "up" then self.tpage = math.max(0, self.tpage - 1); UIManager:setDirty(self, "ui"); return true end
+    if tab == "down" then self.tpage = self.tpage + 1; UIManager:setDirty(self, "ui"); return true end
+    if tab == "footer" then self.tab_footer[2](); return true end
+    if tab then
+        if self.on_tab then self.on_tab(tab) end
+        return true
+    end
     if hit(self._prev, p) then self:gridGo(-1); return true end
     if hit(self._next, p) then self:gridGo(1); return true end
     local it = self:itemAt(p)
@@ -292,6 +421,11 @@ end
 
 function ThumbGrid:onTgHold(_, ges)
     local p = ges and ges.pos
+    local tab = p and self:tabAt(p)
+    if type(tab) == "table" then
+        if self.on_tab_hold then self.on_tab_hold(tab) end
+        return true
+    end
     local it = p and self:itemAt(p)
     if it and self.on_hold then self.on_hold(it) end
     return true

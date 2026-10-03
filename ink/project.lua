@@ -84,6 +84,22 @@ function Project.serializeNotebook(nb, cache, extra)
     return table.concat(out)
 end
 
+-- Any plain value (numbers, strings, booleans, tables of them) as a chunk that
+-- Project.decode reads back. Small files beside the projects use it too.
+function Project.encode(value)
+    return serializeRoot(value)
+end
+
+-- Read a value written by Project.encode, in a sandbox. Returns it, or nil, err.
+function Project.decode(str)
+    if type(str) ~= "string" or str == "" then return nil, "empty" end
+    local chunk, err = load(str, "inkaway-data", "t", {})
+    if not chunk then return nil, err end
+    local ok, value = pcall(chunk)
+    if not ok then return nil, value end
+    return value
+end
+
 -- Parse a project string. Returns a table { w, h, ops } or nil, error.
 function Project.deserialize(str)
     if type(str) ~= "string" or str == "" then return nil, "empty" end

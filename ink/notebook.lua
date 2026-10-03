@@ -179,6 +179,28 @@ function Notebook:movePageTo(n)
     return n
 end
 
+-- Take page i out of the notebook and return it, keeping the current page where
+-- it is. Returns nil when it is the only page.
+function Notebook:takePage(i)
+    if #self.pages <= 1 or not self.pages[i] then return nil end
+    local page = table.remove(self.pages, i)
+    if i < self.index or self.index > #self.pages then self.index = math.max(1, self.index - 1) end
+    return page
+end
+
+-- Add a copy of `page` (from this or another notebook) at the end, as a new page
+-- with its own id, on paper `style` (the paper it had where it came from), so
+-- it looks the same here. Its tie to a PDF page is kept only when it comes from
+-- the same PDF (`same_pdf`). Returns the new page's index.
+function Notebook:putPage(page, same_pdf, style)
+    local copy = self:newPage(same_pdf and page.src or nil)
+    style = style or page.paper
+    copy.ops, copy.title, copy.star = deepcopy(page.ops or {}), page.title, page.star
+    copy.paper = (style and style ~= self.template.style) and style or nil
+    self.pages[#self.pages + 1] = copy
+    return #self.pages
+end
+
 -- Remove the current page (never below one page). Returns the new index.
 function Notebook:deletePage()
     if #self.pages <= 1 then

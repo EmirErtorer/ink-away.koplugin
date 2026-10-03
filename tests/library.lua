@@ -329,6 +329,59 @@ do
     ok(Library.pathCode("") == "811c9dc5" and Library.pathCode("foobar") == "bf9cf968", "path codes are FNV-1a")
 end
 
+------------------------------------------------------------------------------
+-- Binders: a folder's tab order and colours, and pages moving between notebooks
+------------------------------------------------------------------------------
+do
+    local Folder = require("ink/folder")
+    local B = DIR .. "/binder"
+    os.execute("mkdir -p '" .. B .. "'")
+    ok(Project.decode(Project.encode({ a = { 1, 2 }, b = "x" })).a[2] == 2, "encode and decode round-trip a value")
+    ok(Project.decode("os.exit()") == nil, "decode runs nothing")
+
+    local empty = Folder.load(B)
+    ok(#empty.order == 0 and next(empty.colors) == nil, "a folder without binder data has none")
+    local docs = { { name = "b.inkaway", mtime = 30 }, { name = "a.inkaway", mtime = 10 }, { name = "c.inkaway", mtime = 20 } }
+    local function names(list) local t = {} for i, d in ipairs(list) do t[i] = d.name:sub(1, 1) end return table.concat(t) end
+    ok(names(Folder.arrange(empty, docs)) == "acb", "unknown documents come oldest first")
+    local data = { order = { "b.inkaway", "gone.inkaway" }, colors = {} }
+    local arranged = Folder.arrange(data, docs)
+    ok(names(arranged) == "bac", "known documents keep their order, missing ones are skipped")
+    ok(Folder.move(data, arranged, "c.inkaway", -1) and names(arranged) == "bca", "a tab moves up")
+    ok(data.order[1] == "b.inkaway" and data.order[2] == "c.inkaway", "and the order is remembered")
+    ok(not Folder.move(data, arranged, "b.inkaway", -1), "the first tab cannot move up")
+    data.colors["c.inkaway"] = { 1, 2, 3 }
+    Folder.rename(data, "c.inkaway", "z.inkaway")
+    ok(data.order[2] == "z.inkaway" and data.colors["z.inkaway"][3] == 3 and data.colors["c.inkaway"] == nil,
+        "a renamed tab keeps its place and colour")
+    ok(Folder.save(B, data), "binder data saves")
+    local back = Folder.load(B)
+    ok(back.order[2] == "z.inkaway" and back.colors["z.inkaway"][1] == 1, "and loads back")
+    Folder.forget(back, "z.inkaway")
+    ok(#back.order == 2 and back.colors["z.inkaway"] == nil, "a deleted tab is forgotten")
+    ok(Storage.exists(B .. "/" .. Folder.FILE) and #Library.list(B, DIR) == 0, "the binder file is hidden from the library")
+
+    local a = Notebook.new(10, 10, { style = "lines", pdf_path = "x.pdf" })
+    a.pages = { a:newPage(1), a:newPage(2), a:newPage(3) }
+    a.pages[2].title, a.pages[2].ops = "Two", { { kind = "ink" } }
+    a.index = 3
+    local taken = a:takePage(2)
+    ok(taken.title == "Two" and a:count() == 2 and a.index == 2, "takePage removes a page and keeps the current one in view")
+    local b = Notebook.new(10, 10, { style = "grid" })
+    local at = b:putPage(taken, false)
+    ok(at == 2 and b.pages[2].title == "Two" and #b.pages[2].ops == 1 and b.pages[2].src == nil,
+        "putPage adds a copy at the end, without a tie to another PDF")
+    ok(b.pages[2].id ~= b.pages[1].id and b.pages[2].ops ~= taken.ops, "as a new page with its own id and ops")
+    ok(a:putPage(taken, true) == 3 and a.pages[3].src == 2, "within the same PDF the page keeps its PDF page")
+    ok(b.pages[2].paper == nil and a.pages[3].paper == nil, "a page on the notebook's own paper needs none of its own")
+    b:putPage(taken, false, "lines")
+    ok(b.pages[3].paper == "lines", "a page from lined paper stays lined in a grid notebook")
+    b:putPage(taken, false, "grid")
+    ok(b.pages[4].paper == nil, "and one already on this notebook's paper just uses it")
+    local one = Notebook.new(10, 10)
+    ok(one:takePage(1) == nil and one:count() == 1, "the only page cannot be taken")
+end
+
 TestEnv.cleanup()
 print(("library: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

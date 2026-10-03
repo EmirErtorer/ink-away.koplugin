@@ -14,6 +14,7 @@ local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
+local Folder = require("ink/folder")
 local Library = require("ink/library")
 local Notebook = require("ink/notebook")
 local Project = require("ink/project")
@@ -202,6 +203,9 @@ function InkAwayView:promptRenameItem(it)
                 UIManager:show(InfoMessage:new{ text = _("Could not rename.\n") .. tostring(err) })
                 return
             end
+            if not it.folder then
+                Folder.update(dir, function(d) Folder.rename(d, Storage.baseName(it.path), Storage.baseName(new)) end)
+            end
             self:pathMoved(it.path, new)
             self:refreshLibrary()
         end }
@@ -213,6 +217,7 @@ function InkAwayView:duplicateItem(it)
         UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
         return
     end
+    Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
     self:refreshLibrary()
 end
 
@@ -226,7 +231,10 @@ function InkAwayView:confirmDeleteItem(it)
             UIManager:show(InfoMessage:new{ text = _("Could not delete it.") })
             return
         end
-        if not it.folder then self:dropThumbs(it.path) end
+        if not it.folder then
+            self:dropThumbs(it.path)
+            Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
+        end
         if holds_open then self:discardDocument(self._lib_dir) end
         self:refreshLibrary()
     end })
@@ -240,6 +248,10 @@ function InkAwayView:moveItem(it)
         if not new then
             UIManager:show(InfoMessage:new{ text = _("Could not move it.\n") .. tostring(err) })
             return
+        end
+        if not it.folder and new ~= it.path then
+            Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
+            Folder.update(dir, function(d) Folder.add(d, Storage.baseName(new)) end)
         end
         self:pathMoved(it.path, new)
         self:refreshLibrary()

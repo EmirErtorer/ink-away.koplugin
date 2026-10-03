@@ -15,6 +15,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
+local Folder = require("ink/folder")
 local Library = require("ink/library")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
@@ -147,6 +148,9 @@ function InkAwayView:saveDocument(force)
         return false
     end
     self._save_failed = nil
+    if not self.doc_written then   -- a new document joins the end of its folder's tabs
+        Folder.update(Storage.dirName(path), function(d) Folder.add(d, Storage.baseName(path)) end)
+    end
     self.doc_path, self.doc_written = path, true
     self.dirty = false
     self._page_rev = self.canvas.rev
@@ -333,6 +337,7 @@ function InkAwayView:duplicateDocument()
         UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
         return
     end
+    Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
     if self:openDocument(copy) then
         self:showNotice(string.format(_("Now in the copy, \u{201C}%s\u{201D}"), Storage.stem(copy)))
     end
@@ -363,6 +368,8 @@ function InkAwayView:renameDocument(name)
             return
         end
         self:setSetting("inkaway_last_doc", new)
+        local old = self.doc_path
+        Folder.update(Storage.dirName(new), function(d) Folder.rename(d, Storage.baseName(old), Storage.baseName(new)) end)
     end
     self.doc_path = new
 end
@@ -371,15 +378,18 @@ end
 -- The File and New sheets
 ------------------------------------------------------------------------------
 
--- Where the open document is, as the library shows it: "Library / School".
-function InkAwayView:docPlace()
+-- Folder `dir` as the library shows it: "Library / School".
+function InkAwayView:placeOf(dir)
     local root = self:libraryDir()
-    local dir = self.doc_path and Storage.dirName(self.doc_path) or root
     if not Storage.within(dir, root) then return dir end
     local place = _("Library")
-    local rest = dir:sub(#root + 2)
-    for part in rest:gmatch("[^/]+") do place = place .. " / " .. part end
+    for part in dir:sub(#root + 2):gmatch("[^/]+") do place = place .. " / " .. part end
     return place
+end
+
+-- Where the open document is, as the library shows it.
+function InkAwayView:docPlace()
+    return self:placeOf(self.doc_path and Storage.dirName(self.doc_path) or self:libraryDir())
 end
 
 -- The File sheet (toolbar): the document's name and where it is kept, rename,
