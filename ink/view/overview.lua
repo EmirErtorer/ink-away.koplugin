@@ -1,10 +1,10 @@
 --[[
-The overview: the pages of a notebook as thumbnails, with the notebooks of its
-folder as tabs down the side, like dividers in a binder (drawings stay in the
-library). Tap a tab to see its pages and a page to open it; hold either for its
-menu; the back arrow goes up to the folder in the library. Pages can be renamed,
-starred, moved or copied to another notebook of the folder, and the tabs put in
-order and given colours.
+The overview: the pages of a notebook as thumbnails, with the folders and
+notebooks of its folder as tabs down the side, like dividers in a binder
+(drawings stay in the library). Tap a notebook tab to see its pages, a folder tab
+to go into it, the back arrow to go up, and a page to open it; hold any of them
+for its menu. Pages can be renamed, starred, moved or copied to any notebook, and
+the tabs put in order and given colours.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -45,25 +45,45 @@ function InkAwayView:isNotebookPath(path, mtime)
     return known.nb
 end
 
--- The tabs of folder `dir`: its notebooks in binder order, the one at `sel_path`
--- marked. An open notebook with no file yet is a tab too, at the end. Also
--- returns the binder data and all the folder's documents in order.
-function InkAwayView:overviewTabs(dir, sel_path)
+-- Folder `dir` as a binder: its subfolders, then its documents, each in binder
+-- order. Entries met for the first time keep the place they got from now on.
+-- Returns the folders, the documents, the binder data and every entry in order.
+function InkAwayView:binderEntries(dir)
     local data = Folder.load(dir)
-    local docs = select(2, Library.list(dir, self:libraryDir()))
-    local arranged = Folder.arrange(data, docs)
-    -- documents met for the first time keep the place they got from now on
+    local folders, docs = Library.list(dir, self:libraryDir())
+    local all = {}
+    for i = 1, #folders do all[#all + 1] = folders[i] end
+    for i = 1, #docs do all[#all + 1] = docs[i] end
+    local arranged = Folder.arrange(data, all)
     if not Folder.knows(data, arranged) then
         Folder.setOrder(data, arranged)
         Folder.save(dir, data)
     end
+    local fs, ds = {}, {}
+    for _, e in ipairs(arranged) do
+        if e.mode == "directory" then fs[#fs + 1] = e else ds[#ds + 1] = e end
+    end
+    return fs, ds, data, arranged
+end
+
+-- The tabs of folder `dir`: its subfolders, then its notebooks, the one at
+-- `sel_path` marked. An open notebook with no file yet is a tab too, at the end.
+-- Also returns the binder data and every entry of the folder in order.
+function InkAwayView:overviewTabs(dir, sel_path)
+    local folders, docs, data, arranged = self:binderEntries(dir)
+    local function colour(name)
+        local rgb = data.colors[name]
+        return rgb and uiFill(rgb) or nil
+    end
     local tabs = {}
+    for _, f in ipairs(folders) do
+        tabs[#tabs + 1] = { label = f.name, name = f.name, path = f.path, folder = true, color = colour(f.name) }
+    end
     local seen
-    for _, d in ipairs(arranged) do
+    for _, d in ipairs(docs) do
         if self:isNotebookPath(d.path, d.mtime) then
-            local rgb = data.colors[d.name]
             tabs[#tabs + 1] = { label = Storage.stem(d.name), name = d.name, path = d.path,
-                color = rgb and uiFill(rgb) or nil, selected = (d.path == sel_path) }
+                color = colour(d.name), selected = (d.path == sel_path) }
         end
         if d.path == self.doc_path then seen = true end
     end
@@ -110,26 +130,54 @@ function InkAwayView:overviewItems()
     return items
 end
 
--- The title: the selected notebook's whole name (its tab may be cut short).
+-- The name of folder `dir` in the overview: "Notebooks" at the top.
+function InkAwayView:overviewFolderTitle(dir)
+    if dir == self._ov.root then return _("Notebooks") end
+    return Storage.baseName(dir)
+end
+
 function InkAwayView:overviewTitle()
     local ov = self._ov
     if ov.starred then return _("Starred pages") end
-    if not ov.path then return "" end
-    return ov.path == self.doc_path and self:docName() or Storage.stem(ov.path)
+    return self:overviewFolderTitle(ov.dir)
+end
+
+-- The notebook to show in folder `dir`: the one last shown there, else its first.
+function InkAwayView:overviewPickIn(dir)
+    local last, first = self._ov.last[dir], nil
+    for _, tab in ipairs((self:overviewTabs(dir))) do
+        if not tab.folder then
+            if tab.path == last then return last end
+            first = first or tab.path
+        end
+    end
+    return first
+end
+
+-- The back arrow's action: up a folder, unless at the top.
+function InkAwayView:overviewUp()
+    local ov = self._ov
+    if ov.dir == ov.root or not Storage.within(ov.dir, ov.root) then return nil end
+    return function() self:overviewGo(Storage.dirName(self._ov.dir)) end
 end
 
 ------------------------------------------------------------------------------
 -- The overview
 ------------------------------------------------------------------------------
 
--- Open the overview on the open notebook, with its folder's notebooks as tabs.
+-- Open the overview on the open notebook, with the folders and notebooks of its
+-- folder as tabs. The library folder is the top it can go up to.
 function InkAwayView:openOverview()
     self:flushPending()
     if self.active_image then self:finishImageEdit() end
     if self.notebook then self:nbSyncOut() end
-    local dir = self:docDir()
-    self._ov = { dir = dir, path = self.doc_path, docs = {}, starred = false }
-    local tabs = self:overviewTabs(dir, self.doc_path)
+    local dir, root = self:docDir(), self:libraryDir()
+    if not Storage.within(dir, root) then root = dir end
+    self._ov = { dir = dir, root = root, path = self.notebook and self.doc_path or nil, last = {}, docs = {},
+        starred = false }
+    if not self._ov.path then self._ov.path = self:overviewPickIn(dir) end
+    self._ov.last[dir] = self._ov.path
+    local tabs = self:overviewTabs(dir, self._ov.path)
     local items = self:overviewItems()
     local start = 1
     for i, it in ipairs(items) do if it.selected then start = i end end
@@ -139,19 +187,30 @@ function InkAwayView:openOverview()
         items = items,
         start = start,
         tabs = tabs,
-        empty_text = _("No starred pages here."),
-        actions = { { "\u{2605}", function() self:overviewToggleStarred() end } },
-        on_back = function() local dir = self._ov.dir; grid:close(); self:openLibrary(dir) end,
+        folder_icon = self:iconPath("folder"),
+        empty_text = self:overviewEmptyText(),
+        actions = {
+            { "\u{2605}", function() self:overviewToggleStarred() end },
+            { _("Library"), function() local d = self._ov.dir; grid:close(); self:openLibrary(d) end },
+        },
+        on_back = self:overviewUp(),
         render = function(it, w, h) return self:overviewThumb(it, w, h) end,
         on_pick = function(it) self:overviewPick(it) end,
         on_hold = function(it) self:overviewPageMenu(it) end,
-        on_tab = function(tab) self:overviewShowTab(tab.path) end,
+        on_tab = function(tab)
+            if tab.folder then self:overviewGo(tab.path) else self:overviewShowTab(tab.path) end
+        end,
         on_tab_hold = function(tab) self:overviewTabMenu(tab) end,
         tab_footer = { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._ov.dir) end },
         on_close = function() self:closeOverviewDocs(); self._ov, self._overview = nil, nil end,
     }
     self._overview = grid
     UIManager:show(grid)
+end
+
+function InkAwayView:overviewEmptyText()
+    if self._ov.starred then return _("No starred pages here.") end
+    return _("No notebooks here yet.")
 end
 
 -- Show the pages of the tab at `path`.
@@ -162,14 +221,30 @@ function InkAwayView:overviewShowTab(path)
     self:refreshOverview(true)
 end
 
+-- Show folder `dir`: its tabs, and the pages of the notebook last shown there.
+function InkAwayView:overviewGo(dir)
+    local ov = self._ov
+    if not ov then return end
+    ov.dir = dir
+    ov.path = self:overviewPickIn(dir)
+    self:refreshOverview(true)
+end
+
 -- Rebuild the tabs and cards after a change; `top` goes back to the first page
--- of cards.
+-- of cards, and to the tabs holding the chosen one.
 function InkAwayView:refreshOverview(top)
     local ov, grid = self._ov, self._overview
     if not (ov and grid) then return end
+    if ov.path then ov.last[ov.dir] = ov.path end
     local tabs = self:overviewTabs(ov.dir, ov.path)
     if top then grid.gpage = 0 end
     grid:setItems(self:overviewItems(), self:overviewTitle(), tabs)
+    if top then
+        grid.tpage = 0
+        grid:showSelectedTab()
+    end
+    grid.on_back = self:overviewUp()
+    grid.empty_text = self:overviewEmptyText()
     grid.actions[1][3] = ov.starred or nil   -- the star pill is dark while filtering
 end
 
@@ -288,13 +363,33 @@ function InkAwayView:editNotebookAt(path, fn, page)
     return true
 end
 
--- The notebooks in the overview's folder other than `path`, as tabs.
-function InkAwayView:overviewOtherNotebooks(path)
-    local out = {}
-    for _, tab in ipairs((self:overviewTabs(self._ov.dir))) do
-        if tab.path ~= path and self:overviewDoc(tab.path).nb then out[#out + 1] = tab end
+-- Choose a notebook other than `except`, starting in folder `dir`: a list of
+-- the folder's subfolders (to go into) and notebooks, with a way up.
+-- on_pick(path, label) gets the one chosen.
+function InkAwayView:chooseNotebook(title, dir, except, on_pick)
+    local root = self._ov.root
+    local dialog
+    local function show(d)
+        local rows = {}
+        local function row(text, fn)
+            rows[#rows + 1] = { { text = text, callback = function() UIManager:close(dialog); fn() end } }
+        end
+        if d ~= root and Storage.within(d, root) then
+            local up = Storage.dirName(d)
+            row("\u{2039} " .. self:overviewFolderTitle(up), function() show(up) end)
+        end
+        for _, tab in ipairs((self:overviewTabs(d))) do
+            if tab.folder then
+                row(tab.label .. "  \u{203A}", function() show(tab.path) end)
+            elseif tab.path ~= except then
+                row(tab.label, function() on_pick(tab.path, tab.label) end)
+            end
+        end
+        if #rows == 0 then rows[1] = { { text = _("No other notebook here"), enabled = false } } end
+        dialog = ButtonDialog:new{ title = title .. "\n" .. self:overviewFolderTitle(d), buttons = rows }
+        UIManager:show(dialog)
     end
-    return out
+    show(dir)
 end
 
 -- Hold on a page: rename, star, move or copy to another notebook, delete.
@@ -347,56 +442,53 @@ function InkAwayView:overviewDeletePage(path, page)
     end })
 end
 
--- Move (or copy) a page to the end of another notebook in the folder, chosen
--- from a list.
+-- Move (or copy) a page to the end of another notebook, in this folder or any
+-- other, chosen from a list.
 function InkAwayView:overviewSendPage(path, page, move)
-    local targets = self:overviewOtherNotebooks(path)
-    if #targets == 0 then
-        UIManager:show(InfoMessage:new{ text = _("There is no other notebook in this folder."), timeout = 3 })
-        return
-    end
     local src_nb = self:overviewDoc(path).nb
     if move and src_nb:count() <= 1 then
         UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
         return
     end
-    local dialog
-    local rows = {}
-    for t = 1, #targets do
-        local tab = targets[t]
-        rows[#rows + 1] = { { text = tab.label, callback = function()
-            UIManager:close(dialog)
-            local same_pdf = src_nb.template.pdf_path ~= nil
-                and src_nb.template.pdf_path == self:overviewDoc(tab.path).nb.template.pdf_path
+    self:chooseNotebook(move and _("Move the page to") or _("Copy the page to"), self._ov.dir, path,
+        function(target, label)
+            local dest = self:overviewDoc(target).nb
+            if not dest then return end
+            local same_pdf = src_nb.template.pdf_path ~= nil and src_nb.template.pdf_path == dest.template.pdf_path
             local style = src_nb:pageTemplate(indexOf(src_nb, page)).style
-            if not self:editNotebookAt(tab.path, function(n) n:putPage(page, same_pdf, style) end) then return end
+            if not self:editNotebookAt(target, function(n) n:putPage(page, same_pdf, style) end) then return end
             if move then self:editNotebookAt(path, function(n) n:takePage(indexOf(n, page)) end) end
             self:refreshOverview()
             self:showNotice(string.format(move and _("Moved to \u{201C}%s\u{201D}") or _("Copied to \u{201C}%s\u{201D}"),
-                tab.label))
-        end } }
-    end
-    dialog = ButtonDialog:new{ title = move and _("Move the page to") or _("Copy the page to"), buttons = rows }
-    UIManager:show(dialog)
+                label))
+        end)
 end
 
 ------------------------------------------------------------------------------
 -- Tab menu
 ------------------------------------------------------------------------------
 
--- Hold on a tab: open, rename, colour, move up or down, export, delete.
+-- Hold on a tab: open, export, rename, colour, move up or down, delete. A
+-- folder opens in the overview and exports as one PDF.
 function InkAwayView:overviewTabMenu(tab)
     local dialog
     local function act(text, fn)
         return { text = text, callback = function() UIManager:close(dialog); fn() end }
     end
-    local it = { label = tab.label, path = tab.path }
+    local it = { label = tab.label, path = tab.path, folder = tab.folder }
+    local open, export
+    if tab.folder then
+        open = act(_("Open"), function() self:overviewGo(tab.path) end)
+        export = act(_("Export as PDF\u{2026}"), function() self:exportFolderPDF(tab.path) end)
+    else
+        open = act(_("Open"), function() self._overview:close(); self:openDocument(tab.path) end)
+        export = act(_("Export\u{2026}"), function()
+            self._overview:close()
+            if tab.path == self.doc_path or self:openDocument(tab.path) then self:openExport() end
+        end)
+    end
     dialog = ButtonDialog:new{ title = tab.label, buttons = {
-        { act(_("Open"), function() self._overview:close(); self:openDocument(tab.path) end),
-          act(_("Export\u{2026}"), function()
-              self._overview:close()
-              if tab.path == self.doc_path or self:openDocument(tab.path) then self:openExport() end
-          end) },
+        { open, export },
         { act(_("Rename\u{2026}"), function() self:overviewRenameTab(it) end),
           act(_("Colour\u{2026}"), function() self:overviewTabColour(tab) end) },
         { act(_("Move up"), function() self:overviewMoveTab(tab, -1) end),
@@ -406,12 +498,14 @@ function InkAwayView:overviewTabMenu(tab)
     UIManager:show(dialog)
 end
 
+-- Move a tab up or down among the tabs of its kind (folders or notebooks).
 function InkAwayView:overviewMoveTab(tab, delta)
     local dir = self._ov.dir
     local tabs, data, arranged = self:overviewTabs(dir)
     local is_tab = {}
     for i = 1, #tabs do is_tab[tabs[i].name] = true end
-    if Folder.move(data, arranged, tab.name, delta, function(d) return is_tab[d.name] end) then
+    local function counts(d) return is_tab[d.name] and (d.mode == "directory") == (tab.folder == true) end
+    if Folder.move(data, arranged, tab.name, delta, counts) then
         Folder.save(dir, data)
         self:refreshOverview()
     end
@@ -446,14 +540,27 @@ function InkAwayView:overviewTabColour(tab)
     end)
 end
 
--- Rename a tab's document, keeping its place and colour in the binder.
+-- A file or folder in the overview moved from `old` to `new`: follow it.
+function InkAwayView:overviewPathMoved(old, new)
+    local ov = self._ov
+    local function moved(p)
+        if p and Storage.within(p, old) then return new .. p:sub(#old + 1) end
+        return p
+    end
+    local docs, last = {}, {}
+    for p, d in pairs(ov.docs) do docs[moved(p)] = d end
+    for d, p in pairs(ov.last) do last[moved(d)] = moved(p) end
+    ov.docs, ov.last, ov.path = docs, last, moved(ov.path)
+end
+
+-- Rename a tab's notebook or folder, keeping its place and colour in the binder.
 function InkAwayView:overviewRenameTab(it)
     local dir = self._ov.dir
     self:promptText{ title = _("Rename"), input = it.label, ok_text = _("Rename"),
         on_ok = function(text)
             local name = (text or ""):gsub("[/\\]", "_"):match("^%s*(.-)%s*$")
-            if name == "" or name == it.label then return end
-            local new = Storage.join(dir, Storage.fileName(name, Project.EXT))
+            if name == "" or name == it.label or (it.folder and name:sub(1, 1) == ".") then return end
+            local new = Storage.join(dir, it.folder and name or Storage.fileName(name, Project.EXT))
             if it.path == self.doc_path then
                 self:renameDocument(name)
                 if self.doc_path ~= new then return end
@@ -471,39 +578,36 @@ function InkAwayView:overviewRenameTab(it)
             end
             if it.path ~= self.doc_path then   -- renameDocument keeps the open one in place
                 Folder.update(dir, function(d) Folder.rename(d, Storage.baseName(it.path), Storage.baseName(new)) end)
+                self:pathMoved(it.path, new)   -- the open document may be inside a folder
             end
-            if self._ov.path == it.path then self._ov.path = new end
-            self._ov.docs[new], self._ov.docs[it.path] = self._ov.docs[it.path], nil
+            self:overviewPathMoved(it.path, new)
             self:refreshOverview()
         end }
 end
 
+-- Delete a tab's notebook, or a folder with everything in it. If the open
+-- document goes, a new drawing takes its place.
 function InkAwayView:overviewDeleteTab(it)
     local dir = self._ov.dir
-    UIManager:show(ConfirmBox:new{ text = string.format(_("Delete \u{201C}%s\u{201D}?"), it.label),
-        ok_text = _("Delete"), ok_callback = function()
-            local open = (it.path == self.doc_path)
-            if self.doc_written or not open then
-                if not Storage.removeTree(it.path) then
-                    UIManager:show(InfoMessage:new{ text = _("Could not delete it.") })
-                    return
-                end
+    local text = it.folder
+        and string.format(_("Delete the folder \u{201C}%s\u{201D} and everything in it?"), it.label)
+        or string.format(_("Delete \u{201C}%s\u{201D}?"), it.label)
+    UIManager:show(ConfirmBox:new{ text = text, ok_text = _("Delete"), ok_callback = function()
+        local open = self.doc_path ~= nil and Storage.within(self.doc_path, it.path)
+        if self.doc_written or not open or it.folder then
+            if not Storage.removeTree(it.path) then
+                UIManager:show(InfoMessage:new{ text = _("Could not delete it.") })
+                return
             end
-            self:dropThumbs(it.path)
-            Folder.update(dir, function(d) Folder.forget(d, Storage.baseName(it.path)) end)
-            if open then self:discardDocument(dir) end
-            self._ov.docs[it.path] = nil
-            if self._ov.path == it.path then
-                -- show the first notebook left, or the folder when none is
-                local first = (self:overviewTabs(dir))[1]
-                if not first then
-                    self._overview:close()
-                    return self:openLibrary(dir)
-                end
-                self._ov.path = first.path
-            end
-            self:refreshOverview(true)
-        end })
+        end
+        if not it.folder then self:dropThumbs(it.path) end
+        Folder.update(dir, function(d) Folder.forget(d, Storage.baseName(it.path)) end)
+        if open then self:discardDocument(dir) end
+        local ov = self._ov
+        for p in pairs(ov.docs) do if Storage.within(p, it.path) then ov.docs[p] = nil end end
+        if ov.path and Storage.within(ov.path, it.path) then ov.path = self:overviewPickIn(dir) end
+        self:refreshOverview(true)
+    end })
 end
 
 return InkAwayView

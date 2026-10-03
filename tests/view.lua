@@ -2419,8 +2419,8 @@ do
     local ov = view._overview
     ok(ov and UIManager.shown == ov, "overview: it opens full screen")
     ok(tabNames(ov) == "Mechanics,*Waves", "overview: the folder's notebooks are tabs, the open one chosen")
-    ok(ov.title == "Waves", "overview: the title is the notebook's whole name")
-    ok(ov.on_back ~= nil, "overview: it has a back arrow")
+    ok(ov.title == "Physics", "overview: the title is the folder it shows")
+    ok(ov.on_back ~= nil, "overview: it has a back arrow, as the folder is inside the library")
     ok(#ov.items == 1 and ov.items[1].selected, "overview: it shows the open notebook's pages")
     BB.out_of_bounds = 0
     ov:paintTo(Screen.bb, 0, 0)
@@ -2428,8 +2428,7 @@ do
 
     -- another tab: its pages, from its file; a tap opens that page
     view:overviewShowTab(DIR .. "/Mechanics.inkaway")
-    ok(#ov.items == 2 and tabNames(ov) == "*Mechanics,Waves" and ov.title == "Mechanics",
-        "overview: a tap on a tab shows its pages")
+    ok(#ov.items == 2 and tabNames(ov) == "*Mechanics,Waves", "overview: a tap on a tab shows its pages")
     ov:paintTo(Screen.bb, 0, 0)
     local thumb = view:overviewThumb(ov.items[2], 200, 260)
     ok(thumb ~= nil, "overview: another notebook's pages get thumbnails")
@@ -2476,8 +2475,9 @@ do
     view:overviewPageMenu(ov.items[1])
     press(ButtonDialog.last, "Move to\u{2026}")
     local targets = ButtonDialog.last
-    ok(#targets.buttons == 1 and targets.buttons[1][1].text == "Optics", "overview: Move offers the other notebooks")
-    targets.buttons[1][1].callback()
+    ok(#targets.buttons == 2 and targets.buttons[1][1].text == "\u{2039} Notebooks"
+        and targets.buttons[2][1].text == "Optics", "overview: Move offers the other notebooks, and a way up")
+    targets.buttons[2][1].callback()
     ok(view.notebook:count() == 1 and view.notebook.pages[1].title == nil, "overview: the page leaves its notebook")
     local optics = Project.load(DIR .. "/Optics.inkaway")
     ok(#optics.pages == 2 and optics.pages[2].title == "Forces", "overview: and is added to the end of the other")
@@ -2485,7 +2485,7 @@ do
     ok(view:docHasContent() and Project.load(DIR .. "/Mechanics.inkaway") ~= nil, "overview: both notebooks are intact")
     view:overviewPageMenu(ov.items[1])
     press(ButtonDialog.last, "Copy to\u{2026}")
-    ButtonDialog.last.buttons[1][1].callback()
+    press(ButtonDialog.last, "Optics")
     ok(view.notebook:count() == 1 and #Project.load(DIR .. "/Optics.inkaway").pages == 3,
         "overview: Copy leaves the page where it was")
     view:overviewPageMenu(ov.items[1])
@@ -2525,24 +2525,167 @@ do
     ok(not Storage.exists(DIR .. "/Mechanics.inkaway") and view.doc_path ~= DIR .. "/Mechanics.inkaway",
         "overview: deleting the open tab removes it and starts a new drawing")
     ok(not tabNames(ov):find("Mechanics", 1, true), "overview: the tab is gone")
-    ok(tabNames(ov) == "*Optics" and ov.title == "Optics", "overview: and the first notebook left is shown")
+    ok(tabNames(ov) == "*Optics", "overview: and the first notebook left is shown")
 
-    -- the back arrow goes up to the folder in the library
+    -- the back arrow goes up a folder; a folder tab goes into it
     ov.on_back()
+    ok(view._overview == ov and ov.title == "Notebooks" and ov.on_back == nil,
+        "overview: back goes up a folder, here to the top")
+    ok(tabNames(ov) == "Physics" and ov.tabs[1].folder and #ov.items == 0,
+        "overview: where the folder is a tab, and no notebook to show")
+    ov.on_tab(ov.tabs[1])
+    ok(ov.title == "Physics" and tabNames(ov) == "*Optics", "overview: its tab goes back in, to the notebook shown there")
+    -- Library shows the folder in the library
+    ov.actions[2][2]()
     ok(view._overview == nil and view._library ~= nil and view._lib_dir == DIR,
-        "overview: back goes up to the folder in the library")
+        "overview: Library shows the folder in the library")
     view._library:close()
 
-    -- deleting the last notebook goes up to the folder too
+    -- deleting the last notebook leaves an empty folder
     view:openDocument(DIR .. "/Optics.inkaway")
     view:openOverview()
     ov = view._overview
     view:overviewTabMenu(ov.tabs[1])
     press(ButtonDialog.last, "Delete\u{2026}")
     UIManager.shown.ok_callback()
-    ok(view._overview == nil and view._library ~= nil and view._lib_dir == DIR,
-        "overview: with no notebook left it shows the folder")
-    view._library:close()
+    ok(view._overview == ov and #ov.items == 0 and #ov.tabs == 0 and ov.empty_text == "No notebooks here yet.",
+        "overview: with no notebook left it shows the empty folder")
+    ov:close()
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
+-- ---- overview: folders inside folders, like section groups -----------------
+do
+    local TestEnv = require("testenv")
+    local Folder = require("ink/folder")
+    local Project = require("ink/project")
+    local Storage = require("ink/storage")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/sections"
+    local SCHOOL = LIB .. "/School"
+    os.execute("mkdir -p '" .. SCHOOL .. "/Math' '" .. SCHOOL .. "/Physics'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function answer(text)
+        local d = InputDialog.last
+        d.input = text
+        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    end
+    local function tabNames(grid)
+        local t = {}
+        for _, tab in ipairs(grid.tabs) do
+            t[#t + 1] = (tab.selected and "*" or "") .. tab.label .. (tab.folder and "/" or "")
+        end
+        return table.concat(t, ",")
+    end
+    local function press(dialog, text)
+        for _, row in ipairs(dialog.buttons) do
+            for _, b in ipairs(row) do if b.text == text then b.callback(); return true end end
+        end
+    end
+    local function notebook(view, dir, name, style)
+        view:newNotebook(style or "lines", dir)
+        stroke(view, 100, 100)
+        view:renameDocument(name); view:saveDocument()
+    end
+
+    -- School: Math (two notebooks), Physics (one), a timetable and a drawing
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    notebook(view, SCHOOL .. "/Math", "Differential equations")
+    notebook(view, SCHOOL .. "/Math", "Linear algebra", "grid")
+    view:nbAddPage(); stroke(view, 200, 200); view:saveDocument()
+    notebook(view, SCHOOL .. "/Physics", "Mechanics")
+    notebook(view, SCHOOL, "Timetable")
+    view:newDrawing(SCHOOL)
+    stroke(view, 100, 100)
+    view:renameDocument("Doodle"); view:saveDocument()
+    view:openDocument(SCHOOL .. "/Math/Linear algebra.inkaway")
+
+    view:openOverview()
+    local ov = view._overview
+    ok(ov.title == "Math" and tabNames(ov) == "Differential equations,*Linear algebra",
+        "sections: the overview opens in the notebook's folder")
+    ov.on_back()
+    ok(ov.title == "School" and tabNames(ov) == "Math/,Physics/,*Timetable",
+        "sections: up a folder its subfolders come first, then its notebooks (not the drawing)")
+    BB.out_of_bounds = 0
+    ov:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "sections: folder tabs paint in bounds")
+    ov.on_tab(ov.tabs[2])
+    ok(ov.title == "Physics" and tabNames(ov) == "*Mechanics", "sections: a folder tab goes into it")
+    ov.on_back(); ov.on_tab(ov.tabs[1])
+    ok(tabNames(ov) == "Differential equations,*Linear algebra" and #ov.items == 2,
+        "sections: and a folder shows the notebook last shown there")
+
+    -- copy a page from Physics to Math, browsing there in the picker
+    ov.on_back(); ov.on_tab(ov.tabs[2])
+    view:overviewPageMenu(ov.items[1])
+    press(ButtonDialog.last, "Copy to\u{2026}")
+    ok(ButtonDialog.last.buttons[1][1].text == "\u{2039} School" and #ButtonDialog.last.buttons == 1,
+        "sections: the picker starts here, with a way up")
+    press(ButtonDialog.last, "\u{2039} School")
+    ok(press(ButtonDialog.last, "Math  \u{203A}"), "sections: up a folder it offers the folders to go into")
+    ok(press(ButtonDialog.last, "Linear algebra"), "sections: and inside, their notebooks")
+    ok(#Project.load(SCHOOL .. "/Math/Linear algebra.inkaway").pages == 3,
+        "sections: the page is copied to a notebook in another folder")
+    ok(#view.notebook.pages == 3, "sections: the open notebook has it too")
+
+    -- folder tabs: move, colour and rename, keeping the open notebook
+    ov.on_back()
+    view:overviewTabMenu(ov.tabs[1])
+    ok(ButtonDialog.last.title == "Math" and press(ButtonDialog.last, "Move down"), "sections: a folder tab has a menu")
+    ok(tabNames(ov) == "Physics/,Math/,*Timetable", "sections: Move down swaps the folders")
+    view:overviewTabMenu(ov.tabs[2])
+    press(ButtonDialog.last, "Move down")
+    ok(tabNames(ov) == "Physics/,Math/,*Timetable", "sections: but a folder does not move among the notebooks")
+    view:overviewTabMenu(ov.tabs[2])
+    press(ButtonDialog.last, "Rename\u{2026}")
+    answer("Maths")
+    ok(Storage.isDir(SCHOOL .. "/Maths") and not Storage.exists(SCHOOL .. "/Math"), "sections: renaming a folder tab renames it")
+    ok(tabNames(ov) == "Physics/,Maths/,*Timetable", "sections: in its place")
+    ok(view.doc_path == SCHOOL .. "/Maths/Linear algebra.inkaway", "sections: the open notebook inside follows")
+    view:saveDocument()
+    ok(Project.load(view.doc_path) ~= nil and not Storage.exists(SCHOOL .. "/Math"), "sections: and saves there")
+    ov.on_tab(ov.tabs[2])
+    ok(tabNames(ov) == "Differential equations,*Linear algebra", "sections: the folder remembers its notebook")
+    ov.on_back()
+
+    -- a folder's PDF holds its subfolders, with nested bookmarks
+    local acc = { pages = {}, templates = {}, sources = {} }
+    local o = view:collectFolderPages(SCHOOL, acc)
+    ok(#acc.pages == 7, "sections: every page of every folder is in it (1 + 2 + 3 + 1 drawing)")
+    ok(#o == 4 and o[1].title == "Physics" and o[2].title == "Maths" and o[3].title == "Timetable"
+        and o[4].title == "Doodle", "sections: folders first, then the documents, in tab order")
+    ok(o[2].page == 2 and #o[2].kids == 2 and o[2].kids[2].title == "Linear algebra" and o[2].kids[2].page == 3,
+        "sections: a folder's notebooks are bookmarks under it")
+    ok(acc.templates[3].style == "grid" and acc.templates[1].style == "lines", "sections: each page on its own paper")
+
+    -- deleting a folder with the open notebook in it
+    view:overviewTabMenu(ov.tabs[2])
+    press(ButtonDialog.last, "Delete\u{2026}")
+    ok(UIManager.shown.text:find("everything in it", 1, true) ~= nil, "sections: deleting a folder warns it takes everything")
+    UIManager.shown.ok_callback()
+    ok(not Storage.exists(SCHOOL .. "/Maths") and tabNames(ov) == "Physics/,*Timetable",
+        "sections: the folder and its notebooks are gone")
+    ok(view.notebook == nil and view.doc_path:find(SCHOOL, 1, true) == 1, "sections: a new drawing takes the open one's place")
+    local names = table.concat(Folder.load(SCHOOL).order, ",")
+    ok(not names:find("Maths", 1, true), "sections: and the folder leaves the tab order")
+    ov:close()
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     G_reader_settings.data.inkaway_last_doc = nil

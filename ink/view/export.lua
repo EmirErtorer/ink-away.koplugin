@@ -17,9 +17,7 @@ local logger = require("logger")
 local _ = require("gettext")
 local RenderImage = require("ui/renderimage")
 local Export = require("ink/export")
-local Folder = require("ink/folder")
 local ImageProc = require("ink/imageproc")
-local Library = require("ink/library")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
@@ -408,14 +406,19 @@ function InkAwayView:writePDF(path)
         bg_opaque = bg_opaque, numbers = o.numbers, quality = quality, outline = outline })
 end
 
--- Export every document of folder `dir`, in the overview's tab order, as one
--- PDF: each notebook's pages on their own paper, each drawing a page, and a
--- bookmark per document with its titled pages under it.
-function InkAwayView:exportFolderPDF(dir)
-    self:leaveDocument()   -- so the open document's latest changes are in its file
-    local docs = Folder.arrange(Folder.load(dir), select(2, Library.list(dir, self:libraryDir())))
-    local W, H = self.view.canvas_w, self.view.canvas_h
-    local pages, templates, sources, outline = {}, {}, {}, {}
+-- Add the pages of folder `dir` to `acc` (pages, templates, sources): its
+-- subfolders first, then its documents, in the overview's tab order. Returns
+-- the outline: a bookmark per folder and document, with the titled pages of a
+-- notebook under it.
+function InkAwayView:collectFolderPages(dir, acc)
+    local folders, docs = self:binderEntries(dir)
+    local pages, templates, sources = acc.pages, acc.templates, acc.sources
+    local outline = {}
+    for _, f in ipairs(folders) do
+        local first = #pages + 1
+        local kids = self:collectFolderPages(f.path, acc)
+        if #pages >= first then outline[#outline + 1] = { title = f.name, page = first, kids = kids } end
+    end
     for _, d in ipairs(docs) do
         local data = Project.load(d.path)
         if data then
@@ -438,6 +441,18 @@ function InkAwayView:exportFolderPDF(dir)
             outline[#outline + 1] = item
         end
     end
+    return outline
+end
+
+-- Export folder `dir` with everything in it, its subfolders too, as one PDF:
+-- each notebook's pages on their own paper, each drawing a page, and nested
+-- bookmarks for the folders, documents and titled pages.
+function InkAwayView:exportFolderPDF(dir)
+    self:leaveDocument()   -- so the open document's latest changes are in its file
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local acc = { pages = {}, templates = {}, sources = {} }
+    local outline = self:collectFolderPages(dir, acc)
+    local pages, templates, sources = acc.pages, acc.templates, acc.sources
     if #pages == 0 then
         UIManager:show(InfoMessage:new{ text = _("There is nothing to export in this folder."), timeout = 3 })
         return

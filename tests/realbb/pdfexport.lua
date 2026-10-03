@@ -81,7 +81,8 @@ do
     local job3 = assert(Export.notebookPDFJob(mixed, W, H,
         function(i) return { style = (i == 2) and "lines" or "blank", size = 40, gray = 200 } end,
         out, 85, tmp, function(i) if i ~= 2 then return bg(i) end end,
-        { outline = { { title = "Start", page = 1, kids = { { title = "Şekil 2", page = 2 } } } } }))
+        { outline = { { title = "Start", page = 1, kids = { { title = "Math", page = 2,
+            kids = { { title = "Şekil 2", page = 2 } } } } } } }))
     local okc, state, err
     repeat okc, state, err = pcall(job3.step) until not okc or state ~= "page"
     if not okc then state, err = nil, state end
@@ -91,8 +92,9 @@ do
         ok(dok and doc and doc:getPages() == 3, "and MuPDF opens all three pages")
         if dok and doc then
             local toc = doc:getToc() or {}
-            ok(#toc == 2 and toc[1].title == "Start" and toc[2].title == "Şekil 2" and toc[2].page == 2,
-                "the bookmarks read back, nested and in Turkish")
+            ok(#toc == 3 and toc[1].title == "Start" and toc[3].title == "Şekil 2" and toc[3].page == 2,
+                "the bookmarks read back, in Turkish")
+            ok(toc[1].depth == 1 and toc[2].depth == 2 and toc[3].depth == 3, "nested three deep, as a folder's are")
             doc:close()
         end
     end

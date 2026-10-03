@@ -208,9 +208,7 @@ function InkAwayView:promptRenameItem(it)
                 UIManager:show(InfoMessage:new{ text = _("Could not rename.\n") .. tostring(err) })
                 return
             end
-            if not it.folder then
-                Folder.update(dir, function(d) Folder.rename(d, Storage.baseName(it.path), Storage.baseName(new)) end)
-            end
+            Folder.update(dir, function(d) Folder.rename(d, Storage.baseName(it.path), Storage.baseName(new)) end)
             self:pathMoved(it.path, new)
             self:refreshLibrary()
         end }
@@ -236,10 +234,8 @@ function InkAwayView:confirmDeleteItem(it)
             UIManager:show(InfoMessage:new{ text = _("Could not delete it.") })
             return
         end
-        if not it.folder then
-            self:dropThumbs(it.path)
-            Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
-        end
+        if not it.folder then self:dropThumbs(it.path) end
+        Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
         if holds_open then self:discardDocument(self._lib_dir) end
         self:refreshLibrary()
     end })
@@ -254,7 +250,7 @@ function InkAwayView:moveItem(it)
             UIManager:show(InfoMessage:new{ text = _("Could not move it.\n") .. tostring(err) })
             return
         end
-        if not it.folder and new ~= it.path then
+        if new ~= it.path then
             Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
             Folder.update(dir, function(d) Folder.add(d, Storage.baseName(new)) end)
         end

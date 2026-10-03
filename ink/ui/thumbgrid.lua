@@ -3,8 +3,8 @@ A full-screen grid of cards, paged: the page overview and the library. Each card
 is a folder or a thumbnail with a name under it; a tap picks it, a hold asks for
 its menu. Thumbnails come from a callback, and only the grid page on screen is
 rendered and kept, so a long notebook or a full folder stays light. An optional
-column of tabs on the left (the notebooks of a folder, in the overview) chooses
-what the grid shows.
+column of tabs on the left (the folders and notebooks of a folder, in the
+overview) chooses what the grid shows; a name too long for a tab takes two lines.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -14,6 +14,7 @@ local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local RenderImage = require("ui/renderimage")
+local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
@@ -39,7 +40,7 @@ local ThumbGrid = InputContainer:extend{
     close_label = nil,  -- the close pill's text (Close by default)
     empty_text = nil,   -- shown when there are no items
     folder_icon = nil,  -- path of the SVG drawn on folder cards
-    tabs = nil,         -- list of { label, color = Blitbuffer colour or nil, selected = bool }
+    tabs = nil,         -- list of { label, color = Blitbuffer colour or nil, selected = bool, folder = bool }
     on_tab = nil,       -- function(tab) after a tap on a tab
     on_tab_hold = nil,  -- function(tab) after a hold on a tab
     tab_footer = nil,   -- { label, cb }: a button under the tabs
@@ -168,11 +169,14 @@ function ThumbGrid:freeCache()
     end
 end
 
--- The folder icon on a card-coloured tile, drawn once per size.
-function ThumbGrid:folderTile(sz)
-    if self._folder and self._folder.sz == sz then return self._folder.bb end
-    if self._folder and self._folder.bb then self._folder.bb:free() end
-    self._folder = { sz = sz }
+-- The folder icon on a card-coloured tile, drawn once per size; `slot` keeps
+-- the card's and the tabs' sizes apart.
+function ThumbGrid:folderTile(sz, slot)
+    slot = slot or "_folder"
+    local held = self[slot]
+    if held and held.sz == sz then return held.bb end
+    if held and held.bb then held.bb:free() end
+    self[slot] = { sz = sz }
     if not self.folder_icon then return nil end
     local ok, raw, straight = pcall(function()
         return RenderImage:renderSVGImageFile(self.folder_icon, sz, sz)
@@ -184,9 +188,9 @@ function ThumbGrid:folderTile(sz)
         if straight then tile:alphablitFrom(raw, 0, 0, 0, 0, w, h)
         else tile:pmulalphablitFrom(raw, 0, 0, 0, 0, w, h) end
         raw:free()
-        self._folder.bb = tile
+        self[slot].bb = tile
     end
-    return self._folder.bb
+    return self[slot].bb
 end
 
 function ThumbGrid:onShow()
@@ -265,10 +269,21 @@ function ThumbGrid:paintTo(bb, x, y)
                     bb:paintRoundedRect(rx, ry, r.w - self.pad, r.h, CARD, S(12))
                 end
                 if t.color then bb:paintRect(rx + S(4), ry + S(8), strip, r.h - S(16), t.color) end
-                local tw = TextWidget:new{ text = t.label, face = tface, bold = t.selected,
-                    max_width = r.w - self.pad - strip - S(16) }
+                local lx = rx + strip + S(10)
+                if t.folder then
+                    local icon = self:folderTile(S(22), "_tab_folder")
+                    if icon then
+                        local iw, ih = icon:getWidth(), icon:getHeight()
+                        bb:blitFrom(icon, lx, ry + math.floor((r.h - ih) / 2), 0, 0, iw, ih)
+                    end
+                    lx = lx + S(30)
+                end
+                local tw = TextBoxWidget:new{ text = t.label, face = tface, bold = t.selected,
+                    bgcolor = t.selected and WHITE or CARD,   -- it fills its box
+                    width = math.max(S(20), rx + r.w - self.pad - S(6) - lx), height = r.h - S(6),
+                    height_adjust = true, height_overflow_show_ellipsis = true }
                 local twsz = tw:getSize()
-                tw:paintTo(bb, rx + strip + S(10), ry + math.floor((r.h - twsz.h) / 2))
+                tw:paintTo(bb, lx, ry + math.floor((r.h - twsz.h) / 2))
                 tw:free()
             end
         end
@@ -445,8 +460,10 @@ end
 
 function ThumbGrid:onCloseWidget()
     self:freeCache()
-    if self._folder and self._folder.bb then self._folder.bb:free() end
-    self._folder = nil
+    for _, slot in ipairs({ "_folder", "_tab_folder" }) do
+        if self[slot] and self[slot].bb then self[slot].bb:free() end
+        self[slot] = nil
+    end
     UIManager:setDirty("all", "full")   -- restore the canvas cleanly underneath
     if self.on_close then self.on_close() end
 end
