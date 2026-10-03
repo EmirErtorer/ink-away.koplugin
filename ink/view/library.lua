@@ -67,7 +67,6 @@ function InkAwayView:openLibrary(dir)
         start = start,
         folder_icon = self:iconPath("folder"),
         empty_text = _("Nothing here yet. Start a drawing or a notebook with the buttons above."),
-        close_label = _("Close"),
         actions = {
             { "+ " .. _("Drawing"), function()
                 local d = self._lib_dir

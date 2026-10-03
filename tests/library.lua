@@ -350,6 +350,30 @@ do
     ok(Folder.move(data, arranged, "c.inkaway", -1) and names(arranged) == "bca", "a tab moves up")
     ok(data.order[1] == "b.inkaway" and data.order[2] == "c.inkaway", "and the order is remembered")
     ok(not Folder.move(data, arranged, "b.inkaway", -1), "the first tab cannot move up")
+    -- only b and a are tabs (c is a drawing): a moves up past c, which stays
+    local tab = { ["b.inkaway"] = true, ["a.inkaway"] = true }
+    local isTab = function(d) return tab[d.name] end
+    ok(Folder.move(data, arranged, "a.inkaway", -1, isTab) and names(arranged) == "acb",
+        "a tab moves past a document that is not a tab")
+    ok(not Folder.move(data, arranged, "a.inkaway", -1, isTab), "and the first tab still cannot move up")
+
+    -- a notebook or a drawing, from the start of the file
+    local nbf, drf = B .. "/n.inkaway", B .. "/d.inkaway"
+    local tricky = '["pages"]={'
+    writeAll(nbf, Project.serializeNotebook({ w = 10, h = 10, template = { style = "lines" },
+        pages = { { ops = { { kind = "text", text = '["ops"]={' } } } } }))
+    writeAll(drf, Project.serialize({ w = 10, h = 10, ops = { { kind = "text", text = tricky } } }))
+    ok(Library.isNotebookFile(nbf), "a notebook file is a notebook")
+    ok(not Library.isNotebookFile(drf), "a drawing file is not, even with the key in its text")
+    local big = {}
+    for i = 1, 400 do big[i] = { kind = "stroke", pts = { i, i, i + 1, i + 1 } } end
+    big[401] = { kind = "text", text = tricky }
+    writeAll(drf, Project.serialize({ w = 10, h = 10, ops = big }))
+    ok(not Library.isNotebookFile(drf), "nor a long drawing")
+    os.rename(nbf, nbf .. ".tmp")
+    ok(Library.isNotebookFile(nbf), "a notebook only in its .tmp file is still one")
+    os.remove(nbf .. ".tmp"); os.remove(drf)
+    ok(not Library.isNotebookFile(nbf), "a missing file is not a notebook")
     data.colors["c.inkaway"] = { 1, 2, 3 }
     Folder.rename(data, "c.inkaway", "z.inkaway")
     ok(data.order[2] == "z.inkaway" and data.colors["z.inkaway"][3] == 3 and data.colors["c.inkaway"] == nil,

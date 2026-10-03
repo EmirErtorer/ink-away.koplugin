@@ -29,6 +29,27 @@ function Library.isDocument(name)
     return name:lower():match("%." .. Project.EXT .. "$") ~= nil
 end
 
+-- Is the document at `path` a notebook? Only the start of the file is read: a
+-- notebook lists its pages before any ink, a drawing starts its ops early, and
+-- neither key can hide in a string (their quotes would be escaped).
+function Library.isNotebookFile(path)
+    local f = io.open(path, "rb") or io.open(path .. ".tmp", "rb")
+    if not f then return false end
+    local seen = ""
+    while true do
+        local chunk = f:read(4096)
+        if not chunk then break end
+        seen = seen:sub(-12) .. chunk
+        local p, o = seen:find('["pages"]={', 1, true), seen:find('["ops"]={', 1, true)
+        if p or o then
+            f:close()
+            return p ~= nil and (o == nil or p < o)
+        end
+    end
+    f:close()
+    return false
+end
+
 -- What is in library folder `dir`: its subfolders and documents, without hidden
 -- entries (and, at `root`, without the internal folders). Folders come by name,
 -- documents by `sort`: "name", or most recently changed first. Returns folders,

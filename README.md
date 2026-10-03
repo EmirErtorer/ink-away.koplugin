@@ -26,12 +26,12 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
 - **Lasso select**: move, duplicate, or cut and copy, then paste on any page of any notebook or drawing. Four-way **symmetry**, and a **background image** to draw over.
 - **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
-- **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF, where titled pages become bookmarks. A whole folder can be exported as one PDF too, with a bookmark per notebook. Pages can have titles and stars, their own paper, and be moved, inserted or duplicated; save a page as a template (a planner, a meeting sheet) and start new pages from it. The overview (one tap away in the bottom bar) shows the notebooks of a folder as coloured tabs, like a binder: browse their pages, filter starred ones, and move or copy pages between notebooks. With palm rejection on you can let finger swipes turn pages while the pen writes.
+- **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF, where titled pages become bookmarks. A whole folder can be exported as one PDF too, with a bookmark per notebook. Pages can have titles and stars, their own paper, and be moved, inserted or duplicated; save a page as a template (a planner, a meeting sheet) and start new pages from it. The overview (one tap away in the bottom bar) shows the notebooks of a folder as coloured tabs, like a binder: browse their pages, filter starred ones, and move or copy pages between notebooks; its back arrow goes up to the folder in the library. With palm rejection on you can let finger swipes turn pages while the pen writes.
 - **Library**: every drawing and notebook is a file that saves itself as you go. Browse them by thumbnail, sort them into folders, rename, move, duplicate or delete them, all without a computer.
 - Undo/redo, zoom & pan, and an optional grid.
 - And more!
 
-Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, File (rename, library, duplicate, new drawing, new notebook, export) and Exit. Zoom is the floating +/− control in the corner.
+Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, Library, File (rename, duplicate, export, new drawing, new notebook) and Exit. Zoom is the floating +/− control in the corner.
 
 
 ## Installation

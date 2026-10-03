@@ -1,7 +1,8 @@
 --[[
 The overview: the pages of a notebook as thumbnails, with the notebooks of its
-folder as tabs down the side, like dividers in a binder. Tap a tab to see its
-pages and a page to open it; hold either for its menu. Pages can be renamed,
+folder as tabs down the side, like dividers in a binder (drawings stay in the
+library). Tap a tab to see its pages and a page to open it; hold either for its
+menu; the back arrow goes up to the folder in the library. Pages can be renamed,
 starred, moved or copied to another notebook of the folder, and the tabs put in
 order and given colours.
 Part of InkAwayView (see ink/view.lua).
@@ -31,8 +32,22 @@ local InkAwayView = {}
 -- What the overview shows
 ------------------------------------------------------------------------------
 
--- The tabs of folder `dir`: its documents in binder order, the open one marked.
--- An open document with no file yet is a tab too, at the end.
+-- Is the document at `path` (with modification time `mtime`) a notebook? Asked
+-- of the file once per change.
+function InkAwayView:isNotebookPath(path, mtime)
+    if path == self.doc_path then return self.notebook ~= nil end
+    self._nb_files = self._nb_files or {}
+    local known = self._nb_files[path]
+    if not (known and known.mtime == mtime) then
+        known = { mtime = mtime, nb = Library.isNotebookFile(path) }
+        self._nb_files[path] = known
+    end
+    return known.nb
+end
+
+-- The tabs of folder `dir`: its notebooks in binder order, the one at `sel_path`
+-- marked. An open notebook with no file yet is a tab too, at the end. Also
+-- returns the binder data and all the folder's documents in order.
 function InkAwayView:overviewTabs(dir, sel_path)
     local data = Folder.load(dir)
     local docs = select(2, Library.list(dir, self:libraryDir()))
@@ -45,38 +60,35 @@ function InkAwayView:overviewTabs(dir, sel_path)
     local tabs = {}
     local seen
     for _, d in ipairs(arranged) do
-        local rgb = data.colors[d.name]
-        tabs[#tabs + 1] = { label = Storage.stem(d.name), name = d.name, path = d.path,
-            color = rgb and uiFill(rgb) or nil, selected = (d.path == sel_path) }
+        if self:isNotebookPath(d.path, d.mtime) then
+            local rgb = data.colors[d.name]
+            tabs[#tabs + 1] = { label = Storage.stem(d.name), name = d.name, path = d.path,
+                color = rgb and uiFill(rgb) or nil, selected = (d.path == sel_path) }
+        end
         if d.path == self.doc_path then seen = true end
     end
-    if not seen and self.doc_path and Storage.dirName(self.doc_path) == dir then
+    if not seen and self.notebook and self.doc_path and Storage.dirName(self.doc_path) == dir then
         tabs[#tabs + 1] = { label = self:docName(), name = Storage.baseName(self.doc_path), path = self.doc_path,
             selected = (self.doc_path == sel_path) }
     end
     return tabs, data, arranged
 end
 
--- The document a tab shows, ready to list its pages: the open one as it is in
--- memory, any other loaded from its file (kept while the overview is open). A
--- drawing is a single page. Returns { nb = Notebook or nil, ops = drawing ops }.
+-- The notebook a tab shows: the open one as it is in memory, any other loaded
+-- from its file (kept while the overview is open). Returns { nb, open, data };
+-- nb is nil when the file holds no notebook.
 function InkAwayView:overviewDoc(path)
-    if path == self.doc_path then
-        if self.notebook then self:nbSyncOut(); return { nb = self.notebook, open = true } end
-        return { ops = self.canvas.ops, open = true }
+    if path == self.doc_path and self.notebook then
+        self:nbSyncOut()
+        return { nb = self.notebook, open = true }
     end
     local ov = self._ov
     if ov.docs[path] then return ov.docs[path] end
     local data = Project.load(path)
-    local doc
+    local doc = { data = data }
     if data and Project.isNotebook(data) then
-        local nb = Notebook.fromData(data)
-        nb.w, nb.h = self.screen_w, self.screen_h
-        doc = { nb = nb, data = data }
-    elseif data then
-        doc = { ops = data.ops or {}, data = data }
-    else
-        doc = { ops = {} }
+        doc.nb = Notebook.fromData(data)
+        doc.nb.w, doc.nb.h = self.screen_w, self.screen_h
     end
     ov.docs[path] = doc
     return doc
@@ -85,33 +97,32 @@ end
 -- The cards for the selected tab: its pages, or only the starred ones.
 function InkAwayView:overviewItems()
     local ov = self._ov
-    local doc = self:overviewDoc(ov.path)
+    local nb = ov.path and self:overviewDoc(ov.path).nb
     local items = {}
-    if doc.nb then
-        local here = doc.open and doc.nb.index
-        for i, page in ipairs(doc.nb.pages) do
-            if not ov.starred or page.star then
-                items[#items + 1] = { label = page.title and string.format("%d  %s", i, page.title) or tostring(i),
-                    index = i, star = page.star, selected = (i == here), page = page }
-            end
+    if not nb then return items end
+    local here = ov.path == self.doc_path and nb.index
+    for i, page in ipairs(nb.pages) do
+        if not ov.starred or page.star then
+            items[#items + 1] = { label = page.title and string.format("%d  %s", i, page.title) or tostring(i),
+                index = i, star = page.star, selected = (i == here), page = page }
         end
-    elseif not ov.starred then
-        items[1] = { label = Storage.stem(ov.path), index = 1, selected = doc.open }
     end
     return items
 end
 
+-- The title: the selected notebook's whole name (its tab may be cut short).
 function InkAwayView:overviewTitle()
     local ov = self._ov
     if ov.starred then return _("Starred pages") end
-    return self:placeOf(ov.dir)
+    if not ov.path then return "" end
+    return ov.path == self.doc_path and self:docName() or Storage.stem(ov.path)
 end
 
 ------------------------------------------------------------------------------
 -- The overview
 ------------------------------------------------------------------------------
 
--- Open the overview on the open document, with its folder's documents as tabs.
+-- Open the overview on the open notebook, with its folder's notebooks as tabs.
 function InkAwayView:openOverview()
     self:flushPending()
     if self.active_image then self:finishImageEdit() end
@@ -130,7 +141,7 @@ function InkAwayView:openOverview()
         tabs = tabs,
         empty_text = _("No starred pages here."),
         actions = { { "\u{2605}", function() self:overviewToggleStarred() end } },
-        on_title = function() grid:close(); self:openLibrary(self._ov and self._ov.dir) end,
+        on_back = function() local dir = self._ov.dir; grid:close(); self:openLibrary(dir) end,
         render = function(it, w, h) return self:overviewThumb(it, w, h) end,
         on_pick = function(it) self:overviewPick(it) end,
         on_hold = function(it) self:overviewPageMenu(it) end,
@@ -227,20 +238,11 @@ end
 
 -- The thumbnail of a card: a page of the open notebook is drawn live; a page of
 -- another notebook is cached by its id and when it last changed, with the paper
--- it is on; a drawing tab uses the library's thumbnail.
+-- it is on.
 function InkAwayView:overviewThumb(it, maxw, maxh)
     local ov = self._ov
     local doc = self:overviewDoc(ov.path)
-    if not doc.nb then
-        if doc.open then
-            local W, H = self.view.canvas_w, self.view.canvas_h
-            local scale = math.min(maxw / W, maxh / H)
-            local copy = RenderImage:scaleBlitBuffer(self.canvas_bb, math.max(1, math.floor(W * scale)),
-                math.max(1, math.floor(H * scale)), false)
-            return copy ~= self.canvas_bb and copy or nil
-        end
-        return self:docThumb(ov.path, maxw, maxh)
-    end
+    if not doc.nb then return nil end
     if doc.open then return self:renderPageThumb(it.index, maxw, maxh) end
     local page = it.page
     local t = doc.nb:pageTemplate(it.index)
@@ -406,8 +408,10 @@ end
 
 function InkAwayView:overviewMoveTab(tab, delta)
     local dir = self._ov.dir
-    local data, arranged = select(2, self:overviewTabs(dir))
-    if Folder.move(data, arranged, tab.name, delta) then
+    local tabs, data, arranged = self:overviewTabs(dir)
+    local is_tab = {}
+    for i = 1, #tabs do is_tab[tabs[i].name] = true end
+    if Folder.move(data, arranged, tab.name, delta, function(d) return is_tab[d.name] end) then
         Folder.save(dir, data)
         self:refreshOverview()
     end
@@ -489,7 +493,15 @@ function InkAwayView:overviewDeleteTab(it)
             Folder.update(dir, function(d) Folder.forget(d, Storage.baseName(it.path)) end)
             if open then self:discardDocument(dir) end
             self._ov.docs[it.path] = nil
-            if self._ov.path == it.path then self._ov.path = self.doc_path end
+            if self._ov.path == it.path then
+                -- show the first notebook left, or the folder when none is
+                local first = (self:overviewTabs(dir))[1]
+                if not first then
+                    self._overview:close()
+                    return self:openLibrary(dir)
+                end
+                self._ov.path = first.path
+            end
             self:refreshOverview(true)
         end })
 end

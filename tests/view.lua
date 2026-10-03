@@ -2418,8 +2418,9 @@ do
     view:openOverview()
     local ov = view._overview
     ok(ov and UIManager.shown == ov, "overview: it opens full screen")
-    ok(tabNames(ov) == "Mechanics,*Waves,Sketch", "overview: the folder's documents are tabs, the open one chosen")
-    ok(ov.title == "Library / Physics", "overview: the title says where the folder is")
+    ok(tabNames(ov) == "Mechanics,*Waves", "overview: the folder's notebooks are tabs, the open one chosen")
+    ok(ov.title == "Waves", "overview: the title is the notebook's whole name")
+    ok(ov.on_back ~= nil, "overview: it has a back arrow")
     ok(#ov.items == 1 and ov.items[1].selected, "overview: it shows the open notebook's pages")
     BB.out_of_bounds = 0
     ov:paintTo(Screen.bb, 0, 0)
@@ -2427,7 +2428,8 @@ do
 
     -- another tab: its pages, from its file; a tap opens that page
     view:overviewShowTab(DIR .. "/Mechanics.inkaway")
-    ok(#ov.items == 2 and tabNames(ov) == "*Mechanics,Waves,Sketch", "overview: a tap on a tab shows its pages")
+    ok(#ov.items == 2 and tabNames(ov) == "*Mechanics,Waves" and ov.title == "Mechanics",
+        "overview: a tap on a tab shows its pages")
     ov:paintTo(Screen.bb, 0, 0)
     local thumb = view:overviewThumb(ov.items[2], 200, 260)
     ok(thumb ~= nil, "overview: another notebook's pages get thumbnails")
@@ -2440,7 +2442,7 @@ do
     ov = view._overview
     view:overviewTabMenu(ov.tabs[1])
     press(ButtonDialog.last, "Move down")
-    ok(tabNames(ov) == "Waves,*Mechanics,Sketch", "overview: Move down reorders the tabs")
+    ok(tabNames(ov) == "Waves,*Mechanics", "overview: Move down reorders the tabs")
     ok(Folder.load(DIR).order[1] == "Waves.inkaway", "overview: and the order is saved in the folder")
     view:overviewTabColour(ov.tabs[2])
     local chooser = view._chooser_dialog
@@ -2458,7 +2460,7 @@ do
     answer("Optics")
     ok(Storage.exists(DIR .. "/Optics.inkaway") and not Storage.exists(DIR .. "/Waves.inkaway"),
         "overview: renaming a tab renames its file")
-    ok(tabNames(ov) == "Optics,*Mechanics,Sketch" and Folder.load(DIR).order[1] == "Optics.inkaway",
+    ok(tabNames(ov) == "Optics,*Mechanics" and Folder.load(DIR).order[1] == "Optics.inkaway",
         "overview: and keeps its place")
 
     -- pages: star, rename, move and copy to another notebook
@@ -2497,9 +2499,14 @@ do
     view:overviewToggleStarred()
     ok(#ov.items == 3, "overview: and back to all of them")
 
-    -- a drawing tab is one page
-    view:overviewShowTab(DIR .. "/Sketch.inkaway")
-    ok(#ov.items == 1 and ov.items[1].label == "Sketch", "overview: a drawing is a single card")
+    -- tabs skip the drawing in between when they move
+    local data = Folder.load(DIR)
+    data.order = { "Optics.inkaway", "Sketch.inkaway", "Mechanics.inkaway" }
+    Folder.save(DIR, data)
+    view:overviewMoveTab(ov.tabs[2], -1)
+    ok(tabNames(ov) == "Mechanics,*Optics", "overview: a tab moves past a drawing in between")
+    ok(table.concat(Folder.load(DIR).order, ",") == "Mechanics.inkaway,Sketch.inkaway,Optics.inkaway",
+        "overview: and the drawing keeps its place")
 
     -- + Notebook makes a new one in this folder
     ov.tab_footer[2]()
@@ -2518,7 +2525,24 @@ do
     ok(not Storage.exists(DIR .. "/Mechanics.inkaway") and view.doc_path ~= DIR .. "/Mechanics.inkaway",
         "overview: deleting the open tab removes it and starts a new drawing")
     ok(not tabNames(ov):find("Mechanics", 1, true), "overview: the tab is gone")
-    ov:close()
+    ok(tabNames(ov) == "*Optics" and ov.title == "Optics", "overview: and the first notebook left is shown")
+
+    -- the back arrow goes up to the folder in the library
+    ov.on_back()
+    ok(view._overview == nil and view._library ~= nil and view._lib_dir == DIR,
+        "overview: back goes up to the folder in the library")
+    view._library:close()
+
+    -- deleting the last notebook goes up to the folder too
+    view:openDocument(DIR .. "/Optics.inkaway")
+    view:openOverview()
+    ov = view._overview
+    view:overviewTabMenu(ov.tabs[1])
+    press(ButtonDialog.last, "Delete\u{2026}")
+    UIManager.shown.ok_callback()
+    ok(view._overview == nil and view._library ~= nil and view._lib_dir == DIR,
+        "overview: with no notebook left it shows the folder")
+    view._library:close()
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     G_reader_settings.data.inkaway_last_doc = nil

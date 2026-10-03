@@ -36,10 +36,9 @@ local ThumbGrid = InputContainer:extend{
     on_back = nil,      -- function(): shows a back arrow before the title
     on_close = nil,     -- function() once the grid has closed
     actions = nil,      -- header buttons left of the close pill: { { label, cb, dark }, ... }
-    close_label = nil,  -- the close pill's text (Done by default)
+    close_label = nil,  -- the close pill's text (Close by default)
     empty_text = nil,   -- shown when there are no items
     folder_icon = nil,  -- path of the SVG drawn on folder cards
-    on_title = nil,     -- function() for a tap on the title
     tabs = nil,         -- list of { label, color = Blitbuffer colour or nil, selected = bool }
     on_tab = nil,       -- function(tab) after a tap on a tab
     on_tab_hold = nil,  -- function(tab) after a hold on a tab
@@ -227,7 +226,7 @@ function ThumbGrid:paintTo(bb, x, y)
         right = right - S(8)
         return r
     end
-    self._close = pill(self.close_label or _("Done"), true)
+    self._close = pill(self.close_label or _("Close"), true)
     self._actions = {}
     for i = #(self.actions or {}), 1, -1 do
         local a = self.actions[i]
@@ -245,7 +244,6 @@ function ThumbGrid:paintTo(bb, x, y)
         max_width = math.max(S(40), right - tx) }
     local tsz = title:getSize()
     title:paintTo(bb, tx, y + math.floor(self.top_h / 2 - tsz.h / 2))
-    self._title = { x = tx, y = y, w = tsz.w, h = self.top_h }
     title:free()
     bb:paintRect(x, y + self.top_h - 1, sw, 1, GREY)
 
@@ -403,7 +401,6 @@ function ThumbGrid:onTgTap(_, ges)
         if hit(r, p) then self.actions[i][2](); return true end
     end
     if hit(self._back, p) then self.on_back(); return true end
-    if self.on_title and hit(self._title, p) then self.on_title(); return true end
     local tab = self:tabAt(p)
     if tab == "up" then self.tpage = math.max(0, self.tpage - 1); UIManager:setDirty(self, "ui"); return true end
     if tab == "down" then self.tpage = self.tpage + 1; UIManager:setDirty(self, "ui"); return true end

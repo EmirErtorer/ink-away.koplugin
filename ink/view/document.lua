@@ -393,8 +393,8 @@ function InkAwayView:docPlace()
 end
 
 -- The File sheet (toolbar): the document's name and where it is kept; rename,
--- the library and duplicate in a row; the two ways to start something new as
--- large tiles; then export.
+-- duplicate and export in a row; then the two ways to start something new as
+-- large tiles. The library has its own toolbar button.
 function InkAwayView:openDocumentSheet()
     self:flushPending()
     if self.active_image then self:finishImageEdit() end
@@ -419,9 +419,9 @@ function InkAwayView:openDocumentSheet()
         add(HorizontalGroup:new{ align = "center",
             act(_("Rename\u{2026}"), thirdW, function() self:promptRename() end),
             HorizontalSpan:new{ width = gap },
-            act(_("Library"), thirdW, function() self:openLibrary() end),
+            act(_("Duplicate"), thirdW, function() self:duplicateDocument() end),
             HorizontalSpan:new{ width = gap },
-            act(_("Duplicate"), thirdW, function() self:duplicateDocument() end) })
+            act(_("Export\u{2026}"), thirdW, function() self:openExport() end) })
         add(vspan(16))
         add(self:actionTile("pen", _("New drawing"), _("A blank page. Hold to start from a picture."), content_w,
             function() closeSelf(); self:newDrawing() end,
@@ -429,8 +429,6 @@ function InkAwayView:openDocumentSheet()
         add(VerticalSpan:new{ width = gap })
         add(self:actionTile("notebook", _("New notebook"), _("Choose its paper, a PDF or a template"), content_w,
             function() closeSelf(); self:openNotebookPaper() end))
-        add(vspan(16))
-        add(act(_("Export\u{2026}"), content_w, function() self:openExport() end))
         return content
     end
     self:showSheet("_doc_dialog", build)

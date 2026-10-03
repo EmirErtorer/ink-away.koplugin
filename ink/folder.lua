@@ -61,12 +61,15 @@ function Folder.setOrder(data, arranged)
     data.order = order
 end
 
--- Move the document `name` one place up (-1) or down (+1) among `arranged`.
+-- Move the document `name` one place up (-1) or down (+1) among `arranged`,
+-- trading places with the next one for which counts(d) is true (any, when not
+-- given): the tabs skip the drawings in between, which keep their places.
 -- Returns whether it moved.
-function Folder.move(data, arranged, name, delta)
+function Folder.move(data, arranged, name, delta, counts)
     local i
     for k, d in ipairs(arranged) do if d.name == name then i = k end end
     local j = i and i + delta
+    while j and arranged[j] and counts and not counts(arranged[j]) do j = j + delta end
     if not j or j < 1 or j > #arranged then return false end
     arranged[i], arranged[j] = arranged[j], arranged[i]
     Folder.setOrder(data, arranged)
