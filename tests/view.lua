@@ -2308,6 +2308,9 @@ do
     ok(ov.w >= view._btn_w and plus.w >= view._btn_w and view._nb_prev.w >= view._btn_w
         and view._nb_next.w >= view._btn_w, "pages: each bar button is at least a toolbar button wide")
     ok(cnt.w >= 2 * view._btn_w, "pages: and the counter has two columns' room between them")
+    ok(view._nb_prev.w >= 1.4 * view._btn_w and view._nb_next.w >= 1.4 * view._btn_w
+        and view._nb_prev.x + view._nb_prev.w <= ov.x and plus.x + plus.w <= view._nb_next.x,
+        "pages: Prev and Next take taps further in, clear of the middle buttons")
     ok(ov.w == plus.w and ov.h == plus.h, "pages: and have the same size")
     view:onIaTap(nil, { pos = centre(ov) })
     ok(view._overview and #view._overview.items == 3, "pages: the overview icon opens the page overview")

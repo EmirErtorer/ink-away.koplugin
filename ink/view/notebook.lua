@@ -807,22 +807,25 @@ function InkAwayView:paintNotebookBar(bb, x, y)
     bb:paintRect(x, sy0, w, h, WHITE)
     bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
     local isz = self._icon_sz or math.max(20, math.floor(h * 0.66))
-    -- one nav icon (toolbar size) centred at cx
-    local function icon(name, cx)
-        local im = self:navImage(name, isz)
+    -- one icon centred at cx, the toolbar's size unless given
+    local function icon(name, cx, size)
+        local im = self:navImage(name, size or isz)
         if not im then return end
         local iw, ih = im:getWidth(), im:getHeight()
         bb:blitFrom(im, math.floor(cx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
     end
     -- every button sits in a toolbar column and takes taps across its width, like
-    -- a toolbar button: Prev under the first tool, Next under Exit
+    -- a toolbar button: Prev under the first tool, Next under Exit. Those two are
+    -- the most used, so they are drawn larger and take taps half a column further
+    -- in, where the bar is empty.
     local zone = self._btn_w or (isz * 2)
     local prev_cx = x + math.floor(zone / 2)
     local next_cx = x + (self._last_btn_center or (w - math.floor(zone / 2)))
-    icon("nav_prev", prev_cx)
-    icon("nav_next", next_cx)
-    self._nb_prev = { x = x, y = sy0, w = math.floor(prev_cx + zone / 2) - x, h = h }
-    self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = x + w - math.floor(next_cx - zone / 2), h = h }
+    local nav = math.floor(isz * 1.35)
+    icon("nav_prev", prev_cx, nav)
+    icon("nav_next", next_cx, nav)
+    self._nb_prev = { x = x, y = sy0, w = math.floor(prev_cx + zone) - x, h = h }
+    self._nb_next = { x = math.floor(next_cx - zone), y = sy0, w = x + w - math.floor(next_cx - zone), h = h }
     -- the page counter "index / count", centred; the slash is drawn (the font's
     -- is taller than the digits) and the digits are centred on their measured ink
     local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
