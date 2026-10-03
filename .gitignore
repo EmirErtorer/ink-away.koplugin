@@ -9,3 +9,6 @@ dist/
 
 # but do keep the README screenshots
 !assets/screenshots/**
+
+# Performance test runs (results worth keeping go in tests/performance/results)
+tests/performance/out/

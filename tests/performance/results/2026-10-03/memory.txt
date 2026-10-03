@@ -1,0 +1,44 @@
+Memory through the io part of bench.lua, one run each, grey 1072x1448, 40-page notebook.
+lua = Lua heap after a full collect. process = resident size of the whole process; macOS rarely gives
+pages back, so read that column as a high-water mark. old = main cf9949f, new = notebook-library 997ed2b.
+Page thumbnails = the page grid (old) or the overview (new) of the 40-page notebook.
+
+[old]
+  Ink Away opened                          lua   1.3 MB   process   9.5 MB
+  40-page notebook made                    lua   2.4 MB   process  13.0 MB
+  40-page notebook reopened                lua   3.1 MB   process  17.1 MB
+  page thumbnails open                     lua   3.1 MB   process  21.1 MB
+  page thumbnails closed                   lua   3.1 MB   process  21.1 MB
+  before PDF export                        lua   3.1 MB   process  21.1 MB
+  after PDF export (40 pages)              lua   7.7 MB   process  26.1 MB
+  after PNG export                         lua  13.6 MB   process  32.5 MB
+  Ink Away closed and reopened             lua  14.4 MB   process  32.5 MB
+
+[new]
+  Ink Away opened                          lua   1.5 MB   process  10.3 MB
+  40-page notebook made                    lua   2.7 MB   process  13.8 MB
+  40-page notebook reopened                lua   3.6 MB   process  20.4 MB
+  page thumbnails open                     lua   3.2 MB   process  22.2 MB
+  page thumbnails closed                   lua   3.2 MB   process  22.2 MB
+  before PDF export                        lua   3.2 MB   process  22.2 MB
+  after PDF export (40 pages)              lua   8.2 MB   process  27.2 MB
+  after PNG export                         lua  14.1 MB   process  33.8 MB
+  Ink Away closed and reopened             lua  14.9 MB   process  33.8 MB
+  before making 34 more documents          lua  14.8 MB   process  33.8 MB
+  after making them                        lua  14.9 MB   process  34.0 MB
+  library open (cold, thumbnails drawn)    lua  15.0 MB   process  36.4 MB
+  library, before closing                  lua  14.9 MB   process  36.5 MB
+  library closed                           lua  14.9 MB   process  36.5 MB
+  overview with tabs open                  lua  15.3 MB   process  36.7 MB
+  overview closed                          lua  15.1 MB   process  36.7 MB
+
+Both versions keep about 10 MB of Lua garbage after a PDF and a PNG export until a later
+collection; that is older behaviour, not something the new version added.
+
+Lua heap from the 10-round headless run, grey 1072x1448 (headless.txt, headless-120-pages.txt):
+  after opening Ink Away        old 1.28 MB   new 1.50 MB
+  after drawing                 old 2.15 MB   new 2.42 MB
+  40-page notebook open         old 3.50 MB   new 3.89 MB
+  120-page notebook open        old 6.76 MB   new 7.27 MB
+Most of the difference with a notebook open is the per-page save cache, which holds about as
+much as the file itself.
