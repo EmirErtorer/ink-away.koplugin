@@ -162,6 +162,38 @@ do
 end
 
 ------------------------------------------------------------------------------
+-- Notebook pages: their own paper, inserting before, moving to a position
+------------------------------------------------------------------------------
+do
+    local nb = Notebook.new(600, 800, { style = "lines", size = 40, strength = 45 })
+    ok(nb:pageTemplate() == nb.template, "a page without its own paper uses the notebook's template")
+    nb.pages[1].paper = "grid"
+    local t = nb:pageTemplate(1)
+    ok(t ~= nb.template and t.style == "grid" and t.size == 40, "a page's own paper keeps the notebook's spacing")
+    ok(nb:pageTemplate(1) == t, "and is the same table each time, so it can be compared")
+    nb.template.size = 60
+    ok(t.size == 60, "spacing changes still reach it")
+    nb.pages[1].paper = "lines"
+    ok(nb:pageTemplate(1) == nb.template, "a page paper equal to the notebook's is just the notebook's")
+    nb.pages[1].paper = "dots"
+    nb:addPage()
+    ok(nb.pages[2].paper == "dots" and nb.index == 2, "a new page takes the paper of the page it follows")
+    nb.pages[2].ops = { { kind = "ink" } }
+    nb:insertPageBefore()
+    ok(nb:count() == 3 and nb.index == 2 and #nb.pages[2].ops == 0 and #nb.pages[3].ops == 1,
+        "insert before puts a blank page in front and goes to it")
+    ok(nb.pages[2].paper == "dots", "on the same paper")
+    local moving = nb.pages[3]
+    nb:gotoPage(3)
+    nb:movePageTo(1)
+    ok(nb.pages[1] == moving and nb.index == 1, "move to a position takes the page there and follows it")
+    nb:movePageTo(99)
+    ok(nb.pages[3] == moving and nb.index == 3, "a position past the end means the last page")
+    nb:movePageTo(0)
+    ok(nb.pages[1] == moving and nb.index == 1, "and before the start the first")
+end
+
+------------------------------------------------------------------------------
 -- The per-page save cache: unchanged pages are reused, and the cached text
 -- always matches a full save
 ------------------------------------------------------------------------------

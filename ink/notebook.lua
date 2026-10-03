@@ -1,9 +1,10 @@
 --[[
 The notebook model: an ordered list of pages of one size, plus the ruling
-template they share. A page is { id, ops, src, created, modified }: its ops work
-like a drawing's, `src` keeps it tied to its page of an imported PDF through
-inserts, duplicates, moves and deletes (a blank inserted page has none), and the
-id and times stay with the page wherever it moves. The view keeps the current
+template they share. A page is { id, ops, src, created, modified }, and may have
+a title, a star and its own paper style: its ops work like a drawing's, `src`
+keeps it tied to its page of an imported PDF through inserts, duplicates, moves
+and deletes (a blank inserted page has none), and the rest stays with the page
+wherever it moves. The view keeps the current
 page in its canvas and syncs it back on navigation. Plain Lua, so the headless
 tests drive it.
 ]]
@@ -115,10 +116,39 @@ function Notebook:gotoPage(i)
     return true
 end
 
--- Insert a blank page after the current one and move to it. Returns the index.
+-- The ruling page i (the current page by default) is drawn with: the notebook's
+-- template, or a view of it with the page's own paper style. The same table
+-- comes back while nothing changes, so callers can compare it, and size and
+-- strength still follow the notebook's.
+function Notebook:pageTemplate(i)
+    local page = self.pages[i or self.index]
+    local style = page and page.paper
+    if not style or style == self.template.style then return self.template end
+    if self._views_for ~= self.template then self._views, self._views_for = {}, self.template end
+    local view = self._views[style]
+    if not view then
+        view = setmetatable({ style = style }, { __index = self.template })
+        self._views[style] = view
+    end
+    return view
+end
+
+-- Insert a blank page after the current one, on the same paper, and move to it.
+-- Returns the index.
 function Notebook:addPage()
-    table.insert(self.pages, self.index + 1, self:newPage())
+    local page = self:newPage()
+    page.paper = self.pages[self.index] and self.pages[self.index].paper
+    table.insert(self.pages, self.index + 1, page)
     self.index = self.index + 1
+    return self.index
+end
+
+-- Insert a blank page before the current one, on the same paper, and move to it.
+-- Returns the index.
+function Notebook:insertPageBefore()
+    local page = self:newPage()
+    page.paper = self.pages[self.index] and self.pages[self.index].paper
+    table.insert(self.pages, self.index, page)
     return self.index
 end
 
@@ -135,11 +165,18 @@ end
 
 -- Move the current page one step earlier (-1) or later (+1). Returns the index.
 function Notebook:movePage(dir)
-    local j = self.index + (dir or 0)
-    if j < 1 or j > #self.pages or j == self.index then return self.index end
-    self.pages[self.index], self.pages[j] = self.pages[j], self.pages[self.index]
-    self.index = j
-    return self.index
+    return self:movePageTo(self.index + (dir or 0))
+end
+
+-- Move the current page to position n (kept within the notebook) and follow it.
+-- Returns the index.
+function Notebook:movePageTo(n)
+    n = math.max(1, math.min(#self.pages, math.floor(n or self.index)))
+    if n == self.index then return self.index end
+    local page = table.remove(self.pages, self.index)
+    table.insert(self.pages, n, page)
+    self.index = n
+    return n
 end
 
 -- Remove the current page (never below one page). Returns the new index.

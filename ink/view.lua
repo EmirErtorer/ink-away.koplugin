@@ -180,6 +180,9 @@ function InkAwayView:init()
     -- dialogs. Off keeps it for drawing and leaves the UI to fingers. Only matters
     -- with palm rejection on; without it the pen already arrives as a finger.
     self.pen_ui = self:getSetting("inkaway_pen_ui", true) and true or false
+    -- Finger swipes turn pages: with palm rejection on, a finger on a notebook
+    -- page turns it instead of drawing, and only the pen writes.
+    self.finger_turns = self:getSetting("inkaway_finger_turns", false) and true or false
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot drawing the current pen stroke
     self._palm_slots = {}         -- slot -> tracking id of each palm being ignored
@@ -482,6 +485,7 @@ function InkAwayView:onIaTouch(_, ges)
     if self.rotating then return self:rotateTouch(pos) end
     if self.image_rotating then return self:imageRotateTouch(pos) end
     if self.active_image then return self:imageTouch(pos) end
+    if self:fingerSwipes() then self._finger_swipe = { x = pos.x, y = pos.y }; return true end
     if self.tool == "lasso" then return self:lassoTouch(pos) end
     if self.tool == "text" then return self:textToolTouch(pos) end
     if self.tool == "fill" then self:doFill(pos); return true end
@@ -520,6 +524,7 @@ end
 
 function InkAwayView:onIaPan(_, ges)
     if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
+    if self._finger_swipe then return true end   -- a page swipe draws nothing
     if self._clip_press then return true end   -- the release decides (paste or cancel)
     local pos = ges.pos
     if self._fab_press then           -- a drag off a control is a draw, not a tap
@@ -557,6 +562,7 @@ InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
+    if self._finger_swipe then self:endFingerSwipe(ges and ges.pos); return true end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -586,6 +592,10 @@ InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
+    if self._finger_swipe then
+        self:endFingerSwipe(ges and (ges.end_pos or ges.pos), ges and ges.direction)
+        return true
+    end
     if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
@@ -615,6 +625,7 @@ InkAwayView.onIaMultiSwipe = InkAwayView.onIaSwipe
 
 function InkAwayView:onIaTap(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
+    self._finger_swipe = nil
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -631,6 +642,7 @@ function InkAwayView:onIaTap(_, ges)
     if self.notebook and self.nb_bar_h > 0 and p then
         local function hit(r) return r and InkGeom.inRect(p.x, p.y, r) end
         if hit(self._nb_plus) then self:nbAddPage(); return true end
+        if hit(self._nb_overview) then self:openPageGrid(); return true end
         if hit(self._nb_prev) then self:nbGo(-1); return true end
         if hit(self._nb_next) then self:nbGo(1); return true end
         if hit(self._nb_count) then self:openPageMenu(); return true end

@@ -2186,12 +2186,12 @@ do
     o.scope = "all"
     view:writePDF(LIB .. "/out/Notes.pdf")
     UIManager.fireScheduled(); UIManager.fireScheduled()
-    ok(pdf and #pdf.pages == 3 and pdf.template.style == "lines" and pdf.template.gray ~= nil,
+    ok(pdf and #pdf.pages == 3 and pdf.template(1).style == "lines" and pdf.template(1).gray ~= nil,
         "export: the notebook PDF carries its ruling")
     o.include_bg = false
     view:writePDF(LIB .. "/out/Notes.pdf")
     UIManager.fireScheduled(); UIManager.fireScheduled()
-    ok(pdf.template.style == "blank" and view.notebook.template.style == "lines",
+    ok(pdf.template(1).style == "blank" and view.notebook.template.style == "lines",
         "export: leaving the paper out drops the ruling, only from the export")
     o.include_bg = true
     -- a PNG of a notebook page draws its ruling under the ink, on white
@@ -2221,6 +2221,144 @@ do
     G_reader_settings.data.inkaway_last_doc = nil
     G_reader_settings.data.inkaway_export_dir = nil
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    UIManager.reset()
+end
+
+-- ---- notebook pages: bar icons, page menu, own paper, finger swipes -------
+do
+    local TestEnv = require("testenv")
+    local Export = require("ink/export")
+    local Project = require("ink/project")
+    local InputDialog = require("ui/widget/inputdialog")
+    TestEnv.remember_last_doc = false
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function answer(text)
+        local d = InputDialog.last
+        d.input = text
+        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    end
+    local function centre(r) return { x = r.x + r.w / 2, y = r.y + r.h / 2 } end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines")
+    stroke(view, 100, 100)
+    view:nbAddPage(); stroke(view, 200, 200)
+    view:nbAddPage()
+    view:nbGoTo(2)
+    local nb = view.notebook
+    view:paintTo(Screen.bb, 0, 0)
+
+    -- the bar: overview left of the counter, add-page right of it, mirrored
+    local ov, plus, cnt = view._nb_overview, view._nb_plus, view._nb_count
+    ok(ov and plus and cnt, "pages: the bar has overview, counter and add-page zones")
+    ok(ov.x + ov.w <= cnt.x and cnt.x + cnt.w <= plus.x, "pages: overview, counter, add-page in that order")
+    local mid = view.screen_w / 2
+    ok(math.abs((mid - (ov.x + ov.w / 2)) - ((plus.x + plus.w / 2) - mid)) <= 2,
+        "pages: the two icons sit the same distance either side of the middle")
+    ok(ov.w == plus.w and ov.h == plus.h, "pages: and have the same size")
+    view:onIaTap(nil, { pos = centre(ov) })
+    ok(view._settings_dialog and view._settings_dialog.items and #view._settings_dialog.items == 3,
+        "pages: the overview icon opens the page overview")
+    view._settings_dialog:close()
+    view:onIaTap(nil, { pos = centre(cnt) })
+    ok(view._page_dialog ~= nil, "pages: the counter opens the page menu")
+    view:closeSheet("_page_dialog")
+
+    -- rename and star: kept with the page and saved
+    view:nbRenamePage()
+    answer("  Lab results ")
+    ok(nb.pages[2].title == "Lab results", "pages: a page gets a title")
+    view:nbToggleStar()
+    ok(nb.pages[2].star == true, "pages: and a star")
+    view:saveDocument()
+    local data = Project.load(view.doc_path)
+    ok(data.pages[2].title == "Lab results" and data.pages[2].star == true, "pages: both are saved, cache or not")
+    view:openPageGrid()
+    local item = view._settings_dialog.items[2]
+    ok(item.star and item.label:find("Lab results", 1, true), "pages: the overview shows the title and star")
+    view._settings_dialog:close()
+    view:nbRenamePage(); answer("")
+    view:nbToggleStar()
+    ok(nb.pages[2].title == nil and nb.pages[2].star == nil, "pages: an empty title and a second star clear them")
+
+    -- insert before, then move with the prompt
+    local second = nb.pages[2]
+    view:nbInsertPageBefore()
+    ok(nb:count() == 4 and nb.index == 2 and nb.pages[3] == second and view.canvas:opCount() == 0,
+        "pages: Insert before adds a blank page in front of this one")
+    view:nbGoTo(3)
+    view:nbMovePrompt()
+    answer("1")
+    ok(nb.pages[1] == second and nb.index == 1, "pages: Move puts the page at the position typed")
+
+    -- the page's own paper: drawn, saved and exported
+    view:nbPagePaper()
+    local chooser = view._chooser_dialog
+    ok(chooser ~= nil, "pages: Paper opens a chooser")
+    view:closeSheet("_chooser_dialog")
+    second.paper = "grid"; view:nbPageChanged(second); view:composeCanvas()
+    ok(nb:pageTemplate().style == "grid" and nb.template.style == "lines", "pages: the page draws on its own paper")
+    view:saveDocument()
+    ok(Project.load(view.doc_path).pages[1].paper == "grid", "pages: its paper is saved")
+    local savedJob, pdf = Export.notebookPDFJob, nil
+    Export.notebookPDFJob = function(pages, w, h, template)
+        pdf = { pages = pages, template = template }
+        return { i = 0, n = #pages, step = function() return "done" end, cancel = function() end }
+    end
+    view:exportOptions().scope = "all"
+    view:writePDF(view.doc_path:gsub("%.inkaway$", ".pdf"))
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(pdf and pdf.template(1).style == "grid" and pdf.template(2).style == "lines",
+        "pages: the PDF prints each page on its own paper")
+    Export.notebookPDFJob = savedJob
+    view:closeSheet("_save_dialog")
+
+    -- finger swipes turn pages only when asked for, with palm rejection on
+    view:nbGoTo(2)
+    local v = view.view
+    local function fingerSwipe(x0, x1, y)
+        view:onIaTouch(nil, pos(x0, v.area_y + y))
+        view:onIaPan(nil, pos((x0 + x1) / 2, v.area_y + y + 5))
+        view:onIaPanRelease(nil, pos(x1, v.area_y + y + 10))
+        UIManager.fireScheduled()
+    end
+    local ops2 = view.canvas:opCount()
+    fingerSwipe(800, 200, 600)
+    ok(nb.index == 2 and view.canvas:opCount() == ops2 + 1, "pages: without the option a finger draws")
+    view:undo()
+    view.palm_reject, view.finger_turns = true, true
+    fingerSwipe(800, 200, 600)
+    ok(nb.index == 3, "pages: with it a finger swipe to the left turns to the next page")
+    ok(view.canvas:opCount() == 0 and not view.capturing, "pages: and draws nothing")
+    fingerSwipe(200, 800, 600)
+    ok(nb.index == 2, "pages: to the right goes back")
+    fingerSwipe(400, 420, 300)
+    ok(nb.index == 2 and view.canvas:opCount() == ops2, "pages: a short or upright drag does nothing")
+    view:onIaTouch(nil, pos(400, v.area_y + 300))
+    view:onIaSwipe(nil, { pos = { x = 300, y = v.area_y + 300 }, direction = "west" })
+    ok(nb.index == 3, "pages: a quick flick turns the page too")
+    view:feedPen("down", 300, v.area_y + 300)
+    view:feedPen("move", 400, v.area_y + 380)
+    view:feedPen("up", 400, v.area_y + 380)
+    UIManager.fireScheduled()
+    ok(view.canvas:opCount() == 1, "pages: the pen still writes")
+    view.tool = "pan"
+    fingerSwipe(800, 200, 600)
+    ok(nb.index == 3, "pages: with another tool the finger keeps that tool's job")
+    view.tool = "pen"
+    view.palm_reject, view.finger_turns = false, false
+    UIManager:close(view)
     UIManager.reset()
 end
 

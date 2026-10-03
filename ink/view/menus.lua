@@ -149,6 +149,7 @@ function InkAwayView:openPenSettings()
             end end)
         local palm = toggle(_("Palm rejection"), self.palm_reject, function(on)
             self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
+            self:openPenSettings()   -- show or hide the options that need it
             if on and not self:penCapable() then
                 UIManager:show(InfoMessage:new{ text = _(
                     "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
@@ -161,6 +162,13 @@ function InkAwayView:openPenSettings()
         table.insert(tail, ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
             width = content_w, parent = menu,
             callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
+        -- with palm rejection on, fingers can be kept for turning notebook pages
+        if self.palm_reject then
+            table.insert(tail, vspan(10))
+            table.insert(tail, ToggleRow:new{ label = _("Finger swipes turn pages"), is_on = self.finger_turns,
+                width = content_w, parent = menu,
+                callback = function(on) self.finger_turns = on; self:setSetting("inkaway_finger_turns", on) end })
+        end
         -- Debug: the pen input test, hidden unless show_pen_test is set.
         if self.show_pen_test and self:penCapable() then
             table.insert(tail, vspan(10))

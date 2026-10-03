@@ -97,7 +97,7 @@ end
 -- the on-screen grid, in the styles that have rows (square, lines, dots).
 function InkAwayView:textRulingStep()
     if self.notebook then
-        local t = self.notebook.template
+        local t = self.notebook:pageTemplate()
         if t and t.style and t.style ~= "blank" then return t.size or 40 end
         return nil
     end

@@ -206,6 +206,29 @@ function InkAwayView:fingerRejected(pos)
         or self:penInRange()
 end
 
+-- Does a finger touch start a page swipe rather than a stroke? Only with palm
+-- rejection on (so the pen arrives on its own and still writes), on a notebook
+-- page, with the pen or eraser tool.
+function InkAwayView:fingerSwipes()
+    return self.finger_turns and self.palm_reject and self.notebook ~= nil and not self._pen_feeding
+        and (self.tool == "pen" or self.tool == "erase")
+end
+
+-- A finger swipe ended at `pos`, or went `dir` ("west" or "east"): a mostly
+-- sideways one turns the page, west to the next as in the reader.
+function InkAwayView:endFingerSwipe(pos, dir)
+    local s = self._finger_swipe
+    self._finger_swipe = nil
+    if not s then return end
+    if not dir and pos then
+        local dx, dy = pos.x - s.x, pos.y - s.y
+        if math.abs(dx) >= self.view.area_w / 6 and math.abs(dx) > 2 * math.abs(dy) then
+            dir = dx < 0 and "west" or "east"
+        end
+    end
+    if dir == "west" then self:nbGo(1) elseif dir == "east" then self:nbGo(-1) end
+end
+
 -- Is the pen hovering over (or on) the screen? On a Wacom device KOReader keeps
 -- the pen's tool on its slot from the moment it comes into range until it leaves,
 -- so this is a cheap live check. A hand that lands while the pen hovers just

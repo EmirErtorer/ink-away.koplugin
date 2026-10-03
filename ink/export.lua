@@ -613,7 +613,8 @@ function Export.saveJPEG(canvas, path, quality, opts)
 end
 
 -- Export a notebook (a list of per-page op lists) to a PDF at `path`: one page
--- each with the shared `template` ruling, as a job that does one page per step()
+-- each with the `template` ruling (one for all pages, or a function(i) giving
+-- each page's), as a job that does one page per step()
 -- so the UI can show progress and stop it. Each page goes through a JPEG scratch
 -- file in `tmp_dir` straight into the PDF, so memory stays flat.
 --   bg:   optional background, one RGBA buffer for every page or a
@@ -647,7 +648,8 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
         local c = Canvas.new(w, h)
         c:setOps(pages[i])
         local page_bg = (type(bg) == "function") and bg(i, scale) or bg
-        local jopts = { template = template, bg = page_bg, bg_opaque = opts.bg_opaque,
+        local page_template = (type(template) == "function") and template(i) or template
+        local jopts = { template = page_template, bg = page_bg, bg_opaque = opts.bg_opaque,
             scale = (page_bg and scale) or 1,
             footer = opts.footer and (tostring(i) .. " / " .. job.n) or nil }
         local ok, e, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)

@@ -348,36 +348,118 @@ function InkAwayView:nbDuplicatePage()
     self:markDirty()
 end
 
+-- Note a change to a page's own fields (title, star, paper): drop it from the
+-- save cache and mark the document changed.
+function InkAwayView:nbPageChanged(page)
+    if self._page_cache then self._page_cache[page] = nil end
+    self:markDirty()
+end
+
 -- The page menu, opened by tapping the page counter in the bottom bar: go to a
--- page, the overview, duplicate and delete.
+-- page, rename, star, insert, duplicate, move, its paper, and delete.
 function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
+    local page = nb.pages[nb.index]
     self:closeSheet("_page_dialog")
-    local content_w = self:sheetWidth()
+    local content_w, gap = self:sheetWidth()
+    local halfW = math.floor((content_w - gap) / 2)
     local closeSelf = function() self:closeSheet("_page_dialog") end
-    local function act(label, cb)
-        return self:actionButton(label, content_w, function() closeSelf(); cb() end)
+    local function act(label, w, cb)
+        return self:actionButton(label, w, function() closeSelf(); cb() end)
+    end
+    local function row2(a, b)
+        return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
     end
     local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Page"), content_w, _("Close"), closeSelf))
+        add(self:sheetTitle(page.title or string.format(_("Page %d"), nb.index), content_w, _("Close"), closeSelf))
         add(vspan(6))
-        add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())))
+        add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())
+            .. (page.star and "  \u{2605}" or "")))
         add(vspan(12))
-        add(act(_("Go to page\u{2026}"), function() self:nbJumpPrompt() end))
+        add(act(_("Go to page\u{2026}"), content_w, function() self:nbJumpPrompt() end))
         add(vspan(8))
-        add(act(_("Page overview\u{2026}"), function() self:openPageGrid() end))
+        add(row2(act(_("Rename\u{2026}"), halfW, function() self:nbRenamePage() end),
+                 act(page.star and _("Unstar") or _("Star"), halfW, function() self:nbToggleStar() end)))
         add(vspan(8))
-        add(act(_("Duplicate page"), function() self:nbDuplicatePage() end))
+        add(row2(act(_("Insert before"), halfW, function() self:nbInsertPageBefore() end),
+                 act(_("Duplicate"), halfW, function() self:nbDuplicatePage() end)))
         add(vspan(8))
-        add(act(_("Delete page"), function() self:nbDeletePage() end))
+        add(row2(act(_("Move\u{2026}"), halfW, function() self:nbMovePrompt() end),
+                 act(_("Paper\u{2026}"), halfW, function() self:nbPagePaper() end)))
+        add(vspan(8))
+        add(act(_("Delete page"), content_w, function() self:nbDeletePage() end))
         return content
     end
     -- the sheet's bottom sits on the top of the notebook bottom bar
     local v = self.view
     self:showSheet("_page_dialog", build, { bottom_y = v.area_y + v.area_h })
+end
+
+-- Give the current page a title (an empty one removes it).
+function InkAwayView:nbRenamePage()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    if not page then return end
+    self:promptText{ title = _("Page title"), input = page.title or "", hint = _("Untitled"),
+        ok_text = _("Rename"),
+        on_ok = function(text)
+            local title = (text or ""):match("^%s*(.-)%s*$")
+            page.title = (title ~= "") and title or nil
+            self:nbPageChanged(page)
+        end }
+end
+
+function InkAwayView:nbToggleStar()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    if not page then return end
+    page.star = (not page.star) or nil
+    self:nbPageChanged(page)
+    self:showNotice(page.star and _("Page starred") or _("Star removed"))
+end
+
+-- Insert a blank page before the current one and move to it.
+function InkAwayView:nbInsertPageBefore()
+    if not self.notebook then return end
+    self:nbSyncOut()
+    self.notebook:insertPageBefore()
+    self:nbLoad()
+    self:markDirty()
+end
+
+-- Ask for the position to move the current page to.
+function InkAwayView:nbMovePrompt()
+    local nb = self.notebook
+    if not nb or nb:count() < 2 then return end
+    self:promptText{
+        title = string.format(_("Move this page to (1\u{2013}%d)"), nb:count()),
+        input = tostring(nb.index), input_type = "number", ok_text = _("Move"),
+        on_ok = function(text)
+            local n = tonumber(text)
+            if not n then return end
+            self:nbSyncOut()
+            nb:movePageTo(n)
+            self:markDirty()
+            self:refreshArea()   -- the counter shows the new position
+            self:showNotice(string.format(_("Now page %d"), nb.index))
+        end }
+end
+
+-- Choose the paper of the current page: the notebook's, or one of its own.
+function InkAwayView:nbPagePaper()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    if not page then return end
+    local options = { { "same", _("Same as the notebook") } }
+    for _, s in ipairs(self:notebookStyles()) do options[#options + 1] = s end
+    self:openChooserSheet(_("Paper for this page"), options, page.paper or "same", function(v)
+        page.paper = (v ~= "same") and v or nil
+        self:nbPageChanged(page)
+        self:composeCanvas(); self:renderView(); self:refreshArea()
+    end)
 end
 
 -- Render one notebook page to a thumbnail fitting maxw x maxh, through the shared
@@ -395,7 +477,7 @@ function InkAwayView:renderPageThumb(index, maxw, maxh)
         self:ensureNotebookPDF()
         bg = self:renderPdfPage(self._nb_pdf_doc, page.src)
     end
-    self:composeInto(scratch, page.ops, bg, nb.template)
+    self:composeInto(scratch, page.ops, bg, nb:pageTemplate(index))
     if bg then bg:free() end
     local scale = math.min(maxw / W, maxh / H)
     local tw = math.max(1, math.floor(W * scale))
@@ -411,7 +493,11 @@ function InkAwayView:openPageGrid()
     if not nb then return end
     self:nbSyncOut()      -- so the current page's latest ink is in its thumbnail
     local items = {}
-    for i = 1, nb:count() do items[i] = { label = tostring(i), index = i, selected = (i == nb.index) } end
+    for i = 1, nb:count() do
+        local page = nb.pages[i]
+        items[i] = { label = page.title and string.format("%d  %s", i, page.title) or tostring(i),
+            index = i, selected = (i == nb.index), star = page.star }
+    end
     local grid
     grid = ThumbGrid:new{
         title = string.format(_("Pages  (%d)"), nb:count()),
@@ -591,16 +677,22 @@ function InkAwayView:paintNotebookBar(bb, x, y)
         end
     end
     cntw:paintTo(bb, sx + slw + g, ty); cntw:free()
-    -- add-page icon, just right of the counter, clamped clear of Next
+    -- the add-page icon just right of the counter and the overview icon just left
+    -- of it, the same size and distance, clamped clear of Next and Prev
     local margin = math.floor(isz * 0.5)
     local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
     local max_icx = (next_cx - math.floor(zone / 2)) - margin - math.floor(isz / 2)
     if icx > max_icx then icx = max_icx end
     icon("newpage", icx)
     self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
-    -- the counter opens the page menu; its tap zone spans the gap between Prev
-    -- and the add-page icon
-    local count_x = self._nb_prev.x + self._nb_prev.w
+    local ocx = math.floor(x + w / 2 - counter_w / 2 - margin - isz / 2)
+    local min_ocx = (prev_cx + math.floor(zone / 2)) + margin + math.floor(isz / 2)
+    if ocx < min_ocx then ocx = min_ocx end
+    icon("overview", ocx)
+    self._nb_overview = { x = math.floor(ocx - zone / 2), y = sy0, w = zone, h = h }
+    -- the counter opens the page menu; its tap zone spans the gap between the
+    -- overview and add-page icons
+    local count_x = self._nb_overview.x + self._nb_overview.w
     self._nb_count = { x = count_x, y = sy0, w = math.max(1, self._nb_plus.x - count_x), h = h }
 end
 

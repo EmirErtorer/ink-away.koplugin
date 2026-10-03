@@ -199,13 +199,14 @@ function InkAwayView:barePaperBB()
     end
     local W, H = self.view.canvas_w, self.view.canvas_h
     local bp = self._bare_paper_bb
-    if bp and (bp:getWidth() ~= W or bp:getHeight() ~= H or self._bare_paper_for ~= self.notebook.template) then
+    local template = self.notebook:pageTemplate()
+    if bp and (bp:getWidth() ~= W or bp:getHeight() ~= H or self._bare_paper_for ~= template) then
         bp:free(); bp = nil
     end
     if not bp then
         bp = Blitbuffer.new(W, H, self.canvas_bb:getType())
-        paintPaper(bp, W, H, self.notebook.template, nil)
-        self._bare_paper_bb, self._bare_paper_for = bp, self.notebook.template
+        paintPaper(bp, W, H, template, nil)
+        self._bare_paper_bb, self._bare_paper_for = bp, template
     end
     return bp
 end
@@ -224,7 +225,7 @@ function InkAwayView:buildNotebookPaper()
     if not self._paper_bb then
         self._paper_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
     end
-    paintPaper(self._paper_bb, W, H, self.notebook.template, self.bg_bb)
+    paintPaper(self._paper_bb, W, H, self.notebook:pageTemplate(), self.bg_bb)
     -- a template or paper change rebuilds the bare paper on next use
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
 end

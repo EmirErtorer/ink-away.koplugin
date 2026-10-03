@@ -310,7 +310,7 @@ function InkAwayView:renderDocThumb(path, maxw, maxh)
     if Project.isNotebook(data) then
         local nb = Notebook.fromData(data)
         local page = nb.pages[1]
-        ops, template = page.ops, nb.template
+        ops, template = page.ops, nb:pageTemplate(1)
         if template.pdf_path and page.src then
             local doc = (self._nb_pdf_path == template.pdf_path) and self._nb_pdf_doc
             local own

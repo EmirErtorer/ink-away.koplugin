@@ -290,13 +290,15 @@ end
 -- Writing the files
 ------------------------------------------------------------------------------
 
--- The notebook template an export draws with: the paper colour and ruling grey
--- worked out, or no ruling when the paper is left out. A copy, so nothing sticks
--- to the notebook.
-function InkAwayView:exportTemplate()
+-- The template an export draws notebook page i with: the page's ruling, the
+-- paper colour and ruling grey worked out, or no ruling when the paper is left
+-- out. A copy, so nothing sticks to the notebook.
+function InkAwayView:exportTemplate(i)
     local o = self:exportOptions()
+    local nb = self.notebook
     local template = {}
-    for k, v in pairs(self.notebook.template) do template[k] = v end
+    for k, v in pairs(nb.template) do template[k] = v end
+    template.style = nb:pageTemplate(i).style
     template.paper = PAPERS[o.paper or "white"] or PAPERS.white
     template.gray = strengthToLevel(template.strength)
     if not o.include_bg and not template.pdf_path then template.style = "blank" end
@@ -309,7 +311,7 @@ function InkAwayView:pngOptions()
     local o = self:exportOptions()
     local opts = { rect = self.save_area, white = not o.transparent or nil }
     if o.include_bg then
-        if self.notebook then opts.template = self:exportTemplate() end
+        if self.notebook then opts.template = self:exportTemplate(self.notebook.index) end
         if self.bg_bb then opts.bg = self.bg_rgba or self:buildBgRGBA() end
     end
     return opts
@@ -342,8 +344,9 @@ function InkAwayView:writePDF(path)
         local sel = self:selectedNotebookPages()
         pages_ops = {}
         for j = 1, #sel do pages_ops[j] = nb.pages[sel[j]].ops end
-        template, w, h = self:exportTemplate(), nb.w, nb.h
-        if template.pdf_path then
+        w, h = nb.w, nb.h
+        template = function(j) return self:exportTemplate(sel[j]) end
+        if nb.template.pdf_path then
             -- each source page is rendered when its page is written, one at a
             -- time, so memory stays flat however long the PDF
             self:ensureNotebookPDF()
