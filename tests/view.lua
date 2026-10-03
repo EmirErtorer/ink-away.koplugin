@@ -3408,6 +3408,19 @@ do
     view._clean_mode, view.erase_whole = nil, false
     view:setTool("pen")
 
+    view._turns_since_full = 0
+    UIManager.refreshes = {}
+    view:nbGo(view.notebook.index > 1 and -1 or 1)
+    local turn = list()
+    local area_ok, bar_ok, whole = false, false, false
+    for _, r in ipairs(turn) do
+        local g = r.region
+        if not g or (g.y == 0 and g.h == Screen:getHeight()) then whole = true
+        elseif r.mode == "partial" and g.y == v.area_y and g.h == v.area_h then area_ok = true
+        elseif r.mode == "ui" and g.y == v.area_y + v.area_h + 1 then bar_ok = true end
+    end
+    ok(area_ok and bar_ok and not whole and #turn == 2,
+        "refresh: a page turn refreshes the page and the bar apart, never the toolbar")
 
     -- colour panel: no flashes for sheets and grids
     local had = Device.hasColorScreen

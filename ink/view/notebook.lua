@@ -169,9 +169,9 @@ function InkAwayView:nbLoad()
         self._turns_since_full = 0
         UIManager:setDirty(self, "full")
     elseif self:colourPanel() then
-        self:refresh(self, "full")   -- -> non-flashing "ui" on colour
+        self:refreshPageTurn("ui")
     else
-        UIManager:setDirty(self, "partial")
+        self:refreshPageTurn("partial")
     end
 end
 
