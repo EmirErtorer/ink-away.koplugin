@@ -5,6 +5,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
@@ -21,6 +22,7 @@ local Clipboard = require("ink/clipboard")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
 local Storage = require("ink/storage")
+local Templates = require("ink/templates")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -356,7 +358,8 @@ function InkAwayView:nbPageChanged(page)
 end
 
 -- The page menu, opened by tapping the page counter in the bottom bar: go to a
--- page, rename, star, insert, duplicate, move, its paper, and delete.
+-- page, rename, star, insert, duplicate, move, its paper, templates, paste and
+-- delete.
 function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
@@ -389,6 +392,9 @@ function InkAwayView:openPageMenu()
         add(vspan(8))
         add(row2(act(_("Move\u{2026}"), halfW, function() self:nbMovePrompt() end),
                  act(_("Paper\u{2026}"), halfW, function() self:nbPagePaper() end)))
+        add(vspan(8))
+        add(row2(act(_("Save as template\u{2026}"), halfW, function() self:nbSaveTemplate() end),
+                 act(_("From template\u{2026}"), halfW, function() self:nbFromTemplate() end)))
         add(vspan(8))
         if Clipboard.count() > 0 then
             add(row2(act(_("Paste"), halfW, function() self:pasteAt(nil) end),
@@ -465,6 +471,78 @@ function InkAwayView:nbPagePaper()
         self:nbPageChanged(page)
         self:composeCanvas(); self:renderView(); self:refreshArea()
     end)
+end
+
+-- Save the current page as a template, under a name asked for (its title by
+-- default), asking before replacing one of the same name.
+function InkAwayView:nbSaveTemplate()
+    local nb = self.notebook
+    if not nb then return end
+    self:nbSyncOut()
+    local page = nb.pages[nb.index]
+    local root = self:libraryDir()
+    self:promptText{ title = _("Template name"), input = page.title or "", hint = _("Planner"),
+        ok_text = _("Save"),
+        on_ok = function(text)
+            local name = (text or ""):gsub("[/\\]", "_"):match("^%s*(.-)%s*$")
+            if name == "" then return end
+            self:confirmReplace(Templates.path(root, name), function()
+                local ok, err = Templates.save(root, name, page, nb:pageTemplate(), nb.w, nb.h)
+                if ok then
+                    self:showNotice(string.format(_("Saved the template \u{201C}%s\u{201D}"), name))
+                else
+                    UIManager:show(InfoMessage:new{ text = _("Could not save the template.\n") .. tostring(err) })
+                end
+            end)
+        end }
+end
+
+-- Choose a template and add a page made from it after the current one. The
+-- last row switches to deleting templates instead.
+function InkAwayView:nbFromTemplate(deleting)
+    local nb = self.notebook
+    if not nb then return end
+    local root = self:libraryDir()
+    local names = Templates.list(root)
+    if #names == 0 then
+        UIManager:show(InfoMessage:new{ timeout = 4, text =
+            _("No templates yet. Save a page as one from this menu: Save as template.") })
+        return
+    end
+    local dialog
+    local rows = {}
+    for i = 1, #names do
+        local name = names[i]
+        rows[#rows + 1] = { { text = name, callback = function()
+            UIManager:close(dialog)
+            if not deleting then return self:nbAddFromTemplate(name) end
+            UIManager:show(ConfirmBox:new{
+                text = string.format(_("Delete the template \u{201C}%s\u{201D}?"), name),
+                ok_text = _("Delete"),
+                ok_callback = function() Templates.remove(root, name) end })
+        end } }
+    end
+    rows[#rows + 1] = { { text = deleting and _("Back") or _("Delete a template\u{2026}"), callback = function()
+        UIManager:close(dialog)
+        self:nbFromTemplate(not deleting)
+    end } }
+    dialog = ButtonDialog:new{
+        title = deleting and _("Delete which template?") or _("New page from template"), buttons = rows }
+    UIManager:show(dialog)
+end
+
+-- Add a page made from template `name` after the current one, and go to it.
+function InkAwayView:nbAddFromTemplate(name)
+    local nb = self.notebook
+    local page, style = Templates.load(self:libraryDir(), name)
+    if not (nb and page) then
+        UIManager:show(InfoMessage:new{ text = _("Could not open that template.") })
+        return
+    end
+    self:nbSyncOut()
+    nb.index = nb:putPage(page, false, style, nb.index + 1)
+    self:nbLoad()
+    self:markDirty()
 end
 
 -- Render one notebook page to a thumbnail fitting maxw x maxh, through the shared

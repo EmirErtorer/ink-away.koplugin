@@ -188,17 +188,20 @@ function Notebook:takePage(i)
     return page
 end
 
--- Add a copy of `page` (from this or another notebook) at the end, as a new page
--- with its own id, on paper `style` (the paper it had where it came from), so
--- it looks the same here. Its tie to a PDF page is kept only when it comes from
--- the same PDF (`same_pdf`). Returns the new page's index.
-function Notebook:putPage(page, same_pdf, style)
+-- Add a copy of `page` (from this or another notebook, or a template) as a new
+-- page with its own id, at position `at` (the end by default), on paper
+-- `style` (the paper it had where it came from), so it looks the same here. Its
+-- tie to a PDF page is kept only when it comes from the same PDF (`same_pdf`).
+-- Returns the new page's index.
+function Notebook:putPage(page, same_pdf, style, at)
     local copy = self:newPage(same_pdf and page.src or nil)
     style = style or page.paper
     copy.ops, copy.title, copy.star = deepcopy(page.ops or {}), page.title, page.star
     copy.paper = (style and style ~= self.template.style) and style or nil
-    self.pages[#self.pages + 1] = copy
-    return #self.pages
+    at = math.max(1, math.min(#self.pages + 1, at or #self.pages + 1))
+    table.insert(self.pages, at, copy)
+    if at <= self.index then self.index = self.index + 1 end
+    return at
 end
 
 -- Remove the current page (never below one page). Returns the new index.

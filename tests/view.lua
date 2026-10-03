@@ -2680,6 +2680,66 @@ do
     UIManager.reset()
 end
 
+-- ---- page templates -------------------------------------------------------
+do
+    local TestEnv = require("testenv")
+    local Templates = require("ink/templates")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/templates"
+    os.execute("mkdir -p '" .. LIB .. "'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function answer(text)
+        local d = InputDialog.last
+        d.input = text
+        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", LIB)
+    view:nbFromTemplate()
+    ok(UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("No templates", 1, true),
+        "templates: with none saved it says how to make one")
+    stroke(view, 100, 100); stroke(view, 200, 300)
+    view.notebook.pages[1].paper = "cornell"
+    view:nbSaveTemplate()
+    answer("Meeting")
+    ok(#Templates.list(LIB) == 1 and Templates.list(LIB)[1] == "Meeting", "templates: Save as template stores the page")
+    view:nbAddPage()
+    stroke(view, 400, 400)
+    view:nbGoTo(1)
+    view:nbFromTemplate()
+    local d = ButtonDialog.last
+    ok(d and #d.buttons == 2 and d.buttons[1][1].text == "Meeting", "templates: From template lists them")
+    d.buttons[1][1].callback()
+    local nb = view.notebook
+    ok(nb:count() == 3 and nb.index == 2 and view.canvas:opCount() == 2, "templates: the new page comes after this one")
+    ok(nb.pages[2].paper == "cornell" and nb:pageTemplate().style == "cornell", "templates: on the template's paper")
+    ok(nb.pages[2].id ~= nb.pages[1].id, "templates: as a new page")
+    view:nbFromTemplate()
+    ButtonDialog.last.buttons[2][1].callback()
+    ok(ButtonDialog.last.title == "Delete which template?", "templates: the last row switches to deleting")
+    ButtonDialog.last.buttons[1][1].callback()
+    UIManager.shown.ok_callback()
+    ok(#Templates.list(LIB) == 0, "templates: and a tap deletes one, after asking")
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

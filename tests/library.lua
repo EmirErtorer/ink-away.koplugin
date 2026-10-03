@@ -382,6 +382,44 @@ do
     ok(one:takePage(1) == nil and one:count() == 1, "the only page cannot be taken")
 end
 
+------------------------------------------------------------------------------
+-- Page templates
+------------------------------------------------------------------------------
+do
+    local Templates = require("ink/templates")
+    local ROOT = DIR .. "/tpl"
+    os.execute("mkdir -p '" .. ROOT .. "'")
+    ok(#Templates.list(ROOT) == 0, "no templates to begin with")
+    local nb = Notebook.new(600, 800, { style = "lines", size = 40, strength = 45, pdf_path = "lecture.pdf" })
+    nb.pages[1].ops = { { kind = "ink", width = 3, pts = { 1, 2, 3, 4 } } }
+    nb.pages[1].title = "Week plan"
+    nb.pages[1].paper = "cornell"
+    ok(Templates.save(ROOT, "Week plan", nb.pages[1], nb:pageTemplate(1), nb.w, nb.h), "a page saves as a template")
+    ok(Templates.save(ROOT, "agenda", nb.pages[1], nb.template, nb.w, nb.h), "and another")
+    local names = Templates.list(ROOT)
+    ok(#names == 2 and names[1] == "agenda" and names[2] == "Week plan", "templates are listed by name")
+    ok(#Library.list(ROOT, ROOT) == 0, "the templates folder is hidden from the library")
+    local page, style = Templates.load(ROOT, "Week plan")
+    ok(page and #page.ops == 1 and page.title == "Week plan" and style == "cornell",
+        "a template keeps its ink, title and paper")
+    local data = Project.load(Templates.path(ROOT, "Week plan"))
+    ok(data.template.pdf_path == nil, "a template never ties itself to a PDF")
+    page.ops[1].pts[1] = 99
+    local again = Templates.load(ROOT, "Week plan")
+    ok(again.ops[1].pts[1] == 1, "each load is a fresh copy")
+
+    local target = Notebook.new(600, 800, { style = "grid" })
+    target:addPage()
+    target:gotoPage(1)
+    local at = target:putPage(again, false, "cornell", 2)
+    ok(at == 2 and target:count() == 3 and target.pages[2].paper == "cornell" and target.index == 1,
+        "putPage can insert a template page after the current one")
+    target:gotoPage(3)
+    target:putPage(again, false, "grid", 1)
+    ok(target.index == 4 and target.pages[1].paper == nil, "inserting before the current page keeps it in view")
+    ok(Templates.remove(ROOT, "agenda") and #Templates.list(ROOT) == 1, "a template can be deleted")
+end
+
 TestEnv.cleanup()
 print(("library: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
