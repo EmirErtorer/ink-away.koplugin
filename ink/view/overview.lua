@@ -136,11 +136,7 @@ function InkAwayView:openOverview()
         on_hold = function(it) self:overviewPageMenu(it) end,
         on_tab = function(tab) self:overviewShowTab(tab.path) end,
         on_tab_hold = function(tab) self:overviewTabMenu(tab) end,
-        tab_footer = { "+ " .. _("Notebook"), function()
-            local d = self._ov.dir
-            grid:close()
-            self:openNewSheet(d)
-        end },
+        tab_footer = { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._ov.dir) end },
         on_close = function() self:closeOverviewDocs(); self._ov, self._overview = nil, nil end,
     }
     self._overview = grid

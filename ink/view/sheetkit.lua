@@ -168,6 +168,66 @@ function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_c
     return b
 end
 
+-- A wide action tile for a main choice: a black button with a white icon on the
+-- left, a bold title and a small note under it; `hold_cb` adds a long-press
+-- action (the note can say so).
+function InkAwayView:actionTile(icon, title, note, w, cb, hold_cb)
+    local h = Screen:scaleBySize(76)
+    local b = Button:new{ icon = "inkaway." .. icon, icon_width = 1, icon_height = 1,
+        width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(16), background = BLACK,
+        margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
+    local isz = Screen:scaleBySize(34)
+    local pad = Screen:scaleBySize(20)
+    local texts = VerticalGroup:new{ align = "left",
+        TextWidget:new{ text = title, face = Font:getFace("cfont", 20), bold = true, fgcolor = WHITE,
+            max_width = w - 3 * pad - isz },
+        vspan(2),
+        TextWidget:new{ text = note, face = Font:getFace("cfont", 13),
+            fgcolor = Blitbuffer.ColorRGB32(0xC8, 0xC8, 0xC8, 0xFF), max_width = w - 3 * pad - isz } }
+    local iw = self:tileIcon(icon, isz, true) or HorizontalSpan:new{ width = isz }
+    -- left aligned: the trailing span fills the rest of the tile
+    local used = pad + isz + pad + texts:getSize().w
+    self:setButtonLabel(b, HorizontalGroup:new{ align = "center",
+        HorizontalSpan:new{ width = pad }, iw, HorizontalSpan:new{ width = pad }, texts,
+        HorizontalSpan:new{ width = math.max(0, w - used) } })
+    return b
+end
+
+-- A paper tile: a small page drawn with the paper's ruling and its name under
+-- it; the selected one is black. Cached, as the papers never change.
+function InkAwayView:paperTile(style, label, w, h, sel, cb)
+    local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
+        radius = Screen:scaleBySize(14), background = sel and BLACK or TILE_BG,
+        margin = 0, padding = 0, callback = cb, show_parent = self }
+    local label_h = Screen:scaleBySize(26)
+    local ph = h - label_h - Screen:scaleBySize(18)
+    local pw = math.floor(ph * 0.75)
+    if pw > w - Screen:scaleBySize(16) then
+        pw = w - Screen:scaleBySize(16); ph = math.floor(pw / 0.75)
+    end
+    local ok, page = pcall(function() return self:cachedPaperPreview(style, pw, ph) end)
+    local vg = VerticalGroup:new{ align = "center" }
+    if ok and page then table.insert(vg, imageLabel(page, pw, ph)) end
+    table.insert(vg, vspan(4))
+    table.insert(vg, TextWidget:new{ text = label, face = Font:getFace("cfont", 15), bold = true,
+        fgcolor = sel and WHITE or BLACK })
+    self:setButtonLabel(b, vg)
+    return b
+end
+
+function InkAwayView:cachedPaperPreview(style, w, h)
+    local cache = self._wave_cache
+    if not cache then cache = {}; self._wave_cache = cache end
+    local id = table.concat({ "paper", style, w, h, Screen.bb:getType() }, "|")
+    local e = cache[id]
+    if e then return e.bb end
+    local bb = Blitbuffer.new(w, h, Screen.bb:getType())
+    Paint.paintPaper(bb, w, h, { style = style, size = math.max(6, math.floor(h / 9)), strength = 70 }, nil)
+    Paint.outline(bb, 0, 0, w, h, HINT, 1)
+    cache[id] = { bb = bb }
+    return bb
+end
+
 -- Title row shared by every tool sheet: the sheet title on the left (cut short
 -- with an ellipsis when long) and a filled black pill (Done / Back) on the
 -- right, spanning content_w.

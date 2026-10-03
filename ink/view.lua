@@ -59,7 +59,7 @@ local DEV_SHEETS = {
         v:newTextAt({ x = v.view.area_x + 40, y = v.view.area_y + 60 })
         v:openTextFormatMenu()
     end,
-    new = function(v) v:openNewSheet() end,
+    newnotebook = function(v) v:openNotebookPaper() end,
     file = function(v) v:openDocumentSheet() end,
     library = function(v) v:openLibrary() end,
     overview = inNotebook(function(v) v:openOverview() end),

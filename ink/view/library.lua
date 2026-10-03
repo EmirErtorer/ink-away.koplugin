@@ -66,10 +66,15 @@ function InkAwayView:openLibrary(dir)
         items = items,
         start = start,
         folder_icon = self:iconPath("folder"),
-        empty_text = _("Nothing here yet. Tap New to start a drawing or a notebook."),
+        empty_text = _("Nothing here yet. Start a drawing or a notebook with the buttons above."),
         close_label = _("Close"),
         actions = {
-            { _("New"), function() self:openNewSheet(self._lib_dir) end, true },
+            { "+ " .. _("Drawing"), function()
+                local d = self._lib_dir
+                self._library:close()
+                self:newDrawing(d)
+            end, true },
+            { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._lib_dir) end, true },
             { "\u{22EF}", function() self:libraryMenu() end },
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,

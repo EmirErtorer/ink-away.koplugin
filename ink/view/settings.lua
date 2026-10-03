@@ -146,10 +146,10 @@ function InkAwayView:openSettings()
         if self.notebook then
             local t = self.notebook.template
             add(act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), content_w, function()
-                self:openChooserSheet(_("Notebook paper"), self:notebookStyles(), t.style, function(v)
+                self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
                     t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
                     self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
-                end)
+                end }
             end))
             add(vspan(12))
             add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,

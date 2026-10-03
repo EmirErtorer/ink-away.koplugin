@@ -392,20 +392,19 @@ function InkAwayView:docPlace()
     return self:placeOf(self.doc_path and Storage.dirName(self.doc_path) or self:libraryDir())
 end
 
--- The File sheet (toolbar): the document's name and where it is kept, rename,
--- the library, new, duplicate and export.
+-- The File sheet (toolbar): the document's name and where it is kept; rename,
+-- the library and duplicate in a row; the two ways to start something new as
+-- large tiles; then export.
 function InkAwayView:openDocumentSheet()
     self:flushPending()
     if self.active_image then self:finishImageEdit() end
+    self:saveDocument()   -- so the sheet tells the truth about where it is saved
     self:closeSheet("_doc_dialog")
     local content_w, gap = self:sheetWidth()
-    local halfW = math.floor((content_w - gap) / 2)
+    local thirdW = math.floor((content_w - 2 * gap) / 3)
     local closeSelf = function() self:closeSheet("_doc_dialog") end
     local function act(label, w, cb, dark)
         return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
-    end
-    local function row2(a, b)
-        return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
     end
     local status = self.doc_written
         and string.format(_("Saved automatically in %s"), self:docPlace())
@@ -417,55 +416,24 @@ function InkAwayView:openDocumentSheet()
         add(vspan(4))
         add(self:sheetHint(status, content_w, 15))
         add(vspan(16))
-        add(row2(act(_("Rename\u{2026}"), halfW, function() self:promptRename() end),
-                 act(_("Library"), halfW, function() self:openLibrary() end)))
-        add(vspan(8))
-        add(row2(act(_("New\u{2026}"), halfW, function() self:openNewSheet() end),
-                 act(_("Duplicate"), halfW, function() self:duplicateDocument() end)))
-        add(vspan(8))
-        add(act(_("Export\u{2026}"), content_w, function() self:openExport() end, true))
+        add(HorizontalGroup:new{ align = "center",
+            act(_("Rename\u{2026}"), thirdW, function() self:promptRename() end),
+            HorizontalSpan:new{ width = gap },
+            act(_("Library"), thirdW, function() self:openLibrary() end),
+            HorizontalSpan:new{ width = gap },
+            act(_("Duplicate"), thirdW, function() self:duplicateDocument() end) })
+        add(vspan(16))
+        add(self:actionTile("pen", _("New drawing"), _("A blank page. Hold to start from a picture."), content_w,
+            function() closeSelf(); self:newDrawing() end,
+            function() closeSelf(); self:newFromImage() end))
+        add(VerticalSpan:new{ width = gap })
+        add(self:actionTile("notebook", _("New notebook"), _("Choose its paper, a PDF or a template"), content_w,
+            function() closeSelf(); self:openNotebookPaper() end))
+        add(vspan(16))
+        add(act(_("Export\u{2026}"), content_w, function() self:openExport() end))
         return content
     end
     self:showSheet("_doc_dialog", build)
-end
-
--- The New sheet: a drawing, a notebook on one of the papers, or one made from a
--- PDF or a picture, in folder `dir` (the open document's by default).
-function InkAwayView:openNewSheet(dir)
-    self:closeSheet("_new_dialog")
-    local content_w, gap = self:sheetWidth()
-    local halfW = math.floor((content_w - gap) / 2)
-    local closeSelf = function() self:closeSheet("_new_dialog") end
-    -- every choice closes this sheet and the library under it, then starts
-    local function start(fn)
-        return function(...)
-            closeSelf()
-            if self._library then self._library:close() end
-            fn(...)
-        end
-    end
-    local styles = self:notebookStyles()
-    local build = function()
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("New"), content_w, _("Cancel"), closeSelf))
-        add(vspan(16))
-        add(self:actionButton(_("Drawing"), content_w, start(function() self:newDrawing(dir) end), false, true))
-        add(vspan(16))
-        add(self:sheetLabel(_("Notebook"), true))
-        add(vspan(6))
-        local pick = start(function(style) self:newNotebook(style, dir) end)
-        add(self:segmentedRow({ styles[1], styles[2], styles[3] }, nil, content_w, pick))
-        add(vspan(8))
-        add(self:segmentedRow({ styles[4], styles[5], styles[6] }, nil, content_w, pick))
-        add(vspan(16))
-        add(HorizontalGroup:new{ align = "center",
-            self:actionButton(_("From PDF\u{2026}"), halfW, start(function() self:openPdfAsNotebook(dir) end)),
-            HorizontalSpan:new{ width = gap },
-            self:actionButton(_("From image\u{2026}"), halfW, start(function() self:newFromImage(dir) end)) })
-        return content
-    end
-    self:showSheet("_new_dialog", build)
 end
 
 return InkAwayView

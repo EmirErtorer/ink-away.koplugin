@@ -31,7 +31,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - Undo/redo, zoom & pan, and an optional grid.
 - And more!
 
-Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, File (rename, library, new, duplicate, export) and Exit. Zoom is the floating +/− control in the corner.
+Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, File (rename, library, duplicate, new drawing, new notebook, export) and Exit. Zoom is the floating +/− control in the corner.
 
 
 ## Installation

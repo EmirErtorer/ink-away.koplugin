@@ -464,13 +464,13 @@ function InkAwayView:nbPagePaper()
     local nb = self.notebook
     local page = nb and nb.pages[nb.index]
     if not page then return end
-    local options = { { "same", _("Same as the notebook") } }
-    for _, s in ipairs(self:notebookStyles()) do options[#options + 1] = s end
-    self:openChooserSheet(_("Paper for this page"), options, page.paper or "same", function(v)
-        page.paper = (v ~= "same") and v or nil
-        self:nbPageChanged(page)
-        self:composeCanvas(); self:renderView(); self:refreshArea()
-    end)
+    self:openPaperSheet{ title = _("Paper for this page"), current = page.paper or "same",
+        same = _("Same as the notebook"),
+        onpick = function(v)
+            page.paper = (v ~= "same") and v or nil
+            self:nbPageChanged(page)
+            self:composeCanvas(); self:renderView(); self:refreshArea()
+        end }
 end
 
 -- Save the current page as a template, under a name asked for (its title by
@@ -675,6 +675,116 @@ function InkAwayView:openPdfAsNotebook(dir)
         end
         self:startPdfNotebook(path, dir)
     end)
+end
+
+-- A sheet of paper tiles, each a small page drawn with its ruling, in rows of
+-- three. `o` holds title, current (the style shown selected), onpick(style),
+-- field (the sheet's slot), same (a label for a "same as the notebook" choice
+-- above the papers, picked as "same") and footer(add, content_w, gap, close),
+-- which adds more choices under them.
+function InkAwayView:openPaperSheet(o)
+    local field = o.field or "_chooser_dialog"
+    self:closeSheet(field)
+    local content_w, gap = self:sheetWidth()
+    local styles = self:notebookStyles()
+    local rows = math.ceil(#styles / 3)
+    local tileW = math.floor((content_w - 2 * gap) / 3)
+    -- page-shaped tiles, made shorter when the screen (or landscape) has no room
+    -- for them with the title, the optional rows and the sheet's frame
+    local S = function(px) return Screen:scaleBySize(px) end
+    local fixed = S(34) + S(16) + (o.same and S(48) + gap or 0) + (o.footer and S(16) + S(48) or 0)
+        + (rows - 1) * gap + 2 * S(18) + S(40)
+    local tileH = math.max(S(90), math.min(math.floor(tileW * 1.25),
+        math.floor((Screen:getHeight() - fixed) / rows)))
+    local closeSelf = function() self:closeSheet(field) end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(o.title, content_w, _("Cancel"), closeSelf))
+        add(vspan(16))
+        if o.same then
+            add(self:actionButton(o.same, content_w, function() closeSelf(); o.onpick("same") end,
+                o.current == "same"))
+            add(VerticalSpan:new{ width = gap })
+        end
+        for r = 0, rows - 1 do
+            local row = HorizontalGroup:new{ align = "center" }
+            for c = 1, 3 do
+                local s = styles[r * 3 + c]
+                if s then
+                    if c > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                    table.insert(row, self:paperTile(s[1], s[2], tileW, tileH, s[1] == o.current,
+                        function() closeSelf(); o.onpick(s[1]) end))
+                end
+            end
+            if r > 0 then add(VerticalSpan:new{ width = gap }) end
+            add(row)
+        end
+        if o.footer then o.footer(add, content_w, gap, closeSelf) end
+        return content
+    end
+    self:showSheet(field, build)
+end
+
+-- New notebook: pick its paper (the last one used is marked), or start it from
+-- a PDF or a saved page template, in folder `dir` (the open document's by
+-- default). The library or overview under it closes once a choice is made.
+function InkAwayView:openNotebookPaper(dir)
+    local function closeUnder()
+        if self._library then self._library:close() end
+        if self._overview then self._overview:close() end
+    end
+    local templates = #Templates.list(self:libraryDir()) > 0
+    self:openPaperSheet{ title = _("New notebook"), field = "_new_dialog", current = self.nb_style,
+        onpick = function(style) closeUnder(); self:newNotebook(style, dir) end,
+        footer = function(add, content_w, gap, closeSelf)
+            add(vspan(16))
+            local pdf = self:actionButton(_("From a PDF\u{2026}"), templates and math.floor((content_w - gap) / 2)
+                or content_w, function() closeSelf(); closeUnder(); self:openPdfAsNotebook(dir) end)
+            if templates then
+                add(HorizontalGroup:new{ align = "center", pdf, HorizontalSpan:new{ width = gap },
+                    self:actionButton(_("From a template\u{2026}"), math.floor((content_w - gap) / 2),
+                        function() closeSelf(); self:chooseNotebookTemplate(dir, closeUnder) end) })
+            else
+                add(pdf)
+            end
+        end }
+end
+
+-- Pick a saved page template and start a notebook with it as the first page.
+function InkAwayView:chooseNotebookTemplate(dir, before)
+    local dialog
+    local rows = {}
+    local names = Templates.list(self:libraryDir())
+    for i = 1, #names do
+        local name = names[i]
+        rows[#rows + 1] = { { text = name, callback = function()
+            UIManager:close(dialog)
+            if before then before() end
+            self:newNotebookFromTemplate(name, dir)
+        end } }
+    end
+    dialog = ButtonDialog:new{ title = _("New notebook from template"), buttons = rows }
+    UIManager:show(dialog)
+end
+
+-- Start a notebook in folder `dir` whose first page is template `name`, on its
+-- paper; it is named after the template and saved at once.
+function InkAwayView:newNotebookFromTemplate(name, dir)
+    local page, style = Templates.load(self:libraryDir(), name)
+    if not page then
+        UIManager:show(InfoMessage:new{ text = _("Could not open that template.") })
+        return
+    end
+    self:beginDocument("notebook", name, function()
+        local nb = Notebook.new(self.screen_w, self.screen_h, { style = style or "lines",
+            size = self.nb_size or self.grid_size or 40, strength = self.nb_strength or self.grid_strength or 45 })
+        nb.pages[1].ops, nb.pages[1].title = Notebook.deepcopy(page.ops or {}), page.title
+        self:clearBackground()
+        self.save_area = nil
+        self:enterNotebook(nb)
+    end, dir)
+    self:saveDocument(true)
 end
 
 -- The notebook paper styles, as { style, label } pairs for the choosers.

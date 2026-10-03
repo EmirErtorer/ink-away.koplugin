@@ -1976,8 +1976,8 @@ do
         "lib: tapping a folder goes into it")
     ok(#lib.items == 0, "lib: a new folder is empty")
     lib:paintTo(Screen.bb, 0, 0)
-    view:openNewSheet(view._lib_dir)
-    ok(view._new_dialog ~= nil, "lib: New opens the New sheet")
+    view:openNotebookPaper(view._lib_dir)
+    ok(view._new_dialog ~= nil, "lib: + Notebook opens the paper choice")
     view:closeSheet("_new_dialog")
     lib:close()
     view:newDrawing(LIB .. "/School")
@@ -2503,8 +2503,9 @@ do
 
     -- + Notebook makes a new one in this folder
     ov.tab_footer[2]()
-    ok(view._overview == nil and view._new_dialog ~= nil, "overview: + Notebook opens New for this folder")
+    ok(view._new_dialog ~= nil, "overview: + Notebook opens the paper choice for this folder")
     view:closeSheet("_new_dialog")
+    ov:close()
 
     -- deleting the open notebook's tab
     view:openOverview()
@@ -2734,6 +2735,85 @@ do
     ButtonDialog.last.buttons[1][1].callback()
     UIManager.shown.ok_callback()
     ok(#Templates.list(LIB) == 0, "templates: and a tap deletes one, after asking")
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
+-- ---- starting something new: the File sheet tiles and the paper choice -----
+do
+    local TestEnv = require("testenv")
+    local Storage = require("ink/storage")
+    local Templates = require("ink/templates")
+    local Project = require("ink/project")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/newflow"
+    os.execute("mkdir -p '" .. LIB .. "/School'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+
+    view:openDocumentSheet()
+    ok(view._doc_dialog ~= nil, "new: the File sheet opens")
+    BB.out_of_bounds = 0
+    local tile = view:actionTile("pen", "New drawing", "A blank page", 600, function() end)
+    ok(tile and tile.width == 600 and tile.hold_callback == nil, "new: an action tile spans its width")
+    view:closeSheet("_doc_dialog")
+
+    -- New notebook: six papers with previews, the last one used marked
+    view.nb_style = "grid"
+    view:openNotebookPaper()
+    ok(view._new_dialog ~= nil, "new: New notebook opens the paper choice")
+    local preview = view:cachedPaperPreview("dots", 90, 120)
+    ok(preview and preview:getWidth() == 90 and preview:getHeight() == 120, "new: each paper has a drawn preview")
+    ok(view:cachedPaperPreview("dots", 90, 120) == preview, "new: previews are drawn once and kept")
+    view:closeSheet("_new_dialog")
+    view:newNotebook("cornell", LIB .. "/School")
+    ok(view.notebook and view.notebook.template.style == "cornell"
+        and Storage.dirName(view.doc_path) == LIB .. "/School", "new: picking a paper starts the notebook there")
+
+    -- a notebook from a template: its first page is the template, saved at once
+    local nb = view.notebook
+    nb.pages[1].ops = { { kind = "ink", width = 3, pts = { 1, 1, 50, 50 } } }
+    nb.pages[1].title = "Plan"
+    Templates.save(LIB, "Week plan", nb.pages[1], nb:pageTemplate(), nb.w, nb.h)
+    view:openNotebookPaper(LIB)
+    view:closeSheet("_new_dialog")
+    view:chooseNotebookTemplate(LIB)
+    ok(ButtonDialog.last and ButtonDialog.last.buttons[1][1].text == "Week plan", "new: the templates are offered")
+    ButtonDialog.last.buttons[1][1].callback()
+    ok(view.notebook and view.doc_path == LIB .. "/Week plan.inkaway" and view.doc_written,
+        "new: a notebook from a template is named after it and saved")
+    local data = Project.load(view.doc_path)
+    ok(data and #data.pages[1].ops == 1 and data.pages[1].title == "Plan" and data.template.style == "cornell",
+        "new: its first page is the template, on its paper")
+
+    -- the library's + Drawing starts a drawing in the folder shown, in one tap
+    view:openLibrary(LIB .. "/School")
+    view._library.actions[1][2]()
+    ok(view._library == nil and not view.notebook and Storage.dirName(view.doc_path) == LIB .. "/School",
+        "new: + Drawing makes a drawing in that folder at once")
+
+    -- holding New drawing starts one over a picture, named after it and saved
+    local PathChooser = require("ui/widget/pathchooser")
+    local pic = LIB .. "/School/beach.png"
+    local f = io.open(pic, "wb"); f:write("png"); f:close()
+    view:newFromImage(LIB)
+    ok(PathChooser.last and PathChooser.last.select_file, "new: a drawing from a picture asks for the picture")
+    PathChooser.last.onConfirm(pic)
+    ok(view.doc_path == LIB .. "/beach.inkaway" and view.doc_written and view.bg_path == pic,
+        "new: and starts a drawing over it, named after it")
+
+    -- the page's own paper uses the same paper tiles, with a "same" choice
+    view:newNotebook("lines", LIB)
+    view:nbPagePaper()
+    ok(view._chooser_dialog ~= nil, "new: the page paper choice opens")
+    view:closeSheet("_chooser_dialog")
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     G_reader_settings.data.inkaway_last_doc = nil
