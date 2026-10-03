@@ -236,6 +236,67 @@ do
     ok(Library.adoptSession(DIR .. "/no session.inkaway", DIR, "x") == nil, "no session file, nothing to do")
 end
 
+------------------------------------------------------------------------------
+-- Library folders: listing, moving, duplicating and deleting
+------------------------------------------------------------------------------
+do
+    local ROOT = DIR .. "/lib"
+    os.execute("mkdir -p '" .. ROOT .. "/School/Maths' '" .. ROOT .. "/drawings' '" .. ROOT .. "/.thumbs'")
+    writeAll(ROOT .. "/Old.inkaway", "x")
+    writeAll(ROOT .. "/new.inkaway", "x")
+    writeAll(ROOT .. "/notes.txt", "x")
+    writeAll(ROOT .. "/.hidden.inkaway", "x")
+    writeAll(ROOT .. "/School/Physics.inkaway", "x")
+    os.execute("touch -t 202601010000 '" .. ROOT .. "/Old.inkaway'")
+    os.execute("touch -t 202602010000 '" .. ROOT .. "/new.inkaway'")
+
+    local names = {}
+    for _, e in ipairs(Storage.list(ROOT)) do names[e.name] = e.mode end
+    ok(names["School"] == "directory" and names["Old.inkaway"] == "file" and names[".thumbs"] == "directory",
+        "Storage.list sees files and folders, hidden ones too")
+    ok(names["."] == nil and names[".."] == nil, "but not . and ..")
+
+    local folders, docs = Library.list(ROOT, ROOT)
+    ok(#folders == 1 and folders[1].name == "School", "the library shows its folders, not internal or hidden ones")
+    ok(#docs == 2, "and only document files, not hidden ones")
+    ok(docs[1].name == "new.inkaway" and docs[2].name == "Old.inkaway", "documents come newest first")
+    local _, by_name = Library.list(ROOT, ROOT, "name")
+    ok(by_name[1].name == "new.inkaway" and by_name[2].name == "Old.inkaway", "or by name, ignoring case")
+    local sub = Library.list(ROOT .. "/School", ROOT)
+    ok(#sub == 1 and sub[1].name == "Maths", "inside a folder the same rules apply")
+    os.execute("mkdir -p '" .. ROOT .. "/School/drawings'")
+    ok(#Library.list(ROOT .. "/School", ROOT) == 2, "a folder named like an internal one is shown below the top")
+
+    ok(Storage.within(ROOT .. "/School/a.inkaway", ROOT .. "/School"), "within: a file in a folder")
+    ok(Storage.within(ROOT .. "/School", ROOT .. "/School/"), "within: the folder itself")
+    ok(not Storage.within(ROOT .. "/Schoolwork/a.inkaway", ROOT .. "/School"), "within: not a sibling with a longer name")
+
+    -- moving a document into a folder, and a clash
+    local moved = Library.move(ROOT .. "/Old.inkaway", ROOT .. "/School")
+    ok(moved == ROOT .. "/School/Old.inkaway" and Storage.exists(moved) and not Storage.exists(ROOT .. "/Old.inkaway"),
+        "a document moves into a folder")
+    writeAll(ROOT .. "/Physics.inkaway", "y")
+    local clash = Library.move(ROOT .. "/Physics.inkaway", ROOT .. "/School")
+    ok(clash == ROOT .. "/School/Physics (2).inkaway", "a name taken in the folder gets a number")
+    ok(Library.move(moved, ROOT .. "/School") == moved, "moving to where it already is changes nothing")
+    -- folders
+    local mf = Library.move(ROOT .. "/School/Maths", ROOT)
+    ok(mf == ROOT .. "/Maths" and Storage.isDir(mf), "a folder moves too")
+    local bad = Library.move(ROOT .. "/School", ROOT .. "/School/drawings")
+    ok(bad == nil and Storage.isDir(ROOT .. "/School"), "a folder never moves inside itself")
+
+    local copy = Library.duplicate(moved)
+    ok(copy == ROOT .. "/School/Old (2).inkaway" and readAll(copy) == "x", "duplicate copies next to it with a number")
+
+    ok(Storage.removeTree(ROOT .. "/School"), "removeTree deletes a folder with everything in it")
+    ok(not Storage.exists(ROOT .. "/School/Old.inkaway") and not Storage.exists(ROOT .. "/School"), "nothing is left")
+
+    local name = Library.thumbName("/a/b.inkaway", 123, 40, 50)
+    ok(name == Library.pathCode("/a/b.inkaway") .. "-123-40x50.png", "a thumbnail name carries path, time and size")
+    ok(Library.pathCode("/a/b.inkaway") ~= Library.pathCode("/a/c.inkaway"), "different paths, different codes")
+    ok(Library.pathCode("") == "811c9dc5" and Library.pathCode("foobar") == "bf9cf968", "path codes are FNV-1a")
+end
+
 TestEnv.cleanup()
 print(("library: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

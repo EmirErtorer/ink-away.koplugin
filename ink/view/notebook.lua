@@ -20,6 +20,7 @@ local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
 local Storage = require("ink/storage")
+local ThumbGrid = require("ink/ui/thumbgrid")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -410,12 +411,15 @@ function InkAwayView:openPageGrid()
     local nb = self.notebook
     if not nb then return end
     self:nbSyncOut()      -- so the current page's latest ink is in its thumbnail
-    local PageGrid = require("ink/ui/pagegrid")
-    local grid = PageGrid:new{
-        count = nb:count(),
-        current = nb.index,
-        render = function(i, w, h) return self:renderPageThumb(i, w, h) end,
-        on_pick = function(i) self:nbGoTo(i) end,
+    local items = {}
+    for i = 1, nb:count() do items[i] = { label = tostring(i), index = i, selected = (i == nb.index) } end
+    local grid
+    grid = ThumbGrid:new{
+        title = string.format(_("Pages  (%d)"), nb:count()),
+        items = items,
+        start = nb.index,
+        render = function(it, w, h) return self:renderPageThumb(it.index, w, h) end,
+        on_pick = function(it) grid:close(); self:nbGoTo(it.index) end,
     }
     self._settings_dialog = grid
     UIManager:show(grid)
@@ -492,11 +496,11 @@ function InkAwayView:exitNotebook()
     self:recomputeArea()
 end
 
--- Open an entire PDF as a new notebook: one page per PDF page, each with the
--- PDF page as its background to write on. Pages are rendered lazily on demand.
--- It is saved at once, named after the PDF, so it is in the library straight
--- away.
-function InkAwayView:startPdfNotebook(path)
+-- Open an entire PDF as a new notebook in folder `dir`: one page per PDF page,
+-- each with the PDF page as its background to write on. Pages are rendered
+-- lazily on demand. It is saved at once, named after the PDF, so it is in the
+-- library straight away.
+function InkAwayView:startPdfNotebook(path, dir)
     local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(path) end)
     if not ok or not doc then
         UIManager:show(InfoMessage:new{ text = _("Could not open that PDF.") })
@@ -512,50 +516,20 @@ function InkAwayView:startPdfNotebook(path)
         self:enterNotebook(Notebook.forPdf(self.screen_w, self.screen_h, {
             style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
         }, pages))
-    end)
+    end, dir)
     self:saveDocument(true)
 end
 
--- Pick a PDF and open it as a new notebook.
-function InkAwayView:openPdfAsNotebook()
-    self:pickFile(self:defaultDir(), function(path)
+-- Pick a PDF (from KOReader's home folder) and open it as a new notebook in
+-- folder `dir`.
+function InkAwayView:openPdfAsNotebook(dir)
+    self:pickFile(self:homeDir(), function(path)
         if not path:lower():match("%.pdf$") then
             UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
             return
         end
-        self:startPdfNotebook(path)
+        self:startPdfNotebook(path, dir)
     end)
-end
-
--- Start a new notebook: ask which ruling to use, then enter notebook mode.
-function InkAwayView:newNotebook()
-    local function go(style)
-        self.nb_style = style
-        self:setSetting("inkaway_nb_style", style)
-        -- start from the last notebook's ruling (else the drawing grid's spacing
-        -- and strength), so a new notebook matches the last one
-        self:beginDocument("notebook", nil, function()
-            self:startNotebook({ style = style,
-                size = self.nb_size or self.grid_size or 40,
-                strength = self.nb_strength or self.grid_strength or 45 })
-        end)
-    end
-    self:closeSheet("_chooser_dialog")
-    local content_w = self:sheetWidth()
-    local closeSelf = function() self:closeSheet("_chooser_dialog") end
-    local styles = self:notebookStyles()
-    local build = function()
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("New notebook"), content_w, _("Cancel"), closeSelf))
-        add(vspan(10))
-        for i, s in ipairs(styles) do
-            add(self:actionButton(s[2], content_w, function() closeSelf(); go(s[1]) end))
-            if i < #styles then add(vspan(8)) end
-        end
-        return content
-    end
-    self:showSheet("_chooser_dialog", build)
 end
 
 -- The notebook paper styles, as { style, label } pairs for the choosers.

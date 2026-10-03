@@ -59,7 +59,9 @@ local DEV_SHEETS = {
         v:newTextAt({ x = v.view.area_x + 40, y = v.view.area_y + 60 })
         v:openTextFormatMenu()
     end,
-    newnotebook = function(v) v:newNotebook() end,
+    new = function(v) v:openNewSheet() end,
+    file = function(v) v:openDocumentSheet() end,
+    library = function(v) v:openLibrary() end,
     notebook = inNotebook(function() end),
     export = inNotebook(function(v) v:exportNotebookPDF() end),
     pagemenu = inNotebook(function(v) v:openPageMenu() end),
@@ -308,6 +310,10 @@ function InkAwayView:init()
     self:openStartDocument()   -- the last document, or a new drawing
     self:composeCanvas()
     self:renderView()
+    -- the library on top, when asked for (its gesture) or chosen in the settings
+    if self.show_library or self:getSetting("inkaway_start") == "library" then
+        UIManager:nextTick(function() if not self.closing then self:openLibrary() end end)
+    end
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
@@ -403,7 +409,7 @@ function InkAwayView:onCloseWidget()
     self:saveDocument()
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library" }) do
         self:closeSheet(key)
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -842,7 +848,7 @@ end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
-    "textedit", "textformat", "lasso", "notebook", "save", "document", "input", "toolbar", "menus",
+    "textedit", "textformat", "lasso", "notebook", "save", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "wipe" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do

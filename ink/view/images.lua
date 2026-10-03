@@ -75,6 +75,7 @@ end
 function InkAwayView:removeBackground()
     if self.bg_bb then self.bg_bb:free() end
     self.bg_bb, self.bg_rgba, self.bg_path, self._bg_src = nil, nil, nil, nil
+    self:markDirty()
     self:composeCanvas(); self:renderView()
     UIManager:setDirty(self, "full")
 end
@@ -756,9 +757,41 @@ function InkAwayView:chooseImage()
         add(TextBoxWidget:new{ text = _("Browsing needs Wi-Fi. Ink Away itself never requires a connection."),
             face = Font:getFace("cfont", 13), width = content_w,
             fgcolor = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF) })
+        if not self.notebook then   -- a notebook's paper is its background
+            add(vspan(14))
+            add(self:actionButton(_("Background\u{2026}"), content_w, function()
+                closeSelf(); self:openBackground() end))
+        end
         return content
     end
     self:showSheet("_img_src_dialog", build)
+end
+
+-- The background sheet: open a picture to draw over, or remove it.
+function InkAwayView:openBackground()
+    self:closeSheet("_bg_dialog")
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_bg_dialog") end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Background image"), content_w, _("Done"), closeSelf))
+        add(vspan(16))
+        add(self:actionButton(_("Open image as background"), content_w,
+            function() closeSelf(); self:chooseBackground() end))
+        if self.bg_bb then
+            add(vspan(8))
+            add(self:actionButton(_("Remove background"), content_w,
+                function() closeSelf(); self:removeBackground() end, true))
+        end
+        add(vspan(12))
+        local hint = self.bg_bb
+            and _("At save time you can include the picture or export just your drawing. The grid is always left out.")
+            or _("Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF.")
+        add(self:sheetHint(hint, content_w, 15))
+        return content
+    end
+    self:showSheet("_bg_dialog", build)
 end
 
 -- Pick a local PNG or JPEG and insert it.

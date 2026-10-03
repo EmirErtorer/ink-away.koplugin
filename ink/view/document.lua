@@ -1,20 +1,28 @@
 --[[
 The open document. Every drawing and notebook is a file in the library that
 saves itself: a few seconds after a change, and whenever it is left (another
-document, closing, the reader going to sleep). Also new, open and rename, and
-the folders files are offered in.
+document, closing, the reader going to sleep). Also the File and New sheets,
+rename and duplicate, and the folders files are offered in.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
+local Device = require("device")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
 local Library = require("ink/library")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
 
+local Screen = Device.screen
 local existingDir = Storage.existingDir
+
+local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 -- Seconds without a change before the document saves itself, and the longest a
 -- save waits while changes keep coming.
@@ -168,11 +176,11 @@ function InkAwayView:leaveDocument()
     self:saveDocument()
 end
 
--- Start a new, empty document of `kind` in the open document's folder, named
--- `name` (a dated default when nil). `setup` builds it: it clears the canvas or
--- enters notebook mode.
-function InkAwayView:beginDocument(kind, name, setup)
-    local dir = self:docDir()
+-- Start a new, empty document of `kind` in folder `dir` (the open document's by
+-- default), named `name` (a dated default when nil). `setup` builds it: it
+-- clears the canvas or enters notebook mode.
+function InkAwayView:beginDocument(kind, name, setup, dir)
+    dir = dir or self:docDir()
     self:leaveDocument()
     self.doc_path = Storage.uniquePath(dir, name or Library.defaultName(self:docKindLabel(kind)), Project.EXT)
     self.doc_written = false
@@ -260,7 +268,8 @@ function InkAwayView:adoptOldSession()
     return Library.adoptSession(old, self:libraryDir(), Library.defaultName(_("Recovered")))
 end
 
-function InkAwayView:newDrawing()
+-- Start a new drawing in folder `dir` (the open document's by default).
+function InkAwayView:newDrawing(dir)
     self:beginDocument("drawing", nil, function()
         self:exitNotebook()
         self:clearBackground()
@@ -268,18 +277,63 @@ function InkAwayView:newDrawing()
         self:composeCanvas(); self:renderView()
         self:resetTransientMemory()     -- reclaim the previous document's memory now
         UIManager:setDirty(self, "full")
+    end, dir)
+end
+
+-- Start a new notebook with paper `style` in folder `dir`, ruled like the last
+-- notebook (else like the drawing grid), so a new notebook matches the last one.
+function InkAwayView:newNotebook(style, dir)
+    self.nb_style = style
+    self:setSetting("inkaway_nb_style", style)
+    self:beginDocument("notebook", nil, function()
+        self:startNotebook({ style = style,
+            size = self.nb_size or self.grid_size or 40,
+            strength = self.nb_strength or self.grid_strength or 45 })
+    end, dir)
+end
+
+-- Pick a picture and start a drawing over it, named after it and saved at once.
+function InkAwayView:newFromImage(dir)
+    self:pickFile(self:homeDir(), function(path)
+        local lower = path:lower()
+        if not (lower:match("%.png$") or lower:match("%.jpe?g$")) then
+            UIManager:show(InfoMessage:new{ text = _("Please choose a PNG or JPEG image.") })
+            return
+        end
+        self:beginDocument("drawing", Storage.stem(path), function()
+            self:exitNotebook()
+            self:clearBackground()
+            self:loadOps({})
+            self:loadBackground(path)
+            self:resetTransientMemory()
+        end, dir)
+        self:saveDocument(true)
     end)
 end
 
--- Pick a drawing or notebook file and open it.
-function InkAwayView:chooseDocument()
-    self:pickFile(self:docDir(), function(path)
-        if not path:lower():match("%." .. Project.EXT .. "$") then
-            UIManager:show(InfoMessage:new{ text = _("Please choose an Ink Away file (.inkaway).") })
-            return
-        end
-        self:openDocument(path)
-    end)
+-- Where pictures and PDFs are picked from: KOReader's home folder.
+function InkAwayView:homeDir()
+    local home = self:getSetting("home_dir")
+    if home and Storage.isDir(home) then return home end
+    local ok, util = pcall(require, "apps/filemanager/filemanagerutil")
+    return ok and util.getDefaultDir and util.getDefaultDir() or "/"
+end
+
+-- Copy the open document next to it and carry on in the copy.
+function InkAwayView:duplicateDocument()
+    self:leaveDocument()
+    if not self.doc_written then
+        UIManager:show(InfoMessage:new{ text = _("There is nothing to copy yet."), timeout = 2 })
+        return
+    end
+    local copy, err = Library.duplicate(self.doc_path)
+    if not copy then
+        UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
+        return
+    end
+    if self:openDocument(copy) then
+        self:showNotice(string.format(_("Now in the copy, \u{201C}%s\u{201D}"), Storage.stem(copy)))
+    end
 end
 
 function InkAwayView:promptRename()
@@ -309,6 +363,97 @@ function InkAwayView:renameDocument(name)
         self:setSetting("inkaway_last_doc", new)
     end
     self.doc_path = new
+end
+
+------------------------------------------------------------------------------
+-- The File and New sheets
+------------------------------------------------------------------------------
+
+-- Where the open document is, as the library shows it: "Library / School".
+function InkAwayView:docPlace()
+    local root = self:libraryDir()
+    local dir = self.doc_path and Storage.dirName(self.doc_path) or root
+    if not Storage.within(dir, root) then return dir end
+    local place = _("Library")
+    local rest = dir:sub(#root + 2)
+    for part in rest:gmatch("[^/]+") do place = place .. " / " .. part end
+    return place
+end
+
+-- The File sheet (toolbar): the document's name and where it is kept, rename,
+-- the library, new, duplicate and export.
+function InkAwayView:openDocumentSheet()
+    self:flushPending()
+    if self.active_image then self:finishImageEdit() end
+    self:closeSheet("_doc_dialog")
+    local content_w, gap = self:sheetWidth()
+    local halfW = math.floor((content_w - gap) / 2)
+    local closeSelf = function() self:closeSheet("_doc_dialog") end
+    local function act(label, w, cb, dark)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
+    end
+    local function row2(a, b)
+        return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
+    end
+    local status = self.doc_written
+        and string.format(_("Saved automatically in %s"), self:docPlace())
+        or string.format(_("Saved in %s once there is something in it"), self:docPlace())
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(self:docName(), content_w, _("Done"), closeSelf))
+        add(vspan(4))
+        add(self:sheetHint(status, content_w, 15))
+        add(vspan(16))
+        add(row2(act(_("Rename\u{2026}"), halfW, function() self:promptRename() end),
+                 act(_("Library"), halfW, function() self:openLibrary() end)))
+        add(vspan(8))
+        add(row2(act(_("New\u{2026}"), halfW, function() self:openNewSheet() end),
+                 act(_("Duplicate"), halfW, function() self:duplicateDocument() end)))
+        add(vspan(8))
+        add(act(_("Export\u{2026}"), content_w, function() self:onSave() end, true))
+        return content
+    end
+    self:showSheet("_doc_dialog", build)
+end
+
+-- The New sheet: a drawing, a notebook on one of the papers, or one made from a
+-- PDF or a picture, in folder `dir` (the open document's by default).
+function InkAwayView:openNewSheet(dir)
+    self:closeSheet("_new_dialog")
+    local content_w, gap = self:sheetWidth()
+    local halfW = math.floor((content_w - gap) / 2)
+    local closeSelf = function() self:closeSheet("_new_dialog") end
+    -- every choice closes this sheet and the library under it, then starts
+    local function start(fn)
+        return function(...)
+            closeSelf()
+            if self._library then self._library:close() end
+            fn(...)
+        end
+    end
+    local styles = self:notebookStyles()
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("New"), content_w, _("Cancel"), closeSelf))
+        add(vspan(16))
+        add(self:actionButton(_("Drawing"), content_w, start(function() self:newDrawing(dir) end), false, true))
+        add(vspan(16))
+        add(self:sheetLabel(_("Notebook"), true))
+        add(vspan(6))
+        local pick = start(function(style) self:newNotebook(style, dir) end)
+        add(self:segmentedRow({ styles[1], styles[2], styles[3] }, nil, content_w, pick))
+        add(vspan(8))
+        add(self:segmentedRow({ styles[4], styles[5], styles[6] }, nil, content_w, pick))
+        add(vspan(16))
+        add(HorizontalGroup:new{ align = "center",
+            self:actionButton(_("From PDF\u{2026}"), halfW, start(function() self:openPdfAsNotebook(dir) end)),
+            HorizontalSpan:new{ width = gap },
+            self:actionButton(_("From image\u{2026}"), halfW, start(function() self:newFromImage(dir) end)) })
+        return content
+    end
+    self:showSheet("_new_dialog", build)
 end
 
 ------------------------------------------------------------------------------

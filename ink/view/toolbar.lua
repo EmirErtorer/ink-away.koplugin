@@ -67,13 +67,13 @@ function InkAwayView:buildToolbar()
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
         { id = "redo",  label = _("Redo"),  cb = function() self:redo() end },
         { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
-        { id = "save",  label = _("Save"),  cb = function() self:onSave() end },
+        { id = "file",  label = _("File"),  cb = function() self:openDocumentSheet() end },
         { id = "exit",  label = _("Exit"),  cb = function() self:closeCanvas() end },
     }
     -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
     local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",
         image = "image", pan = "pan",
-        undo = "undo", redo = "redo", menu = "menu", save = "save", exit = "exit" }
+        undo = "undo", redo = "redo", menu = "menu", file = "file", exit = "exit" }
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
@@ -202,7 +202,7 @@ function InkAwayView:ensureUserIcons()
         if lfs.attributes(dst_dir, "mode") ~= "directory" then lfs.mkdir(dst_dir) end
         local src_dir = self:pluginDir() .. "ink/icons/"
         for _, name in ipairs({ "pen", "eraser", "shape", "text", "image", "pan",
-                                "undo", "redo", "menu", "save", "exit",
+                                "undo", "redo", "menu", "file", "exit",
                                 "sh_line", "sh_rect", "sh_ellipse", "sh_triangle",
                                 "sh_curve", "sh_arrow", "sh_darrow", "sh_carrow", "sh_cdarrow",
                                 "bucket", "lasso", "caret" }) do

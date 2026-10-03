@@ -27,10 +27,11 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 - **Lasso select**, four-way **symmetry**, and a **background image** to draw over.
 - **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
 - **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF.
-- **Saves itself**: every drawing and notebook is a file that saves as you go, so nothing is ever lost. Undo/redo, zoom & pan, and an optional grid.
+- **Library**: every drawing and notebook is a file that saves itself as you go. Browse them by thumbnail, sort them into folders, rename, move, duplicate or delete them, all without a computer.
+- Undo/redo, zoom & pan, and an optional grid.
 - And more!
 
-Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, Save and Exit. Zoom is the floating +/− control in the corner.
+Toolbar: Pen, Eraser, Shapes, Text, Image, Pan, Undo/Redo, Settings, File (rename, library, new, duplicate, export) and Exit. Zoom is the floating +/− control in the corner.
 
 
 ## Installation
@@ -41,7 +42,7 @@ Copy the whole `ink-away.koplugin` folder into KOReader's `plugins` directory:
 - Kobo: `.adds/koreader/plugins/ink-away.koplugin/`
 - Android: `koreader/plugins/ink-away.koplugin/` in app storage
 
-Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawing canvas)" near the top. You can also map it to a gesture in KOReader's gesture manager; the action is "Open Ink Away". 
+Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawing canvas)" near the top. You can also map it to a gesture in KOReader's gesture manager; the actions are "Open Ink Away" and "Ink Away library". 
 
 
 ## Notes

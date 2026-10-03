@@ -168,11 +168,14 @@ function InkAwayView:makeTile(name, w, h, size, sel, cb, label, sublabel, hold_c
     return b
 end
 
--- Title row shared by every tool sheet: the sheet title on the left and a filled
--- black pill (Done / Back) on the right, spanning content_w.
+-- Title row shared by every tool sheet: the sheet title on the left (cut short
+-- with an ellipsis when long) and a filled black pill (Done / Back) on the
+-- right, spanning content_w.
 function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size)
-    local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true }
-    local pill = Button:new{ text = "", width = Screen:scaleBySize(84), height = Screen:scaleBySize(34),
+    local pill_w = Screen:scaleBySize(84)
+    local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true,
+        max_width = content_w - pill_w - Screen:scaleBySize(8) }
+    local pill = Button:new{ text = "", width = pill_w, height = Screen:scaleBySize(34),
         bordersize = 0, radius = Screen:scaleBySize(11), background = BLACK, margin = 0, padding = 0,
         callback = pill_cb, show_parent = self }
     self:setButtonLabel(pill, TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),

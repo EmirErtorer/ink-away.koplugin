@@ -76,6 +76,71 @@ function Storage.appDir(name)
     return Storage.ensureDir(dir) and dir or nil
 end
 
+-- KOReader's cache folder for Ink Away (made if missing), or the settings
+-- folder outside KOReader.
+function Storage.cacheDir()
+    local data = Storage.dataDir()
+    if not data then return Storage.settingsDir() end
+    local dir = data .. "/cache/inkaway"
+    Storage.ensureDir(data .. "/cache")
+    return Storage.ensureDir(dir) and dir or Storage.settingsDir()
+end
+
+-- The entries of folder `dir`, without "." and "..": a list of { name, path,
+-- mode = "file"|"directory", mtime }. Empty when it cannot be read.
+function Storage.list(dir)
+    local fs = getLfs()
+    local out = {}
+    if not fs then return out end
+    local ok, iter, state = pcall(fs.dir, dir)
+    if not ok then return out end
+    for name in iter, state do
+        if name ~= "." and name ~= ".." then
+            local path = Storage.join(dir, name)
+            local attr = fs.attributes(path)
+            if attr then
+                out[#out + 1] = { name = name, path = path, mode = attr.mode, mtime = attr.modification or 0 }
+            end
+        end
+    end
+    return out
+end
+
+-- When the file or folder at `p` last changed, or nil.
+function Storage.mtime(p)
+    local fs = getLfs()
+    return fs and p and fs.attributes(p, "modification") or nil
+end
+
+-- Copy the file `src` to `dst` (written safely). Returns ok, err.
+function Storage.copyFile(src, dst)
+    local f, err = io.open(src, "rb")
+    if not f then return false, err end
+    local data = f:read("*a")
+    f:close()
+    return Storage.writeAtomic(dst, data)
+end
+
+-- Delete the file or folder at `p`, a folder with everything in it. Returns
+-- whether it is gone.
+function Storage.removeTree(p)
+    local fs = getLfs()
+    if fs and fs.attributes(p, "mode") == "directory" then
+        for _, e in ipairs(Storage.list(p)) do Storage.removeTree(e.path) end
+        pcall(fs.rmdir, p)
+    else
+        os.remove(p)
+    end
+    return not Storage.exists(p)
+end
+
+-- Is `path` the folder `dir` or inside it?
+function Storage.within(path, dir)
+    if not (path and dir) then return false end
+    dir = dir:gsub("/+$", "")
+    return path == dir or path:sub(1, #dir + 1) == dir .. "/"
+end
+
 -- `dir` and `name` joined with a single slash.
 function Storage.join(dir, name)
     return dir .. ((dir:sub(-1) == "/") and "" or "/") .. name

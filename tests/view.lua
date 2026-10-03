@@ -1910,6 +1910,182 @@ do
     UIManager.reset()
 end
 
+-- ---- library: folders and documents, browsed, created, moved and deleted ---
+do
+    local TestEnv = require("testenv")
+    local Project = require("ink/project")
+    local Storage = require("ink/storage")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/libtest"
+    os.execute("mkdir -p '" .. LIB .. "/drawings'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    TestEnv.remember_last_doc = true
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    -- answer the text prompt on screen, as the OK button does
+    local function answer(text)
+        local d = InputDialog.last
+        d.input = text
+        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    end
+    local function labels(grid)
+        local t = {}
+        for _, it in ipairs(grid.items) do t[#t + 1] = (it.folder and "/" or "") .. it.label end
+        return table.concat(t, ",")
+    end
+
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    stroke(view, 200, 200)
+    view:renameDocument("First")
+    view:saveDocument()
+    ok(view.doc_path == LIB .. "/First.inkaway", "lib: documents start in the chosen library folder")
+
+    view:openLibrary()
+    local lib = view._library
+    ok(lib and UIManager.shown == lib, "lib: the library opens full screen")
+    ok(labels(lib) == "First", "lib: it lists the documents and leaves the export folders out")
+    ok(lib.items[1].selected, "lib: the open document is marked")
+    ok(lib.title == "Library" and lib.on_back == nil, "lib: the top folder is titled Library, with no way up")
+    BB.out_of_bounds = 0
+    lib:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "lib: the grid paints in bounds")
+
+    -- a new folder, then a new drawing made inside it
+    view:promptNewFolder(LIB, function() view:refreshLibrary() end)
+    answer("School")
+    ok(Storage.isDir(LIB .. "/School") and labels(lib) == "/School,First", "lib: New folder makes a folder, listed first")
+    view:libraryPick(lib.items[1])
+    ok(view._lib_dir == LIB .. "/School" and lib.title == "School" and lib.on_back ~= nil,
+        "lib: tapping a folder goes into it")
+    ok(#lib.items == 0, "lib: a new folder is empty")
+    lib:paintTo(Screen.bb, 0, 0)
+    view:openNewSheet(view._lib_dir)
+    ok(view._new_dialog ~= nil, "lib: New opens the New sheet")
+    view:closeSheet("_new_dialog")
+    lib:close()
+    view:newDrawing(LIB .. "/School")
+    ok(Storage.dirName(view.doc_path) == LIB .. "/School" and not view.doc_written,
+        "lib: a new drawing goes in the folder it was made from")
+    stroke(view, 300, 300)
+    view:saveDocument()
+    local inSchool = view.doc_path
+    ok(Storage.exists(inSchool), "lib: and is saved there")
+
+    -- a notebook made from the New sheet's paper choice
+    view:newNotebook("grid", LIB .. "/School")
+    ok(view.notebook and view.notebook.template.style == "grid" and Storage.dirName(view.doc_path) == LIB .. "/School",
+        "lib: a new notebook takes the chosen paper and folder")
+    stroke(view, 100, 100)
+    view:saveDocument()
+    local nbInSchool = view.doc_path
+
+    -- thumbnails come from the files: a drawing and a notebook page
+    local tb = view:renderDocThumb(inSchool, 200, 260)
+    ok(tb and tb:getWidth() <= 200 and tb:getHeight() <= 260, "lib: a drawing's thumbnail fits its card")
+    local tn = view:docThumb(nbInSchool, 200, 260)
+    ok(tn ~= nil, "lib: a notebook's thumbnail is drawn from its first page")
+    ok(view.canvas:opCount() == 1 and view.notebook, "lib: drawing thumbnails leaves the open document as it is")
+
+    -- open from the library, back up a folder, move the open document out
+    view:openLibrary()
+    lib = view._library
+    ok(view._lib_dir == LIB .. "/School", "lib: the library opens at the open document's folder")
+    local drawingItem
+    for _, it in ipairs(lib.items) do if it.path == inSchool then drawingItem = it end end
+    view:libraryPick(drawingItem)
+    ok(view._library == nil and view.doc_path == inSchool and not view.notebook, "lib: tapping a document opens it")
+    view:openLibrary()
+    lib = view._library
+    lib.on_back()
+    ok(view._lib_dir == LIB and lib.title == "Library", "lib: back goes up a folder")
+    view:libraryGo(LIB .. "/School")
+    for _, it in ipairs(lib.items) do if it.path == inSchool then drawingItem = it end end
+    view:moveItem(drawingItem)
+    local chooser = UIManager.shown
+    ok(chooser ~= lib and labels(chooser) == "/School", "lib: Move shows the library's folders")
+    chooser.actions[2][2]()   -- Move here: the top folder
+    ok(view.doc_path == LIB .. "/" .. Storage.baseName(inSchool) and Storage.exists(view.doc_path)
+        and not Storage.exists(inSchool), "lib: moving the open document moves its file and follows it")
+    ok(G_reader_settings.data.inkaway_last_doc == view.doc_path, "lib: the last document follows the move")
+
+    -- renaming a folder that holds the open document
+    view:openDocument(nbInSchool)
+    view:libraryGo(LIB)
+    local schoolItem
+    for _, it in ipairs(view._library.items) do if it.folder then schoolItem = it end end
+    view:promptRenameItem(schoolItem)
+    answer("Lessons")
+    ok(view.doc_path == LIB .. "/Lessons/" .. Storage.baseName(nbInSchool) and Storage.exists(view.doc_path),
+        "lib: renaming its folder keeps the open document's path right")
+    ok(labels(view._library):match("^/Lessons,") ~= nil, "lib: the renamed folder shows")
+
+    -- duplicate from the File sheet carries on in the copy
+    local before = view.doc_path
+    view:duplicateDocument()
+    ok(view.doc_path ~= before and Storage.exists(view.doc_path) and Storage.exists(before),
+        "lib: Duplicate copies the document and opens the copy")
+    ok(view.notebook and view.notebook:count() == 1, "lib: the copy is the same notebook")
+
+    -- deleting the open document starts a new drawing without bringing it back
+    local copyPath = view.doc_path
+    view:libraryGo(Storage.dirName(copyPath))
+    local copyItem
+    for _, it in ipairs(view._library.items) do if it.path == copyPath then copyItem = it end end
+    view:confirmDeleteItem(copyItem)
+    UIManager.shown.ok_callback()
+    ok(not Storage.exists(copyPath) and view.doc_path ~= copyPath and not view.doc_written and not view.notebook,
+        "lib: deleting the open document leaves a new drawing")
+    view:saveDocument()
+    ok(not Storage.exists(copyPath), "lib: and it is not saved back")
+
+    -- the hold menu and the library menu open
+    view:libraryItemMenu(view._library.items[1])
+    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: holding a card shows its menu")
+    view:libraryMenu()
+    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: the library menu offers folder, import and sort")
+    ButtonDialog.last.buttons[3][1].callback()
+    ok(G_reader_settings.data.inkaway_library_sort == "name", "lib: sorting by name is remembered")
+    G_reader_settings.data.inkaway_library_sort = nil
+
+    -- the File sheet
+    view:openDocumentSheet()
+    ok(view._doc_dialog ~= nil, "lib: the File sheet opens")
+    view:closeSheet("_doc_dialog")
+    view._library:close()
+    UIManager:close(view)
+
+    -- opening Ink Away on the library: from the setting, and from its gesture
+    G_reader_settings.data.inkaway_start = "library"
+    local v2 = InkAwayView:new{}
+    UIManager:show(v2)
+    UIManager.fireScheduled()
+    ok(v2._library ~= nil, "lib: with the setting, Ink Away opens on the library")
+    v2._library:close(); UIManager:close(v2)
+    G_reader_settings.data.inkaway_start = nil
+    local v3 = InkAwayView:new{ show_library = true }
+    UIManager:show(v3)
+    UIManager.fireScheduled()
+    ok(v3._library ~= nil, "lib: the library gesture opens it on top")
+    UIManager:close(v3)
+    ok(v3._library == nil, "lib: closing Ink Away closes the library too")
+
+    TestEnv.remember_last_doc = false
+    G_reader_settings.data.inkaway_last_doc = nil
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

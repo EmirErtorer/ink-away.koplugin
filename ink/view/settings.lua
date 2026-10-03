@@ -1,15 +1,13 @@
 --[[
-The settings sheet (gear) and its sub-sheets: grid, background image and a list
-chooser.
+The settings sheet (gear) and its sub-sheets: the grid and a list chooser.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
 
 local Screen = Device.screen
@@ -23,30 +21,15 @@ local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"
 
 local InkAwayView = {}
 
-function InkAwayView:openBackground()
-    self:closeSheet("_bg_dialog")
-    local content_w = self:sheetWidth()
-    local closeSelf = function() self:closeSheet("_bg_dialog") end
-    local build = function()
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Background image"), content_w, _("Done"), closeSelf))
-        add(vspan(16))
-        add(self:actionButton(_("Open image as background"), content_w,
-            function() closeSelf(); self:chooseBackground() end))
-        if self.bg_bb then
-            add(vspan(8))
-            add(self:actionButton(_("Remove background"), content_w,
-                function() closeSelf(); self:removeBackground() end, true))
-        end
-        add(vspan(12))
-        local hint = self.bg_bb
-            and _("At save time you can include the picture or export just your drawing. The grid is always left out.")
-            or _("Draw over a photo or screenshot; your drawing sits on top. To draw on a PDF, use \u{201C}Open PDF as notebook\u{201D} instead.")
-        add(self:sheetHint(hint, content_w, 15))
-        return content
-    end
-    self:showSheet("_bg_dialog", build)
+-- Choose the library folder. Picking Ink Away's own folder goes back to the
+-- default.
+function InkAwayView:chooseLibraryRoot()
+    self:pickFolder(self:libraryDir(), function(dir)
+        dir = dir:gsub("/+$", "")
+        if dir == Storage.appRoot() then dir = nil end
+        self:setSetting("inkaway_library_dir", dir)
+        self:showNotice(string.format(_("Library folder: %s"), self:libraryDir()))
+    end)
 end
 
 -- A "pick one" sub-sheet: a stack of full-width buttons, the current one black.
@@ -118,39 +101,24 @@ function InkAwayView:openGridSettings()
     self:showSheet("_grid_dialog", build)
 end
 
--- The settings sheet (gear): file and page actions, orientation, the grid or
--- notebook paper, and the symmetry and ghosting options.
+-- The settings sheet (gear): orientation, the grid or notebook paper, the
+-- symmetry and ghosting options, and where files are kept.
 function InkAwayView:openSettings()
     if self.active_image then self:finishImageEdit() end   -- settle a selected image first
     -- the field may hold a dialog without a rebuild; close it and open fresh
     if self:rebuildSheet("_settings_dialog") then return end
     self:ensureUserIcons()
-    local content_w, gap = self:sheetWidth()
-    local halfW = math.floor((content_w - gap) / 2)
+    local content_w = self:sheetWidth()
     local closeSelf = function() self:closeSheet("_settings_dialog") end
-    local function act(label, w, cb, dark, big)
-        return self:actionButton(label, w, function() closeSelf(); cb() end, dark, big)
+    local function act(label, w, cb, dark)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
     end
 
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        local function row2(a, b)
-            return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
-        end
 
         add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf))
-        add(vspan(16))
-
-        -- files and pages; New drawing and New notebook get the larger face
-        add(row2(act(_("New drawing"), halfW, function() self:newDrawing() end, false, true),
-                 act(_("New notebook"), halfW, function() self:newNotebook() end, false, true)))
-        add(vspan(8))
-        add(row2(act(_("Open\u{2026}"), halfW, function() self:chooseDocument() end),
-                 act(_("Rename\u{2026}"), halfW, function() self:promptRename() end)))
-        add(vspan(8))
-        add(row2(act(_("Open PDF"), halfW, function() self:openPdfAsNotebook() end),
-                 act(_("Background"), halfW, function() self:openBackground() end)))
         add(vspan(16))
 
         -- orientation: picking one closes the sheet, as the screen size changes
@@ -208,6 +176,19 @@ function InkAwayView:openSettings()
                 self._strokes_since_full = 0 end })
         add(vspan(4))
         add(self:sheetHint(_("Fast strokes leave faint marks; a full refresh clears them this often."), content_w))
+        add(vspan(16))
+
+        -- where documents are kept, and what opening Ink Away shows
+        add(self:sheetLabel(_("Files"), true))
+        add(vspan(6))
+        add(act(_("Library folder: ") .. Storage.baseName(self:libraryDir()), content_w,
+            function() self:chooseLibraryRoot() end))
+        add(vspan(10))
+        add(self:sheetLabel(_("When Ink Away opens")))
+        add(vspan(6))
+        add(self:segmentedRow({ { "last", _("Last document") }, { "library", _("Library") } },
+            self:getSetting("inkaway_start", "last"), content_w,
+            function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
         return content
     end
     self:showSheet("_settings_dialog", build)
