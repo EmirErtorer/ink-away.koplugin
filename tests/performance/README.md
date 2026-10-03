@@ -136,6 +136,12 @@ Kindle size unless noted. "Cold" means no cached thumbnails yet.
   version. Only the real-widget run covers it.
 - A few short memory runs overlapped the real-widget run, which may add a
   little noise to one or two of its rounds.
+- The real-widget run's colour profile was not really colour for the plugin.
+  The run script set `INKAWAY_FORCE_MONO=0`, and the plugin treats the
+  variable being set at all as a grey screen. So both profiles ran the plugin
+  in grey mode, the second on a colour framebuffer. `emulator/run.sh` now
+  leaves the variable out for colour. The headless colour setup was not
+  affected.
 
 ## Running it
 

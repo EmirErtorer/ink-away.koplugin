@@ -1,6 +1,8 @@
 Real widgets in the emulator (emulator/perfemu.lua), 758x1024 at 212 dpi, grey and colour, 5 rounds
 old = main cf9949f, new = notebook-library 997ed2b. Times on an Apple M3 (macOS), KOReader emulator build.
 Per metric: median over rounds of each run's median; change = median of the paired new/old ratios; 95% CI by bootstrap; p90 over all samples.
+Note: in this run the [colour] profile still had the plugin in grey mode (INKAWAY_FORCE_MONO was set
+to 0, which counts as set). Read it as a second grey run on a colour framebuffer. See README.md.
 
 [colour]  rounds old=5 new=5
 metric                                              old        new   change        95% CI     p90 old    p90 new  verdict
