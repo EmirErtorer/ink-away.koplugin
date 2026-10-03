@@ -115,8 +115,10 @@ end
 
 -- Fill the wheel bitmap once: hue around the rim, saturation to the centre, at
 -- full brightness (the slider dims the chosen colour, not the wheel).
-function ColorPicker:renderWheel()
-    local bb, D = self.wheel_bb, self.wheel_d
+-- Paint a hue/saturation wheel of diameter D into bb (D x D), on `bg` (white by
+-- default) outside the circle. The button colour row shows a small one.
+function ColorPicker.paintWheel(bb, D, bg)
+    bg = bg or WHITE
     local R = D / 2
     local r2 = R * R
     for py = 0, D - 1 do
@@ -131,10 +133,14 @@ function ColorPicker:renderWheel()
                 local r, g, b = hsv2rgb(h, s, 1)
                 bb:setPixel(px, py, Blitbuffer.ColorRGB32(r, g, b, 0xFF))
             else
-                bb:setPixel(px, py, WHITE)
+                bb:setPixel(px, py, bg)
             end
         end
     end
+end
+
+function ColorPicker:renderWheel()
+    ColorPicker.paintWheel(self.wheel_bb, self.wheel_d)
 end
 
 function ColorPicker:selectedRGB()

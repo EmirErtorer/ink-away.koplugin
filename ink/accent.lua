@@ -39,6 +39,37 @@ function Accent.darkText(rgb)
     return (l + 0.05) / 0.05 > 1.05 / (l + 0.05)
 end
 
+-- Ready-made button colours, deep enough for white text to read on them on a
+-- colour e-ink screen: blue, teal, red, purple, orange.
+Accent.PRESETS = {
+    { 0x24, 0x57, 0xD6 }, { 0x0F, 0x80, 0x76 }, { 0xC6, 0x28, 0x28 }, { 0x7B, 0x3F, 0xB0 }, { 0xD0, 0x60, 0x00 },
+}
+
+-- Are two {r,g,b} the same colour?
+function Accent.same(a, b)
+    return a ~= nil and b ~= nil and a[1] == b[1] and a[2] == b[2] and a[3] == b[3]
+end
+
+-- Is {r,g,b} black or one of the presets (already in the row)?
+function Accent.builtin(rgb)
+    if rgb[1] == 0 and rgb[2] == 0 and rgb[3] == 0 then return true end
+    for _, p in ipairs(Accent.PRESETS) do if Accent.same(p, rgb) then return true end end
+    return false
+end
+
+-- The colours last picked on the wheel, newest first and at most `max`: `list`
+-- with `rgb` added at the front (moved there if it is already in it), unless it
+-- is black or a preset. Returns a new list.
+function Accent.remember(list, rgb, max)
+    local out = {}
+    if rgb and not Accent.builtin(rgb) then out[1] = { rgb[1], rgb[2], rgb[3] } end
+    for _, c in ipairs(list or {}) do
+        if #out >= (max or 2) then break end
+        if type(c) == "table" and not Accent.same(c, rgb) then out[#out + 1] = { c[1], c[2], c[3] } end
+    end
+    return out
+end
+
 -- Is {r,g,b} a usable colour value?
 local function valid(rgb)
     if type(rgb) ~= "table" then return false end

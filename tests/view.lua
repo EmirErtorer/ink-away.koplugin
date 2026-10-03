@@ -3147,6 +3147,49 @@ do
     ok(BB.out_of_bounds == 0 and view._active_btn_idx ~= nil, "accent: the active tool's pill paints in bounds")
     UIManager:close(view)
 
+    -- the row: black, presets, the last two wheel picks, the wheel, in boxes
+    -- of one size spread across the sheet
+    local Paint = require("ink/paint")
+    view:setAccent(nil)
+    G_reader_settings.data.inkaway_accent_recent = nil
+    local content_w = view:sheetWidth()
+    local row = view:accentRow(content_w)
+    local tiles, gaps = {}, {}
+    for _, w in ipairs(row) do
+        if w.width and not w[1] then gaps[#gaps + 1] = w.width else tiles[#tiles + 1] = w end
+    end
+    local sw = Screen:scaleBySize(56)
+    -- (KOReader scales sizes by the screen's short side, so eight fit on every
+    -- reader; the test screen scales differently, and room for a fifth preset
+    -- goes to one)
+    ok((#tiles == 8 or #tiles == 9) and #tiles * sw + (gaps[1] or 0) * #gaps <= content_w,
+        ("accent: black, four or five presets, two boxes and the wheel fit the row (%d)"):format(#tiles))
+    ok(tiles[1].bordersize == Screen:scaleBySize(3), "accent: black is framed while it is in use")
+    ok(tiles[#tiles - 2].color == Paint.HAIRLINE and tiles[#tiles - 1].color == Paint.HAIRLINE,
+        "accent: the two boxes for picked colours start empty, before the wheel")
+    -- picks on the wheel fill them, newest first; presets do not
+    local function pick(rgb)
+        view:chooseAccent()
+        UIManager.shown.on_pick(rgb)
+        view:closeSheet("_settings_dialog")
+    end
+    pick({ 200, 66, 154 }); pick({ 20, 140, 60 })
+    local rec = G_reader_settings.data.inkaway_accent_recent
+    ok(#rec == 2 and rec[1][1] == 20 and rec[2][1] == 200, "accent: the last two wheel picks are kept, newest first")
+    pick({ 0x24, 0x57, 0xD6 })
+    rec = G_reader_settings.data.inkaway_accent_recent
+    ok(#rec == 2 and rec[1][1] == 20, "accent: a preset picked on the wheel does not take a box")
+    pick({ 9, 9, 200 })
+    rec = G_reader_settings.data.inkaway_accent_recent
+    ok(#rec == 2 and rec[1][3] == 200 and rec[2][1] == 20, "accent: a third pick pushes the oldest out")
+    -- tapping a kept one uses it without moving it
+    view:setAccent({ 20, 140, 60 })
+    local again = view:accentRecent()
+    ok(again[1][3] == 200 and again[2][1] == 20, "accent: using a kept colour leaves the boxes in place")
+    ok(Accent.remember({ { 1, 2, 3 } }, { 0, 0, 0 }, 2)[1][1] == 1, "accent: black is never kept")
+    G_reader_settings.data.inkaway_accent_recent = nil
+    view:setAccent({ 30, 111, 217 })
+
     -- opening again uses the saved colour without asking
     UIManager.reset()
     view = InkAwayView:new{}

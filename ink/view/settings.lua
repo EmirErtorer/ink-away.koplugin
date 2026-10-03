@@ -53,9 +53,8 @@ end
 function InkAwayView:setAccent(rgb)
     self:setSetting("inkaway_accent", rgb and { rgb[1], rgb[2], rgb[3] } or nil)
     Accent.set(self:colorScreen() and rgb or nil)
-    -- what was built in the old colour: brush samples, the Paste bubble, the
-    -- text box's Done button and the active tool's icon
-    self:freeWaveCache()
+    -- what was built in the old colour: the Paste bubble, the text box's Done
+    -- button and the active tool's icon (brush samples are kept by colour)
     if self._clip_widget then
         if self._clip_widget.free then self._clip_widget:free() end
         self._clip_widget = nil
@@ -69,17 +68,70 @@ function InkAwayView:setAccent(rgb)
     UIManager:setDirty(self, "ui")
 end
 
--- Choose the button colour on the colour wheel the pen uses; Use applies it and
--- the settings sheet comes back.
+-- The colours last picked on the wheel, newest first (at most two). A colour in
+-- use that is not among them (one chosen before they were kept) counts as the
+-- newest; one that is stays where it is, so a box does not move when tapped.
+function InkAwayView:accentRecent()
+    local list = Accent.remember(self:getSetting("inkaway_accent_recent"), nil, 2)
+    local cur = Accent.get().rgb
+    if cur and not Accent.builtin(cur) then
+        for _, c in ipairs(list) do if Accent.same(c, cur) then return list end end
+        list = Accent.remember(list, cur, 2)
+    end
+    return list
+end
+
+-- Choose the button colour on the colour wheel the pen uses; Use applies it,
+-- keeps it among the last two picked, and the settings sheet comes back.
 function InkAwayView:chooseAccent()
     local ok, ColorPicker = pcall(require, "ink/ui/colorpicker")
     if not ok then return end
     self:closeSheet("_settings_dialog")
     UIManager:show(ColorPicker:new{
         title = _("Button colour"),
-        color = Accent.get().rgb or { 0x1E, 0x6F, 0xD9 },
-        on_pick = function(rgb) self:setAccent(rgb); self:openSettings() end,
+        color = Accent.get().rgb or Accent.PRESETS[1],
+        on_pick = function(rgb)
+            self:setSetting("inkaway_accent_recent", Accent.remember(self:accentRecent(), rgb, 2))
+            self:setAccent(rgb)
+            self:openSettings()
+        end,
     })
+end
+
+-- The button colour row: black, the ready-made colours, the last two picked on
+-- the wheel (empty boxes until then) and the wheel, each a box the size of a
+-- swatch, spread across `width`, the one in use framed. A tap uses a colour at
+-- once.
+function InkAwayView:accentRow(width)
+    local sw, sh = Screen:scaleBySize(56), Screen:scaleBySize(48)
+    local min_gap = Screen:scaleBySize(6)
+    local n = math.max(6, math.floor((width + min_gap) / (sw + min_gap)))
+    local gap = math.floor((width - n * sw) / (n - 1))
+    local cur = Accent.get().rgb or { 0, 0, 0 }
+    local function use(rgb)
+        return function()
+            self:setAccent((rgb[1] + rgb[2] + rgb[3] > 0) and rgb or nil)
+            self:openSettings()
+        end
+    end
+    local tiles = { self:swatchTile({ 0, 0, 0 }, Accent.same(cur, { 0, 0, 0 }), sw, use({ 0, 0, 0 }), nil, sh) }
+    for i = 1, math.min(#Accent.PRESETS, n - 4) do
+        local p = Accent.PRESETS[i]
+        tiles[#tiles + 1] = self:swatchTile(p, Accent.same(cur, p), sw, use(p), nil, sh)
+    end
+    local recent = self:accentRecent()
+    for i = 1, 2 do
+        local c = recent[i]
+        tiles[#tiles + 1] = c and self:swatchTile(c, Accent.same(cur, c), sw, use(c), nil, sh)
+            or self:emptySlot(sw, sh)
+    end
+    tiles[#tiles + 1] = self:wheelTile(sw, sh, function() self:chooseAccent() end)
+    local row = HorizontalGroup:new{ align = "center" }
+    for i, t in ipairs(tiles) do
+        if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+        table.insert(row, t)
+    end
+    return row
 end
 
 -- A "pick one" sub-sheet: a stack of full-width buttons, the current one black.
@@ -181,23 +233,11 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
-        -- the button colour, on a colour screen: a swatch of it (tap to change),
-        -- Choose for the colour wheel, and Black to go back
+        -- the button colour, on a colour screen
         if self:colorScreen() then
-            local a = Accent.get()
             add(self:sheetLabel(_("Button colour"), true))
             add(vspan(6))
-            local gap = Screen:scaleBySize(12)
-            local sw = Screen:scaleBySize(56)
-            local bw = math.floor((content_w - sw - 2 * gap) / 2)
-            add(HorizontalGroup:new{ align = "center",
-                self:swatchTile(a.rgb or { 0, 0, 0 }, false, sw, function() self:chooseAccent() end, nil,
-                    Screen:scaleBySize(48)),
-                HorizontalSpan:new{ width = gap },
-                self:actionButton(_("Choose\u{2026}"), bw, function() self:chooseAccent() end),
-                HorizontalSpan:new{ width = gap },
-                self:actionButton(_("Black"), bw, function()
-                    self:setAccent(nil); self:openSettings() end, not a.custom) })
+            add(self:accentRow(content_w))
             add(vspan(16))
         end
 

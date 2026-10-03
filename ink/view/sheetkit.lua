@@ -380,6 +380,38 @@ function InkAwayView:swatchTile(rgb, selected, w, cb, hold_cb, h)
         margin = 0, btn }
 end
 
+-- A box the size of a swatch tile showing a small colour wheel, which opens the
+-- colour wheel. The wheel is drawn once.
+function InkAwayView:wheelTile(w, h, cb)
+    local inner_w, inner_h = w - Screen:scaleBySize(8), h - Screen:scaleBySize(8)
+    local radius = Screen:scaleBySize(11)
+    local b = Button:new{ text = "", width = inner_w, height = inner_h, background = TILE_BG,
+        radius = radius, bordersize = 0, margin = 0, padding = 0, callback = cb, show_parent = self }
+    local d = math.min(inner_w, inner_h) - Screen:scaleBySize(8)
+    local ok, wheel = pcall(function()
+        local cache = self._wave_cache
+        if not cache then cache = {}; self._wave_cache = cache end
+        local id = table.concat({ "wheel", d, Screen.bb:getType() }, "|")
+        if cache[id] then return cache[id].bb end
+        local bb = Blitbuffer.new(d, d, Screen.bb:getType())
+        require("ink/ui/colorpicker").paintWheel(bb, d, TILE_BG)
+        cache[id] = { bb = bb }
+        return bb
+    end)
+    if ok and wheel then self:setButtonLabel(b, imageLabel(wheel, d, d)) end
+    return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = BLACK, radius = Screen:scaleBySize(14),
+        padding = Screen:scaleBySize(3), margin = 0, b }
+end
+
+-- An empty box the size of a swatch tile: a place a colour will go.
+function InkAwayView:emptySlot(w, h)
+    local inner_w, inner_h = w - Screen:scaleBySize(8), h - Screen:scaleBySize(8)
+    return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = Paint.HAIRLINE,
+        radius = Screen:scaleBySize(14), padding = Screen:scaleBySize(3), margin = 0,
+        background = WHITE,
+        CenterContainer:new{ dimen = Geom:new{ w = inner_w, h = inner_h }, HorizontalSpan:new{ width = 0 } } }
+end
+
 -- A brush-style tile: a small rounded rectangle showing a sample wave rendered
 -- through the same rasterizer the pen uses, so it previews how the brush looks.
 function InkAwayView:brushWaveTile(key, w, h, sel, cb, hold_cb)
