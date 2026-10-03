@@ -1,6 +1,6 @@
 --[[
 The settings sheet (gear) and its sub-sheets: the grid and a list chooser. On a
-colour screen it also sets the button colour (see ink/accent.lua).
+colour screen it also sets the theme colour (see ink/accent.lua).
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -81,14 +81,14 @@ function InkAwayView:accentRecent()
     return list
 end
 
--- Choose the button colour on the colour wheel the pen uses; Use applies it,
+-- Choose the theme colour on the colour wheel the pen uses; Use applies it,
 -- keeps it among the last two picked, and the settings sheet comes back.
 function InkAwayView:chooseAccent()
     local ok, ColorPicker = pcall(require, "ink/ui/colorpicker")
     if not ok then return end
     self:closeSheet("_settings_dialog")
     UIManager:show(ColorPicker:new{
-        title = _("Button colour"),
+        title = _("Theme Color"),
         color = Accent.get().rgb or Accent.PRESETS[1],
         on_pick = function(rgb)
             self:setSetting("inkaway_accent_recent", Accent.remember(self:accentRecent(), rgb, 2))
@@ -98,7 +98,7 @@ function InkAwayView:chooseAccent()
     })
 end
 
--- The button colour row: black, the ready-made colours, the last two picked on
+-- The theme colour row: black, the ready-made colours, the last two picked on
 -- the wheel (empty boxes until then) and the wheel, each a box the size of a
 -- swatch, spread across `width`, the one in use framed. A tap uses a colour at
 -- once.
@@ -233,9 +233,9 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
-        -- the button colour, on a colour screen
+        -- the theme colour, on a colour screen
         if self:colorScreen() then
-            add(self:sheetLabel(_("Button colour"), true))
+            add(self:sheetLabel(_("Theme Color"), true))
             add(vspan(6))
             add(self:accentRow(content_w))
             add(vspan(16))

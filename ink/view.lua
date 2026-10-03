@@ -347,6 +347,8 @@ function InkAwayView:free()
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     self:freeWaveCache()
     Accent.free()
+    local ok_cp, ColorPicker = pcall(require, "ink/ui/colorpicker")   -- its colour wheel
+    if ok_cp and ColorPicker.freeCache then ColorPicker.freeCache() end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
     if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end

@@ -39,7 +39,7 @@ function Accent.darkText(rgb)
     return (l + 0.05) / 0.05 > 1.05 / (l + 0.05)
 end
 
--- Ready-made button colours, deep enough for white text to read on them on a
+-- Ready-made theme colours, deep enough for white text to read on them on a
 -- colour e-ink screen: blue, teal, red, purple, orange.
 Accent.PRESETS = {
     { 0x24, 0x57, 0xD6 }, { 0x0F, 0x80, 0x76 }, { 0xC6, 0x28, 0x28 }, { 0x7B, 0x3F, 0xB0 }, { 0xD0, 0x60, 0x00 },

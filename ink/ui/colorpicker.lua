@@ -94,8 +94,7 @@ function ColorPicker:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.panel = Geom:new{ x = self.box_x, y = self.box_y, w = self.box_w, h = self.box_h }
 
-    self.wheel_bb = Blitbuffer.new(self.wheel_d, self.wheel_d, Screen.bb:getType())
-    self:renderWheel()
+    self.wheel_bb = ColorPicker.cachedWheel(self.wheel_d)
 
     if Device:isTouchDevice() then
         local full = Geom:new{ x = 0, y = 0, w = sw, h = sh }
@@ -116,7 +115,7 @@ end
 -- Fill the wheel bitmap once: hue around the rim, saturation to the centre, at
 -- full brightness (the slider dims the chosen colour, not the wheel).
 -- Paint a hue/saturation wheel of diameter D into bb (D x D), on `bg` (white by
--- default) outside the circle. The button colour row shows a small one.
+-- default) outside the circle. The theme colour row shows a small one.
 function ColorPicker.paintWheel(bb, D, bg)
     bg = bg or WHITE
     local R = D / 2
@@ -139,8 +138,21 @@ function ColorPicker.paintWheel(bb, D, bg)
     end
 end
 
-function ColorPicker:renderWheel()
-    ColorPicker.paintWheel(self.wheel_bb, self.wheel_d)
+-- The wheel never changes, so one of each size is drawn once and kept until
+-- Ink Away closes (ColorPicker.freeCache); a picker only borrows it.
+local wheels = {}
+function ColorPicker.cachedWheel(d)
+    local key = d .. "|" .. Screen.bb:getType()
+    if not wheels[key] then
+        local bb = Blitbuffer.new(d, d, Screen.bb:getType())
+        ColorPicker.paintWheel(bb, d)
+        wheels[key] = bb
+    end
+    return wheels[key]
+end
+
+function ColorPicker.freeCache()
+    for k, bb in pairs(wheels) do bb:free(); wheels[k] = nil end
 end
 
 function ColorPicker:selectedRGB()
@@ -299,7 +311,7 @@ end
 ColorPicker.onCpHoldPan = ColorPicker.onCpPan
 
 function ColorPicker:onCloseWidget()
-    if self.wheel_bb then self.wheel_bb:free(); self.wheel_bb = nil end
+    self.wheel_bb = nil   -- the cache keeps it for the next picker
 end
 
 return ColorPicker

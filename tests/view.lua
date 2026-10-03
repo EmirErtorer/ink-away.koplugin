@@ -3046,7 +3046,7 @@ do
     UIManager.reset()
 end
 
--- ---- the button colour: colour screens only, remembered, every sheet in it ---
+-- ---- the theme colour: colour screens only, remembered, every sheet in it ----
 do
     local Device = require("device")
     local Accent = require("ink/accent")
@@ -3085,7 +3085,7 @@ do
     UIManager:show(view)
     ok(not Accent.get().custom, "accent: a grey screen stays black, whatever is saved")
     view:openSettings()
-    ok(not says(view._settings_dialog, "Button colour"), "accent: and its settings do not offer a colour")
+    ok(not says(view._settings_dialog, "Theme Color"), "accent: and its settings do not offer a colour")
     view:closeSheet("_settings_dialog")
     UIManager:close(view)
     G_reader_settings.data.inkaway_accent = nil
@@ -3098,11 +3098,15 @@ do
     UIManager:show(view)
     ok(not Accent.get().custom, "accent: black until one is chosen")
     view:openSettings()
-    ok(says(view._settings_dialog, "Button colour"), "accent: a colour screen's settings offer it")
+    ok(says(view._settings_dialog, "Theme Color"), "accent: a colour screen's settings offer it")
     view:chooseAccent()
     local picker = UIManager.shown
-    ok(picker and picker.title == "Button colour" and #picker:buttons() == 2 and view._settings_dialog == nil,
+    ok(picker and picker.title == "Theme Color" and #picker:buttons() == 2 and view._settings_dialog == nil,
         "accent: the colour wheel opens with Use and Cancel (no Save to the pen's swatches)")
+    local CP = require("ink/ui/colorpicker")
+    local p2 = CP:new{}
+    ok(p2.wheel_bb ~= nil and p2.wheel_bb == picker.wheel_bb, "accent: the colour wheel is drawn once and reused")
+    p2:onCloseWidget()
     picker.on_pick({ 30, 111, 217 })
     local saved = G_reader_settings.data.inkaway_accent
     ok(saved and saved[1] == 30 and saved[3] == 217, "accent: the colour is saved")
