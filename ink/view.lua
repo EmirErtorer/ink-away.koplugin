@@ -313,9 +313,11 @@ function InkAwayView:init()
     self:openStartDocument()   -- the last document, or a new drawing
     self:composeCanvas()
     self:renderView()
-    -- the library on top, when asked for (its gesture) or chosen in the settings;
-    -- it opens as the canvas is shown (see onShow)
-    self._library_on_show = self.show_library or self:getSetting("inkaway_start") == "library"
+    -- the library or the notebooks on top, when asked for (the library's gesture)
+    -- or chosen in the settings; they open as the canvas is shown (see onShow)
+    local start = self:getSetting("inkaway_start")
+    self._library_on_show = self.show_library or start == "library"
+    self._overview_on_show = not self._library_on_show and start == "notebooks"
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
@@ -370,6 +372,9 @@ function InkAwayView:onShow()
     if self._library_on_show then
         self._library_on_show = nil
         self:openLibrary()
+    elseif self._overview_on_show then
+        self._overview_on_show = nil
+        self:openOverview()
     end
     if self._note_on_show then   -- shown over the canvas (and the library)
         UIManager:show(InfoMessage:new{ text = self._note_on_show })

@@ -156,8 +156,15 @@ function InkAwayView:saveDocument(force)
     self.dirty = false
     self._page_rev = self.canvas.rev
     self._save_waited = 0
-    self:setSetting("inkaway_last_doc", path)
+    self:rememberDoc(path)
     return true
+end
+
+-- Remember `path` as the document to reopen, and as the last notebook when the
+-- open document is one (what Ink Away opens on when set to start on Notebooks).
+function InkAwayView:rememberDoc(path)
+    self:setSetting("inkaway_last_doc", path)
+    if self.notebook then self:setSetting("inkaway_last_notebook", path) end
 end
 
 -- KOReader asks every widget to save before the reader sleeps and before a
@@ -246,15 +253,21 @@ function InkAwayView:openDocument(path)
     end
     self.doc_path, self.doc_written = path, true
     self:resetSaveState()
-    self:setSetting("inkaway_last_doc", path)
+    self:rememberDoc(path)
     return true
 end
 
 -- The document to show when Ink Away opens: the old session file of an earlier
--- version (once), else the last document, else a new drawing.
+-- version (once), else the last notebook when it starts on Notebooks, else the
+-- last document, else a new drawing.
 function InkAwayView:openStartDocument()
     self:mergeLegacyFolders()
-    local path = self:adoptOldSession() or self:getSetting("inkaway_last_doc")
+    local path = self:adoptOldSession()
+    if not path and self:getSetting("inkaway_start") == "notebooks" then
+        local nb = self:getSetting("inkaway_last_notebook")
+        if nb and Storage.exists(nb) then path = nb end
+    end
+    path = path or self:getSetting("inkaway_last_doc")
     if path and Storage.exists(path) and self:openDocument(path) then return end
     self.doc_path = Storage.uniquePath(self:libraryDir(), Library.defaultName(self:docKindLabel("drawing")), Project.EXT)
     self.doc_written = false
@@ -392,7 +405,7 @@ function InkAwayView:renameDocument(name)
             UIManager:show(InfoMessage:new{ text = _("Could not rename.\n") .. tostring(err) })
             return
         end
-        self:setSetting("inkaway_last_doc", new)
+        self:rememberDoc(new)
         local old = self.doc_path
         Folder.update(Storage.dirName(new), function(d) Folder.rename(d, Storage.baseName(old), Storage.baseName(new)) end)
     end

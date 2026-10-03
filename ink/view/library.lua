@@ -179,11 +179,14 @@ function InkAwayView:promptNewFolder(dir, after)
         end }
 end
 
--- The open document moved from `old` to `new` (or a folder holding it did).
+-- A file or folder moved from `old` to `new`: follow it with the open document
+-- and the remembered last notebook, when either was in it.
 function InkAwayView:pathMoved(old, new)
+    local nb = self:getSetting("inkaway_last_notebook")
+    if nb and Storage.within(nb, old) then self:setSetting("inkaway_last_notebook", new .. nb:sub(#old + 1)) end
     if self.doc_path and Storage.within(self.doc_path, old) then
         self.doc_path = new .. self.doc_path:sub(#old + 1)
-        if self.doc_written then self:setSetting("inkaway_last_doc", self.doc_path) end
+        if self.doc_written then self:rememberDoc(self.doc_path) end
     end
 end
 

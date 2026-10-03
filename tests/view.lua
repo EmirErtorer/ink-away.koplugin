@@ -2124,6 +2124,29 @@ do
     UIManager:close(v3)
     ok(v3._library == nil, "lib: closing Ink Away closes the library too")
 
+    -- opening on the notebooks: the last notebook's pages, even after a drawing
+    local v4 = InkAwayView:new{}
+    UIManager:show(v4)
+    v4:newNotebook("grid", LIB)
+    stroke(v4, 120, 120)
+    v4:saveDocument()
+    local nb_path = v4.doc_path
+    ok(G_reader_settings.data.inkaway_last_notebook == nb_path, "lib: the last notebook is remembered")
+    v4:newDrawing(LIB)
+    stroke(v4, 150, 150)
+    v4:saveDocument()
+    ok(G_reader_settings.data.inkaway_last_notebook == nb_path, "lib: and stays so while a drawing is open")
+    UIManager:close(v4)
+    G_reader_settings.data.inkaway_start = "notebooks"
+    local v5 = InkAwayView:new{}
+    UIManager:show(v5)
+    ok(v5.doc_path == nb_path and v5.notebook ~= nil, "lib: starting on Notebooks opens the last notebook")
+    ok(v5._overview ~= nil and v5._library == nil and v5._ov.path == nb_path,
+        "lib: with the notebook browser on top, showing its pages")
+    v5._overview:close(); UIManager:close(v5)
+    G_reader_settings.data.inkaway_start = nil
+    G_reader_settings.data.inkaway_last_notebook = nil
+
     TestEnv.remember_last_doc = false
     G_reader_settings.data.inkaway_last_doc = nil
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()

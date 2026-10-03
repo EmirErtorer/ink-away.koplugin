@@ -300,7 +300,8 @@ function InkAwayView:openSettings()
         add(vspan(10))
         add(self:sheetLabel(_("When Ink Away opens")))
         add(vspan(6))
-        add(self:segmentedRow({ { "last", _("Last document") }, { "library", _("Library") } },
+        add(self:segmentedRow({ { "last", _("Last document") }, { "library", _("Library") },
+                { "notebooks", _("Notebooks") } },
             self:getSetting("inkaway_start", "last"), content_w,
             function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
         return content
