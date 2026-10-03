@@ -1911,6 +1911,43 @@ do
         view4:onCloseWidget()
     end
 
+    -- the old "drawing projects" and "notebook projects" folders join the library
+    -- once, when the library is the "ink away" folder they are in
+    do
+        local DATA = LIB .. "/data"
+        local APP = DATA .. "/ink away"
+        os.execute("mkdir -p '" .. APP .. "/notebook projects' '" .. APP .. "/drawing projects'")
+        local nbc = Canvas.new(1072, 1448)
+        nbc:startStroke("ink", 6, 255); nbc:addPoint(10, 10); nbc:addPoint(90, 90); nbc:finishStroke()
+        local f = io.open(APP .. "/notebook projects/Lectures.inkaway", "wb"); f:write(Project.serialize(nbc)); f:close()
+        f = io.open(APP .. "/drawing projects/Cat.inkaway", "wb"); f:write(Project.serialize(nbc)); f:close()
+        local realData = Storage.dataDir
+        Storage.dataDir = function() return DATA end
+        local saved_lib = G_reader_settings.data.inkaway_library_dir
+        G_reader_settings.data.inkaway_library_dir = nil
+        G_reader_settings.data.inkaway_last_doc = APP .. "/notebook projects/Lectures.inkaway"
+        UIManager.reset()
+        local v5 = InkAwayView:new{}
+        ok(v5.doc_path == APP .. "/Lectures.inkaway" and v5.canvas:opCount() == 1,
+            "doc: the last document is found where it moved, in the library")
+        ok(Storage.exists(APP .. "/Cat.inkaway") and not Storage.exists(APP .. "/notebook projects")
+            and not Storage.exists(APP .. "/drawing projects"), "doc: the old project folders are emptied and gone")
+        ok(v5:docDir() == APP, "doc: so a new drawing goes in the library, not an old folder")
+        UIManager:show(v5)
+        ok(UIManager.shown and tostring(UIManager.shown.text):find("drawing projects", 1, true) ~= nil,
+            "doc: the reader is told once where they went")
+        v5:onCloseWidget()
+        os.execute("mkdir -p '" .. APP .. "/notebook projects'")
+        UIManager.reset()
+        local v6 = InkAwayView:new{}
+        UIManager:show(v6)
+        ok(Storage.isDir(APP .. "/notebook projects") and UIManager.shown == v6,
+            "doc: and only once: a folder made later under the old name is left alone")
+        v6:onCloseWidget()
+        Storage.dataDir = realData
+        G_reader_settings.data.inkaway_library_dir = saved_lib
+    end
+
     TestEnv.remember_last_doc = false
     G_reader_settings.data.inkaway_last_doc = nil
     UIManager.reset()

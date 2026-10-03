@@ -253,6 +253,7 @@ end
 -- The document to show when Ink Away opens: the old session file of an earlier
 -- version (once), else the last document, else a new drawing.
 function InkAwayView:openStartDocument()
+    self:mergeLegacyFolders()
     local path = self:adoptOldSession() or self:getSetting("inkaway_last_doc")
     if path and Storage.exists(path) and self:openDocument(path) then return end
     self.doc_path = Storage.uniquePath(self:libraryDir(), Library.defaultName(self:docKindLabel("drawing")), Project.EXT)
@@ -273,6 +274,29 @@ function InkAwayView:adoptOldSession()
     local old = Storage.join(Storage.settingsDir(), "inkaway_session." .. Project.EXT)
     if not Storage.exists(old) then return nil end
     return Library.adoptSession(old, self:libraryDir(), Library.defaultName(_("Recovered")))
+end
+
+-- Earlier versions saved drawings and notebooks in two folders of their own,
+-- "drawing projects" and "notebook projects". Left as they were, they would look
+-- like folders the reader made, and a new drawing started from an old notebook
+-- would land in "notebook projects". Their documents join the library folder
+-- instead, once, when the library is the "ink away" folder they sit in.
+function InkAwayView:mergeLegacyFolders()
+    if self:getSetting("inkaway_legacy_merged") then return end
+    local root = self:libraryDir()
+    if root ~= Storage.appRootPath() then return end
+    self:setSetting("inkaway_legacy_merged", true)
+    local moves = Library.mergeLegacy(root)
+    if #moves == 0 then return end
+    local last = self:getSetting("inkaway_last_doc")
+    for _, m in ipairs(moves) do
+        if last and Storage.within(last, m.old) then
+            self:setSetting("inkaway_last_doc", m.new .. last:sub(#m.old + 1))
+        end
+        if not Storage.isDir(m.new) then self:dropThumbs(m.old) end
+    end
+    logger.info("InkAway: moved", #moves, "items from the old project folders into", root)
+    self._note_on_show = _("Drawings and notebooks from the old \u{201C}drawing projects\u{201D} and \u{201C}notebook projects\u{201D} folders are now in the library.")
 end
 
 -- Start a new drawing in folder `dir` (the open document's by default).

@@ -49,7 +49,7 @@ Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawi
 ## Notes
 
 - Palm rejection needs KOReader 2026.07+.
-- Drawings and notebooks are kept in an "ink away" folder and saved automatically; exported PNGs and PDFs go to "ink away/exports" unless you pick another folder.
+- Drawings and notebooks are kept in an "ink away" folder and saved automatically; exported PNGs and PDFs go to "ink away/exports" unless you pick another folder. Work from older versions' "drawing projects" and "notebook projects" folders moves into the "ink away" folder on the first start.
 - On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.
 
 ## License

@@ -330,6 +330,53 @@ do
 end
 
 ------------------------------------------------------------------------------
+-- The old "drawing projects" and "notebook projects" folders join the library
+------------------------------------------------------------------------------
+do
+    local Folder = require("ink/folder")
+    local ROOT = DIR .. "/legacy"
+    local DP, NP = ROOT .. "/drawing projects", ROOT .. "/notebook projects"
+    os.execute("mkdir -p '" .. DP .. "' '" .. NP .. "/Old school' '" .. ROOT .. "/drawings'")
+    writeAll(ROOT .. "/Cat.inkaway", "root cat")
+    writeAll(DP .. "/Cat.inkaway", "old cat")
+    writeAll(DP .. "/Dog.inkaway", "dog")
+    writeAll(NP .. "/Week 1.inkaway", "w1")
+    writeAll(NP .. "/Week 2.inkaway", "w2")
+    writeAll(NP .. "/Old school/Maths.inkaway", "maths")
+    writeAll(ROOT .. "/drawings/Cat.png", "png")
+    Folder.save(NP, { order = { "Week 2.inkaway", "Week 1.inkaway" }, colors = { ["Week 1.inkaway"] = { 9, 8, 7 } } })
+    Folder.save(ROOT, { order = { "Cat.inkaway" }, colors = {} })
+
+    local moves = Library.mergeLegacy(ROOT)
+    ok(#moves == 5, "every document and folder of the project folders moves (" .. #moves .. ")")
+    ok(readAll(ROOT .. "/Cat.inkaway") == "root cat" and readAll(ROOT .. "/Cat (2).inkaway") == "old cat",
+        "a name already in the library is never replaced; the newcomer gets a number")
+    ok(readAll(ROOT .. "/Dog.inkaway") == "dog" and readAll(ROOT .. "/Week 1.inkaway") == "w1",
+        "the files arrive byte for byte")
+    ok(readAll(ROOT .. "/Old school/Maths.inkaway") == "maths", "a folder inside one moves with what it holds")
+    ok(not Storage.exists(DP) and not Storage.exists(NP), "the emptied project folders are gone, binder file and all")
+    ok(readAll(ROOT .. "/drawings/Cat.png") == "png", "the export folders are left alone")
+    local top = Folder.load(ROOT)
+    local pos = {}
+    for i, n in ipairs(top.order) do pos[n] = i end
+    ok(pos["Cat.inkaway"] == 1 and pos["Week 2.inkaway"] < pos["Week 1.inkaway"],
+        "the library keeps its own order and the notebooks come in the order they had")
+    ok(top.colors["Week 1.inkaway"] and top.colors["Week 1.inkaway"][1] == 9, "tab colours come along")
+    local found
+    for _, m in ipairs(moves) do if m.old == DP .. "/Cat.inkaway" then found = m.new end end
+    ok(found == ROOT .. "/Cat (2).inkaway", "each move reports where the item went")
+
+    os.execute("mkdir -p '" .. DP .. "'")
+    writeAll(DP .. "/Sketch.inkaway", "s")
+    writeAll(DP .. "/photo.png", "p")
+    Library.mergeLegacy(ROOT)
+    ok(Storage.exists(ROOT .. "/Sketch.inkaway") and readAll(DP .. "/photo.png") == "p",
+        "anything that is not a document stays where it was")
+    ok(Storage.isDir(DP), "so its folder stays, as an ordinary one")
+    ok(#Library.mergeLegacy(DIR .. "/no such library") == 0, "no project folders, nothing to do")
+end
+
+------------------------------------------------------------------------------
 -- Binders: a folder's tab order and colours, and pages moving between notebooks
 ------------------------------------------------------------------------------
 do

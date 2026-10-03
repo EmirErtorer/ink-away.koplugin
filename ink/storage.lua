@@ -59,12 +59,18 @@ function Storage.settingsDir()
     return (ds and ds:getSettingsDir()) or "/tmp"
 end
 
+-- Where the "ink away" folder is in KOReader's data folder (it may not exist
+-- yet), or nil outside KOReader.
+function Storage.appRootPath()
+    local data = Storage.dataDir()
+    return data and data .. "/ink away" or nil
+end
+
 -- The "ink away" folder in KOReader's data folder, made if missing, or nil when
 -- it can't be made.
 function Storage.appRoot()
-    local data = Storage.dataDir()
-    if not data then return nil end
-    local dir = data .. "/ink away"
+    local dir = Storage.appRootPath()
+    if not dir then return nil end
     return Storage.ensureDir(dir) and dir or nil
 end
 

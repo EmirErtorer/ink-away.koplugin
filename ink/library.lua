@@ -4,6 +4,7 @@ get, and bringing the single "last session" file of older versions into it.
 Plain Lua, so the headless tests drive it.
 ]]
 
+local Folder = require("ink/folder")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
 
@@ -138,6 +139,52 @@ function Library.hasContent(data)
     local p = data.pages[1]
     local ops = type(p) == "table" and (p.ops or (p.src == nil and p.id == nil and p)) or nil
     return type(ops) == "table" and #ops > 0
+end
+
+-- The folders earlier versions kept editable drawings and notebooks in, apart,
+-- in the "ink away" folder.
+Library.LEGACY = { "drawing projects", "notebook projects" }
+
+-- Bring what the earlier versions' project folders hold into the library folder
+-- `root`, which sits beside them, so drawings and notebooks are no longer kept
+-- apart. Files and folders are only renamed, never copied or rewritten, and
+-- never replace anything: a name already taken gets a number. Tab order and
+-- colours come along. A project folder is removed once nothing is left in it
+-- but the hidden binder file; one that still holds something else stays, as an
+-- ordinary folder. Returns the moves as { old = path, new = path } entries.
+function Library.mergeLegacy(root)
+    local moves = {}
+    for _, name in ipairs(Library.LEGACY) do
+        local dir = Storage.join(root, name)
+        if Storage.isDir(dir) then
+            local data = Folder.load(dir)
+            local folders, docs = Library.list(dir, nil, "name")
+            local renamed = {}
+            for _, e in ipairs(folders) do
+                local new = Library.move(e.path, root)
+                if new then moves[#moves + 1] = { old = e.path, new = new } end
+            end
+            for _, d in ipairs(Folder.arrange(data, docs)) do
+                local new = Library.move(d.path, root)
+                if new then
+                    moves[#moves + 1] = { old = d.path, new = new }
+                    renamed[#renamed + 1] = { old = d.name, new = Storage.baseName(new) }
+                end
+            end
+            if #renamed > 0 then
+                Folder.update(root, function(top)
+                    for _, r in ipairs(renamed) do
+                        Folder.add(top, r.new)
+                        if data.colors[r.old] ~= nil then top.colors[r.new] = data.colors[r.old] end
+                    end
+                end)
+            end
+            local left = Storage.list(dir)
+            if #left == 1 and left[1].name == Folder.FILE then os.remove(left[1].path); left = {} end
+            if #left == 0 then Storage.removeTree(dir) end
+        end
+    end
+    return moves
 end
 
 -- Move an old session file into `dir` as a document named `name`. Returns the
