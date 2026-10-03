@@ -126,7 +126,8 @@ end
 -- Height of the notebook bottom bar.
 function InkAwayView:nbBarHeight()
     if self._nb_collapsed then return 0 end   -- hidden via the bottom-bar toggle
-    -- snug around the icon row, so the bar is shorter than the toolbar
+    -- as tall as the toolbar, so both bars hold the same icons the same way
+    if self.toolbar then return self.toolbar:getSize().h end
     local isz = self._icon_sz or math.max(20, Screen:scaleBySize(26))
     return isz + 2 * Screen:scaleBySize(4)
 end
@@ -794,7 +795,7 @@ function InkAwayView:notebookStyles()
         { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
 end
 
--- The notebook's bottom bar, matching the toolbar's height and icons.
+-- The notebook's bottom bar: the toolbar's height, icons and columns.
 function InkAwayView:paintNotebookBar(bb, x, y)
     local v = self.view
     local nb = self.notebook
@@ -813,15 +814,15 @@ function InkAwayView:paintNotebookBar(bb, x, y)
         local iw, ih = im:getWidth(), im:getHeight()
         bb:blitFrom(im, math.floor(cx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
     end
-    local pad = math.floor(isz * 0.4)              -- comfort padding around each tap zone
-    local zone = isz + 2 * pad
-    -- Prev (far left) and Next (far right)
+    -- every button sits in a toolbar column and takes taps across its width, like
+    -- a toolbar button: Prev under the first tool, Next under Exit
+    local zone = self._btn_w or (isz * 2)
     local prev_cx = x + math.floor(zone / 2)
-    local next_cx = x + w - math.floor(zone / 2)
+    local next_cx = x + (self._last_btn_center or (w - math.floor(zone / 2)))
     icon("nav_prev", prev_cx)
     icon("nav_next", next_cx)
-    self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
-    self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
+    self._nb_prev = { x = x, y = sy0, w = math.floor(prev_cx + zone / 2) - x, h = h }
+    self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = x + w - math.floor(next_cx - zone / 2), h = h }
     -- the page counter "index / count", centred; the slash is drawn (the font's
     -- is taller than the digits) and the digits are centred on their measured ink
     local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
@@ -848,21 +849,18 @@ function InkAwayView:paintNotebookBar(bb, x, y)
         end
     end
     cntw:paintTo(bb, sx + slw + g, ty); cntw:free()
-    -- the add-page icon just right of the counter and the overview icon just left
-    -- of it, the same size and distance, clamped clear of Next and Prev
-    local margin = math.floor(isz * 0.5)
-    local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
-    local max_icx = (next_cx - math.floor(zone / 2)) - margin - math.floor(isz / 2)
-    if icx > max_icx then icx = max_icx end
-    icon("newpage", icx)
-    self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
-    local ocx = math.floor(x + w / 2 - counter_w / 2 - margin - isz / 2)
-    local min_ocx = (prev_cx + math.floor(zone / 2)) + margin + math.floor(isz / 2)
-    if ocx < min_ocx then ocx = min_ocx end
+    -- the overview and add-page icons a column and a half either side of the
+    -- middle, which puts them in toolbar columns too (further out when a long count
+    -- needs the room), clear of Prev and Next
+    local mid = x + w / 2
+    local off = math.max(math.floor(zone * 1.5), math.floor(counter_w / 2 + isz * 0.6 + isz / 2))
+    local ocx = math.max(math.floor(mid - off), prev_cx + zone)
+    local icx = math.min(math.floor(mid + off), next_cx - zone)
     icon("overview", ocx)
+    icon("newpage", icx)
     self._nb_overview = { x = math.floor(ocx - zone / 2), y = sy0, w = zone, h = h }
-    -- the counter opens the page menu; its tap zone spans the gap between the
-    -- overview and add-page icons
+    self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
+    -- the counter opens the page menu; its tap zone spans the room between them
     local count_x = self._nb_overview.x + self._nb_overview.w
     self._nb_count = { x = count_x, y = sy0, w = math.max(1, self._nb_plus.x - count_x), h = h }
 end

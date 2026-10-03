@@ -2304,6 +2304,10 @@ do
     local mid = view.screen_w / 2
     ok(math.abs((mid - (ov.x + ov.w / 2)) - ((plus.x + plus.w / 2) - mid)) <= 2,
         "pages: the two icons sit the same distance either side of the middle")
+    ok(view.nb_bar_h == view.toolbar:getSize().h, "pages: the bottom bar is as tall as the toolbar")
+    ok(ov.w >= view._btn_w and plus.w >= view._btn_w and view._nb_prev.w >= view._btn_w
+        and view._nb_next.w >= view._btn_w, "pages: each bar button is at least a toolbar button wide")
+    ok(cnt.w >= 2 * view._btn_w, "pages: and the counter has two columns' room between them")
     ok(ov.w == plus.w and ov.h == plus.h, "pages: and have the same size")
     view:onIaTap(nil, { pos = centre(ov) })
     ok(view._overview and #view._overview.items == 3, "pages: the overview icon opens the page overview")
