@@ -142,6 +142,48 @@ for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
         view:onCloseWidget()
     end
 end
+-- landscape on a screen turned in software: the lifted card is kept in the
+-- screen's pixel order, and a frame painted that way matches one painted with
+-- the plain (turning) blit, byte for byte
+for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
+    for _, rot in ipairs({ 1, 3 }) do
+        local tag = (typ == BB.TYPE_BBRGB32 and "colour" or "grey") .. " / landscape " .. rot
+        local W, H = 1072, 1448
+        Device.screen.bb = BB.new(W, H, typ)
+        Device.screen.bb:setRotation(rot)
+        Device.screen:setSize(W, H)
+        Device.hasColorScreen = function() return typ == BB.TYPE_BBRGB32 end
+        UIManager.reset()
+        local view = dofile(REPO .. "/ink/view.lua"):new{}
+        UIManager:show(view)
+        view.canvas:setOps(page())
+        view:composeCanvas(); view:renderView()
+        view:setTool("lasso")
+        view:selectOps({ 2, 4, 6, 9 }, "lasso")
+        local f = view:selFrame()
+        local mx, my = (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2
+        view:onIaTouch(nil, { pos = { x = mx, y = my } })
+        view:onIaPan(nil, { pos = { x = mx + 50, y = my + 30 } })
+        -- (the drawing area only: the stand-in toolbar buttons cannot paint here)
+        view._area_only = true
+        view:paintTo(Device.screen.bb, 0, 0)
+        local d = view.sel_drag
+        ok(d and d.card_rot == rot, tag .. ": the card is kept in the screen's pixel order")
+        local fast = bytes(Device.screen.bb)
+        -- the same frame with the card blitted the plain way
+        if d.card_view and d.card_view ~= d.card then d.card_view:free() end
+        d.card_view = nil
+        local real = view.screenBBRot
+        view.screenBBRot = function() return 0 end
+        view:selCardAt(d.card_view_w or 1, d.card_view_h or 1)
+        view.screenBBRot = real
+        view._area_only = true
+        view:paintTo(Device.screen.bb, 0, 0)
+        ok(bytes(Device.screen.bb) == fast, tag .. ": and paints exactly as the turning blit does")
+        view:onIaPanRelease(nil, { pos = { x = mx + 50, y = my + 30 } })
+        view:onCloseWidget()
+    end
+end
 print(("realbb selection: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

@@ -142,6 +142,11 @@ function InkAwayView:openPenSettings()
         local tail = VerticalGroup:new{ align = "left" }
         local assist = toggle(_("Shape assist"), self.shape_assist, function(on)
             self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
+            -- free the pre-stroke snapshot, which only shape assist uses
+            if not on and self._pre_stroke_bb then
+                self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
+                self._pre_stroke_valid = false
+            end
         end)
         local palm = toggle(_("Palm rejection"), self.palm_reject, function(on)
             self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()

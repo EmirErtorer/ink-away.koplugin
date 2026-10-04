@@ -408,6 +408,8 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._reconcile_cb)
     UIManager:unschedule(self._pen_hold_cb)
     UIManager:unschedule(self._straighten_cb)
+    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
+    self._pre_stroke_valid = false
     UIManager:unschedule(self._pdf_prefetch_cb)
     if self._export_job then self._export_job.cancel(); self._export_job = nil end
     if self._search_job then self._search_job.abort(); self._search_job = nil end

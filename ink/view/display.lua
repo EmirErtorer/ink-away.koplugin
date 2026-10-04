@@ -88,19 +88,31 @@ function InkAwayView:physView(bb)
     return p
 end
 
--- Copy the logical rect (sx, sy, w, h) of area_bb to screen (dstx, dsty). With a
--- rotated screen it copies between the physical views of both buffers, which is
--- byte-identical to the rotated blit and 40-60 times faster; that keeps a live
--- stroke's growing region from lagging behind the pen in landscape.
-function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
-    local area = self.area_bb
-    if self._area_rot == 0 then
-        bb:blitFrom(area, dstx, dsty, sx, sy, w, h)
+-- A w x h buffer in the screen's pixel order and type (see newAreaBuffer), for
+-- anything blitted onto the screen often (the area, a lifted selection's card).
+function InkAwayView:newPanelBuffer(w, h)
+    return panelBuffer(w, h, self:screenBBRot(), self:screenBBInv(), Screen.bb:getType())
+end
+
+-- Copy the logical rect (sx, sy, w, h) of `src`, a buffer in the screen's pixel
+-- order (rotated by `rot`), to screen (dstx, dsty). With a rotated screen it
+-- copies between the physical views of both buffers, which is byte-identical to
+-- the rotated blit and 40-60 times faster.
+function InkAwayView:blitPanel(bb, src, rot, dstx, dsty, sx, sy, w, h)
+    if rot == 0 then
+        bb:blitFrom(src, dstx, dsty, sx, sy, w, h)
         return
     end
     local dpx, dpy, dpw, dph = bb:getPhysicalRect(dstx, dsty, w, h)
-    local apx, apy = area:getPhysicalRect(sx, sy, w, h)
-    self:physView(bb):blitFrom(self:physView(area), dpx, dpy, apx, apy, dpw, dph)
+    local spx, spy = src:getPhysicalRect(sx, sy, w, h)
+    self:physView(bb):blitFrom(self:physView(src), dpx, dpy, spx, spy, dpw, dph)
+end
+
+-- Copy the logical rect (sx, sy, w, h) of area_bb to screen (dstx, dsty), through
+-- the physical views on a rotated screen; that keeps a live stroke's growing
+-- region from lagging behind the pen in landscape.
+function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
+    self:blitPanel(bb, self.area_bb, self._area_rot, dstx, dsty, sx, sy, w, h)
 end
 
 -- Copy the whole area_bb onto the screen at (dstx, dsty).

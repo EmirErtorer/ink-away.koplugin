@@ -97,29 +97,34 @@ function InkAwayView:selectionOps()
     return out
 end
 
--- How many of each kind the selection holds: { ink, shape, fill, image, text, n }.
+-- How many of each kind the selection holds: { ink, shape, fill, image, text,
+-- link, n }, counted when its box is (see recomputeSelectionBBox).
 function InkAwayView:selectionKinds()
-    local k = { ink = 0, shape = 0, fill = 0, image = 0, text = 0, n = 0 }
+    local sel = self.selection
+    if not sel then return { ink = 0, shape = 0, fill = 0, image = 0, text = 0, link = 0, n = 0 } end
+    if not sel.kinds then self:recomputeSelectionBBox() end
+    return sel.kinds or { ink = 0, shape = 0, fill = 0, image = 0, text = 0, link = 0, n = 0 }
+end
+
+-- The selection's box (canvas coords), from its ops as drawn, and how many of
+-- each kind it holds (asked on every touch and paint, so counted here, once).
+function InkAwayView:recomputeSelectionBBox()
+    local sel = self.selection
+    if not sel then return end
+    local x0, y0, x1, y1
+    local k = { ink = 0, shape = 0, fill = 0, image = 0, text = 0, link = 0, n = 0 }
     for _, op in ipairs(self:selectionOps()) do
         local kind = op.kind == "erase" and "ink" or op.kind
         k[kind] = (k[kind] or 0) + 1
         k.n = k.n + 1
-    end
-    return k
-end
-
--- The selection's box (canvas coords), from its ops as drawn.
-function InkAwayView:recomputeSelectionBBox()
-    if not self.selection then return end
-    local x0, y0, x1, y1
-    for _, op in ipairs(self:selectionOps()) do
         local a, b, c, d = opExtent(op)
         if a then
             x0, y0 = math.min(x0 or a, a), math.min(y0 or b, b)
             x1, y1 = math.max(x1 or c, c), math.max(y1 or d, d)
         end
     end
-    self.selection.bbox = x0 and { x0 = x0, y0 = y0, x1 = x1, y1 = y1 } or nil
+    sel.kinds = k
+    sel.bbox = x0 and { x0 = x0, y0 = y0, x1 = x1, y1 = y1 } or nil
     if not x0 then self.selection = nil end
 end
 
@@ -186,7 +191,7 @@ end
 -- Can the selection turn? Not when it is only text boxes (they stay upright).
 function InkAwayView:selCanTurn()
     local k = self:selectionKinds()
-    return k.n > k.text + (k.link or 0)
+    return k.n > k.text + k.link
 end
 
 -- Where the turning handle sits: above the frame's middle, or below it when the
@@ -315,14 +320,29 @@ function InkAwayView:selCardAt(w, h)
     if d.card_view and d.card_view_w == w and d.card_view_h == h then return d.card_view end
     if d.card_view and d.card_view ~= d.card then d.card_view:free() end
     d.card_view, d.card_view_w, d.card_view_h = nil, nil, nil
+    local view
     if w == d.card:getWidth() and h == d.card:getHeight() then
-        d.card_view = d.card
+        view = d.card
     else
         local ok, scaled = pcall(function() return RenderImage:scaleBlitBuffer(d.card, w, h, false) end)
-        d.card_view = ok and scaled or nil
+        view = ok and scaled or nil
     end
-    d.card_view_w, d.card_view_h = w, h
-    return d.card_view
+    -- on a screen turned in software, keep the card in the screen's pixel order:
+    -- turned once here, then every frame is a row copy (see blitPanel)
+    d.card_rot = 0
+    if view and self:screenBBRot() ~= 0 then
+        local ok, panel = pcall(function()
+            local p = self:newPanelBuffer(w, h)
+            p:blitFrom(view, 0, 0, 0, 0, w, h)
+            return p
+        end)
+        if ok and panel then
+            if view ~= d.card then view:free() end
+            view, d.card_rot = panel, self:screenBBRot()
+        end
+    end
+    d.card_view, d.card_view_w, d.card_view_h = view, w, h
+    return view
 end
 
 -- The frame's corners on screen as the drag stands now: { x, y, ... } for the
@@ -800,7 +820,9 @@ function InkAwayView:paintSelection(bb, x, y)
             local sx0, sy0 = math.max(ox, ax0), math.max(oy, ay0)
             local sx1 = math.min(ox + card:getWidth(), ax1)
             local sy1 = math.min(oy + card:getHeight(), ay1)
-            if sx1 > sx0 and sy1 > sy0 then bb:blitFrom(card, sx0, sy0, sx0 - ox, sy0 - oy, sx1 - sx0, sy1 - sy0) end
+            if sx1 > sx0 and sy1 > sy0 then
+                self:blitPanel(bb, card, d.card_rot or 0, sx0, sy0, sx0 - ox, sy0 - oy, sx1 - sx0, sy1 - sy0)
+            end
         end
     end
     -- the frame: four bars, or four lines while it turns
