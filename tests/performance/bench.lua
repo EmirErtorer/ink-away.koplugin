@@ -419,13 +419,25 @@ if PART == "ui" then
     view:setTool("pen")
     timed("image.insert", function() view:insertImage("fake.png") end)
     do
-        local ir = view:imageScreenRect()
-        local icx, icy = ir.x + ir.w / 2, ir.y + ir.h / 2
+        -- (the selection replaced the picture's own frame and menu in the newer
+        -- versions; either is driven the same way)
+        local icx, icy
+        if view.selFrame then
+            local f = view:selFrame()
+            icx, icy = (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2
+        else
+            local ir = view:imageScreenRect()
+            icx, icy = ir.x + ir.w / 2, ir.y + ir.h / 2
+        end
         timed("image.grab", function() view:onIaTouch(nil, P(icx, icy)) end)
         for i = 1, 20 do timed("image.drag", function() view:onIaPan(nil, P(icx + i * 3, icy + i * 2)) end) end
         timed("image.drop", function() view:onIaPanRelease(nil, P(icx + 60, icy + 40)) end)
-        timed("image.rotate90", function() view:rotateImage90(view.active_image) end)
-        timed("image.finish", function() view:finishImageEdit() end)
+        timed("image.rotate90", function()
+            if view.selTurn90 then view:selTurn90() else view:rotateImage90(view.active_image) end
+        end)
+        timed("image.finish", function()
+            if view.dropSelection then view:dropSelection() else view:finishImageEdit() end
+        end)
     end
 
     view:setTool("pen")
