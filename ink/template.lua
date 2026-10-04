@@ -243,6 +243,12 @@ function Template.render(style, w, h, size, put)
         PAGES[style](w, h, size, put)
     elseif style == "lines" then
         rules(put, 0, w, size, h)
+    elseif style == "thirds" then
+        -- a drawing's rule-of-thirds guide (not a notebook paper)
+        for i = 1, 2 do
+            vrule(put, math.floor(w * i / 3), 0, h, 1)
+            put(0, math.floor(h * i / 3), w)
+        end
     elseif style == "grid" then
         rules(put, 0, w, size, h)
         local cx = size

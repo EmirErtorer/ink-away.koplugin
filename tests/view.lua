@@ -2254,6 +2254,52 @@ do
     UIManager.fireScheduled(); UIManager.fireScheduled()
     ok(pdf and #pdf.pages == 1 and pdf.template.style == "blank", "export: a drawing makes a one-page PDF")
 
+    -- a drawing's grid goes in only when asked, and never on a transparent PNG
+    view.grid_on, view.grid_style, view.grid_size, view.grid_strength = true, "square", 30, 50
+    local eo = view:exportOptions()
+    view:writePDF(LIB .. "/out/Cover.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(pdf.template.style == "blank", "export: a drawing's grid stays out by default")
+    eo.include_grid = true
+    view:writePDF(LIB .. "/out/Cover.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    ok(pdf.template.style == "grid" and pdf.template.size == 30 and pdf.template.gray ~= nil,
+        "export: Include the grid puts the drawing's grid in the PDF")
+    eo.fmt, eo.transparent = "png", false
+    ok(view:pngOptions().template and view:pngOptions().template.style == "grid", "export: and in a PNG on white")
+    eo.transparent = true
+    ok(view:pngOptions().template == nil, "export: a transparent PNG never has the grid")
+    eo.transparent = false
+    view.grid_style = "thirds"
+    ok(view:pngOptions().template.style == "thirds", "export: the thirds guide can be included too")
+    local function sheetHas(label)
+        local function walk(w, seen)
+            if type(w) ~= "table" or seen[w] then return false end
+            seen[w] = true
+            if w.label == label then return true end
+            for k, val in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" and walk(val, seen) then return true end
+            end
+            return false
+        end
+        view:openExport()
+        local has = walk(view._save_dialog, {})
+        view:closeSheet("_save_dialog")
+        return has
+    end
+    ok(sheetHas("Include the grid"), "export: the sheet offers the grid for a PNG on white")
+    eo.transparent = true
+    ok(not sheetHas("Include the grid"), "export: but not for a transparent PNG")
+    eo.transparent = false
+    view.grid_on = false
+    ok(view:pngOptions().template == nil, "export: no grid shown, none exported")
+    eo.include_grid, eo.fmt = nil, "pdf"
+    do
+        local n = 0
+        require("ink/template").render("thirds", 90, 60, 10, function() n = n + 1 end)
+        ok(n == 2 * 60 + 2, "export: the thirds guide draws two rules each way")
+    end
+
     -- the export settings are kept in the document and come back with it
     view:saveDocument()
     local data = Project.load(view.doc_path)

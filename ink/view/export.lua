@@ -150,10 +150,10 @@ function InkAwayView:openExport()
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        local function toggle(label, key)
+        local function toggle(label, key, after)
             add(vspan(10))
             add(ToggleRow:new{ label = label, is_on = o[key] and true or false, width = content_w, parent = menu,
-                callback = function(on) o[key] = on end })
+                callback = function(on) o[key] = on; if after then after() end end })
         end
         add(self:sheetTitle(_("Export"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
@@ -207,7 +207,10 @@ function InkAwayView:openExport()
         elseif self.bg_bb then
             toggle(_("Include the background"), "include_bg")
         end
-        if o.fmt == "png" then toggle(_("Transparent"), "transparent") end
+        -- a drawing's grid can go into an export on a page (not a transparent one)
+        local grid_row = not nb and self.grid_on
+        if o.fmt == "png" then toggle(_("Transparent"), "transparent", grid_row and reopen or nil) end
+        if grid_row and (o.fmt == "pdf" or not o.transparent) then toggle(_("Include the grid"), "include_grid") end
         if o.fmt == "pdf" then toggle(_("Page numbers"), "numbers") end
         add(vspan(16))
         local label = _("Export PNG")
@@ -327,6 +330,17 @@ function InkAwayView:pageExportTemplate(nb, i, paper, ruled)
     return template
 end
 
+-- The drawing's grid as an export template on paper colour `paper`, or nil when
+-- the grid is off or left out of the export.
+function InkAwayView:drawingGridTemplate(paper)
+    local o = self:exportOptions()
+    if self.notebook or not (o.include_grid and self.grid_on) then return nil end
+    local style = self.grid_style or "square"
+    if style == "square" then style = "grid" end
+    return { style = style, size = self.grid_size, gray = strengthToLevel(self.grid_strength),
+        paper = PAPERS[paper or "white"] or PAPERS.white }
+end
+
 -- Bookmarks for the titled pages among `pages` (notebook pages, in export
 -- order): { title, page } each.
 local function titledPages(pages)
@@ -346,6 +360,7 @@ function InkAwayView:pngOptions()
         if self.notebook then opts.template = self:exportTemplate(self.notebook.index) end
         if self.bg_bb then opts.bg = self.bg_rgba or self:buildBgRGBA() end
     end
+    if not o.transparent then opts.template = opts.template or self:drawingGridTemplate() end
     return opts
 end
 
@@ -399,7 +414,8 @@ function InkAwayView:writePDF(path)
     else
         pages_ops = { self.canvas.ops }
         w, h = self.canvas.w, self.canvas.h
-        template = { style = "blank", paper = PAPERS[o.paper or "white"] or PAPERS.white }
+        template = self:drawingGridTemplate(o.paper)
+            or { style = "blank", paper = PAPERS[o.paper or "white"] or PAPERS.white }
         if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
     end
     self:runPdfJob(path, { pages = pages_ops, w = w, h = h, template = template, bg = bg,
@@ -688,6 +704,7 @@ function InkAwayView:writeOrnament(dir, name)
     local path = Storage.join(dir, Storage.fileName(name, "png"))
     local opts = self:pngOptions()
     opts.white = nil   -- an ornament is always transparent
+    if not self.notebook then opts.template = nil end   -- and has no grid
     local ok, err = Export.savePNG(self.canvas, path, opts)
     if ok then
         UIManager:show(InfoMessage:new{ text = string.format(_("Saved bookshelf ornament:\n%s"), path) })
