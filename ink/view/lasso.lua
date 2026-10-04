@@ -217,6 +217,12 @@ function InkAwayView:openSelectionMenu()
         {{ text = _("Deselect"), callback = function() UIManager:close(dlg); self:clearSelection() end }},
         {{ text = _("Keep selection"), callback = function() UIManager:close(dlg) end }},
     }
+    -- printed handwriting can become text (see view/handwriting.lua)
+    if self:selectionHasWriting() then
+        table.insert(buttons, 2, {{ text = _("Convert to text"), callback = function()
+            UIManager:close(dlg); self:convertSelectionToText()
+        end }})
+    end
     dlg = ButtonDialog:new{ title = _("Selection"), title_align = "center", buttons = buttons }
     self._shape_menu = dlg
     UIManager:show(dlg)

@@ -188,19 +188,6 @@ function InkAwayView:openPenSettings()
         table.insert(tail, vspan(4))
         table.insert(tail, self:sheetHint(
             _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."), content_w))
-        -- Unfinished: handwriting to text, hidden unless show_handwriting is set.
-        if self.show_handwriting then
-            table.insert(tail, vspan(10))
-            table.insert(tail, ToggleRow:new{ label = _("Handwriting to text (beta)"), is_on = self.hwr_enabled,
-                width = content_w, parent = menu, callback = function(on)
-                    self.hwr_enabled = on; self:setSetting("inkaway_hwr", on)
-                    if not on then self:hwrCancel() end
-                end })
-            table.insert(tail, vspan(4))
-            table.insert(tail, self:sheetHint(
-                _("Print letters with the pen, then pause -- they turn into text in your current text style. Offline; clear, separated capitals and digits work best."),
-                content_w))
-        end
 
         -- Colour swatches: the shades, then on a colour screen the colours and
         -- saved ones, and always the "+" tile for the colour wheel. Six tiles fill

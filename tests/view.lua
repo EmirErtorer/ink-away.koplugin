@@ -3389,6 +3389,81 @@ do
     UIManager.reset()
 end
 
+-- ---- handwriting to text: lasso, Convert to text --------------------------
+do
+    UIManager.reset()
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view.stampTextInto = function() end   -- the mock cannot lay out text
+    -- "milk" in a UJI test writer's hand, as ink ops on the page
+    local hand = dofile("tests/hwr_writers.lua")
+    local name
+    for k in pairs(hand) do if not name or k < name then name = k end end
+    hand = hand[name]
+    local ops, x = {}, 200
+    for ch in ("milk"):gmatch(".") do
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for _, st in ipairs(hand[ch]) do
+            for i = 1, #st - 1, 2 do
+                x0, x1 = math.min(x0, st[i]), math.max(x1, st[i])
+                y0, y1 = math.min(y0, st[i + 1]), math.max(y1, st[i + 1])
+            end
+        end
+        local tall = ch == "l" or ch == "k"
+        local sc = (tall and 64 or 40) / math.max(y1 - y0, 1)
+        if ch == "i" then sc = 56 / math.max(y1 - y0, 1) end
+        for _, st in ipairs(hand[ch]) do
+            local pts = {}
+            for i = 1, #st - 1, 2 do
+                pts[#pts + 1] = x + (st[i] - x0) * sc
+                pts[#pts + 1] = 400 - (y1 - st[i + 1]) * sc
+            end
+            ops[#ops + 1] = { kind = "ink", width = 4, alpha = 255, pts = pts }
+        end
+        x = x + (x1 - x0) * sc + 12
+    end
+    ops[#ops + 1] = { kind = "shape", shape = "rect", pts = { 600, 600, 700, 700 }, width = 4 }   -- not writing
+    view.canvas:setOps(ops)
+    view:setTool("lasso")
+    view:computeSelection({ 0, 0, 1000, 0, 1000, 800, 0, 800 })
+    view:openSelectionMenu()
+    local convert
+    for _, row in ipairs(ButtonDialog.last.buttons) do
+        for _, b in ipairs(row) do if b.text == "Convert to text" then convert = b end end
+    end
+    ok(convert ~= nil, "hwr: the lasso menu offers Convert to text for handwriting")
+    local n_before = view.canvas:opCount()
+    convert.callback()
+    local text_op
+    for _, op in ipairs(view.canvas.ops) do if op.kind == "text" then text_op = op end end
+    local Text = require("ink/text")
+    local got = text_op and Text.plain and Text.plain(text_op) or (text_op and text_op.paras and
+        table.concat((function() local t = {} for _, p in ipairs(text_op.paras) do
+            local r = {} for _, run in ipairs(p.runs or p) do r[#r + 1] = run.text or run end
+            t[#t + 1] = table.concat(r) end return t end)(), "\n"))
+    ok(text_op ~= nil, "hwr: the writing becomes a text box")
+    ok(got == "milk", "hwr: reading " .. tostring(got))
+    ok(view.canvas:opCount() == 2, "hwr: the ink is gone, the shape outside the writing stays")
+    ok(not view.selection, "hwr: and the selection is done with")
+    view:undo()
+    ok(view.canvas:opCount() == n_before, "hwr: one undo brings the writing back")
+    -- a selection with no handwriting does not offer it
+    view.canvas:setOps({ { kind = "shape", shape = "rect", pts = { 600, 600, 700, 700 }, width = 4 } })
+    view:computeSelection({ 0, 0, 1000, 0, 1000, 800, 0, 800 })
+    view:openSelectionMenu()
+    local found = false
+    for _, row in ipairs(ButtonDialog.last.buttons) do
+        for _, b in ipairs(row) do if b.text == "Convert to text" then found = true end end
+    end
+    ok(not found, "hwr: a shape alone is not offered for conversion")
+    view.canvas:setOps({})
+    UIManager:close(view)
+    UIManager.reset()
+end
+
 -- ---- e-ink refreshes of the sheets and full-screen grids ---------------------
 -- A flash only where it clears ink: opening over the drawing on a grey panel.
 -- Page turns, tabs and closing never flash, and a colour panel never flashes

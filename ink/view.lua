@@ -82,7 +82,6 @@ local InkAwayView = InputContainer:extend{
     disable_double_tap = true,
     -- Hidden features kept for development. Set to true to show them in the pen menu.
     show_pen_test = false,      -- debug: the pen input test (startPenInputTest)
-    show_handwriting = false,   -- unfinished: handwriting to text (view/handwriting.lua)
 }
 
 ------------------------------------------------------------------------------
@@ -171,9 +170,6 @@ function InkAwayView:init()
     -- Shape assist: a finished pen stroke that reads as a line, rectangle, ellipse,
     -- triangle or an L becomes a clean shape.
     self.shape_assist = self:getSetting("inkaway_shape_assist", false)
-    -- Handwriting to text: printed pen strokes become a text box after a pause.
-    -- Unfinished, so it stays off unless the hidden feature is switched on.
-    self.hwr_enabled = self.show_handwriting and self:getSetting("inkaway_hwr", false) and true or false
     -- Palm rejection: draw from the pen's own events and ignore fingers while the
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
     -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua.
@@ -355,6 +351,7 @@ function InkAwayView:free()
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     self:freeWaveCache()
     self:freePageThumbs()
+    self:freeHandwriting()
     Accent.free()
     local ok_cp, ColorPicker = pcall(require, "ink/ui/colorpicker")   -- its colour wheel
     if ok_cp and ColorPicker.freeCache then ColorPicker.freeCache() end
@@ -426,7 +423,6 @@ function InkAwayView:onCloseWidget()
     self:cancelFabs()
     if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
     self._pen_capture = nil
-    self:hwrCancel()   -- drop any pending handwriting recognition
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
     if self.active_image then self:finishImageEdit() end       -- bake a selected image
     self.selected, self.shape_move = nil, nil

@@ -32,3 +32,22 @@ trained on:
   (https://creativecommons.org/licenses/by/4.0/). `tests/hwr_vectors.lua`
   holds a few of its strokes.
 
+`ink/data/hwr_words_en.txt` is taken from SCOWL (Spell Checker Oriented Word
+Lists, http://wordlist.aspell.net), levels 10 to 40, American and British
+spellings, plain lower-case words only. Its notice:
+
+> Copyright 2000-2018 by Kevin Atkinson
+>
+> Permission to use, copy, modify, distribute and sell these word lists, the
+> associated scripts, the output created from the scripts, and its
+> documentation for any purpose is hereby granted without fee, provided that
+> the above copyright notice appears in all copies and that both that
+> copyright notice and this permission notice appear in supporting
+> documentation. Kevin Atkinson makes no representations about the
+> suitability of this array for any purpose. It is provided "as is" without
+> express or implied warranty.
+
+SCOWL also includes material from the Moby Words II lists (public domain), the
+12Dicts package by Alan Beale and other sources credited in SCOWL's own
+Copyright file.
+

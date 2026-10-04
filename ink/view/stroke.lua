@@ -435,10 +435,6 @@ function InkAwayView:finalizeStroke()
         end
     end
     self._stroke_rect = nil
-    -- handwriting to text (hidden feature): queue the stroke and restart the pause timer
-    if self.hwr_enabled and self.tool == "pen" and committed and committed.kind == "ink" then
-        self:hwrCapture(committed)
-    end
     self:afterCommit()
 end
 
