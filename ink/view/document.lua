@@ -312,8 +312,12 @@ function InkAwayView:mergeLegacyFolders()
     self._note_on_show = _("Drawings and notebooks from the old \u{201C}drawing projects\u{201D} and \u{201C}notebook projects\u{201D} folders are now in the library.")
 end
 
--- Start a new drawing in folder `dir` (the open document's by default).
+-- Start a new drawing in folder `dir` (the open document's by default). It
+-- starts plain, without the grid, which keeps drawings apart from notebook
+-- pages at a glance; the grid is a tap away in the settings.
 function InkAwayView:newDrawing(dir)
+    self.grid_on = false
+    self:setSetting("inkaway_grid", false)
     self:beginDocument("drawing", nil, function()
         self:exitNotebook()
         self:clearBackground()

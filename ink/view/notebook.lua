@@ -7,7 +7,9 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
+local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
+local Font = require("ui/font")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -679,23 +681,35 @@ function InkAwayView:openPdfAsNotebook(dir)
     end)
 end
 
--- A sheet of paper tiles, each a small page drawn with its ruling, in rows of
--- three. `o` holds title, current (the style shown selected), onpick(style),
+-- A sheet of paper tiles, each a small page drawn with its ruling, six to a
+-- page in rows of three, with arrows to the other pages; blank paper, which
+-- needs no picture, is a button above them. `o` holds title,
+-- current (the style shown selected, whose page opens first), onpick(style),
 -- field (the sheet's slot), same (a label for a "same as the notebook" choice
 -- above the papers, picked as "same") and footer(add, content_w, gap, close),
 -- which adds more choices under them.
+local PAPERS_PER_PAGE = 6
 function InkAwayView:openPaperSheet(o)
     local field = o.field or "_chooser_dialog"
     self:closeSheet(field)
     local content_w, gap = self:sheetWidth()
-    local styles = self:notebookStyles()
-    local rows = math.ceil(#styles / 3)
+    local styles, blank = {}, nil
+    for _, s in ipairs(self:notebookStyles()) do
+        if s[1] == "blank" then blank = s else styles[#styles + 1] = s end
+    end
+    local pages = math.ceil(#styles / PAPERS_PER_PAGE)
+    local page = 0
+    for i, s in ipairs(styles) do
+        if s[1] == o.current then page = math.floor((i - 1) / PAPERS_PER_PAGE) end
+    end
+    local rows = PAPERS_PER_PAGE / 3
     local tileW = math.floor((content_w - 2 * gap) / 3)
     -- page-shaped tiles, made shorter when the screen (or landscape) has no room
     -- for them with the title, the optional rows and the sheet's frame
     local S = function(px) return Screen:scaleBySize(px) end
     local fixed = S(34) + S(16) + (o.same and S(48) + gap or 0) + (o.footer and S(16) + S(48) or 0)
-        + (rows - 1) * gap + 2 * S(18) + S(40)
+        + S(48) + gap   -- the blank paper button
+        + (pages > 1 and gap + S(48) or 0) + (rows - 1) * gap + 2 * S(18) + S(40)
     local tileH = math.max(S(90), math.min(math.floor(tileW * 1.25),
         math.floor((Screen:getHeight() - fixed) / rows)))
     local closeSelf = function() self:closeSheet(field) end
@@ -709,10 +723,14 @@ function InkAwayView:openPaperSheet(o)
                 o.current == "same"))
             add(VerticalSpan:new{ width = gap })
         end
+        add(self:actionButton(blank[2], content_w, function() closeSelf(); o.onpick("blank") end,
+            o.current == "blank"))
+        add(VerticalSpan:new{ width = gap })
+        local first = page * PAPERS_PER_PAGE
         for r = 0, rows - 1 do
             local row = HorizontalGroup:new{ align = "center" }
             for c = 1, 3 do
-                local s = styles[r * 3 + c]
+                local s = styles[first + r * 3 + c]
                 if s then
                     if c > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
                     table.insert(row, self:paperTile(s[1], s[2], tileW, tileH, s[1] == o.current,
@@ -721,6 +739,24 @@ function InkAwayView:openPaperSheet(o)
             end
             if r > 0 then add(VerticalSpan:new{ width = gap }) end
             add(row)
+        end
+        -- the other pages of papers: arrows either side of "1 / 2", turned in place
+        if pages > 1 then
+            local function turn(d)
+                page = (page + d) % pages
+                self:rebuildSheet(field)
+            end
+            local aw = math.floor(content_w / 4)
+            local label = TextWidget:new{ text = string.format("%d / %d", page + 1, pages),
+                face = Font:getFace("cfont", 17), bold = true }
+            local mid = content_w - 2 * aw - 2 * gap
+            add(VerticalSpan:new{ width = gap })
+            add(HorizontalGroup:new{ align = "center",
+                self:actionButton("\u{2039}", aw, function() turn(-1) end),
+                HorizontalSpan:new{ width = gap },
+                CenterContainer:new{ dimen = GeomUI:new{ w = mid, h = S(48) }, label },
+                HorizontalSpan:new{ width = gap },
+                self:actionButton("\u{203A}", aw, function() turn(1) end) })
         end
         if o.footer then o.footer(add, content_w, gap, closeSelf) end
         return content
@@ -789,10 +825,14 @@ function InkAwayView:newNotebookFromTemplate(name, dir)
     self:saveDocument(true)
 end
 
--- The notebook paper styles, as { style, label } pairs for the choosers.
+-- The notebook paper styles, as { style, label } pairs for the choosers: blank
+-- first, the rulings, then the planner pages (see ink/template.lua).
 function InkAwayView:notebookStyles()
-    return { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
-        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
+    return { { "blank", _("Blank") },
+        { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
+        { "iso", _("Isometric") }, { "margin", _("Margin ruled") }, { "cornell", _("Cornell") },
+        { "checklist", _("Checklist") }, { "twocol", _("2 columns") }, { "weekly", _("Weekly") },
+        { "monthly", _("Monthly") }, { "storyboard", _("Storyboard") }, { "music", _("Music") } }
 end
 
 -- The notebook's bottom bar: the toolbar's height, icons and columns.

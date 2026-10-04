@@ -3417,6 +3417,63 @@ do
     UIManager.reset()
 end
 
+-- ---- papers: blank first, two pages of six, planners as drawing guides ------
+do
+    UIManager.reset()
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    local Template = require("ink/template")
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local styles = view:notebookStyles()
+    ok(styles[1][1] == "blank" and #styles == 13, "papers: blank comes first, then twelve more")
+    for _, s in ipairs(styles) do
+        local bad = 0
+        Template.render(s[1], 1072, 1448, 40, function(x, y, len)
+            if x < 0 or y < 0 or x + len > 1072 or y >= 1448 then bad = bad + 1 end
+        end)
+        ok(bad == 0, "papers: " .. s[1] .. " stays on the page")
+    end
+    -- the picker: Blank as a button, then pages of six tiles
+    local shown
+    local real_tile = view.paperTile
+    view.paperTile = function(self, style, ...) shown[#shown + 1] = style; return real_tile(self, style, ...) end
+    shown = {}
+    view:openNotebookPaper()
+    ok(#shown == 6 and shown[1] == "lines" and shown[4] == "iso", "papers: the first page shows the six rulings ("
+        .. table.concat(shown, ",") .. ")")
+    shown = {}
+    view.nb_style = "music"
+    view:openNotebookPaper()
+    ok(#shown == 6 and shown[1] == "checklist" and shown[6] == "music",
+        "papers: it opens on the page holding the paper last used")
+    view:closeSheet("_new_dialog")
+    view.paperTile = real_tile
+    -- the planners as a drawing's guide, at any zoom
+    -- (counted against the same paint without a grid, so only the guide's own
+    -- rects are judged, whatever state earlier tests left the mock screen in)
+    local function oob()
+        BB.out_of_bounds = 0
+        view:paintTo(Screen.bb, 0, 0)
+        return BB.out_of_bounds
+    end
+    for _, st in ipairs({ "checklist", "twocol", "weekly", "monthly", "storyboard", "music", "iso" }) do
+        for _, z in ipairs({ view.zoom_min, 2.5 }) do
+            view:setZoom(z)
+            view.grid_on = false
+            local base = oob()
+            view.grid_on, view.grid_style = true, st
+            local with = oob()
+            ok(with == base, ("papers: the %s guide paints in bounds at zoom %.1f"):format(st, z))
+        end
+    end
+    -- a new drawing starts plain
+    view:newDrawing()
+    ok(view.grid_on == false and G_reader_settings.data.inkaway_grid == false, "papers: a new drawing starts without a grid")
+    UIManager:close(view)
+    UIManager.reset()
+end
+
 -- ---- handwriting to text: lasso, Convert to text --------------------------
 do
     UIManager.reset()

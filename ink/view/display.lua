@@ -12,6 +12,7 @@ local UIManager = require("ui/uimanager")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
+local Template = require("ink/template")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -564,6 +565,18 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
 
     if not g or g <= 0 then return end
 
+    if Template.isPlanner(style) then               -- a planner page as a guide
+        local zoom = v.zoom
+        for _, r in ipairs(self:plannerRects(style, g)) do
+            if r[1] + r[3] >= cxA and r[1] <= cxB and r[2] + r[4] >= cyA and r[2] <= cyB then
+                local w = r[3] <= 2 and r[3] or math.max(1, math.floor(r[3] * zoom + 0.5))
+                local h = r[4] <= 2 and r[4] or math.max(1, math.floor(r[4] * zoom + 0.5))
+                rect(math.floor(ax(r[1])), math.floor(ay(r[2])), w, h, col)
+            end
+        end
+        return
+    end
+
     if style == "lines" then                       -- ruled horizontal lines
         local cy = math.floor(cyA / g) * g
         while cy <= cyB do
@@ -622,6 +635,38 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
             cy = cy + g
         end
     end
+end
+
+-- A planner page (see ink/template.lua) at spacing `g` as canvas rects
+-- { x, y, w, h }: its spans, with a vertical rule's one-pixel pieces joined into
+-- one rect. Kept until the style, spacing or page size changes.
+function InkAwayView:plannerRects(style, g)
+    local v = self.view
+    local key = table.concat({ style, g, v.canvas_w, v.canvas_h }, "|")
+    local c = self._planner_rects
+    if c and c.key == key then return c.rects end
+    local runs = {}
+    Template.render(style, v.canvas_w, v.canvas_h, g, function(x, y, len)
+        local k = x .. ":" .. len
+        local list = runs[k]
+        if not list then list = { x = x, len = len }; runs[k] = list end
+        list[#list + 1] = y
+    end)
+    local rects = {}
+    for _, list in pairs(runs) do
+        table.sort(list)
+        local y0, prev = list[1], list[1]
+        for i = 2, #list + 1 do
+            local y = list[i]
+            if y ~= prev + 1 then
+                rects[#rects + 1] = { list.x, y0, list.len, prev - y0 + 1 }
+                y0 = y
+            end
+            prev = y
+        end
+    end
+    self._planner_rects = { key = key, rects = rects }
+    return rects
 end
 
 -- The page edges that fall inside the drawing area (when zoomed out past cover).

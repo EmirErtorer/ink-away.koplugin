@@ -21,8 +21,10 @@ local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px)
 local function pxfmt(v) return v .. _(" px") end
 
 -- Friendly names for the notebook paper (ruling) styles.
-local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"),
-    margin = _("margin"), cornell = _("Cornell"), blank = _("blank") }
+local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"), iso = _("isometric"),
+    margin = _("margin"), cornell = _("Cornell"), blank = _("blank"), checklist = _("checklist"),
+    twocol = _("2 columns"), weekly = _("weekly"), monthly = _("monthly"), storyboard = _("storyboard"),
+    music = _("music") }
 
 local InkAwayView = {}
 
@@ -180,13 +182,19 @@ function InkAwayView:openGridSettings()
             function() self:closeSheet("_grid_dialog"); self:openSettings() end))
         add(vspan(16))
 
-        -- type: two rows of three (Off and the five styles)
+        -- type: rows of three, Off first, then the guides and the planner pages
         local cur = self.grid_on and self.grid_style or "off"
         add(self:segmentedRow({ { "off", _("Off") }, { "square", _("Square") }, { "dots", _("Dots") } },
             cur, content_w, pick))
         add(vspan(8))
         add(self:segmentedRow({ { "lines", _("Lines") }, { "iso", _("Isometric") }, { "thirds", _("Thirds") } },
             cur, content_w, pick))
+        add(vspan(8))
+        add(self:segmentedRow({ { "checklist", _("Checklist") }, { "twocol", _("2 columns") },
+            { "weekly", _("Weekly") } }, cur, content_w, pick))
+        add(vspan(8))
+        add(self:segmentedRow({ { "monthly", _("Monthly") }, { "storyboard", _("Storyboard") },
+            { "music", _("Music") } }, cur, content_w, pick))
         add(vspan(16))
 
         -- size and opacity, refreshing the grid behind the sheet as they move
@@ -264,7 +272,9 @@ function InkAwayView:openSettings()
         else
             -- one button to the grid sub-sheet, labelled with the current grid
             local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
-                lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds") }
+                lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds"), checklist = _("Checklist"),
+                twocol = _("2 columns"), weekly = _("Weekly"), monthly = _("Monthly"),
+                storyboard = _("Storyboard"), music = _("Music") }
             local cur = self.grid_on and self.grid_style or "off"
             add(act(_("Grid: ") .. (GRID_LABEL[cur] or cur), content_w, function()
                 self:openGridSettings() end))
