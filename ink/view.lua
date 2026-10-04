@@ -182,9 +182,14 @@ function InkAwayView:init()
     -- dialogs. Off keeps it for drawing and leaves the UI to fingers. Only matters
     -- with palm rejection on; without it the pen already arrives as a finger.
     self.pen_ui = self:getSetting("inkaway_pen_ui", true) and true or false
-    -- Finger swipes turn pages: with palm rejection on, a finger on a notebook
-    -- page turns it instead of drawing, and only the pen writes.
-    self.finger_turns = self:getSetting("inkaway_finger_turns", false) and true or false
+    -- Finger on the page, with palm rejection on (see fingerOnPage): "navigate"
+    -- (scroll, turn pages, hold a picture or shape for its menu, and the pen does
+    -- the writing), "draw" (a finger uses the tool while the pen is away) or
+    -- "nothing". Earlier versions' "finger swipes turn pages" was a part of
+    -- navigate, which is the default.
+    local fmode = self:getSetting("inkaway_finger_mode")
+    if fmode ~= "draw" and fmode ~= "nothing" then fmode = "navigate" end
+    self.finger_mode = fmode
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot drawing the current pen stroke
     self._palm_slots = {}         -- slot -> tracking id of each palm being ignored
@@ -295,6 +300,8 @@ function InkAwayView:init()
             IaHold       = { GestureRange:new{ ges = "hold",         range = full } },
             IaTwoPan     = { GestureRange:new{ ges = "two_finger_pan", range = full } },
             IaTwoPanRel  = { GestureRange:new{ ges = "two_finger_pan_release", range = full } },
+            IaTwoTap     = { GestureRange:new{ ges = "two_finger_tap", range = full } },
+            IaTwoSwipe   = { GestureRange:new{ ges = "two_finger_swipe", range = full } },
             IaPinch      = { GestureRange:new{ ges = "pinch",  range = full } },
             IaSpread     = { GestureRange:new{ ges = "spread", range = full } },
         }
@@ -489,6 +496,7 @@ function InkAwayView:onIaTouch(_, ges)
     -- a new contact voids any press an earlier gesture left half-finished (the
     -- keyboard takes a key's tap but not its touch)
     self._fab_press, self._clip_press = nil, nil
+    self._finger_nav = nil
     UIManager:unschedule(self._pdf_prefetch_cb)   -- never pre-render in the way of a touch
     self:showPendingKeyboard()   -- in case the lift that should have shown it was missed
     -- touches on the on-screen keyboard belong to the keyboard, never the canvas
@@ -507,7 +515,11 @@ function InkAwayView:onIaTouch(_, ges)
     if self.rotating then return self:rotateTouch(pos) end
     if self.image_rotating then return self:imageRotateTouch(pos) end
     if self.active_image then return self:imageTouch(pos) end
-    if self:fingerSwipes() then self._finger_swipe = { x = pos.x, y = pos.y }; return true end
+    local fmode = self:fingerOnPage()
+    if fmode then   -- a finger navigates (or does nothing) while the pen writes
+        self._finger_nav = { mode = fmode, x = pos.x, y = pos.y, lx = pos.x, ly = pos.y }
+        return true
+    end
     if self.tool == "lasso" then return self:lassoTouch(pos) end
     if self.tool == "text" then return self:textToolTouch(pos) end
     if self.tool == "fill" then self:doFill(pos); return true end
@@ -540,13 +552,14 @@ function InkAwayView:onIaTouch(_, ges)
     elseif self.capturing then
         self:finalizeStroke()   -- a lift was missed; don't lose the old stroke
     end
+    self._finger_dot = not self._pen_feeding   -- a finger's own stroke (see onIaTwoTap)
     self:beginStroke(pos.x, pos.y)
     return true
 end
 
 function InkAwayView:onIaPan(_, ges)
     if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
-    if self._finger_swipe then return true end   -- a page swipe draws nothing
+    if self._finger_nav and not self._pen_feeding then return self:fingerNavPan(ges.pos) end
     if self._clip_press then return true end   -- the release decides (paste or cancel)
     local pos = ges.pos
     if self._fab_press then           -- a drag off a control is a draw, not a tap
@@ -584,7 +597,7 @@ InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
-    if self._finger_swipe then self:endFingerSwipe(ges and ges.pos); return true end
+    if self._finger_nav and not self._pen_feeding then return self:fingerNavEnd(ges and ges.pos) end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -614,9 +627,8 @@ InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
-    if self._finger_swipe then
-        self:endFingerSwipe(ges and (ges.end_pos or ges.pos), ges and ges.direction)
-        return true
+    if self._finger_nav and not self._pen_feeding then
+        return self:fingerNavEnd(ges and (ges.end_pos or ges.pos), ges and ges.direction)
     end
     if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
@@ -647,7 +659,10 @@ InkAwayView.onIaMultiSwipe = InkAwayView.onIaSwipe
 
 function InkAwayView:onIaTap(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
-    self._finger_swipe = nil
+    if self._finger_nav and not self._pen_feeding then   -- a navigating finger's tap does nothing
+        self._finger_nav = nil
+        return true
+    end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -707,7 +722,19 @@ function InkAwayView:onIaHold(_, ges)
     if self.capturing or self.shape_drag or self.curve_stage
        or self.rotating or self.image_rotating then return true end
     local pos = ges and ges.pos
+    -- holding Prev or Next in a notebook's bar goes to the first or last page
+    if pos and self.notebook and self.nb_bar_h > 0 then
+        if self._nb_prev and InkGeom.inRect(pos.x, pos.y, self._nb_prev) then self:nbGoTo(1); return true end
+        if self._nb_next and InkGeom.inRect(pos.x, pos.y, self._nb_next) then
+            self:nbGoTo(self.notebook:count()); return true
+        end
+    end
     if not (pos and self:inArea(pos.x, pos.y)) then return false end
+    -- a navigating finger opens a picture's or shape's menu, as the Move tool does
+    if self._finger_nav and not self._pen_feeding then
+        if self._finger_nav.mode == "navigate" then self:holdMenuAt(pos) end
+        return true
+    end
     -- selecting only happens in Pan mode, so a hold never fights with drawing
     if self.tool == "pan" then
         if self.active_image then
@@ -727,23 +754,54 @@ function InkAwayView:onIaHold(_, ges)
 end
 
 -- Two-finger pan works with any tool: commit the stroke in progress, then pan by
--- how far the fingers' midpoint moved.
+-- how far the fingers' midpoint moved. On a notebook page with no room sideways a
+-- mostly sideways move pans nothing: it is a page swipe (see onIaTwoSwipe).
 function InkAwayView:onIaTwoPan(_, ges)
     if self:fingerRejected() then return true end   -- palm splayed under the pen
     self:flushPending()
     self:cancelShape()   -- a two-finger pan drops any half-placed shape
+    self._finger_nav = nil
     local pos = ges.pos
     if not self.pan_last then
-        self.pan_last = { x = pos.x, y = pos.y }
+        self.pan_last = { x = pos.x, y = pos.y, x0 = pos.x, y0 = pos.y }
     else
-        self:panByScreen(pos.x - self.pan_last.x, pos.y - self.pan_last.y)
+        local dx, dy = pos.x - self.pan_last.x, pos.y - self.pan_last.y
         self.pan_last.x, self.pan_last.y = pos.x, pos.y
+        local tx, ty = pos.x - (self.pan_last.x0 or pos.x), pos.y - (self.pan_last.y0 or pos.y)
+        if not (self:pageSwipes() and math.abs(tx) > math.abs(ty)) then self:panByScreen(dx, dy) end
     end
     return true
 end
 
 function InkAwayView:onIaTwoPanRel()
     self.pan_last = nil
+    return true
+end
+
+-- A two-finger tap undoes, with any tool. A dot the first finger began (with palm
+-- rejection on, a drawing finger arrives as gestures) is dropped first, so the
+-- undo takes back the last real change and not the dot; any other stroke still
+-- open is committed first, so that is what goes.
+function InkAwayView:onIaTwoTap()
+    if self:fingerRejected() then return true end   -- the writing hand, not a gesture
+    self._finger_nav = nil
+    if self.capturing and self._finger_dot and self.canvas.live
+            and #self.canvas.live.pts <= 4 then
+        self:penDropFingerOps()
+    end
+    self:flushPending()
+    self:cancelShape()
+    self:undo()
+    return true
+end
+
+-- A two-finger swipe sideways turns a notebook's page: to the left for the
+-- next, as in the reader (see pageSwipes for when).
+function InkAwayView:onIaTwoSwipe(_, ges)
+    if self:fingerRejected() then return true end
+    self.pan_last, self._finger_nav = nil, nil
+    local a, b = ges and ges.pos, ges and ges.end_pos
+    if a and b then self:swipeTurn(b.x - a.x, b.y - a.y) end
     return true
 end
 

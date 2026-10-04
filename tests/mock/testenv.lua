@@ -20,7 +20,10 @@ TestEnv.remember_last_doc = false
 
 -- Settings data for a test run: the scratch library and no old session to adopt.
 function TestEnv.settings(extra)
-    local data = { inkaway_session_migrated = true, inkaway_library_dir = TestEnv.libraryDir() }
+    -- fingers draw: the tests drive the canvas with finger gestures, on a mock
+    -- device that has a pen (where fingers would otherwise navigate)
+    local data = { inkaway_session_migrated = true, inkaway_library_dir = TestEnv.libraryDir(),
+        inkaway_finger_mode = "draw" }
     for k, v in pairs(extra or {}) do data[k] = v end
     return setmetatable(data, { __newindex = function(t, k, v)
         if k ~= "inkaway_last_doc" or TestEnv.remember_last_doc then rawset(t, k, v) end

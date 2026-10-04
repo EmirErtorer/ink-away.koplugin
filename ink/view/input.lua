@@ -35,6 +35,14 @@ local RAW_HANDOFF_CANCEL_PX = 24
 local RAW_BRIDGE_MS = 40
 local timevMs = Stylus.timevMs
 
+-- A raw finger's stroke is drawn once the finger has moved RAW_START_SLOP
+-- (scaled px, about a millimetre) or rested RAW_START_MS, or lifts. Until then
+-- nothing is on screen, so the first finger of a two-finger tap (undo) or a pinch
+-- leaves no dot to clear away. The stroke then starts where the finger landed and
+-- takes every point it passed, so none of it is lost.
+local RAW_START_SLOP = 6
+local RAW_START_MS = 90
+
 -- How far (screen px) a gesture may sit from where the stylus hook last saw the
 -- pen and still count as the pen's own, while it works the UI.
 local PEN_UI_SLOP = 3
@@ -206,27 +214,86 @@ function InkAwayView:fingerRejected(pos)
         or self:penInRange()
 end
 
--- Does a finger touch start a page swipe rather than a stroke? Only with palm
--- rejection on (so the pen arrives on its own and still writes), on a notebook
--- page, with the pen or eraser tool.
-function InkAwayView:fingerSwipes()
-    return self.finger_turns and self.palm_reject and self.notebook ~= nil and not self._pen_feeding
-        and (self.tool == "pen" or self.tool == "erase")
+------------------------------------------------------------------------------
+-- Fingers that navigate, and page swipes
+------------------------------------------------------------------------------
+
+-- What a finger touch on the page does instead of using the tool: "navigate" or
+-- "nothing", from the Finger on the page setting, or nil when it uses the tool.
+-- The setting applies with palm rejection on, where the pen arrives on its own
+-- and does the writing.
+function InkAwayView:fingerOnPage()
+    if self._pen_feeding or not self.palm_reject then return nil end
+    local m = self.finger_mode
+    if m == "navigate" or m == "nothing" then return m end
+    return nil
 end
 
--- A finger swipe ended at `pos`, or went `dir` ("west" or "east"): a mostly
--- sideways one turns the page, west to the next as in the reader.
-function InkAwayView:endFingerSwipe(pos, dir)
-    local s = self._finger_swipe
-    self._finger_swipe = nil
-    if not s then return end
-    if not dir and pos then
-        local dx, dy = pos.x - s.x, pos.y - s.y
+-- Is the page zoomed in wider than the drawing area, so it can pan sideways?
+function InkAwayView:sidewaysRoom()
+    local v = self.view
+    return v.canvas_w * v.zoom > v.area_w + 1
+end
+
+-- Do sideways swipes turn pages? On a notebook page, unless it is zoomed in so
+-- far that sideways moves pan it.
+function InkAwayView:pageSwipes()
+    return self.notebook ~= nil and not self:sidewaysRoom()
+end
+
+-- Turn the page for a swipe that moved (dx, dy) screen px, if it was sideways
+-- enough and far enough: to the left for the next page, as in the reader.
+-- Returns whether it turned.
+function InkAwayView:swipeTurn(dx, dy)
+    if not self:pageSwipes() then return false end
+    if math.abs(dx) < self.view.area_w / 8 or math.abs(dx) <= 1.5 * math.abs(dy) then return false end
+    self:nbGo(dx < 0 and 1 or -1)
+    return true
+end
+
+-- A navigating finger moved to `pos`: pan by the step, unless it is a sideways
+-- swipe on a page that cannot pan sideways (it turns the page at the lift).
+function InkAwayView:fingerNavPan(pos)
+    local n = self._finger_nav
+    if n.mode ~= "navigate" or not pos then return true end
+    local dx, dy = pos.x - n.lx, pos.y - n.ly
+    n.lx, n.ly = pos.x, pos.y
+    if self:pageSwipes() and math.abs(pos.x - n.x) > math.abs(pos.y - n.y) then return true end
+    self:panByScreen(dx, dy)
+    return true
+end
+
+-- A navigating finger lifted at `pos`, or flicked `dir`: a long enough sideways
+-- drag or a sideways flick turns the page.
+function InkAwayView:fingerNavEnd(pos, dir)
+    local n = self._finger_nav
+    self._finger_nav = nil
+    if n.mode ~= "navigate" or not self:pageSwipes() then return true end
+    if dir == "west" or dir == "east" then
+        self:nbGo(dir == "west" and 1 or -1)
+    elseif pos then
+        local dx, dy = pos.x - n.x, pos.y - n.y
         if math.abs(dx) >= self.view.area_w / 6 and math.abs(dx) > 2 * math.abs(dy) then
-            dir = dx < 0 and "west" or "east"
+            self:nbGo(dx < 0 and 1 or -1)
         end
     end
-    if dir == "west" then self:nbGo(1) elseif dir == "east" then self:nbGo(-1) end
+    return true
+end
+
+-- A hold at `pos` by a navigating finger: open the picture's or shape's menu
+-- there (duplicate, delete, flip...), as a hold does with the Move tool.
+function InkAwayView:holdMenuAt(pos)
+    local img = self:hitTestImage(pos.x, pos.y)
+    if img then
+        self:selectImage(img)
+        self:openImageMenu(self.active_image)
+        return
+    end
+    local shp = self:hitTestShape(pos.x, pos.y)
+    if shp then
+        self.selected = shp
+        self:openShapeMenu(shp)
+    end
 end
 
 -- Is the pen hovering over (or on) the screen? On a Wacom device KOReader keeps
@@ -635,7 +702,10 @@ function InkAwayView:installRawFinger()
     end
     self._raw_gd, self._raw_own = gd, rawget(gd, "feedEvent")
     self._raw_wrapper, self._raw_installed = wrapper, wrapper
-    self._raw = { kept = {} }
+    self._raw = { kept = {}, buf = {} }
+    self._raw_start_cb = self._raw_start_cb or function()
+        if self._raw and self._raw.wait then self:rawStart() end
+    end
     gd.feedEvent = wrapper
     return true
 end
@@ -644,6 +714,7 @@ function InkAwayView:uninstallRawFinger()
     if not self._raw_installed then return end
     local gd = self._raw_gd
     if self._raw and self._raw.slot ~= nil then pcall(self.rawRelease, self, false) end
+    if self._raw_start_cb then UIManager:unschedule(self._raw_start_cb) end
     if gd and rawget(gd, "feedEvent") == self._raw_installed then
         gd.feedEvent = self._raw_own       -- nil falls back to the class method
     end                                    -- else a wrapper chained on top: ours stays transparent
@@ -666,14 +737,42 @@ function InkAwayView:rawCanOwn(gd, x, y)
     return true
 end
 
+-- Draw the owned contact's stroke, held back until now (see RAW_START_SLOP): from
+-- where the finger landed through every point it has passed since.
+function InkAwayView:rawStart()
+    local r = self._raw
+    if not (r and r.wait) then return end
+    r.wait = false
+    UIManager:unschedule(self._raw_start_cb)
+    self:feedPen("down", r.x0, r.y0)
+    local buf = r.buf
+    for i = 1, #buf, 2 do self:feedPen("move", buf[i], buf[i + 1]) end
+    for i = #buf, 1, -1 do buf[i] = nil end
+end
+
+-- Forget a stroke that was never drawn.
+function InkAwayView:rawDropWaiting()
+    local r = self._raw
+    if not (r and r.wait) then return end
+    r.wait = false
+    UIManager:unschedule(self._raw_start_cb)
+    for i = #r.buf, 1, -1 do r.buf[i] = nil end
+end
+
 -- End the owned contact: a lift, or a hand-off because a second finger landed.
 -- A hand-off of a stroke that barely started (the first finger of a two-finger
--- pan or pinch) is cancelled rather than committed as a stray dot.
+-- tap, pan or pinch) is cancelled rather than committed as a stray dot; one not
+-- yet drawn just goes.
 function InkAwayView:rawRelease(handoff, tev)
     local r = self._raw
     if r.slot == nil then return end
     r.ignore_slot, r.ignore_id = r.slot, r.id
     r.slot, r.id = nil, nil
+    if handoff and r.wait then
+        self:rawDropWaiting()
+        return
+    end
+    if r.wait then self:rawStart() end   -- a lift before the stroke was drawn: a dot
     if handoff then
         local now = tev and timevMs(tev.timev)
         local young = now and r.t0 and (now - r.t0) < RAW_HANDOFF_CANCEL_MS
@@ -693,9 +792,13 @@ end
 -- The frame's changed slots, before the detector sees them. Returns a copy
 -- without the owned slot, or nil to pass the frame through untouched. The tev
 -- tables are Input's persistent per-slot records, so values are copied out.
+-- When a second finger lands, the first one's record goes to the detector in
+-- that same frame, so it sees both fingers from then on: a resting first finger
+-- sends no frames of its own, and without this a two-finger tap would reach it as
+-- a one-finger tap.
 function InkAwayView:onRawFrame(gd, tevs)
     local r = self._raw
-    local strip
+    local strip, handoff_tev
     for i = 1, #tevs do
         local tev = tevs[i]
         local slot, id = tev.slot or 0, tev.id
@@ -709,7 +812,14 @@ function InkAwayView:onRawFrame(gd, tevs)
                     if x ~= r.x or y ~= r.y then
                         r.len = r.len + math.abs(x - r.x) + math.abs(y - r.y)
                         r.x, r.y = x, y
-                        self:feedPen("move", x, y)
+                        if r.wait then
+                            local buf = r.buf
+                            buf[#buf + 1], buf[#buf + 2] = x, y
+                            local slop = Screen:scaleBySize(RAW_START_SLOP)
+                            if math.abs(x - r.x0) > slop or math.abs(y - r.y0) > slop then self:rawStart() end
+                        else
+                            self:feedPen("move", x, y)
+                        end
                     end
                 end
                 strip = strip or {}; strip[i] = true
@@ -718,6 +828,7 @@ function InkAwayView:onRawFrame(gd, tevs)
                 if not down then strip = strip or {}; strip[i] = true end
             end
         elseif r.slot ~= nil and down and not gd:getContact(slot) then
+            handoff_tev = r.tev
             self:rawRelease(true, tev)         -- second finger: multi-touch goes to gestures
         end
         if r.ignore_slot == slot and (not down or id ~= r.ignore_id) then
@@ -733,10 +844,26 @@ function InkAwayView:onRawFrame(gd, tevs)
                     self:flushPending()       -- a real lift: never bridge to the next letter
                 end
                 r.slot, r.id, r.x, r.y, r.len = slot, id, x, y, 0
-                r.t0 = t
-                self:feedPen("down", x, y)
+                r.t0, r.tev, r.x0, r.y0 = t, tev, x, y
+                r.wait = true              -- drawn once it moves or rests (see rawStart)
+                UIManager:unschedule(self._raw_start_cb)
+                UIManager:scheduleIn(RAW_START_MS / 1000, self._raw_start_cb)
                 strip = strip or {}; strip[i] = true
             end
+        end
+    end
+    if handoff_tev then
+        local present = false
+        for i = 1, #tevs do
+            if tevs[i] == handoff_tev then present = true; if strip then strip[i] = nil end end
+        end
+        if not present then
+            strip = strip or {}
+            local kept = r.kept
+            for k = #kept, 1, -1 do kept[k] = nil end
+            kept[1] = handoff_tev
+            for i = 1, #tevs do if not strip[i] then kept[#kept + 1] = tevs[i] end end
+            return kept
         end
     end
     if not strip then return nil end

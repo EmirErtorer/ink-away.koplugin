@@ -2391,7 +2391,7 @@ do
     Export.notebookPDFJob = savedJob
     view:closeSheet("_save_dialog")
 
-    -- finger swipes turn pages only when asked for, with palm rejection on
+    -- fingers on the page, with palm rejection on: navigate, draw or nothing
     view:nbGoTo(2)
     local v = view.view
     local function fingerSwipe(x0, x1, y)
@@ -2402,29 +2402,89 @@ do
     end
     local ops2 = view.canvas:opCount()
     fingerSwipe(800, 200, 600)
-    ok(nb.index == 2 and view.canvas:opCount() == ops2 + 1, "pages: without the option a finger draws")
+    ok(nb.index == 2 and view.canvas:opCount() == ops2 + 1, "fingers: without palm rejection a finger draws")
     view:undo()
-    view.palm_reject, view.finger_turns = true, true
+    view.palm_reject, view.finger_mode = true, "navigate"
     fingerSwipe(800, 200, 600)
-    ok(nb.index == 3, "pages: with it a finger swipe to the left turns to the next page")
-    ok(view.canvas:opCount() == 0 and not view.capturing, "pages: and draws nothing")
+    ok(nb.index == 3, "fingers: navigating, a swipe to the left turns to the next page")
+    ok(view.canvas:opCount() == 0 and not view.capturing, "fingers: and draws nothing")
     fingerSwipe(200, 800, 600)
-    ok(nb.index == 2, "pages: to the right goes back")
+    ok(nb.index == 2, "fingers: to the right goes back")
     fingerSwipe(400, 420, 300)
-    ok(nb.index == 2 and view.canvas:opCount() == ops2, "pages: a short or upright drag does nothing")
+    ok(nb.index == 2 and view.canvas:opCount() == ops2, "fingers: a short or upright drag does not turn")
     view:onIaTouch(nil, pos(400, v.area_y + 300))
     view:onIaSwipe(nil, { pos = { x = 300, y = v.area_y + 300 }, direction = "west" })
-    ok(nb.index == 3, "pages: a quick flick turns the page too")
+    ok(nb.index == 3, "fingers: a quick flick turns the page too")
     view:feedPen("down", 300, v.area_y + 300)
     view:feedPen("move", 400, v.area_y + 380)
     view:feedPen("up", 400, v.area_y + 380)
     UIManager.fireScheduled()
-    ok(view.canvas:opCount() == 1, "pages: the pen still writes")
-    view.tool = "pan"
+    ok(view.canvas:opCount() == 1, "fingers: the pen still writes")
+    view.tool = "text"
+    view:nbGoTo(2)
     fingerSwipe(800, 200, 600)
-    ok(nb.index == 3, "pages: with another tool the finger keeps that tool's job")
+    ok(nb.index == 3, "fingers: with any tool the finger navigates")
+    view:onIaTouch(nil, pos(500, v.area_y + 500)); view:onIaTap(nil, pos(500, v.area_y + 500))
+    ok(not view.editing_text, "fingers: and a tap on the page does nothing")
     view.tool = "pen"
-    view.palm_reject, view.finger_turns = false, false
+    view:nbGoTo(3)
+    -- zoomed in, a finger drag pans instead
+    view:setZoom(2)
+    local px, py = v.pan_x, v.pan_y
+    fingerSwipe(800, 600, 600)
+    ok(nb.index == 3 and v.pan_x ~= px, "fingers: zoomed in, a sideways drag pans the page and does not turn it")
+    view:setZoom(view.zoom_min)
+    -- a hold on a shape opens its menu, as with the Move tool
+    view.canvas:addShape("rect", false, { 100, 100, 400, 300 }, 6, 255)
+    view:composeCanvas(); view:renderView()
+    local sx, sy = require("ink/geom").toScreen(v, 100, 200)
+    view:onIaTouch(nil, pos(sx, sy))
+    view:onIaHold(nil, pos(sx, sy))
+    ok(view.selected ~= nil and view._shape_menu ~= nil, "fingers: holding a shape opens its menu")
+    view:onIaHoldRel(nil, pos(sx, sy))
+    view:deselectShape()
+    -- nothing: a finger does nothing on the page
+    view.finger_mode = "nothing"
+    local idx = nb.index
+    fingerSwipe(800, 200, 600)
+    ok(nb.index == idx and view.canvas:opCount() == 2, "fingers: set to nothing, a finger neither turns nor draws")
+    view:onIaTouch(nil, pos(sx, sy)); view:onIaHold(nil, pos(sx, sy)); view:onIaHoldRel(nil, pos(sx, sy))
+    ok(view._shape_menu == nil, "fingers: nor opens menus")
+    view.finger_mode = "draw"
+    fingerSwipe(800, 200, 600)
+    ok(nb.index == idx and view.canvas:opCount() == 3, "fingers: set to draw, it draws")
+    view.palm_reject = false
+
+    -- two fingers: a tap undoes, a sideways swipe turns the page
+    local n0 = view.canvas:opCount()
+    view:onIaTwoTap(nil, { pos = { x = 500, y = v.area_y + 500 } })
+    ok(view.canvas:opCount() == n0 - 1, "two fingers: a tap undoes")
+    view:onIaTouch(nil, pos(300, v.area_y + 300))   -- a finger dot just begun (gesture path)
+    view:onIaTwoTap(nil, { pos = { x = 500, y = v.area_y + 500 } })
+    ok(view.canvas:opCount() == n0 - 2 and not view.capturing,
+        "two fingers: the first finger's dot is dropped, and the undo takes the last real change")
+    view:redo(); view:redo()
+    idx = nb.index
+    view:onIaTwoSwipe(nil, { pos = { x = 800, y = v.area_y + 600 }, end_pos = { x = 300, y = v.area_y + 620 } })
+    ok(nb.index == idx + 1, "two fingers: a swipe to the left turns to the next page")
+    view:onIaTwoSwipe(nil, { pos = { x = 300, y = v.area_y + 600 }, end_pos = { x = 800, y = v.area_y + 600 } })
+    ok(nb.index == idx, "two fingers: to the right goes back")
+    view:onIaTwoSwipe(nil, { pos = { x = 500, y = v.area_y + 300 }, end_pos = { x = 520, y = v.area_y + 900 } })
+    ok(nb.index == idx, "two fingers: an upright swipe does not turn")
+    UIManager.refreshes = {}
+    view:onIaTwoPan(nil, { pos = { x = 600, y = v.area_y + 600 } })
+    view:onIaTwoPan(nil, { pos = { x = 400, y = v.area_y + 610 } })
+    view:onIaTwoPanRel()
+    ok(#UIManager.refreshes == 0, "two fingers: a sideways move on an unzoomed page pans nothing on its way to a swipe")
+
+    -- holding Prev or Next goes to the first or last page
+    view:paintTo(Screen.bb, 0, 0)
+    local function centre(r) return pos(r.x + r.w / 2, r.y + r.h / 2) end
+    view:onIaHold(nil, centre(view._nb_next))
+    ok(nb.index == nb:count(), "bar: holding Next goes to the last page")
+    view:onIaHold(nil, centre(view._nb_prev))
+    ok(nb.index == 1, "bar: holding Prev goes to the first page")
+    view.palm_reject, view.finger_mode = false, "draw"
     UIManager:close(view)
     UIManager.reset()
 end

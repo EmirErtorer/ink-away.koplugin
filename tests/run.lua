@@ -12,6 +12,7 @@ end
 -- The Scribe pen/palm replay needs KOReader's real input code from the checkout.
 if exists(KO_SRC .. "/frontend/device/input.lua") then
     suites[#suites + 1] = "tests/scribe/replay.lua"
+    suites[#suites + 1] = "tests/gestures.lua"
 end
 -- Pixel-level checks on KOReader's real C blitter, run with the emulator's luajit.
 -- The emulator's koreader folder is found in the checkout, or set with KO_EMU.

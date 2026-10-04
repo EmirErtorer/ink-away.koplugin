@@ -274,10 +274,12 @@ end
 
 function InkAwayView:panByScreen(dx, dy)
     local v = self.view
+    local px, py = v.pan_x, v.pan_y
     -- content follows the finger: dragging right reveals more of the left
     v.pan_x = v.pan_x - dx / v.zoom
     v.pan_y = v.pan_y - dy / v.zoom
     InkGeom.clampPan(v)
+    if v.pan_x == px and v.pan_y == py then return end   -- at the edge: nothing to redraw
     self:redraw()
 end
 

@@ -162,12 +162,18 @@ function InkAwayView:openPenSettings()
         table.insert(tail, ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
             width = content_w, parent = menu,
             callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
-        -- with palm rejection on, fingers can be kept for turning notebook pages
+        -- with palm rejection on, the pen writes and fingers can be kept for moving
+        -- around: scrolling, turning pages, holding a picture or shape for its menu
         if self.palm_reject then
             table.insert(tail, vspan(10))
-            table.insert(tail, ToggleRow:new{ label = _("Finger swipes turn pages"), is_on = self.finger_turns,
-                width = content_w, parent = menu,
-                callback = function(on) self.finger_turns = on; self:setSetting("inkaway_finger_turns", on) end })
+            table.insert(tail, self:sheetLabel(_("Finger on the page")))
+            table.insert(tail, vspan(6))
+            table.insert(tail, self:segmentedRow({ { "navigate", _("Navigate") }, { "draw", _("Draw") },
+                    { "nothing", _("Nothing") } }, self.finger_mode, content_w,
+                function(m)
+                    self.finger_mode = m; self:setSetting("inkaway_finger_mode", m)
+                    self:openPenSettings()
+                end))
         end
         -- Debug: the pen input test, hidden unless show_pen_test is set.
         if self.show_pen_test and self:penCapable() then

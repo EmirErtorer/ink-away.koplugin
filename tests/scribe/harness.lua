@@ -145,7 +145,8 @@ local function newWorld(opts)
     local map = { touch = "onIaTouch", pan = "onIaPan", hold_pan = "onIaHoldPan",
         pan_release = "onIaPanRelease", hold_release = "onIaHoldRel", swipe = "onIaSwipe",
         tap = "onIaTap", hold = "onIaHold", two_finger_pan = "onIaTwoPan",
-        two_finger_pan_release = "onIaTwoPanRel" }
+        two_finger_pan_release = "onIaTwoPanRel", two_finger_tap = "onIaTwoTap",
+        two_finger_swipe = "onIaTwoSwipe", pinch = "onIaPinch", spread = "onIaSpread" }
     -- Gestures reach the view unless another widget is on top and the view is not
     -- is_always_active (UIManager:sendEvent); those are logged as taken by "menu".
     local function viewGets()

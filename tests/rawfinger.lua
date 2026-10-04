@@ -156,13 +156,56 @@ frame({ { slot = 1, id = 15, x = 700, y = 900 } })
 ok(view._raw.slot == nil, "a second finger ends raw ownership")
 ok(not view.capturing, "the young stroke under the first finger is cancelled")
 frame({ { slot = 0, id = 14, x = 510, y = 905 }, { slot = 1, id = 15, x = 708, y = 905 } })
-ok(fedFor(0) == 1 and fedFor(1) == 2, "both fingers reach the detector after the hand-off")
+ok(fedFor(0) == 2 and fedFor(1) == 2, "both fingers reach the detector from the hand-off on")
 view:onIaTouch(nil, { pos = { x = 510, y = 905 } })
 ok(not view.capturing, "a detector touch during the hand-off does not open a stroke")
 frame({ { slot = 0, id = -1 }, { slot = 1, id = -1 } })
 UIManager.fireScheduled()
 ok(view.canvas:opCount() == ops, "a two-finger gesture leaves no ink")
 ok(view._raw.ignore_slot == nil, "the hand-off state clears when the fingers lift")
+
+-- 4b. A two-finger tap: the first finger rests (it sends no frames of its own),
+--     so its record goes to the detector with the second finger's first frame,
+--     and nothing is drawn under it at any point.
+ops = view.canvas:opCount()
+gd.fed = {}
+UIManager.refreshes = {}
+frame({ { slot = 0, id = 31, x = 400, y = 900 } })
+ok(not view.capturing and #UIManager.refreshes == 0, "a finger that just landed draws nothing yet")
+gd.fed = {}
+frame({ { slot = 1, id = 32, x = 600, y = 900 } })
+ok(#gd.fed == 2 and gd.fed[1].slot == 0 and gd.fed[2].slot == 1,
+    "the second finger's frame carries the resting first finger too, first")
+ok(not view.capturing and #UIManager.refreshes == 0, "the first finger of a two-finger tap never showed a dot")
+frame({ { slot = 0, id = -1 }, { slot = 1, id = -1 } })
+UIManager.fireScheduled()
+ok(view.canvas:opCount() == ops, "and leaves no ink")
+
+-- 4c. A finger that rests draws its dot after a moment; small moves before the
+--     stroke shows are kept, so the stroke still starts where the finger landed.
+frame({ { slot = 0, id = 33, x = 300, y = 1000 } })
+ok(not view.capturing, "a resting finger waits")
+UIManager.fireScheduled()   -- the short wait runs out
+ok(view.capturing, "then its dot is drawn")
+frame({ { slot = 0, id = -1 } })
+UIManager.fireScheduled()
+ops = view.canvas:opCount()
+frame({ { slot = 0, id = 34, x = 300, y = 1100 } })
+frame({ { slot = 0, id = 34, x = 302, y = 1101 } })
+frame({ { slot = 0, id = 34, x = 304, y = 1102 } })
+ok(not view.capturing, "moves within the slop are held back")
+frame({ { slot = 0, id = 34, x = 340, y = 1110 } })
+ok(view.capturing and #view.canvas.live.pts >= 8,
+    ("past it, the stroke starts with every point so far (%d coords)"):format(#view.canvas.live.pts))
+ok(view.canvas.live.pts[1] == 300 or math.abs(view.canvas.live.pts[1] - 300) < 3, "from where the finger landed")
+frame({ { slot = 0, id = -1 } })
+UIManager.fireScheduled()
+ok(view.canvas:opCount() == ops + 1, "and commits as one stroke")
+ops = view.canvas:opCount()
+frame({ { slot = 0, id = 35, x = 500, y = 1150 } })
+frame({ { slot = 0, id = -1 } })
+UIManager.fireScheduled()
+ok(view.canvas:opCount() == ops + 1, "a quick tap still leaves its dot")
 
 -- 5. A dialog on top: not owned.
 local dlg = { name = "dialog" }
