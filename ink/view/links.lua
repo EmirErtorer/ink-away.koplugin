@@ -49,21 +49,27 @@ function InkAwayView:linkAtScreen(sx, sy)
     return Links.at(self.canvas.ops, cx, cy, S(6) / self.view.zoom)
 end
 
--- A dotted line under each link's area, over the page.
-function InkAwayView:paintLinks(bb, x, y)
+-- A dotted line under each link's area, over the page; with `br` (a repaint of
+-- just that part of the area, area-relative) only the links that reach it.
+function InkAwayView:paintLinks(bb, x, y, br)
     local links = self:pageLinks()
     if #links == 0 then return end
     local v = self.view
     local ax0, ay0 = x + v.area_x, y + v.area_y
     local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
-    local dot, step, t = S(4), S(8), math.max(1, S(2))
+    if br then   -- only the repainted part
+        ax0, ay0 = math.max(ax0, x + v.area_x + br.x0), math.max(ay0, y + v.area_y + br.y0)
+        ax1, ay1 = math.min(ax1, x + v.area_x + br.x1), math.min(ay1, y + v.area_y + br.y1)
+        if ax1 <= ax0 or ay1 <= ay0 then return end
+    end
+    local dot, step, t = S(6), S(10), math.max(1, S(2))
     local lifted = self._lifted
     for _, op in ipairs(links) do
         if not (lifted and lifted[op]) then
             local sx0, sy0 = InkGeom.toScreen(v, op.x, op.y + op.h)
             local sx1 = InkGeom.toScreen(v, op.x + op.w, op.y)
             local ly = math.floor(sy0 + y) - t
-            if ly >= ay0 and ly + t <= ay1 then
+            if ly >= ay0 and ly + t <= ay1 and sx1 + x > ax0 and sx0 + x < ax1 then
                 for px = math.floor(math.max(ax0, sx0 + x)), math.floor(math.min(ax1, sx1 + x)) - dot, step do
                     bb:paintRect(px, ly, dot, t, MARK)
                 end

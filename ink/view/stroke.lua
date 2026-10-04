@@ -252,22 +252,6 @@ function InkAwayView:beginStroke(sx, sy)
         self._lw_cacc.x0, self._lw_cacc.y0 = math.huge, math.huge
         self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
     end
-    -- Shape assist may swap this stroke for a clean shape on lift. Snapshot the
-    -- master now so that swap restores just the stroke's footprint instead of
-    -- replaying every op (see beautifyRecompose); only when assist could run.
-    self._pre_stroke_valid = false
-    if (self.shape_assist or self.hold_straighten) and not is_erase and self.canvas_bb then
-        local W, H = self.view.canvas_w, self.view.canvas_h
-        if self._pre_stroke_bb and (self._pre_stroke_bb:getWidth() ~= W
-                or self._pre_stroke_bb:getHeight() ~= H) then
-            self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
-        end
-        if not self._pre_stroke_bb then
-            self._pre_stroke_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
-        end
-        self._pre_stroke_bb:blitFrom(self.canvas_bb, 0, 0, 0, 0, W, H)
-        self._pre_stroke_valid = true
-    end
     self:setupLiveWriters()
     self:addScreenPoint(sx, sy, true)
 end
@@ -317,20 +301,14 @@ function InkAwayView:beautifyStroke(raw, committed)
     return true
 end
 
--- Update the master after shape assist swapped a stroke, without replaying every
--- op: restore the raw stroke's footprint (and its mirrors) from the snapshot
--- beginStroke took, then stamp the clean op on top. Pixel-identical to
--- composeCanvas at the cost of the stroke's area. Returns false when the
--- snapshot cannot be used, and the caller recomposes instead.
+-- Update the master after shape assist (or a hold) swapped a stroke for a clean
+-- op: compose again just the footprint of the raw ink and the clean op, and of
+-- each symmetry mirror of it. Pixel-identical to composeCanvas at the cost of
+-- that area, and nothing is copied when a stroke starts. Returns false without
+-- a master.
 function InkAwayView:beautifyRecompose(raw, committed)
-    if not (self._pre_stroke_valid and self._pre_stroke_bb and self.canvas_bb) then
-        return false
-    end
+    if not self.canvas_bb then return false end
     local W, H = self.view.canvas_w, self.view.canvas_h
-    if self._pre_stroke_bb:getWidth() ~= W or self._pre_stroke_bb:getHeight() ~= H then
-        return false
-    end
-    -- footprint (canvas px) of the raw ink and the clean op together
     local hw = (committed.width or self.pen_width or 1) / 2 + 2
     local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
     local function grow(pts)
@@ -352,18 +330,12 @@ function InkAwayView:beautifyRecompose(raw, committed)
         x1 = math.min(W, math.ceil(x1 + hw)),
         y1 = math.min(H, math.ceil(y1 + hw)),
     }
-    -- under symmetry the raw ink was mirrored too, so restore every mirror
+    -- under symmetry the raw ink was mirrored too, so redo every mirror
     local rects, nr = Symmetry.mirrorRects(base, committed.sym, W, H)
     for i = 1, nr do
         local r = rects[i]
-        local w, h = r.x1 - r.x0, r.y1 - r.y0
-        if w > 0 and h > 0 then
-            self.canvas_bb:blitFrom(self._pre_stroke_bb, r.x0, r.y0, r.x0, r.y0, w, h)
-            self:markCanvasDirty(r.x0, r.y0, r.x1, r.y1)
-        end
+        if r.x1 > r.x0 and r.y1 > r.y0 then self:composeRegion(r.x0, r.y0, r.x1, r.y1) end
     end
-    self:stampOpIntoCanvas(committed)   -- the clean op (all mirrors) on top
-    self._pre_stroke_valid = false      -- the snapshot is used up
     return true
 end
 
@@ -509,10 +481,8 @@ function InkAwayView:healMemory()
 end
 
 -- Give the previous drawing's or notebook's memory back after starting a new one
--- (not on a page turn): drop the stroke snapshot and collect now.
+-- (not on a page turn): collect now.
 function InkAwayView:resetTransientMemory()
-    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
-    self._pre_stroke_valid = false
     self._commits_since_gc = 0
     collectgarbage("collect")
 end

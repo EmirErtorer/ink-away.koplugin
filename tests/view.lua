@@ -1277,11 +1277,11 @@ do
 end
 
 -- ---- shape assist rebuilds the master incrementally (snapshot + restore) ------
--- beginStroke snapshots the pre-stroke master only for a pen stroke with shape
--- assist on; beautifyRecompose then restores just the stroke footprint (and each
--- symmetry mirror of it) from that snapshot instead of replaying every op. The
--- pixel result is verified on the emulator; here we check the wiring and that the
--- cost is O(stroke), not O(number of ops).
+-- Shape assist and hold to straighten swap a stroke for a clean op; the master is
+-- then composed again over just the footprint of the two (and each symmetry
+-- mirror of it), so nothing is copied when a stroke starts. The pixel result is
+-- checked on the real blitter (tests/realbb/selection.lua); here the wiring, and
+-- that the work is one region per mirror.
 do
     Screen:setSize(1072, 1448)
     UIManager.reset()
@@ -1291,82 +1291,42 @@ do
     local midx = v.area_x + math.floor(v.area_w / 2)
     local midy = v.area_y + math.floor(v.area_h / 2)
 
-    -- snapshot lifecycle in beginStroke
-    view.shape_assist, view.hold_straighten = false, false
+    -- a stroke start never copies the master, whatever is on
+    view.shape_assist, view.hold_straighten = true, true
     view.tool = "pen"
     view:beginStroke(midx, midy)
-    ok(not view._pre_stroke_valid, "beautify: no snapshot when shape assist and straightening are off")
+    ok(view._pre_stroke_bb == nil, "beautify: a stroke start copies nothing")
     view.capturing = false
 
-    view.shape_assist = true
-    view.tool = "pen"
-    view:beginStroke(midx, midy)
-    ok(view._pre_stroke_valid and view._pre_stroke_bb ~= nil,
-        "beautify: a pen stroke snapshots the master when shape assist is on")
-    ok(view._pre_stroke_bb:getWidth() == v.canvas_w
-        and view._pre_stroke_bb:getHeight() == v.canvas_h,
-        "beautify: the snapshot is canvas sized")
-    view.capturing = false
-
-    view.shape_assist = true
-    view.tool = "erase"
-    view:beginStroke(midx, midy)
-    ok(not view._pre_stroke_valid, "beautify: the eraser never snapshots (assist is pen only)")
-    view.capturing = false
-    view.tool = "pen"
-
-    -- beautifyRecompose: fall back to a full compose when there is no snapshot
-    view._pre_stroke_valid = false
-    ok(view:beautifyRecompose({ 10, 10, 40, 40 },
-        { kind = "ink", pts = { 10, 10, 40, 40 }, width = 6 }) == false,
-        "beautify: recompose falls back without a snapshot")
-
-    -- fast path: spy on the restore blits into canvas_bb and the re-stamp
-    local blits, stamps = 0, 0
-    local realBlit = view.canvas_bb.blitFrom
-    view.canvas_bb.blitFrom = function(self2, ...) blits = blits + 1; return realBlit(self2, ...) end
-    view.stampOpIntoCanvas = function() stamps = stamps + 1 end
-    if not view._pre_stroke_bb then view._pre_stroke_bb = BB.new(v.canvas_w, v.canvas_h, 1) end
-
-    -- valid snapshot, no symmetry -> exactly one footprint restore
-    view._pre_stroke_valid = true
-    BB.out_of_bounds = 0
-    blits, stamps = 0, 0
-    local okc = view:beautifyRecompose({ 100, 100, 300, 260 },
-        { kind = "ink", pts = { 100, 100, 300, 260 }, width = 8 })
-    ok(okc == true, "beautify: recompose runs the fast path with a valid snapshot")
-    ok(blits == 1, "beautify: with no symmetry it restores exactly one footprint rect")
-    ok(stamps == 1, "beautify: the clean op is stamped back once")
-    ok(not view._pre_stroke_valid, "beautify: the snapshot is consumed after use")
-    ok(BB.out_of_bounds == 0, "beautify: the restore rect stays inside the canvas")
-
-    -- quad symmetry -> base + three mirror rects, all in bounds
-    view._pre_stroke_valid = true
-    BB.out_of_bounds = 0
-    blits = 0
+    local regions = {}
+    view.composeRegion = function(_, x0, y0, x1, y1) regions[#regions + 1] = { x0, y0, x1, y1 } end
+    local function inBounds()
+        for _, r in ipairs(regions) do
+            if r[1] < 0 or r[2] < 0 or r[3] > v.canvas_w or r[4] > v.canvas_h or r[3] <= r[1] or r[4] <= r[2] then
+                return false
+            end
+        end
+        return true
+    end
+    local okc = view:beautifyRecompose({ 100, 100, 300, 260 }, { kind = "ink", pts = { 110, 120, 290, 250 }, width = 8 })
+    ok(okc == true and #regions == 1, "beautify: with no symmetry it composes one region")
+    ok(regions[1][1] <= 96 and regions[1][2] <= 96 and regions[1][3] >= 304 and regions[1][4] >= 264,
+        "beautify: covering the raw ink and the clean op, with their width")
+    regions = {}
     okc = view:beautifyRecompose({ 100, 100, 300, 260 },
         { kind = "ink", pts = { 100, 100, 300, 260 }, width = 8, sym = "quad" })
-    ok(okc == true and blits == 4, "beautify: quad symmetry restores four mirror rects")
-    ok(BB.out_of_bounds == 0, "beautify: every mirror rect stays inside the canvas")
-
-    -- cost is independent of how many ops the canvas holds (O(stroke), not O(n))
+    ok(okc == true and #regions == 4 and inBounds(), "beautify: quad symmetry composes four mirror regions, in bounds")
+    -- the work is the footprint's, however many ops the page holds
     for i = 1, 500 do
         view.canvas.ops[#view.canvas.ops + 1] = { kind = "ink", pts = { i, i, i + 1, i + 1 }, width = 2 }
     end
-    view._pre_stroke_valid = true
-    blits = 0
-    okc = view:beautifyRecompose({ 100, 100, 300, 260 },
-        { kind = "ink", pts = { 100, 100, 300, 260 }, width = 8 })
-    ok(okc == true and blits == 1, "beautify: restore cost does not grow with the op count")
-
-    -- a stale-sized snapshot (e.g. after a rotation) falls back to a full compose
-    view._pre_stroke_valid = true
-    view._pre_stroke_bb = BB.new(10, 10, 1)
-    ok(view:beautifyRecompose({ 1, 1, 2, 2 },
-        { kind = "ink", pts = { 1, 1, 2, 2 }, width = 2 }) == false,
-        "beautify: a stale-sized snapshot falls back to full compose")
-
-    view.canvas_bb.blitFrom = nil   -- drop the spy; fall back to the metatable method
+    regions = {}
+    okc = view:beautifyRecompose({ 100, 100, 300, 260 }, { kind = "ink", pts = { 100, 100, 300, 260 }, width = 8 })
+    ok(okc == true and #regions == 1, "beautify: still one region with 500 ops on the page")
+    regions = {}
+    okc = view:beautifyRecompose({ -50, -50, 5, 5 }, { kind = "ink", pts = { -40, -40, 2, 2 }, width = 8 })
+    ok(okc == true and inBounds(), "beautify: a footprint off the page's edge is clipped to it")
+    view.composeRegion = nil
 end
 
 -- ---- bookshelf ornament save: detection degrades safely off-device -----------

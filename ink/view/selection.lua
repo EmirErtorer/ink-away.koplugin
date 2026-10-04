@@ -803,11 +803,23 @@ function InkAwayView:paintSelection(bb, x, y)
             if sx1 > sx0 and sy1 > sy0 then bb:blitFrom(card, sx0, sy0, sx0 - ox, sy0 - oy, sx1 - sx0, sy1 - sy0) end
         end
     end
-    -- the frame
+    -- the frame: four bars, or four lines while it turns
     local t = S(2)
-    for i = 1, 8, 2 do
-        local j = (i + 2 > 8) and 1 or i + 2
-        line(bb, c[i], c[i + 1], c[j], c[j + 1], t, ax0, ay0, ax1, ay1)
+    if d and d.began and d.kind == "turn" then
+        for i = 1, 8, 2 do
+            local j = (i + 2 > 8) and 1 or i + 2
+            line(bb, c[i], c[i + 1], c[j], c[j + 1], t, ax0, ay0, ax1, ay1)
+        end
+    else
+        local fx0, fy0 = math.floor(math.min(c[1], c[5])), math.floor(math.min(c[2], c[6]))
+        local fx1, fy1 = math.floor(math.max(c[1], c[5])), math.floor(math.max(c[2], c[6]))
+        local function bar(bx, by, bw, bh)
+            local cx0, cy0 = math.max(bx, ax0), math.max(by, ay0)
+            local cx1, cy1 = math.min(bx + bw, ax1), math.min(by + bh, ay1)
+            if cx1 > cx0 and cy1 > cy0 then bb:paintRect(cx0, cy0, cx1 - cx0, cy1 - cy0, BLACK) end
+        end
+        bar(fx0, fy0, fx1 - fx0 + t, t); bar(fx0, fy1, fx1 - fx0 + t, t)
+        bar(fx0, fy0, t, fy1 - fy0 + t); bar(fx1, fy0, t, fy1 - fy0 + t)
     end
     if d and d.began and d.kind == "turn" then
         -- how far it has turned, by the knob

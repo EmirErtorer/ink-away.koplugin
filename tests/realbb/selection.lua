@@ -105,6 +105,40 @@ for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
         ok(bytes(view.canvas_bb) ~= before, tag .. ": deleting changed the page")
         view:undo()   -- (a full redraw)
         ok(bytes(view.canvas_bb) == before, tag .. ": undo returns the page to how it was")
+        view:dropSelection()
+
+        -- shape assist and a hold swap a stroke for a clean shape over just its
+        -- footprint: the same pixels as a full redraw, mirrored strokes too
+        view:setTool("pen")
+        for _, sym in ipairs({ "off", "vert" }) do
+            view.symmetry = sym
+            view.shape_assist, view.hold_straighten = true, false
+            local box = { 300, 300, 600, 302, 602, 600, 301, 598, 302, 304 }
+            local pts = {}
+            for i = 1, #box - 3, 2 do
+                for t = 0, 9 do
+                    pts[#pts + 1] = box[i] + (box[i + 2] - box[i]) * t / 10
+                    pts[#pts + 1] = box[i + 1] + (box[i + 3] - box[i + 1]) * t / 10
+                end
+            end
+            view:onIaTouch(nil, at(pts[1], pts[2]))
+            for i = 3, #pts - 1, 2 do view:onIaPan(nil, at(pts[i], pts[i + 1])) end
+            view:onIaPanRelease(nil, at(pts[#pts - 1], pts[#pts]))
+            view:flushPending()
+            local last = view.canvas.ops[#view.canvas.ops]
+            ok(last.kind == "shape" and last.shape == "rect", tag .. ": shape assist made a rectangle (" .. sym .. ")")
+            same("shape assist, symmetry " .. sym)
+            -- a line held still at its end
+            view.shape_assist, view.hold_straighten = false, true
+            view:onIaTouch(nil, at(150, 900))
+            for i = 1, 30 do view:onIaPan(nil, at(150 + i * 15, 900 + (i % 2) * 3)) end
+            view:straightenNow()
+            last = view.canvas.ops[#view.canvas.ops]
+            ok(last.kind == "shape" and last.shape == "line", tag .. ": a hold made a line (" .. sym .. ")")
+            same("straightened, symmetry " .. sym)
+            view:onIaPanRelease(nil, at(600, 900))
+        end
+        view.symmetry = "off"
         view:onCloseWidget()
     end
 end

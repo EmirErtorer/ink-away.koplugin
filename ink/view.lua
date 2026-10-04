@@ -359,8 +359,6 @@ function InkAwayView:free()
     if ok_cp and ColorPicker.freeCache then ColorPicker.freeCache() end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
-    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
-    self._pre_stroke_valid = false
     if self._zoom_pill and self._zoom_pill.bb then self._zoom_pill.bb:free(); self._zoom_pill = nil end
     if self._nav_img then
         for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
@@ -956,7 +954,7 @@ function InkAwayView:paintTo(bb, x, y)
     if self.shape_preview then self:paintShapePreview(bb, x, y) end
     if self.selecting_crop and self._crop_screen then self:paintCropOverlay(bb, x, y) end
     if self.lassoing then self:paintLassoLoop(bb, x, y) end
-    self:paintLinks(bb, x, y)
+    self:paintLinks(bb, x, y, br)
     if self.selection then self:paintSelection(bb, x, y) end
 
     -- the text box being edited: glyphs, frame, caret and selection
