@@ -1,0 +1,344 @@
+
+## big
+
+[io_grey-0_1072x1448]  rounds old=1 new=1
+metric                                              old        new   change        95% CI     p90 old    p90 new  verdict
+open.load_modules                               12.4 ms    14.0 ms                            12.4 ms    14.0 ms  
+open.ink_modules_loaded                              52         61                                 52         61  
+open.init                                       2.56 ms    2.52 ms                            2.56 ms    2.52 ms  
+open.first_paint                                1.44 ms    1.53 ms                            1.44 ms    1.53 ms  
+mem.open                                        1.58 MB    1.68 MB                            1.58 MB    1.68 MB  
+version.is_branch                                     1          1                                  1          1  
+io.pages                                            120        120                                120        120  
+io.ops_per_page                                      30         30                                 30         30  
+mem.bignb_built                                 4.65 MB    4.58 MB                            4.65 MB    4.58 MB  
+io.save_first                                   11.4 ms    11.0 ms                            11.4 ms    11.0 ms  
+io.file_kb                                       973 KB     973 KB                             973 KB     973 KB  
+io.save_after_edit                               727 us     733 us                             760 us     778 us  
+io.saved_kb                                      975 KB     975 KB                             975 KB     975 KB  
+io.serialize_all                                11.5 ms    11.4 ms                            11.5 ms    11.4 ms  
+io.serialized_kb                                 975 KB     975 KB                             975 KB     975 KB  
+io.serialize_one_changed                         526 us     823 us                             526 us     823 us  
+io.turn                                         2.16 ms    2.12 ms                            2.35 ms    2.18 ms  
+refresh.io.turn.area                               0.97       0.97                               0.97       0.97  
+refresh.io.turn.flashes                            0.00       0.00                               0.00       0.00  
+io.parse                                        16.9 ms    17.1 ms                            19.5 ms    19.4 ms  
+io.open_notebook                                21.3 ms    21.4 ms                            21.5 ms    21.5 ms  
+mem.bignb_open                                  7.54 MB    7.30 MB                            7.54 MB    7.30 MB  
+sheet.io.pages_view.open_first                  21.2 ms    21.2 ms                            21.2 ms    21.2 ms  
+refresh.sheet.io.pages_view.area                   1.00       1.00                               1.00       1.00  
+refresh.sheet.io.pages_view.flashes                1.00       1.00                               1.00       1.00  
+sheet.io.pages_view.close                         89 us     172 us                             178 us     201 us  
+refresh.sheet.io.pages_view.close.area             0.00       0.00                               0.00       0.00  
+refresh.sheet.io.pages_view.close.flashes          0.00       0.00                               0.00       0.00  
+sheet.io.pages_view.open                         494 us     560 us                             590 us     732 us  
+mem.overview_open                               7.53 MB    7.28 MB                            7.53 MB    7.28 MB  
+io.pdf_export_total                            700.6 ms   715.1 ms                           700.6 ms   715.1 ms  
+io.pdf_export_per_page                          5.84 ms    5.96 ms                            5.84 ms    5.96 ms  
+io.pdf_kb                                       24.7 MB    24.7 MB                            24.7 MB    24.7 MB  
+io.pdf_steps                                        123        123                                123        123  
+io.png_export_as_main                           22.6 ms    22.7 ms                            22.6 ms    22.7 ms  
+io.png_as_main_kb                                  8 KB       8 KB                               8 KB       8 KB  
+io.png_export                                   27.5 ms    26.8 ms                            27.5 ms    26.8 ms  
+io.png_kb                                          9 KB       9 KB                               9 KB       9 KB  
+io.reopen_with_notebook                         24.6 ms    25.4 ms                            24.6 ms    25.4 ms  
+io.reopen_pages                                     120        120                                120        120  
+lib.open_cold                                   70.1 ms    70.8 ms                            70.1 ms    70.8 ms  
+refresh.lib.open.area                              1.00       1.00                               1.00       1.00  
+refresh.lib.open.flashes                           1.00       1.00                               1.00       1.00  
+mem.library_open                               21.64 MB   21.38 MB                           21.64 MB   21.38 MB  
+lib.first_page_thumbs                                 8          8                                  8          8  
+lib.next_page_cold                              59.8 ms    61.9 ms                            59.8 ms    61.9 ms  
+lib.next_page_thumbs                                  9          9                                  9          9  
+lib.thumb_files                                      17         17                                 17         17  
+lib.open_warm                                   3.25 ms    3.35 ms                            3.31 ms    3.63 ms  
+lib.into_folder_cold                            40.1 ms    41.5 ms                            40.1 ms    41.5 ms  
+ov.open_with_tabs                                 21349      21743                              21349      21743  
+ov.tab_switch_cold                              30.7 ms    32.5 ms                            30.7 ms    32.5 ms  
+ov.tab_back_open_nb                              634 us    1.05 ms                             634 us    1.05 ms  
+ov.tab_switch_warm                              2.23 ms    2.25 ms                            2.23 ms    2.25 ms  
+ov.tabs                                              18         18                                 18         18  
+ov.into_folder                                   385 us     431 us                             385 us     431 us  
+ov.into_subfolder_cold                          30.9 ms    31.5 ms                            30.9 ms    31.5 ms  
+ov.up_folder                                     319 us     219 us                             319 us     219 us  
+ov.into_subfolder_warm                          2.13 ms    2.11 ms                            2.13 ms    2.11 ms  
+ov.peek_24_files                                    427        371                                427        371  
+mem.overview_tabs_open                         21.80 MB   21.57 MB                           21.80 MB   21.57 MB  
+folder.collect                                  6.20 ms    6.48 ms                            6.20 ms    6.48 ms  
+folder.pages                                         38         38                                 38         38  
+folder.pdf_total                               261.5 ms   270.0 ms                           261.5 ms   270.0 ms  
+folder.pdf_per_page                             6.88 ms    7.10 ms                            6.88 ms    7.10 ms  
+folder.pdf_kb                                    7.8 MB     7.8 MB                             7.8 MB     7.8 MB  
+tpl.save                                         511 us     606 us                             511 us     606 us  
+tpl.add_page                                    2.28 ms    2.46 ms                            2.28 ms    2.46 ms  
+close                                           1.44 ms     714 us                            1.44 ms     714 us  
+jit.flushes                                           0          0                                  0          0  
+jit.traces                                          827        675                                827        675  
+
+[ui_grey-0_1072x1448]  rounds old=1 new=1
+metric                                              old        new   change        95% CI     p90 old    p90 new  verdict
+open.load_modules                               12.4 ms    14.0 ms                            12.4 ms    14.0 ms  
+open.ink_modules_loaded                              52         61                                 52         61  
+open.init                                       2.61 ms    2.70 ms                            2.61 ms    2.70 ms  
+open.first_paint                                 914 us    1.04 ms                             914 us    1.04 ms  
+mem.open                                        1.58 MB    1.68 MB                            1.58 MB    1.68 MB  
+version.is_branch                                     1          1                                  1          1  
+pen.solid.first.down                              97 us     111 us                              97 us     111 us  
+pen.solid.first.move                             5.5 us     8.8 us                              81 us      85 us  
+pen.solid.first.lift                             4.2 us     4.8 us                             4.2 us     4.8 us  
+pen.solid.first.commit                           647 us     277 us                             647 us     277 us  
+pen.solid.down                                   105 us     200 us                             363 us     358 us  
+pen.solid.move                                   2.8 us     2.8 us                             3.8 us     3.4 us  
+pen.solid.lift                                   4.4 us     4.2 us                             4.9 us      80 us  
+pen.solid.commit                                 172 us     192 us                             296 us     362 us  
+pen.pencil.first.down                            315 us     334 us                             315 us     334 us  
+pen.pencil.first.move                             39 us      39 us                             170 us     201 us  
+pen.pencil.first.lift                             39 us      21 us                              39 us      21 us  
+pen.pencil.first.commit                          197 us     318 us                             197 us     318 us  
+pen.pencil.down                                   20 us     147 us                              29 us     155 us  
+pen.pencil.move                                   32 us      33 us                              34 us      34 us  
+pen.pencil.lift                                   19 us      18 us                              20 us      22 us  
+pen.pencil.commit                                173 us     310 us                             211 us     401 us  
+pen.colour.first.down                            103 us     208 us                             103 us     208 us  
+pen.colour.first.move                            3.0 us     3.0 us                             3.5 us     3.5 us  
+pen.colour.first.lift                            4.7 us     4.2 us                             4.7 us     4.2 us  
+pen.colour.first.commit                          219 us     230 us                             219 us     230 us  
+pen.colour.down                                   25 us      22 us                             112 us     141 us  
+pen.colour.move                                  3.1 us     3.0 us                             4.0 us     4.0 us  
+pen.colour.lift                                  4.6 us     3.8 us                             6.7 us     115 us  
+pen.colour.commit                                199 us     176 us                             275 us     278 us  
+pen.translucent.first.down                        13 us     207 us                              13 us     207 us  
+pen.translucent.first.move                       3.1 us     2.8 us                             3.7 us     3.2 us  
+pen.translucent.first.lift                       4.9 us     3.0 us                             4.9 us     3.0 us  
+pen.translucent.first.commit                      74 us      47 us                              74 us      47 us  
+pen.translucent.down                              25 us     176 us                              42 us     181 us  
+pen.translucent.move                             3.0 us     2.8 us                             5.7 us     3.2 us  
+pen.translucent.lift                             4.0 us     2.8 us                             6.1 us     2.9 us  
+pen.translucent.commit                            68 us      57 us                              92 us      64 us  
+pen.quad.first.down                             1.23 ms    1.16 ms                            1.23 ms    1.16 ms  
+pen.quad.first.move                               29 us      28 us                             156 us     176 us  
+pen.quad.first.lift                               32 us     119 us                              32 us     119 us  
+pen.quad.first.commit                             47 us     209 us                              47 us     209 us  
+pen.quad.down                                    442 us     499 us                             636 us     593 us  
+pen.quad.move                                     14 us      14 us                              31 us      29 us  
+pen.quad.lift                                     31 us      20 us                              36 us      28 us  
+pen.quad.commit                                  164 us     118 us                             192 us     119 us  
+mem.drawn                                       2.48 MB    2.65 MB                            2.48 MB    2.65 MB  
+refresh.stroke.area                                0.04       0.04                               0.04       0.04  
+refresh.stroke.flashes                             0.00       0.00                               0.00       0.00  
+refresh.stroke.requests                          122.00     122.00                             122.00     122.00  
+pen.assist.down                                  171 us     133 us                             193 us     271 us  
+pen.assist.move                                  4.0 us     3.5 us                             6.8 us     3.8 us  
+pen.assist.lift                                  4.1 us     3.2 us                             4.6 us     3.8 us  
+pen.assist.commit                                464 us     482 us                             479 us     597 us  
+erase.soft.first.down                             98 us     107 us                              98 us     107 us  
+erase.soft.first.move                            7.0 us     6.3 us                              12 us     9.4 us  
+erase.soft.first.lift                            7.6 us     7.4 us                             7.6 us     7.4 us  
+erase.soft.first.commit                          220 us      48 us                             220 us      48 us  
+erase.soft.down                                   75 us      16 us                             234 us     165 us  
+erase.soft.move                                  6.9 us     6.2 us                             7.4 us     6.5 us  
+erase.soft.lift                                  7.5 us     6.7 us                              52 us     7.2 us  
+erase.soft.commit                                105 us      44 us                             231 us      71 us  
+raw.down                                         142 us      39 us                             155 us      60 us  
+raw.move                                         3.6 us     3.1 us                              10 us     3.6 us  
+raw.lift                                          14 us     4.9 us                              40 us     5.7 us  
+raw.commit                                        85 us      52 us                             122 us      63 us  
+shape.down                                        68 us     138 us                             212 us     211 us  
+shape.move                                        74 us      69 us                             181 us     195 us  
+shape.commit                                     238 us     261 us                             292 us     333 us  
+fill.tap                                        13.9 ms    13.8 ms                            13.9 ms    13.8 ms  
+refresh.fill.tap.area                              0.97       0.97                               0.97       0.97  
+refresh.fill.tap.flashes                           0.00       0.00                               0.00       0.00  
+lasso.down                                        75 us      36 us                              75 us      36 us  
+lasso.move                                        44 us      40 us                             122 us     118 us  
+lasso.close                                     1.49 ms    2.03 ms                            1.49 ms    2.03 ms  
+lasso.grab                                       220 us     146 us                             220 us     146 us  
+lasso.drag                                        97 us      54 us                             290 us     150 us  
+lasso.drop                                      13.7 ms    13.7 ms                            13.7 ms    13.7 ms  
+clip.copy                                        272 us     340 us                             272 us     340 us  
+image.insert                                    20.4 ms    17.6 ms                            20.4 ms    17.6 ms  
+image.grab                                        62 us      98 us                              62 us      98 us  
+image.drag                                       386 us      40 us                             500 us      81 us  
+image.drop                                      14.3 ms    14.0 ms                            14.3 ms    14.0 ms  
+image.rotate90                                  14.8 ms    14.4 ms                            14.8 ms    14.4 ms  
+image.finish                                    13.9 ms      37 us                            13.9 ms      37 us  
+zoom.in                                         2.44 ms    2.54 ms                            2.44 ms    2.54 ms  
+refresh.zoom.in.area                               0.97       0.97                               0.97       0.97  
+refresh.zoom.in.flashes                            0.00       0.00                               0.00       0.00  
+pan.step                                        2.25 ms    2.31 ms                            2.38 ms    2.36 ms  
+pen.zoomed.down                                  167 us      63 us                             167 us      63 us  
+pen.zoomed.move                                   19 us     4.2 us                              81 us      19 us  
+pen.zoomed.lift                                   33 us     6.1 us                              33 us     6.1 us  
+pen.zoomed.commit                                 67 us      55 us                              67 us      55 us  
+zoom.out                                          80 us     100 us                              80 us     100 us  
+zoom.reset                                        37 us      46 us                              37 us      46 us  
+undo                                            13.8 ms    13.2 ms                            14.2 ms    13.9 ms  
+refresh.undo.area                                  0.97       0.97                               0.97       0.97  
+refresh.undo.flashes                               0.00       0.00                               0.00       0.00  
+redo                                            13.4 ms    13.6 ms                            13.9 ms    13.8 ms  
+ops.count                                            59         59                                 59         59  
+tool.switch                                      102 us      88 us                             135 us     155 us  
+refresh.tool.switch.area                           1.03       1.03                               1.03       1.03  
+refresh.tool.switch.flashes                        0.00       0.00                               0.00       0.00  
+toolbar.hide                                     126 us      91 us                             165 us     117 us  
+toolbar.show                                      96 us     102 us                             100 us     146 us  
+sheet.pen.open_first                            4.64 ms    5.17 ms                            4.64 ms    5.17 ms  
+refresh.sheet.pen.area                             1.00       1.00                               1.00       1.00  
+refresh.sheet.pen.flashes                          1.00       1.00                               1.00       1.00  
+sheet.pen.close                                   53 us      53 us                              57 us      59 us  
+refresh.sheet.pen.close.area                       0.00       0.00                               0.00       0.00  
+refresh.sheet.pen.close.flashes                    0.00       0.00                               0.00       0.00  
+sheet.pen.open                                   206 us     198 us                             286 us     203 us  
+sheet.eraser.open_first                           83 us      68 us                              83 us      68 us  
+refresh.sheet.eraser.area                          1.00       1.00                               1.00       1.00  
+refresh.sheet.eraser.flashes                       1.00       1.00                               1.00       1.00  
+sheet.eraser.close                                52 us      48 us                              60 us      49 us  
+refresh.sheet.eraser.close.area                    0.00       0.00                               0.00       0.00  
+refresh.sheet.eraser.close.flashes                 0.00       0.00                               0.00       0.00  
+sheet.eraser.open                                 94 us      61 us                             149 us     122 us  
+sheet.shapes.open_first                           89 us     105 us                              89 us     105 us  
+refresh.sheet.shapes.area                          1.00       1.00                               1.00       1.00  
+refresh.sheet.shapes.flashes                       1.00       1.00                               1.00       1.00  
+sheet.shapes.close                                54 us      48 us                              60 us      50 us  
+refresh.sheet.shapes.close.area                    0.00       0.00                               0.00       0.00  
+refresh.sheet.shapes.close.flashes                 0.00       0.00                               0.00       0.00  
+sheet.shapes.open                                107 us      86 us                             132 us     213 us  
+sheet.fill.open_first                            173 us      46 us                             173 us      46 us  
+refresh.sheet.fill.area                            1.00       1.00                               1.00       1.00  
+refresh.sheet.fill.flashes                         1.00       1.00                               1.00       1.00  
+sheet.fill.close                                  47 us      57 us                              62 us      74 us  
+refresh.sheet.fill.close.area                      0.00       0.00                               0.00       0.00  
+refresh.sheet.fill.close.flashes                   0.00       0.00                               0.00       0.00  
+sheet.fill.open                                  135 us      40 us                             185 us      47 us  
+sheet.text.open_first                            120 us      37 us                             120 us      37 us  
+refresh.sheet.text.area                            1.00       1.00                               1.00       1.00  
+refresh.sheet.text.flashes                         1.00       1.00                               1.00       1.00  
+sheet.text.close                                  46 us      47 us                              53 us      50 us  
+refresh.sheet.text.close.area                      0.00       0.00                               0.00       0.00  
+refresh.sheet.text.close.flashes                   0.00       0.00                               0.00       0.00  
+sheet.text.open                                   56 us      45 us                             204 us     159 us  
+sheet.settings.open_first                        206 us     331 us                             206 us     331 us  
+refresh.sheet.settings.area                        1.00       1.00                               1.00       1.00  
+refresh.sheet.settings.flashes                     1.00       1.00                               1.00       1.00  
+sheet.settings.close                              55 us      37 us                              55 us      48 us  
+refresh.sheet.settings.close.area                  0.00       0.00                               0.00       0.00  
+refresh.sheet.settings.close.flashes               0.00       0.00                               0.00       0.00  
+sheet.settings.open                              123 us      57 us                             242 us     130 us  
+sheet.grid.open_first                             69 us     269 us                              69 us     269 us  
+refresh.sheet.grid.area                            1.00       1.00                               1.00       1.00  
+refresh.sheet.grid.flashes                         1.00       1.00                               1.00       1.00  
+sheet.grid.close                                  40 us     123 us                              41 us     150 us  
+refresh.sheet.grid.close.area                      0.00       0.00                               0.00       0.00  
+refresh.sheet.grid.close.flashes                   0.00       0.00                               0.00       0.00  
+sheet.grid.open                                   60 us      72 us                              94 us     224 us  
+sheet.image.open_first                            30 us      10 us                              30 us      10 us  
+refresh.sheet.image.area                           1.00       1.00                               1.00       1.00  
+refresh.sheet.image.flashes                        1.00       1.00                               1.00       1.00  
+sheet.image.close                                 43 us      48 us                              53 us     122 us  
+refresh.sheet.image.close.area                     0.00       0.00                               0.00       0.00  
+refresh.sheet.image.close.flashes                  0.00       0.00                               0.00       0.00  
+sheet.image.open                                  32 us     8.8 us                             128 us      28 us  
+sheet.brushmaker.open_first                     12.2 ms    11.4 ms                            12.2 ms    11.4 ms  
+refresh.sheet.brushmaker.area                      0.28       0.28                               0.28       0.28  
+refresh.sheet.brushmaker.flashes                   0.00       0.00                               0.00       0.00  
+sheet.brushmaker.close                            47 us      45 us                              56 us      54 us  
+refresh.sheet.brushmaker.close.area                0.00       0.00                               0.00       0.00  
+refresh.sheet.brushmaker.close.flashes             0.00       0.00                               0.00       0.00  
+sheet.brushmaker.open                           10.8 ms    10.6 ms                            10.9 ms    11.3 ms  
+sheet.colorwheel.open_first                     3.53 ms    4.02 ms                            3.53 ms    4.02 ms  
+refresh.sheet.colorwheel.area                      0.25       0.25                               0.25       0.25  
+refresh.sheet.colorwheel.flashes                   0.00       0.00                               0.00       0.00  
+sheet.colorwheel.close                            48 us      36 us                              50 us      44 us  
+refresh.sheet.colorwheel.close.area                0.00       0.00                               0.00       0.00  
+refresh.sheet.colorwheel.close.flashes             0.00       0.00                               0.00       0.00  
+sheet.colorwheel.open                             62 us      58 us                             319 us     354 us  
+sheet.file.open_first                           1.02 ms    1.05 ms                            1.02 ms    1.05 ms  
+refresh.sheet.file.area                            1.00       1.00                               1.00       1.00  
+refresh.sheet.file.flashes                         1.00       1.00                               1.00       1.00  
+sheet.file.close                                  40 us      37 us                              60 us      42 us  
+refresh.sheet.file.close.area                      0.00       0.00                               0.00       0.00  
+refresh.sheet.file.close.flashes                   0.00       0.00                               0.00       0.00  
+sheet.file.open                                   97 us      50 us                             103 us     112 us  
+sheet.export.open_first                          203 us     110 us                             203 us     110 us  
+refresh.sheet.export.area                          1.00       1.00                               1.00       1.00  
+refresh.sheet.export.flashes                       1.00       1.00                               1.00       1.00  
+sheet.export.close                                43 us      34 us                              43 us      40 us  
+refresh.sheet.export.close.area                    0.00       0.00                               0.00       0.00  
+refresh.sheet.export.close.flashes                 0.00       0.00                               0.00       0.00  
+sheet.export.open                                114 us      40 us                             144 us      85 us  
+sheet.newnotebook.paper.open_first              3.30 ms    1.74 ms                            3.30 ms    1.74 ms  
+refresh.sheet.newnotebook.paper.area               1.00       1.00                               1.00       1.00  
+refresh.sheet.newnotebook.paper.flashes            1.00       1.00                               1.00       1.00  
+sheet.newnotebook.paper.close                     54 us      67 us                              56 us      98 us  
+refresh.sheet.newnotebook.paper.close.area         0.00       0.00                               0.00       0.00  
+refresh.sheet.newnotebook.paper.close.flashes       0.00       0.00                               0.00       0.00  
+sheet.newnotebook.paper.open                     159 us      76 us                             204 us      89 us  
+sheet.library(small).open_first                 24.1 ms    24.9 ms                            24.1 ms    24.9 ms  
+refresh.sheet.library(small).area                  1.00       1.00                               1.00       1.00  
+refresh.sheet.library(small).flashes               1.00       1.00                               1.00       1.00  
+sheet.library(small).close                        53 us      92 us                              68 us     176 us  
+refresh.sheet.library(small).close.area            0.00       0.00                               0.00       0.00  
+refresh.sheet.library(small).close.flashes         0.00       0.00                               0.00       0.00  
+sheet.library(small).open                        634 us     837 us                             734 us     943 us  
+nb.start                                        2.37 ms    2.08 ms                            2.37 ms    2.08 ms  
+refresh.nb.start.area                              0.97       0.97                               0.97       0.97  
+refresh.nb.start.flashes                           0.00       0.00                               0.00       0.00  
+nb.pen.first.down                                 84 us      29 us                              84 us      29 us  
+nb.pen.first.move                                3.6 us     3.2 us                             4.2 us      11 us  
+nb.pen.first.lift                                4.8 us     5.8 us                             4.8 us     5.8 us  
+nb.pen.first.commit                               90 us     121 us                              90 us     121 us  
+nb.pen.down                                      136 us      38 us                             150 us      87 us  
+nb.pen.move                                      3.6 us     3.0 us                             3.8 us     3.3 us  
+nb.pen.lift                                      3.7 us     3.6 us                             4.2 us     4.8 us  
+nb.pen.commit                                     65 us      57 us                             116 us     108 us  
+nb.erase.first.down                              103 us     137 us                             103 us     137 us  
+nb.erase.first.move                              9.5 us     7.6 us                              36 us      21 us  
+nb.erase.first.lift                               10 us      78 us                              10 us      78 us  
+nb.erase.first.commit                             78 us      61 us                              78 us      61 us  
+nb.erase.down                                     46 us      75 us                              57 us      97 us  
+nb.erase.move                                    8.0 us     6.4 us                             9.8 us     6.9 us  
+nb.erase.lift                                    8.8 us     7.2 us                             9.3 us     7.9 us  
+nb.erase.commit                                   99 us      90 us                             118 us     116 us  
+nb.harderase.first.down                          187 us      16 us                             187 us      16 us  
+nb.harderase.first.move                          7.0 us     6.4 us                             7.2 us     6.6 us  
+nb.harderase.first.lift                          6.6 us     6.9 us                             6.6 us     6.9 us  
+nb.harderase.first.commit                         62 us      68 us                              62 us      68 us  
+nb.harderase.down                                 42 us      13 us                              46 us      14 us  
+nb.harderase.move                                7.1 us     6.4 us                             7.5 us     6.8 us  
+nb.harderase.lift                                7.1 us     6.8 us                             7.9 us     7.9 us  
+nb.harderase.commit                              100 us      77 us                             133 us      91 us  
+nb.addpage                                       195 us     178 us                             205 us     309 us  
+refresh.nb.addpage.area                            0.97       0.97                               0.97       0.97  
+refresh.nb.addpage.flashes                         0.00       0.00                               0.00       0.00  
+nb.pen.more.first.down                           130 us      24 us                             307 us      25 us  
+nb.pen.more.first.move                           4.1 us     3.6 us                             4.6 us     3.9 us  
+nb.pen.more.first.lift                           3.8 us     2.9 us                             4.1 us     4.0 us  
+nb.pen.more.first.commit                          56 us     104 us                             121 us     111 us  
+nb.pen.more.down                                 114 us      17 us                             170 us      26 us  
+nb.pen.more.move                                 4.1 us     3.6 us                             4.5 us     3.8 us  
+nb.pen.more.lift                                 3.5 us     2.8 us                             3.7 us     3.0 us  
+nb.pen.more.commit                                46 us      47 us                              83 us      55 us  
+nb.turn                                          262 us     372 us                             348 us     464 us  
+refresh.nb.turn.area                               0.97       0.97                               0.97       0.97  
+refresh.nb.turn.flashes                            0.00       0.00                               0.00       0.00  
+mem.notebook                                    3.62 MB    3.75 MB                            3.62 MB    3.75 MB  
+sheet.pagemenu.open_first                         24 us      48 us                              24 us      48 us  
+refresh.sheet.pagemenu.area                        1.00       1.00                               1.00       1.00  
+refresh.sheet.pagemenu.flashes                     1.00       1.00                               1.00       1.00  
+sheet.pagemenu.close                              53 us      56 us                              88 us      72 us  
+refresh.sheet.pagemenu.close.area                  0.00       0.00                               0.00       0.00  
+refresh.sheet.pagemenu.close.flashes               0.00       0.00                               0.00       0.00  
+sheet.pagemenu.open                               14 us      21 us                              24 us      46 us  
+sheet.pages_view(4p).open_first                 9.11 ms    9.63 ms                            9.11 ms    9.63 ms  
+refresh.sheet.pages_view(4p).area                  1.00       1.00                               1.00       1.00  
+refresh.sheet.pages_view(4p).flashes               1.00       1.00                               1.00       1.00  
+sheet.pages_view(4p).close                        54 us      54 us                              72 us     103 us  
+refresh.sheet.pages_view(4p).close.area            0.00       0.00                               0.00       0.00  
+refresh.sheet.pages_view(4p).close.flashes         0.00       0.00                               0.00       0.00  
+sheet.pages_view(4p).open                        266 us     398 us                             282 us     442 us  
+clip.paste                                      5.38 ms    5.29 ms                            5.38 ms    5.29 ms  
+refresh.clip.paste.area                            1.00       2.00                               1.00       2.00  
+refresh.clip.paste.flashes                         1.00       1.00                               1.00       1.00  
+close                                            602 us     634 us                             602 us     634 us  
+jit.flushes                                           0          0                                  0          0  
+jit.traces                                         1279       1245                               1279       1245  

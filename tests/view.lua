@@ -4446,9 +4446,11 @@ do
     -- a jitter within a millimetre does not restart the wait
     view.canvas:setOps({})
     x, y = draw(line, false)
-    local at = view._straight_at
+    local ax, ay = view._straight_at.x, view._straight_at.y
     view:onIaPan(nil, pos(x + 2, y + 1))
-    ok(view._straight_at == at, "straighten: a tremble keeps the wait going")
+    ok(view._straight_at.x == ax and view._straight_at.y == ay, "straighten: a tremble keeps the wait going")
+    view:onIaPan(nil, pos(x + 40, y + 1))
+    ok(view._straight_at.x == x + 40, "straighten: a real move starts it again")
     lift(x + 2, y + 1)
     UIManager:close(view)
     UIManager.reset()

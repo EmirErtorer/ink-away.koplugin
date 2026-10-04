@@ -385,7 +385,7 @@ function InkAwayView:straightenWatch(sx, sy, fresh)
     local a = self._straight_at
     local slop = Screen:scaleBySize(7)
     if fresh or not a or math.abs(sx - a.x) > slop or math.abs(sy - a.y) > slop then
-        self._straight_at = { x = sx, y = sy }
+        if a then a.x, a.y = sx, sy else self._straight_at = { x = sx, y = sy } end   -- (no garbage per point)
         UIManager:unschedule(self._straighten_cb)
         UIManager:scheduleIn(HOLD_SEC, self._straighten_cb)
     end

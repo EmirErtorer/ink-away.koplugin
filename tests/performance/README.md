@@ -1,8 +1,76 @@
 # Performance tests
 
-Scripts that time two versions of the plugin against each other, and the
-results of past runs. Like the rest of `tests/`, none of this ships with the
+Scripts that time two versions of the plugin against each other
+(`run.sh`, `bench.lua`), the newer features on their own (`features.lua`), and
+the results of past runs. Like the rest of `tests/`, none of this ships with the
 plugin.
+
+## Results, 4 October 2026: search, trash, selection, links, straightening
+
+Two runs. `run.sh 00030d8 HEAD 4` compared the branch before these features
+with after them, on the same four screen setups (tables in
+[`results/2026-10-04/`](results/2026-10-04/)). `features.lua` timed the new
+features themselves on a grey and a colour Kindle-size screen and a grey
+Scribe-size one (8 rounds; text is not drawn, the stand-ins have no fonts).
+Apple M3 again: expect about ten times as long on a Paperwhite.
+
+### What the comparison found, and what was done
+
+| | before | first try | now |
+|---|---|---|---|
+| Pen stroke start, colour | 101 us | 254–535 us | back to before |
+| Shape assist commit | 0.5 ms | 3–6 ms | 0.4–0.6 ms |
+| Lasso drag frame, landscape | 69 us | 961 us | 121 us |
+
+- **Stroke starts.** Hold to straighten is on by default and needed the copy of
+  the page shape assist takes at every stroke start (1.5 MB, 6 MB in colour).
+  The swap after a hold now composes just the stroke's footprint again, which
+  gives the same pixels (checked on the real blitter), so nothing is copied.
+- **Shape assist.** Composing a big shape's footprint again cost more than
+  restoring it from the copy, so with shape assist on the copy is kept, as
+  before.
+- **Landscape drags.** A lifted selection is drawn on a card that follows the
+  finger; on a screen turned in software each frame was a turned per-pixel
+  blit. The card is now kept in the screen's pixel order, so a frame is a row
+  copy (byte-identical, checked).
+- Unchanged everywhere else: drawing per point, erasers, page turns, notebook
+  open and save, PDF and PNG export, library and overview.
+- Slower by design: closing a lasso loop (+0.5–0.7 ms) opens the selection's
+  menu; grabbing it draws the handles. Loading the plugin's code at first open
+  is about 1.5 ms longer (61 modules instead of 52).
+
+### The new features, grey / colour / Scribe size
+
+| | grey | colour | Scribe |
+|---|---|---|---|
+| Full redraw of a dense page, for scale | 2.1 ms | 2.5 ms | 3.2 ms |
+| Lasso 72 strokes and open the menu | 0.8 ms | 1.3 ms | 1.2 ms |
+| Lift them (drag start) | 0.9 ms | 2.0 ms | 1.6 ms |
+| A drag frame (card) | 47 us | 183 us | 123 us |
+| Drop (compose the two boxes again) | 1.5 ms | 2.0 ms | 1.7 ms |
+| A resize frame (the card scaled) | 1.3 ms | 2.7 ms | 3.5 ms |
+| A turn frame (the frame only) | 68 us | 162 us | 153 us |
+| Colour, size, flip, a quarter turn, delete | 1.8–2.3 ms | 2.3–3.1 ms | 2.2–3.2 ms |
+| Duplicate | 3.5 ms | 4.0 ms | 4.6 ms |
+| A picture: lift / drop (full page, pictures feed the eraser) | 2.7 / 2.8 ms | 4.7 / 4.3 ms | 5.6 / 5.4 ms |
+| Straightening a held stroke | 0.4 ms | 0.8 ms | 0.8 ms |
+| Paint with 40 links on the page (none: 35 us) | 91 us | 227 us | 354 us |
+| Contents page for 40 titled pages | 0.7 ms | 1.9 ms | 1.2 ms |
+| Search 30 notebooks of 40 pages, names, first / cached | 1.6 / 0.5 ms | 1.8 / 0.5 ms | 2.2 / 0.7 ms |
+| Same, inside pages, first / cached | 40 / 1.3 ms | 43 / 1.4 ms | 43 / 1.6 ms |
+| Trash a 40-page notebook / put it back | 0.4 / 0.3 ms | 0.4 / 0.3 ms | 0.4 / 0.4 ms |
+| Trash a page / put it back into its file | 0.3 / 2.4 ms | 0.3 / 2.4 ms | 0.3 / 2.5 ms |
+
+A resize frame is the heaviest, but the screen takes one at most about six
+times a second while dragging. The first search inside pages of a big library
+reads every file once (about half a second on a reader, behind its progress
+bar); after that only changed files are read again.
+
+### Real widgets (emulator, 600x800), opening each new sheet
+
+Selection menu 2.3 ms (2.5 in colour), its colour panel 1.1 ms (2.0), link
+chooser 4.0 ms (4.7), page menu 2.7 ms (3.1), search results 4.8 ms (4.1),
+trash 5.1 ms (6.2): the same range as the older sheets.
 
 ## Results, 3 October 2026: main vs notebook-library
 
