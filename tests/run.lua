@@ -1,6 +1,6 @@
 -- Run the whole Ink Away test suite:  luajit tests/run.lua
 -- (core logic under real FFI, then the view against a mock KOReader env)
-local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua" }
+local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua" }
 -- Some suites need a KOReader checkout with the emulator built in it:
 -- ~/koreader-emulator unless KO_SRC says otherwise (see tests/README.md).
 local KO_SRC = os.getenv("KO_SRC") or (os.getenv("HOME") .. "/koreader-emulator")
@@ -26,7 +26,7 @@ local REAL = {}
 if exists(EMU .. "/luajit") then
     local here = io.popen("pwd"):read("*l")
     for _, t in ipairs({ "tests/realbb/eraser.lua", "tests/realbb/colour.lua", "tests/realbb/pdfexport.lua",
-        "tests/realbb/wipe.lua", "tests/realbb/accent.lua" }) do
+        "tests/realbb/wipe.lua", "tests/realbb/accent.lua", "tests/realbb/selection.lua" }) do
         suites[#suites + 1] = t
         REAL[t] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. t .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
     end

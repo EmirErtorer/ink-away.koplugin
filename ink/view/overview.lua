@@ -181,7 +181,7 @@ end
 -- folder as tabs. The library folder is the top it can go up to.
 function InkAwayView:openOverview()
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end
+    self:resetLasso()   -- drop any selection first
     if self.notebook then self:nbSyncOut() end
     local dir, root = self:docDir(), self:libraryDir()
     if not Storage.within(dir, root) then root = dir end

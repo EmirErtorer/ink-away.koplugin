@@ -183,6 +183,10 @@ function Shapes.contains(op, px, py)
     return Geom.pointInPoly(px, py, poly)
 end
 
+-- The shape's outline as drawn (rotation applied): a flat {x, y, ...} list, and
+-- whether it is closed.
+Shapes.outline = boundary
+
 -- Bounding box {x0,y0,x1,y1} of the shape as actually drawn (rotation and any
 -- arrowheads included).
 function Shapes.bounds(op)

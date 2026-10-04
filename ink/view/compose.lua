@@ -111,14 +111,11 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         owns_rt = true
     end
     local refx, refy = Symmetry.canvasRefs(W, H)
-    -- skip the selected image only while it is dragged or rotated (it is drawn
-    -- as a live overlay then); a still one stays here, so selecting or dropping
-    -- it causes no sub-pixel jump
-    local dragging = (self._img_drag and self._img_drag.began) or self.image_rotating
-    local skip = dragging and self.active_image and self.active_image.op or nil
+    -- a selection being moved or resized is lifted off the page (it follows the
+    -- finger on its own card, see view/selection.lua)
+    local lifted = self._lifted
     for _, op in ipairs(ops) do
-        -- (a shape being rotated is hidden: it is a preview)
-        if not op.hidden and op ~= skip and (not region or meets(op, region)) then
+        if not op.hidden and not (lifted and lifted[op]) and (not region or meets(op, region)) then
             if op.kind == "text" then
                 self:stampTextInto(dst, op, region)   -- glyphs, drawn straight into dst (z-order)
             elseif op.kind == "image" then

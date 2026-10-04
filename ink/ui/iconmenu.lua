@@ -40,6 +40,10 @@ local IconMenu = InputContainer:extend{
                                -- instead of centring it vertically
     bottom_y = nil,            -- if set, pin the sheet's bottom here (on the notebook
                                -- bottom bar); takes precedence over top_y
+    anchor = nil,              -- function() -> { x, y, w, h, gap }: sit beside this
+                               -- screen rect (above it when there is room, else
+                               -- below, else at the foot of the screen), `gap` away
+    tap_pos = nil,             -- where the tap that closed it landed, if one did
 }
 
 -- If the sheet is taller than the space it has (a long sheet, or any sheet in a
@@ -143,7 +147,20 @@ function IconMenu:paintTo(bb, x, y)
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)
     local py
-    if self.bottom_y then
+    local r = self.anchor and self.anchor()
+    if r then
+        -- beside the rect, centred on it and kept on the screen
+        local gap = r.gap or pad
+        px = math.floor(r.x + r.w / 2 - sz.w / 2)
+        px = math.max(pad, math.min(px, Screen:getWidth() - sz.w - pad))
+        if r.y - gap - sz.h >= (r.top or pad) then
+            py = r.y - gap - sz.h
+        elseif r.y + r.h + gap + sz.h <= Screen:getHeight() - pad then
+            py = r.y + r.h + gap
+        else
+            py = Screen:getHeight() - sz.h - pad
+        end
+    elseif self.bottom_y then
         -- pin the sheet's bottom here (on the top of the notebook bottom bar)
         py = math.max(pad, math.min(self.bottom_y - sz.h, Screen:getHeight() - sz.h - pad))
     elseif self.top_y then
@@ -158,6 +175,7 @@ end
 function IconMenu:onTapClose(_, ges)
     if ges and ges.pos and self.movable.dimen
             and ges.pos:notIntersectWith(self.movable.dimen) then
+        self.tap_pos = { x = ges.pos.x, y = ges.pos.y }
         self:onCloseMenu()
     end
     return true

@@ -222,7 +222,7 @@ end
 -- The settings sheet (gear): orientation, the grid or notebook paper, the
 -- symmetry and ghosting options, and where files are kept.
 function InkAwayView:openSettings()
-    if self.active_image then self:finishImageEdit() end   -- settle a selected image first
+    self:resetLasso()   -- drop any selection first
     -- the field may hold a dialog without a rebuild; close it and open fresh
     if self:rebuildSheet("_settings_dialog") then return end
     self:ensureUserIcons()

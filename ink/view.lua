@@ -137,8 +137,8 @@ function InkAwayView:init()
     self.curve_stage = nil     -- "bend" during a curve's second drag
     self.shape_preview = nil   -- the op being placed (screen coords), drawn by paintTo
     self._preview_rect = nil   -- last previewed screen rect, for tidy refreshes
-    self.selected = nil        -- {op, idx}: the shape picked for editing
-    self.rotating = nil        -- free-rotation state
+    self.selection = nil       -- {idxs, bbox, from}: what is selected (see view/selection.lua)
+    self.sel_drag = nil        -- a move, resize or turn of the selection in progress
 
     -- Widths are in canvas pixels, so a stroke keeps its thickness in the export
     -- whatever the zoom.
@@ -425,22 +425,20 @@ function InkAwayView:onCloseWidget()
     if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
     self._pen_capture = nil
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
-    if self.active_image then self:finishImageEdit() end       -- bake a selected image
-    self.selected, self.shape_move = nil, nil
-    self:setSelectionActive(false)
+    self:resetLasso()                                           -- drop any selection
     self:hideTextKeyboard()
     Export.text_raster = nil   -- drop the closures over this view
     Export.image_raster = nil
     self:saveDocument()
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_paste_dialog", "_search_sheet", "_trash_sheet", "_trash_item", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview" }) do
         self:closeSheet(key)
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
     self:closeNotebookPDF()
     self:free()
-    self.selected, self.rotating, self.shape_preview = nil, nil, nil
+    self.selection, self.sel_drag, self.shape_preview = nil, nil, nil
     if self.canvas then
         self.canvas.ops, self.canvas.undo_stack, self.canvas.redo_stack = {}, {}, {}
     end
@@ -509,9 +507,15 @@ function InkAwayView:onIaTouch(_, ges)
     local fab = self:fabHit(pos.x, pos.y)
     if fab then self._fab_press = fab; return true end
     if self.selecting_crop then return self:cropTouch(pos) end
-    if self.rotating then return self:rotateTouch(pos) end
-    if self.image_rotating then return self:imageRotateTouch(pos) end
-    if self.active_image then return self:imageTouch(pos) end
+    -- the selection's frame and handles, with any tool (a finger's hold can make
+    -- one under the pen); a touch on its menu is the menu's (its buttons answer
+    -- the tap), and a touch anywhere else drops it and does what the tool does
+    if self.selection then
+        if self:selTouch(pos) then return true end
+        local m = self._sel_dialog
+        if m and m.dimen and InkGeom.inRect(pos.x, pos.y, m.dimen) then return true end
+        self:dropSelection()
+    end
     local fmode = self:fingerOnPage()
     if fmode then   -- a finger navigates (or does nothing) while the pen writes
         self._finger_nav = { mode = fmode, x = pos.x, y = pos.y, lx = pos.x, ly = pos.y }
@@ -522,16 +526,14 @@ function InkAwayView:onIaTouch(_, ges)
     if self.tool == "fill" then self:doFill(pos); return true end
     if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
-        -- a touch on a picture selects it and can drag it; its menu opens on the
-        -- tap or hold, since opening it here would let the same gesture close it
-        local hit = self:hitTestImage(pos.x, pos.y)
-        if hit then self:selectImage(hit); return self:imageTouch(pos) end
-        -- a selected shape can be dragged; a fresh touch on a shape selects it
-        if self.selected and self:pointOnShape(self.selected.op, pos.x, pos.y) then
-            return self:shapeMoveTouch(pos)
+        -- a touch on a picture or a shape selects it and can drag it; its menu
+        -- opens on the tap or hold, since opening it here would let the same
+        -- gesture close it
+        local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+        if hit and self:selectOps({ hit.idx }, "pan") then
+            self:selTouch(pos)
+            return true
         end
-        local shp = self:hitTestShape(pos.x, pos.y)
-        if shp then self.selected = shp; return self:shapeMoveTouch(pos) end
         self.pan_last = { x = pos.x, y = pos.y }
         return true
     end
@@ -566,10 +568,7 @@ function InkAwayView:onIaPan(_, ges)
     end
     if pos then self:fabProximity(pos.x, pos.y) end   -- fade controls the drawing comes near
     if self.selecting_crop then return self:cropMove(pos) end
-    if self.rotating then return self:rotateMove(pos) end
-    if self.image_rotating then return self:imageRotateMove(pos) end
-    if self.active_image then return self:imagePan(pos) end
-    if self.shape_move then return self:shapeMovePan(pos) end
+    if self.sel_drag then return self:selPan(pos) end
     if self.tool == "text" then return self:textToolPan(pos) end
     if self.tool == "lasso" then return self:lassoPan(pos) end
     if self.tool == "fill" then return true end   -- fill is a tap, ignore drags
@@ -602,10 +601,10 @@ function InkAwayView:onIaPanRelease(_, ges)
     end
     if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
-    if self.rotating then return self:rotateEnd() end
-    if self.image_rotating then return self:imageRotateEnd() end
-    if self.active_image then return self:imageRelease() end
-    if self.shape_move then return self:shapeMoveRelease() end
+    if self.sel_drag then
+        if ges and ges.pos then self:selPan(ges.pos) end
+        return self:selRelease()
+    end
     if self.tool == "text" then return self:textToolRelease(ges and ges.pos) end
     if self.tool == "lasso" then return self:lassoRelease(ges and ges.pos) end
     if self.tool == "fill" then return true end
@@ -630,10 +629,12 @@ function InkAwayView:onIaSwipe(_, ges)
     if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
-    if self.rotating then return self:rotateEnd() end
-    if self.image_rotating then return self:imageRotateEnd() end
-    if self.active_image then return self:imageRelease() end
-    if self.shape_move then return self:shapeMoveRelease() end
+    if self.sel_drag then
+        -- a quick drag arrives as a swipe: its end is where the selection goes
+        local p = ges and (ges.end_pos or ges.pos)
+        if p then self:selPan(p) end
+        return self:selRelease()
+    end
     if self.tool == "lasso" then return self:lassoRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "fill" then return true end
     -- a swipe's start would collapse a shape to a dot, so use only its end (or the
@@ -685,16 +686,9 @@ function InkAwayView:onIaTap(_, ges)
         if p.y >= v.area_y + v.area_h then return true end
     end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
-    if self.rotating then return self:rotateEnd() end
-    -- open the edit menu on the completed tap, so the tap cannot close it again
-    if p and self.tool == "pan" then
-        if self.active_image and self:imageZone(p.x, p.y) ~= "outside" then
-            self:openImageMenu(self.active_image); return true
-        end
-        if self.selected and self:pointOnShape(self.selected.op, p.x, p.y) then
-            self:openShapeMenu(self.selected); return true
-        end
-    end
+    -- a tap on the selection (its touch began a drag that never moved) opens its
+    -- menu, on the completed tap, so the tap cannot close it again
+    if self.sel_drag then return self:selRelease() end
     if self.tool == "text" then return self:textToolRelease(ges and ges.pos) end
     if self.tool == "lasso" then return self:lassoTap(ges and ges.pos) end
     if self.tool == "fill" then return true end   -- fill already happened on touch
@@ -717,7 +711,7 @@ function InkAwayView:onIaHold(_, ges)
     if self.editing_text and self:textHoldAt(ges and ges.pos) then return true end
     -- swallow holds while drawing or placing, so they never become a long-press menu
     if self.capturing or self.shape_drag or self.curve_stage
-       or self.rotating or self.image_rotating then return true end
+       or (self.sel_drag and self.sel_drag.began) then return true end
     local pos = ges and ges.pos
     -- holding Prev or Next in a notebook's bar goes to the first or last page
     if pos and self.notebook and self.nb_bar_h > 0 then
@@ -733,19 +727,15 @@ function InkAwayView:onIaHold(_, ges)
         return true
     end
     -- selecting only happens in Pan mode, so a hold never fights with drawing
-    if self.tool == "pan" then
-        if self.active_image then
-            if self:imageZone(pos.x, pos.y) ~= "outside" then
-                self._img_drag = nil     -- a hold cancels a pending move
-                self:openImageMenu(self.active_image)
-            end
-            return true
+    if self.tool == "pan" or self.sel_drag then
+        -- a hold on the selection (or on a picture or shape, which it selects)
+        -- opens its menu; the drag its touch began is dropped
+        if self.sel_drag then self:endSelectionDrag(true) end
+        if not (self.selection and self:selHit(pos.x, pos.y)) then
+            local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+            if not (hit and self:selectOps({ hit.idx }, "pan")) then return true end
         end
-        local isel = self:hitTestImage(pos.x, pos.y)
-        if isel then self:selectImage(isel); self:openImageMenu(self.active_image); return true end
-        if self.selected then self.shape_move = nil; self:openShapeMenu(self.selected); return true end
-        local sel = self:hitTestShape(pos.x, pos.y)
-        if sel then self.selected = sel; self:openShapeMenu(sel) end
+        self:openSelectionMenu()
     end
     return true
 end
@@ -845,14 +835,11 @@ function InkAwayView:undo()
     end
     self._peel_op = nil   -- leaving any text-peel sequence
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end
-    if self.rotating then self:rotateEnd() end
+    self:resetLasso()   -- a selection's indices do not survive the change
     if not self.canvas:undo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to undo."), timeout = 1 })
         return false
     end
-    self.selected = nil
-    self:resetLasso()
     self:markDirty()
     self:recompose()   -- rebuild the master from the restored ops
     return true
@@ -869,13 +856,11 @@ function InkAwayView:redo()
     end
     self._peel_op = nil
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end
+    self:resetLasso()
     if not self.canvas:redo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to redo."), timeout = 1 })
         return
     end
-    self.selected = nil
-    self:resetLasso()
     self:markDirty()
     self:recompose()
 end
@@ -940,7 +925,8 @@ function InkAwayView:paintTo(bb, x, y)
     if not br then self:paintPageEdges(bb, x, y) end
     if self.shape_preview then self:paintShapePreview(bb, x, y) end
     if self.selecting_crop and self._crop_screen then self:paintCropOverlay(bb, x, y) end
-    if self.lassoing or (self.selection and self.selection.bbox) then self:paintLassoOverlay(bb, x, y) end
+    if self.lassoing then self:paintLassoLoop(bb, x, y) end
+    if self.selection then self:paintSelection(bb, x, y) end
 
     -- the text box being edited: glyphs, frame, caret and selection
     if self.editing_text then self:paintTextOverlay(bb, x, y) end
@@ -948,9 +934,6 @@ function InkAwayView:paintTo(bb, x, y)
         local b = self._clip_bubble
         self:clipBubbleWidget():paintTo(bb, x + b.x, y + b.y)
     end
-
-    -- the selected image: frame, handles, and the picture itself while dragged
-    if self.active_image then self:paintImageOverlay(bb, x, y) end
 
     -- the notebook's bottom bar is chrome, so it is skipped on region blits and
     -- area-only paints like the toolbar
@@ -963,7 +946,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

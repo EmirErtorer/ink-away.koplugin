@@ -290,9 +290,15 @@ end
 -- still holds what it wraps twice) or lies within `slop` of the loop's line, so
 -- writing the lasso grazes is still taken. The op is picked when a good share
 -- of its points are inside (sampled, so a dense stroke stays cheap), or its
--- centre is (a big shape looped around its middle). A text box or a picture,
--- which have no points, are picked by a grid over their box.
+-- centre is (a big shape looped around its middle); a shape by its outline. A
+-- text box or a picture, which have no points, are picked by a grid over their
+-- box.
 local function opInPoly(op, poly, slop)
+    -- a shape is judged by its outline as drawn (its defining points can lie
+    -- off it: an ellipse's box corners, a turned rectangle's unturned ones)
+    if op.kind == "shape" and op.pts and #op.pts >= 4 then
+        op = { pts = (Shapes.outline(op)) }
+    end
     local d2 = (slop or 0) * (slop or 0)
     local function inside(x, y)
         return Geom.windingInPoly(x, y, poly) or (d2 > 0 and Geom.nearPath(x, y, poly, d2))

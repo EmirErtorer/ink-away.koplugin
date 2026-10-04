@@ -300,13 +300,16 @@ function InkAwayView:sheetHint(text, width, size)
 end
 
 -- A rounded action button of any width, grey by default and in the accent
--- (black unless the reader chose a colour) when `dark`.
-function InkAwayView:actionButton(label, w, cb, dark, big)
+-- (black unless the reader chose a colour) when `dark`. `size` "small" makes a
+-- compact one (the selection's menu); true a primary action (New drawing, New
+-- notebook) with a larger face.
+function InkAwayView:actionButton(label, w, cb, dark, size)
     local a = Accent.get()
-    local h, radius = Screen:scaleBySize(48), Screen:scaleBySize(14)
-    -- `big` marks a primary action (New drawing, New notebook) with a larger face
-    local text = TextWidget:new{ text = label, face = Font:getFace("cfont", big and 20 or 17),
-        bold = true, fgcolor = dark and a.text or BLACK }
+    local small = size == "small"
+    local h = Screen:scaleBySize(small and 40 or 48)
+    local radius = Screen:scaleBySize(small and 12 or 14)
+    local text = TextWidget:new{ text = label, face = Font:getFace("cfont", small and 15 or (size and 20 or 17)),
+        bold = true, fgcolor = dark and a.text or BLACK, max_width = w - Screen:scaleBySize(8) }
     if dark and a.chromatic then return self:accentButton(w, h, radius, text, cb) end
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
         radius = radius, background = dark and a.fill or TILE_BG,
@@ -373,6 +376,36 @@ function InkAwayView:pagerRow(page, pages, w, gap, on_turn)
         CenterContainer:new{ dimen = Geom:new{ w = mid, h = Screen:scaleBySize(48) }, label },
         HorizontalSpan:new{ width = gap },
         self:actionButton("\u{203A}", aw, function() on_turn(1) end) }
+end
+
+-- A sheet of actions: a title with a Close pill, a note, then `rows`, each a
+-- list of { label, callback[, dark] } laid out side by side. Every action
+-- closes the sheet first.
+function InkAwayView:openActionSheet(field, title, note, rows)
+    self:closeSheet(field)
+    local content_w, gap = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(title, content_w, _("Close"), closeSelf))
+        if note then
+            add(VerticalSpan:new{ width = Screen:scaleBySize(6) })
+            add(self:sheetLabel(note))
+        end
+        for _, row in ipairs(rows) do
+            add(VerticalSpan:new{ width = Screen:scaleBySize(row.space or 8) })
+            local w = math.floor((content_w - (#row - 1) * gap) / #row)
+            local hg = HorizontalGroup:new{ align = "center" }
+            for i, a in ipairs(row) do
+                if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
+                table.insert(hg, self:actionButton(a[1], w, function() closeSelf(); a[2]() end, a[3]))
+            end
+            add(hg)
+        end
+        return content
+    end
+    self:showSheet(field, build)
 end
 
 -- A row of equal buttons across `width`, one per { value, label } option, with

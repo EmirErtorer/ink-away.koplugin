@@ -184,7 +184,7 @@ end
 function InkAwayView:leaveDocument()
     self:flushPending()
     if self.editing_text then self:finishTextEdit(true) end
-    if self.active_image then self:finishImageEdit() end
+    self:resetLasso()   -- drop any selection first
     self:saveDocument()
 end
 
@@ -204,10 +204,8 @@ end
 -- Replace the drawing with `ops`, dropping every selection and cached image.
 function InkAwayView:loadOps(ops)
     self.canvas:setOps(ops)
-    self.selected, self.rotating = nil, nil
-    self.active_image, self._img_drag = nil, nil
-    self:freeImageCache()
     self:resetLasso()
+    self:freeImageCache()
 end
 
 -- Load a project's ops into the canvas. Returns false when there are none.
@@ -439,7 +437,7 @@ end
 -- large tiles. The library has its own toolbar button.
 function InkAwayView:openDocumentSheet()
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end
+    self:resetLasso()   -- drop any selection first
     self:saveDocument()   -- so the sheet tells the truth about where it is saved
     self:closeSheet("_doc_dialog")
     local content_w, gap = self:sheetWidth()

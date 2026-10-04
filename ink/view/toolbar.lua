@@ -252,9 +252,7 @@ function InkAwayView:setTool(tool)
         self:hwrRecognizePending()
     end
     if self.editing_text then self:finishTextEdit(true) end   -- bake any open text box
-    if self.active_image then self:finishImageEdit() end       -- settle a selected image
-    if self.selected then self:deselectShape() end             -- drop a picked shape
-    if self.selection or self.lassoing then self:clearSelection() end
+    if self.selection or self.lassoing then self:dropSelection() end
     self.pan_last = nil
     self.tool = tool
     self:refreshToolLabels()

@@ -79,7 +79,6 @@ function InkAwayView:wipeEnd()
     end
     self._wipe = nil
     if w.removed == 0 then return end
-    self.selected = nil
     self:resetLasso()   -- removing ops moves the indices a selection holds
     if self:colourPanel() then
         self:liveFlush()

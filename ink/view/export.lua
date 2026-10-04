@@ -133,7 +133,7 @@ end
 -- hold that page, all of them, the ones with ink, or a range.
 function InkAwayView:openExport()
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end   -- bake it so the export includes it
+    self:resetLasso()   -- drop any selection first
     if self.notebook then self:nbSyncOut() end
     if not self:docHasContent() then
         UIManager:show(InfoMessage:new{ text = _("There is nothing to export yet."), timeout = 2 })

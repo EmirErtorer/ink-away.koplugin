@@ -27,6 +27,30 @@ end
 
 local function pos(x, y) return { pos = { x = x, y = y } } end
 
+-- The button labelled `text` in widget tree `w` (a sheet), or nil.
+local function findButton(w, text)
+    local function has(t, seen)
+        if type(t) ~= "table" or seen[t] then return false end
+        seen[t] = true
+        if t.text == text then return true end
+        for k, val in pairs(t) do
+            if k ~= "show_parent" and k ~= "parent" and has(val, seen) then return true end
+        end
+        return false
+    end
+    local function find(t, seen)
+        if type(t) ~= "table" or seen[t] then return nil end
+        seen[t] = true
+        if type(t.callback) == "function" and has(t, {}) then return t end
+        for k, val in pairs(t) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = find(val, seen); if f then return f end
+            end
+        end
+    end
+    return find(w, {})
+end
+
 local SIZES = { { 1072, 1448 }, { 758, 1024 }, { 600, 800 } }
 
 for _, wh in ipairs(SIZES) do
@@ -216,32 +240,40 @@ for _, wh in ipairs(SIZES) do
 
     view:setTool("pan")                              -- selection works in Pan mode
     view:onIaHold(nil, pos(midx, v.area_y + 400))   -- hold inside it
-    ok(view.selected ~= nil, tag .. ": holding a shape selects it")
-    ok(ButtonDialog.last ~= nil, tag .. ": the shape edit menu opens")
-
     local ti = nb + 1                        -- the triangle op's index
-    view:beginRotate(view.selected)
-    ok(view.rotating ~= nil and view.canvas.ops[ti].hidden, tag .. ": rotate mode hides the shape")
-    view:onIaTouch(nil, pos(midx + 40, v.area_y + 380))
-    view:onIaPan(nil, pos(midx, v.area_y + 320))
-    view:onIaPanRelease(nil, pos(midx, v.area_y + 320))
-    ok(view.rotating == nil and view.canvas.ops[ti].angle ~= nil and not view.canvas.ops[ti].hidden,
-        tag .. ": rotation commits an angle")
+    ok(view.selection and #view.selection.idxs == 1 and view.selection.idxs[1] == ti,
+        tag .. ": holding a shape selects it")
+    ok(view._sel_dialog ~= nil and findButton(view._sel_dialog, "Duplicate"), tag .. ": its menu opens")
+    view:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, tag .. ": the frame and its handles paint in bounds")
 
-    local selref = { op = view.canvas.ops[ti], idx = ti }
-    view:editSelectedColour(selref)
-    ButtonDialog.last.buttons[1][3].callback()   -- shade row, 3rd swatch = Grey
+    -- turn it with the round handle: from above the middle round to its right
+    -- side is a quarter turn clockwise, and it snaps to it
+    local f = view:selFrame()
+    local kx, ky = view:selKnob()
+    local mx, my = (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2
+    view:onIaTouch(nil, pos(kx, ky))
+    ok(view.sel_drag and view.sel_drag.kind == "turn", tag .. ": the round handle turns the selection")
+    view:onIaPan(nil, pos(mx + (my - ky) * 0.8, my + 3))
+    view:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, tag .. ": a turning frame paints in bounds")
+    view:onIaPanRelease(nil, pos(mx + (my - ky) * 0.8, my + 3))
+    ok(view.sel_drag == nil and math.abs((view.canvas.ops[ti].angle or 0) - math.pi / 2) < 1e-6,
+        tag .. ": the turn commits, snapped to a quarter turn")
+
+    -- colour, size and opacity from the menu, in the same sheet
+    findButton(view._sel_dialog, "Colour").callback()
+    ok(view._sel_dialog and findButton(view._sel_dialog, "Back"), tag .. ": Colour shows the colours in the menu")
+    view:selSetColour({ 0x88, 0x88, 0x88 })
     ok(view.canvas.ops[ti].color[1] == 0x88, tag .. ": shape recoloured")
-    view:editSelectedSize(selref)
-    SpinWidget.last.callback({ value = 9 })
+    view:selSetSize(9)
     ok(view.canvas.ops[ti].width == 9, tag .. ": shape line size changed")
-    view:editSelectedOpacity(selref)
-    SpinWidget.last.callback({ value = 50 })
+    view:selSetOpacity(50)
     ok(view.canvas.ops[ti].alpha == math.floor(50 / 100 * 255 + 0.5), tag .. ": shape opacity changed")
 
     local nd = view.canvas:opCount()
-    view:deleteSelected(selref)
-    ok(view.canvas:opCount() == nd - 1, tag .. ": delete removes the shape")
+    view:selDelete()
+    ok(view.canvas:opCount() == nd - 1 and view.selection == nil, tag .. ": delete removes the shape")
 
     -- undo brings the deleted shape back, redo removes it again
     view:undo()
@@ -380,9 +412,9 @@ for _, wh in ipairs(SIZES) do
     -- an arrow can be held to select it, just like the other shapes
     view:setTool("pan")
     view:onIaHold(nil, pos(midx, v.area_y + 250))
-    ok(view.selected ~= nil and view.selected.op.arrow == "end",
+    ok(view.selection and view.canvas.ops[view.selection.idxs[1]].arrow == "end",
         tag .. ": holding an arrow selects it for the edit menu")
-    view.selected = nil
+    view:dropSelection()
     view.shape_arrow = nil
 
     -- selecting an export area by dragging a box
@@ -615,12 +647,14 @@ do
     ok(type(Export.image_raster) == "function", "image: exporter raster is injected on open")
 
     view:insertImage("/tmp/pic.png")
-    ok(view.active_image ~= nil, "image: insert selects the new image")
-    local op = view.active_image.op
+    local function sel() return view.selection and view.canvas.ops[view.selection.idxs[1]] end
+    ok(view.selection ~= nil and #view.selection.idxs == 1, "image: insert selects the new image")
+    local op = sel()
     ok(op and op.kind == "image", "image: inserted op is an image op")
     ok(view.canvas:opCount() == 1, "image: op added to the ops list")
     ok(view.tool == "pan", "image: insert switches to Pan mode (the smooth move/resize)")
-    ok(view._image_menu ~= nil, "image: insert opens the edit menu right away, as if tapped")
+    ok(view._sel_dialog ~= nil and findButton(view._sel_dialog, "Remove background"),
+        "image: insert opens its menu right away, with Remove background")
     -- it must be clearly SMALLER than the viewport (~60%) so every corner shows
     ok(op.w <= 0.62 * v.area_w / v.zoom and op.h <= 0.62 * v.area_h / v.zoom,
         "image: inserted image is smaller than the screen (all corners reachable)")
@@ -630,70 +664,76 @@ do
     ok(BB.out_of_bounds == 0, "image: selected overlay paints in bounds")
 
     -- move: grab the middle, drag right+down (an edit clones the op, so re-read it)
-    local r = view:imageScreenRect()
-    local cxm, cym = r.x + r.w / 2, r.y + r.h / 2
+    local f = view:selFrame()
+    local cxm, cym = (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2
     local x0, y0 = op.x, op.y
     view:onIaTouch(nil, pos(cxm, cym))
-    ok(view._img_drag and view._img_drag.kind == "move", "image: touch inside begins a move")
+    ok(view.sel_drag and view.sel_drag.kind == "move", "image: touch inside begins a move")
     view:onIaPan(nil, pos(cxm + 60, cym + 40))
+    ok(view._lifted and view._lifted[op] and view.sel_drag.card, "image: a move lifts it onto a card")
+    view:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "image: the lifted card paints in bounds")
     view:onIaPanRelease(nil, pos(cxm + 60, cym + 40))
-    op = view.active_image.op
-    ok(op.x > x0 and op.y > y0, "image: dragging moves the image")
-    ok(view.active_image ~= nil, "image: it stays selected after a move")
+    op = sel()
+    ok(op.x > x0 and op.y > y0 and view._lifted == nil, "image: dragging moves the image")
+    ok(view.selection ~= nil, "image: it stays selected after a move")
     ok(view.canvas:canUndo(), "image: a move records undo history")
     view:paintTo(Screen.bb, 0, 0)
     ok(BB.out_of_bounds == 0, "image: overlay still in bounds after moving")
 
     -- resize from the SE corner: opposite (NW) corner stays put, aspect locked
-    local r2 = view:imageScreenRect()
+    local f2 = view:selFrame()
     local fx, fy = op.x, op.y                   -- NW corner is fixed for an SE drag
     local w_before, ratio = op.w, op.w / op.h
-    view:onIaTouch(nil, pos(r2.x + r2.w, r2.y + r2.h))
-    ok(view._img_drag and view._img_drag.kind == "resize", "image: a corner touch begins a resize")
-    view:onIaPan(nil, pos(r2.x + r2.w + 120, r2.y + r2.h + 30))
-    view:onIaPanRelease(nil, pos(r2.x + r2.w + 120, r2.y + r2.h + 30))
-    op = view.active_image.op
+    view:onIaTouch(nil, pos(f2.x1, f2.y1))
+    ok(view.sel_drag and view.sel_drag.kind == "resize", "image: a corner touch begins a resize")
+    view:onIaPan(nil, pos(f2.x1 + 120, f2.y1 + 30))
+    view:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "image: a resizing card paints in bounds")
+    view:onIaPanRelease(nil, pos(f2.x1 + 120, f2.y1 + 30))
+    op = sel()
     ok(op.w > w_before, "image: dragging the SE corner outward grows the image")
     ok(math.abs(op.w / op.h - ratio) < 0.02, "image: resize keeps the aspect ratio")
-    ok(math.abs(op.x - fx) < 0.01 and math.abs(op.y - fy) < 0.01,
+    ok(math.abs(op.x - fx) < 0.6 and math.abs(op.y - fy) < 0.6,
         "image: SE resize keeps the opposite (NW) corner fixed")
 
-    -- rotate 90 preset: op.w/op.h (the unrotated size) are unchanged, only angle
+    -- a quarter turn: op.w/op.h (the unrotated size) are unchanged, only angle
     local rw, rh = op.w, op.h
-    view:rotateImage90(view.active_image)
-    op = view.active_image.op
-    ok((op.angle or 0) == 90, "image: rotate 90 sets a 90-degree angle")
-    ok(op.w == rw and op.h == rh, "image: rotate 90 leaves the unrotated size alone")
+    findButton(view._sel_dialog, "\u{21BB} 90\u{00B0}").callback()
+    op = sel()
+    ok((op.angle or 0) == 90, "image: the 90 degree button turns it a quarter")
+    ok(math.abs(op.w - rw) < 1e-6 and math.abs(op.h - rh) < 1e-6, "image: and leaves the unrotated size alone")
 
-    -- free rotate: drag-to-spin commits an arbitrary angle
-    view:beginImageRotate(view.active_image)
-    ok(view.image_rotating ~= nil, "image: free rotate enters a drag mode")
-    local cx2, cy2 = InkGeom.toScreen(v, op.x + op.w / 2, op.y + op.h / 2)
-    view:onIaTouch(nil, pos(cx2 + 50, cy2))          -- grab to the right of centre
-    view:onIaPan(nil, pos(cx2, cy2 + 50))            -- swing 90 degrees clockwise
-    view:onIaPanRelease(nil, pos(cx2, cy2 + 50))
-    ok(view.image_rotating == nil, "image: lifting ends the free rotation")
-    op = view.active_image.op
-    ok(math.abs((op.angle or 0) - 90) > 1, "image: free rotate changed the angle from the 90 preset")
+    -- a free turn with the round handle
+    local kx, ky = view:selKnob()
+    local f3 = view:selFrame()
+    local mx = (f3.x0 + f3.x1) / 2
+    view:onIaTouch(nil, pos(kx, ky))
+    view:onIaPan(nil, pos(mx + 40, ky))             -- a little way round
+    view:onIaPanRelease(nil, pos(mx + 40, ky))
+    op = sel()
+    ok(math.abs((op.angle or 0) - 90) > 1 and math.abs((op.angle or 0) - 180) > 1,
+        "image: the round handle turns it to any angle")
 
-    -- flips toggle their flags
-    view:flipImage(view.active_image, "h"); op = view.active_image.op
-    ok(op.flip_h == true, "image: flip H sets the flag")
-    view:flipImage(view.active_image, "v"); op = view.active_image.op
-    ok(op.flip_v == true, "image: flip V sets the flag")
+    -- mirrors flip it on the page
+    local before_angle = op.angle
+    view:selFlip("h"); op = sel()
+    ok(op.flip_h == true and math.abs(op.angle - (360 - before_angle) % 360) < 1e-6,
+        "image: flip side to side flips it and reverses its angle")
+    view:selFlip("v"); op = sel()
+    ok(op.flip_v == true, "image: flip up and down too")
 
     -- z-order: put a later op above, then bring the image to the front
-    view.canvas.ops[#view.canvas.ops + 1] = { kind = "ink", pts = {}, width = 5 }
-    ok(view.active_image.idx == 1, "image: it sits below the later op")
-    view:imageToFront(view.active_image)
-    ok(view.active_image.idx == #view.canvas.ops
-        and view.canvas.ops[#view.canvas.ops].kind == "image",
+    view.canvas.ops[#view.canvas.ops + 1] = { kind = "ink", pts = { 1, 1, 5, 5 }, width = 5 }
+    ok(view.selection.idxs[1] == 1, "image: it sits below the later op")
+    view:selToFront()
+    ok(view.selection.idxs[1] == #view.canvas.ops and view.canvas.ops[#view.canvas.ops].kind == "image",
         "image: bring to front moves it to the top of the stack")
 
     -- delete, then undo restores it (regression: the old hidden flag broke this)
     local before = view.canvas:opCount()
-    view:deleteActiveImage()
-    ok(view.active_image == nil, "image: delete clears the selection")
+    view:selDelete()
+    ok(view.selection == nil, "image: delete clears the selection")
     ok(view.canvas:opCount() == before - 1, "image: delete removes the image op")
     view:undo()
     local found = false
@@ -704,21 +744,22 @@ do
     for _, o in ipairs(view.canvas.ops) do if o.kind == "image" then found = true end end
     ok(not found, "image: redo re-applies the delete")
 
-    -- tap in Pan mode selects reliably (no hold hunting) -- put an image back first
+    -- a touch in Pan mode selects reliably (no hold hunting) -- put an image back first
     view:undo()   -- bring the image back
     view:setTool("pan")
     local img
     for _, o in ipairs(view.canvas.ops) do if o.kind == "image" then img = o end end
     local sx, sy = InkGeom.toScreen(v, img.x + img.w / 2, img.y + img.h / 2)
     view:onIaTouch(nil, pos(sx, sy))
-    ok(view.active_image and view.active_image.op == img, "image: a tap in Pan mode selects it")
+    ok(sel() == img, "image: a touch in Pan mode selects it")
+    view:onIaTap(nil, pos(sx, sy))
+    ok(view._sel_dialog ~= nil, "image: and the tap opens its menu")
 
     -- an undecodable picture is reported, not inserted
     RenderImage.fake_size = nil
     local cnt = view.canvas:opCount()
     view:insertImage("/tmp/broken.png")
-    ok(view.active_image and view.active_image.op == img and view.canvas:opCount() == cnt,
-        "image: an undecodable picture is not added")
+    ok(sel() == img and view.canvas:opCount() == cnt, "image: an undecodable picture is not added")
     RenderImage.fake_size = { w = 400, h = 200 }
 
     BB.out_of_bounds = 0
@@ -745,26 +786,36 @@ do
     view:setTool("pan")
 
     local cxs, cys = InkGeom.toScreen(v, 300, 400)   -- centre of the rect
+    local function sop() return view.selection and view.canvas.ops[view.selection.idxs[1]] end
     view:onIaTouch(nil, pos(cxs, cys))
-    ok(view.selected ~= nil, "shape: a touch in Pan mode selects it")
+    ok(view.selection ~= nil and sop().shape == "rect", "shape: a touch in Pan mode selects it")
     view:onIaTap(nil, pos(cxs, cys))                 -- the tap opens the menu
-    ok(view.is_always_active == true, "shape: an open menu keeps the canvas active for dragging")
+    ok(view._sel_dialog ~= nil and view.is_always_active == true,
+        "shape: an open menu keeps the canvas active for dragging")
     -- now drag it: touch, pan, release
-    local x0 = view.selected.op.pts[1]
+    local x0 = sop().pts[1]
     view:onIaTouch(nil, pos(cxs, cys))
     view:onIaPan(nil, pos(cxs + 90, cys + 40))
     view:onIaPanRelease(nil, pos(cxs + 90, cys + 40))
-    ok(view.selected.op.pts[1] > x0, "shape: dragging moves the shape")
+    ok(sop().pts[1] > x0, "shape: dragging moves the shape")
     ok(view.canvas:canUndo(), "shape: a move records undo history")
+    ok(view._sel_dialog ~= nil, "shape: its menu comes back beside its new place")
 
-    local ang0 = view.selected.op.angle or 0
-    view:rotateShape90(view.selected)
-    ok(math.abs((view.selected.op.angle or 0) - (ang0 + math.pi / 2)) < 1e-6,
-        "shape: rotate 90 adds a quarter turn")
+    local ang0 = sop().angle or 0
+    view:selTurn90()
+    ok(math.abs((sop().angle or 0) - (ang0 + math.pi / 2)) < 1e-6, "shape: rotate 90 adds a quarter turn")
 
-    view:deselectShape()
-    ok(view.selected == nil and view.is_always_active == false,
-        "shape: deselect clears the selection and restores the active flag")
+    -- resize it from a corner: the line grows with it
+    local w0 = sop().width
+    local f = view:selFrame()
+    view:onIaTouch(nil, pos(f.x0, f.y0))
+    view:onIaPan(nil, pos(f.x0 - 60, f.y0 - 60))
+    view:onIaPanRelease(nil, pos(f.x0 - 60, f.y0 - 60))
+    ok(sop().width > w0, "shape: resizing a shape thickens its line with it")
+
+    view:dropSelection()
+    ok(view.selection == nil and view._sel_dialog == nil and view.is_always_active == false,
+        "shape: deselect clears the selection, its menu and the active flag")
 
     -- erased shapes are left alone by the move tool; untouched ones are not
     local function rectOp() return { kind = "shape", shape = "rect", fill = false, width = 6,
@@ -782,7 +833,7 @@ do
     view.canvas:setOps({ rectOp(), erase({ 180, 400, 220, 400 }) })
     ok(not picked(), "erased shapes: a partly erased shape is left alone")
     view:onIaHold(nil, pos(InkGeom.toScreen(v, 300, 400)))
-    ok(view.selected == nil, "erased shapes: holding it opens no menu")
+    ok(view.selection == nil and view._sel_dialog == nil, "erased shapes: holding it opens no menu")
     view.canvas:setOps({ rectOp(), erase({ 200, 300, 400, 300, 400, 500, 200, 500, 200, 300 }, nil) })
     ok(not picked(), "erased shapes: a wholly erased shape is left alone")
     -- a symmetric erase reaches it through its mirror copy
@@ -2516,16 +2567,16 @@ do
     local sx, sy = require("ink/geom").toScreen(v, 100, 200)
     view:onIaTouch(nil, pos(sx, sy))
     view:onIaHold(nil, pos(sx, sy))
-    ok(view.selected ~= nil and view._shape_menu ~= nil, "fingers: holding a shape opens its menu")
+    ok(view.selection ~= nil and view._sel_dialog ~= nil, "fingers: holding a shape opens its menu")
     view:onIaHoldRel(nil, pos(sx, sy))
-    view:deselectShape()
+    view:dropSelection()
     -- nothing: a finger does nothing on the page
     view.finger_mode = "nothing"
     local idx = nb.index
     fingerSwipe(800, 200, 600)
     ok(nb.index == idx and view.canvas:opCount() == 2, "fingers: set to nothing, a finger neither turns nor draws")
     view:onIaTouch(nil, pos(sx, sy)); view:onIaHold(nil, pos(sx, sy)); view:onIaHoldRel(nil, pos(sx, sy))
-    ok(view._shape_menu == nil, "fingers: nor opens menus")
+    ok(view._sel_dialog == nil, "fingers: nor opens menus")
     view.palm_reject = false
     fingerSwipe(800, 200, 600)
     ok(nb.index == idx and view.canvas:opCount() == 3, "fingers: without palm rejection, a finger draws")
@@ -2921,6 +2972,140 @@ do
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
+-- ---- one selection for everything: what the lasso takes, its menu, its handles
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkGeom = require("ink/geom")
+    local Text = require("ink/text")
+    local RenderImage = require("ui/renderimage")
+    RenderImage.fake_size = { w = 200, h = 100 }
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    view.stampTextInto = function() end   -- the mocks cannot lay out text
+    UIManager:show(view)
+    local v = view.view
+    local function loop(x0, y0, x1, y1)
+        view:setTool("lasso")
+        local a, b = InkGeom.toScreen(v, x0, y0)
+        local c, d = InkGeom.toScreen(v, x1, y1)
+        view:onIaTouch(nil, pos(a, b)); view:onIaPan(nil, pos(c, b)); view:onIaPan(nil, pos(c, d))
+        view:onIaPan(nil, pos(a, d)); view:onIaPanRelease(nil, pos(a, b))
+    end
+    local function picked()
+        local t = {}
+        for _, op in ipairs(view:selectionOps()) do t[#t + 1] = op.kind .. (op.shape and (":" .. op.shape) or "") end
+        return table.concat(t, ",")
+    end
+    local function textOp(x, y)
+        local op = Text.new{ x = x, y = y, w = 160, size = 20 }
+        Text.insert(op, { p = 1, o = 0 }, "note", nil)
+        op.h = 30
+        return op
+    end
+    -- an ellipse looped close round its outline: its box corners lie outside the loop
+    view.canvas:setOps({ { kind = "shape", shape = "ellipse", width = 3, alpha = 255, pts = { 100, 100, 300, 200 } } })
+    loop(90, 92, 310, 208)
+    ok(picked() == "shape:ellipse", "select: the lasso takes a shape by its outline (" .. picked() .. ")")
+    -- a turned rectangle, its unturned corners outside the loop
+    view.canvas:setOps({ { kind = "shape", shape = "rect", width = 3, alpha = 255, angle = math.pi / 4,
+        pts = { 400, 400, 600, 600 } } })
+    loop(355, 355, 645, 645)
+    ok(picked() == "shape:rect", "select: and a turned shape")
+    -- everything at once: ink, a shape, a fill, a picture, a text box
+    view.canvas:setOps({
+        { kind = "ink", width = 4, alpha = 255, pts = { 120, 120, 160, 150, 200, 130 } },
+        { kind = "shape", shape = "line", width = 3, alpha = 255, pts = { 120, 200, 260, 220 } },
+        { kind = "fill", alpha = 255, color = { 0x88, 0x88, 0x88 }, runs = { 130, 260, 40, 130, 261, 40 } },
+        { kind = "image", path = "/tmp/pic.png", natw = 200, nath = 100, x = 300, y = 120, w = 100, h = 50 },
+        textOp(120, 320),
+    })
+    view:composeCanvas(); view:renderView()
+    loop(100, 100, 450, 380)
+    ok(picked() == "ink,shape:line,fill,image,text", "select: one loop takes every kind (" .. picked() .. ")")
+    local m = view._sel_dialog
+    ok(m and findButton(m, "Cut") and findButton(m, "Duplicate") and findButton(m, "\u{2194} Flip")
+        and findButton(m, "Colour") and findButton(m, "Size") and findButton(m, "To front")
+        and findButton(m, "\u{2715} Delete") and findButton(m, "Done"),
+        "select: its menu offers what the shape menu did, for all of it")
+    ok(not findButton(m, "Remove background"), "select: Remove background only for a single picture")
+    -- (judged against a paint without the selection: the mock screen can keep an
+    -- earlier test's landscape state)
+    local held = view.selection
+    view.selection = nil
+    BB.out_of_bounds = 0
+    view:paintTo(Screen.bb, 0, 0)
+    local base = BB.out_of_bounds
+    view.selection = held
+    BB.out_of_bounds = 0
+    view:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds <= base, "select: frame, handles and menu paint in bounds")
+
+    -- a quarter turn: drawings turn, the text box stays upright where its centre goes
+    local t0 = view.canvas.ops[5]
+    local tcx, tcy = t0.x + t0.w / 2, t0.y + t0.h / 2
+    local b = view.selection.bbox
+    local cx, cy = (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2
+    view:selTurn90()
+    local t1 = view.canvas.ops[5]
+    ok(t1.angle == nil and math.abs((t1.x + t1.w / 2) - (cx - (tcy - cy))) < 1e-6
+        and math.abs((t1.y + t1.h / 2) - (cy + (tcx - cx))) < 1e-6, "select: a text box turns to its place, upright")
+    ok(view.canvas.ops[4].angle == 90 and math.abs((view.canvas.ops[2].angle or 0) - math.pi / 2) < 1e-9,
+        "select: the picture and the shape turn")
+    ok(view.canvas:canUndo(), "select: one undo step")
+    view:undo()
+    ok(view.canvas.ops[5].x == 120 and view.selection == nil, "select: undo puts it all back and drops the frame")
+
+    -- text alone: no mirrors, no turning handle
+    view.canvas:setOps({ textOp(200, 200) })
+    view:composeCanvas(); view:renderView()
+    loop(180, 180, 400, 260)
+    ok(picked() == "text" and not findButton(view._sel_dialog, "\u{2194} Flip") and not view:selCanTurn(),
+        "select: text alone is not mirrored or turned")
+    ok(not findButton(view._sel_dialog, "Colour"), "select: nor coloured")
+    -- resizing text scales its letters
+    local size0 = view.canvas.ops[1].size
+    local f = view:selFrame()
+    view:onIaTouch(nil, pos(f.x1, f.y1))
+    view:onIaPan(nil, pos(f.x1 + 100, f.y1 + 50))
+    view:onIaPanRelease(nil, pos(f.x1 + 100, f.y1 + 50))
+    ok(view.canvas.ops[1].size > size0, "select: resizing text makes its letters bigger")
+
+    -- with the menu open, a touch on the menu is the menu's; one elsewhere drops
+    -- the selection and starts a new loop
+    ok(view._sel_dialog ~= nil, "select: the menu is open")
+    view._sel_dialog.dimen = { x = v.area_x + 10, y = v.area_y + v.area_h - 60, w = 200, h = 50 }
+    view:onIaTouch(nil, pos(v.area_x + 20, v.area_y + v.area_h - 20))
+    ok(not view.lassoing and view.selection ~= nil, "select: a touch on the menu starts nothing")
+    view:onIaTouch(nil, pos(v.area_x + v.area_w - 20, v.area_y + v.area_h - 20))
+    ok(view.lassoing and view.selection == nil and view._sel_dialog == nil,
+        "select: a touch elsewhere drops the selection and starts a new loop")
+    view:onIaPanRelease(nil, pos(v.area_x + v.area_w - 20, v.area_y + v.area_h - 20))
+    -- the menu's panels: colour, opacity and size live in the same sheet
+    view.canvas:setOps({ { kind = "ink", width = 4, alpha = 255, color = { 0, 0, 0 }, pts = { 120, 120, 200, 200 } } })
+    view:composeCanvas(); view:renderView()
+    loop(100, 100, 230, 230)
+    findButton(view._sel_dialog, "Opacity").callback()
+    ok(view._sel_dialog and findButton(view._sel_dialog, "Back") and not findButton(view._sel_dialog, "Cut"),
+        "select: Opacity opens in the menu")
+    view:selSetOpacity(40)
+    ok(view.canvas.ops[1].alpha == math.floor(0.4 * 255 + 0.5), "select: and sets a pen stroke's opacity")
+    findButton(view._sel_dialog, "Back").callback()
+    ok(findButton(view._sel_dialog, "Cut") ~= nil, "select: Back returns to the actions")
+    -- a pen stroke grows thicker with its selection
+    local w0 = view.canvas.ops[1].width
+    f = view:selFrame()
+    view:onIaTouch(nil, pos(f.x1, f.y1))
+    view:onIaPan(nil, pos(f.x1 + (f.x1 - f.x0), f.y1 + (f.y1 - f.y0)))
+    view:onIaPanRelease(nil, pos(f.x1 + (f.x1 - f.x0), f.y1 + (f.y1 - f.y0)))
+    ok(view.canvas.ops[1].width > w0 * 1.5, "select: resizing pen writing thickens it with it")
+    -- Done drops it
+    findButton(view._sel_dialog, "Done").callback()
+    ok(view.selection == nil and view._sel_dialog == nil, "select: Done drops the selection")
+    UIManager:close(view)
     UIManager.reset()
 end
 

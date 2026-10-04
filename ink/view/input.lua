@@ -286,17 +286,8 @@ end
 -- A hold at `pos` by a navigating finger: open the picture's or shape's menu
 -- there (duplicate, delete, flip...), as a hold does with the Move tool.
 function InkAwayView:holdMenuAt(pos)
-    local img = self:hitTestImage(pos.x, pos.y)
-    if img then
-        self:selectImage(img)
-        self:openImageMenu(self.active_image)
-        return
-    end
-    local shp = self:hitTestShape(pos.x, pos.y)
-    if shp then
-        self.selected = shp
-        self:openShapeMenu(shp)
-    end
+    local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+    if hit and self:selectOps({ hit.idx }, "pan") then self:openSelectionMenu() end
 end
 
 -- Is the pen hovering over (or on) the screen? On a Wacom device KOReader keeps
@@ -502,7 +493,7 @@ function InkAwayView:penDropFingerOps()
     end
     self:cancelShape()      -- drop a half-drawn shape
     self.pan_last = nil
-    self.lassoing, self.lasso_scr, self.sel_press = false, nil, nil
+    self.lassoing, self.lasso_scr = false, nil
 end
 
 function InkAwayView:penDown(slot, facts)
@@ -732,9 +723,7 @@ function InkAwayView:rawCanOwn(gd, x, y)
     if self._raw.ignore_slot ~= nil then return false end  -- our handed-off finger is still down
     if self:fingerRejected() then return false end
     if not self:inArea(x, y) or self:fabHit(x, y) then return false end
-    if self.selecting_crop or self.rotating or self.image_rotating or self.active_image then
-        return false
-    end
+    if self.selecting_crop or self.selection then return false end
     local top = UIManager.getTopmostVisibleWidget and UIManager:getTopmostVisibleWidget()
     if top and top ~= self then return false end
     return true

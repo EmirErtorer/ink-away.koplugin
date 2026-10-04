@@ -157,7 +157,6 @@ function InkAwayView:nbLoad()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
     self._page_rev = self.canvas.rev
-    self.selected, self.rotating = nil, nil
     self:resetLasso()
     self:composeCanvas(); self:renderView()
     -- Like KOReader's reader, turn pages with a non-flashing refresh ("partial" on
@@ -289,7 +288,7 @@ end
 -- Jump to an absolute page number (1-based).
 function InkAwayView:nbGoTo(target)
     if not self.notebook or type(target) ~= "number" then return end
-    if self.active_image then self:finishImageEdit() end   -- bake it onto this page first
+    self:resetLasso()   -- a selection belongs to this page
     target = math.floor(target)
     local nb = self.notebook
     if target < 1 or target > nb:count() or target == nb.index then return end
