@@ -100,8 +100,12 @@ function HwrNet.load(path)
     ffi.copy(buf, raw, n)
     local pos = 0
     local function need(k) if pos + k > n then error("hwr model file is cut short") end end
-    local function u32() need(4); local v = ffi.cast("uint32_t*", buf + pos)[0]; pos = pos + 4; return tonumber(v) end
-    local function f32() need(4); local v = ffi.cast("float*", buf + pos)[0]; pos = pos + 4; return tonumber(v) end
+    -- Numbers sit at any byte offset in the file. ARM readers stop the whole
+    -- program on an unaligned float load, so each one is copied into an aligned
+    -- cell first.
+    local cell_u, cell_f = ffi.new("uint32_t[1]"), ffi.new("float[1]")
+    local function u32() need(4); ffi.copy(cell_u, buf + pos, 4); pos = pos + 4; return tonumber(cell_u[0]) end
+    local function f32() need(4); ffi.copy(cell_f, buf + pos, 4); pos = pos + 4; return tonumber(cell_f[0]) end
     local ok, net = pcall(function()
         need(4)
         if ffi.string(buf, 4) ~= "IAHW" then error("not an Ink Away handwriting model") end

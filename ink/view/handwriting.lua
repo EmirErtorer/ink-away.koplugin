@@ -97,8 +97,16 @@ function InkAwayView:readWriting(strokes, net, words)
 end
 
 -- Convert the selected writing to text. Shows a message when there is none, or
--- when the model cannot be loaded.
+-- when something fails, rather than letting an error reach KOReader.
 function InkAwayView:convertSelectionToText()
+    local ok, err = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
+    if not ok then
+        logger.warn("InkAway: converting handwriting failed:", err)
+        UIManager:show(InfoMessage:new{ text = _("Something went wrong reading the writing.") })
+    end
+end
+
+function InkAwayView:convertSelectionToTextNow()
     if not self.selection then return end
     local strokes, ops = self:writingOf(self.selection.idxs)
     if #strokes == 0 then

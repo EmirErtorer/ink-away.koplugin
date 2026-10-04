@@ -17,6 +17,18 @@ ok(net ~= nil, "the model loads (" .. tostring(err) .. ")")
 ok(net and #net.classes == 47 and table.concat(net.classes):sub(1, 12) == "0123456789AB", "with its 47 classes")
 ok(net and math.abs(net.fit - 19.5) < 1e-6 and math.abs(net.radius - 1.6) < 1e-6, "and the renderer settings")
 
+-- ARM readers (Kindle, Kobo) stop the whole program on an unaligned float
+-- load, which a laptop never shows: the loader must not read numbers through a
+-- typed pointer into the file's bytes.
+do
+    local f = assert(io.open("ink/hwrnet.lua", "r"))
+    local src = f:read("*a")
+    f:close()
+    local typed = 0
+    for t in src:gmatch('ffi%.cast%("([%w_]+)%*", buf') do if t ~= "int8_t" and t ~= "uint8_t" then typed = typed + 1 end end
+    ok(typed == 0, ("the model file is read without typed pointers into its bytes (%d found)"):format(typed))
+end
+
 local vectors = dofile("tests/hwr_vectors.lua")
 local worst_img, worst_logit, agree = 0, 0, 0
 for _, v in ipairs(vectors) do
