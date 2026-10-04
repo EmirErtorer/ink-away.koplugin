@@ -110,7 +110,9 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
-        if op.kind == "text" then
+        if op.kind == "link" then
+            -- a link draws nothing (it becomes a PDF link annotation)
+        elseif op.kind == "text" then
             -- text comes from a rasteriser the view injects (Export.text_raster),
             -- in z-order; a text-sparing erase reveals a copy with the text, so
             -- the file matches the screen
@@ -586,7 +588,7 @@ end
 -- Is anything drawn on this canvas?
 function Export.hasVisibleOps(canvas)
     for _, op in ipairs(canvas.ops or {}) do
-        if not op.hidden then return true end
+        if not op.hidden and op.kind ~= "link" then return true end
     end
     return false
 end
@@ -621,7 +623,8 @@ end
 --         function(i, scale) -> RGBA buffer rendering each page's own
 --   opts: { footer = stamp "i / n" page numbers, scale = pixel multiplier,
 --           bg_opaque = the background has no transparency,
---           outline = bookmarks, { title, page, kids } (see Pdf Stream:finish) }
+--           outline = bookmarks, { title, page, kids } (see Pdf Stream:finish),
+--           links = function(i) -> page i's link areas (see Pdf Stream:addJPEGFile) }
 -- step() returns "page", i, n while working, "done" when the file is complete,
 -- or nil, err (the partial file is removed). cancel() stops and deletes it.
 function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
@@ -659,7 +662,7 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
             footer = opts.footer and (tostring(i) .. " / " .. job.n) or nil }
         local ok, e, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)
         if not ok then return fail(e or "could not render a page") end
-        ok, e = stream:addJPEGFile(tmp, w, h, pxw, pxh)
+        ok, e = stream:addJPEGFile(tmp, w, h, pxw, pxh, opts.links and opts.links(i))
         os.remove(tmp)
         if not ok then return fail(e) end
         -- release this page's buffers now (several MB each), not whenever the GC

@@ -186,7 +186,7 @@ end
 -- Can the selection turn? Not when it is only text boxes (they stay upright).
 function InkAwayView:selCanTurn()
     local k = self:selectionKinds()
-    return k.n > k.text
+    return k.n > k.text + (k.link or 0)
 end
 
 -- Where the turning handle sits: above the frame's middle, or below it when the
@@ -703,6 +703,17 @@ function InkAwayView:openSelectionMenu(panel)
                                 act(_("Opacity"), function() again("opacity") end) }
                 if k.ink + k.shape > 0 then style[#style + 1] = act(_("Size"), function() again("size") end) end
                 add(row(style))
+            end
+            if (k.link or 0) > 0 then
+                add(row({ act(_("Change link\u{2026}"), function() self:selLink() end),
+                          act(_("Go to link"), function()
+                              local idx = self:selectionLinks()[1]
+                              if idx then self:followLink(self.canvas.ops[idx]) end
+                          end),
+                          act(_("Remove link"), function() self:selUnlink() end) }))
+            else
+                add(self:actionButton(_("Link to page\u{2026}"), content_w, function() self:selLink() end,
+                    false, "small"))
             end
             if k.n == 1 and k.image == 1 then
                 add(self:actionButton(_("Remove background"), content_w, function()

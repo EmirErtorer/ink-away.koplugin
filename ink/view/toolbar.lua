@@ -16,6 +16,8 @@ local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
+local Font = require("ui/font")
+local TextWidget = require("ui/widget/textwidget")
 local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
@@ -36,6 +38,7 @@ local FABS = {
     { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
     { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
     { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
+    { rect = "back",  hidden = "_back_hidden",         show = "_show_back_fab" },
 }
 
 local InkAwayView = {}
@@ -296,7 +299,10 @@ function InkAwayView:fabRect(which)
     local v = self.view
     local m = Screen:scaleBySize(16)
     local w = Screen:scaleBySize(46)
-    if which == "zoom" then
+    if which == "back" then   -- after following a link: back to where it was followed from
+        if not self._link_back then return nil end
+        return { x = v.area_x + m, y = v.area_y + m, w = Screen:scaleBySize(96), h = Screen:scaleBySize(38) }
+    elseif which == "zoom" then
         local h = Screen:scaleBySize(92)
         return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
     elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
@@ -349,6 +355,10 @@ function InkAwayView:fabHit(px, py)
             return "nbbar"
         end
     end
+    if not self._back_hidden then
+        local r = self:fabRect("back")
+        if r and InkGeom.inRect(px, py, r) then return "back" end
+    end
     return nil
 end
 
@@ -357,7 +367,8 @@ function InkAwayView:fabAction(kind)
     if kind == "zoomin" then self:zoomStep(1)
     elseif kind == "zoomout" then self:zoomStep(-1)
     elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden)
-    elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed) end
+    elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed)
+    elseif kind == "back" then self:linkBack() end
 end
 
 -- Called from the drawing handlers: if the active point comes near a control,
@@ -448,6 +459,18 @@ function InkAwayView:drawFabs(bb, ox, oy)
     if self.notebook and not self._nbbar_toggle_hidden then
         local r = self:fabRect("nbbar")
         if r then fabChevron(bb, r, ox, oy, self._nb_collapsed and -1 or 1) end   -- up = expand, down = collapse
+    end
+    -- the way back from a followed link: a dark pill
+    if not self._back_hidden then
+        local r = self:fabRect("back")
+        if r then
+            Accent.paintRounded(bb, ox + r.x, oy + r.y, r.w, r.h, math.floor(r.h / 2))
+            local t = TextWidget:new{ text = "\u{2039} " .. _("Back"), face = Font:getFace("cfont", 15), bold = true,
+                fgcolor = Accent.get().text }
+            local sz = t:getSize()
+            t:paintTo(bb, ox + r.x + math.floor((r.w - sz.w) / 2), oy + r.y + math.floor((r.h - sz.h) / 2))
+            t:free()
+        end
     end
 end
 

@@ -61,8 +61,10 @@ end
 
 -- Add one page from a JPEG file on disk, copied in chunks so it is never held in
 -- memory whole. `w`, `h` are the page box in points and `pxw`, `pxh` the JPEG's
--- pixel size. Returns ok, err.
-function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh)
+-- pixel size. `links` (optional) are areas that lead to other pages of the
+-- file: { x0, y0, x1, y1 (points, y up), page = its number from 1 }. Returns
+-- ok, err.
+function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links)
     local jf = io.open(jpeg_path, "rb")
     if not jf then return false, "could not read rendered page" end
     local len = jf:seek("end")
@@ -87,10 +89,21 @@ function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh)
     self.off[con_n] = self.pos
     self:put(con_n .. " 0 obj\n<< /Length " .. #content .. " >>\nstream\n" ..
         content .. "endstream\nendobj\n")
+    -- a page's object number is 3 * its number + 2, so a link can name a page
+    -- not written yet
+    local annots = ""
+    if links and #links > 0 then
+        local a = {}
+        for _, l in ipairs(links) do
+            a[#a + 1] = string.format("<< /Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0]"
+                .. " /Dest [%d 0 R /Fit] >>", l.x0, l.y0, l.x1, l.y1, 3 * l.page + 2)
+        end
+        annots = " /Annots [" .. table.concat(a, " ") .. "]"
+    end
     self.off[pg_n] = self.pos
     self:put(pg_n .. " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " ..
         w .. " " .. h .. "] /Resources << /XObject << /Im0 " ..
-        img_n .. " 0 R >> >> /Contents " .. con_n .. " 0 R >>\nendobj\n")
+        img_n .. " 0 R >> >> /Contents " .. con_n .. " 0 R" .. annots .. " >>\nendobj\n")
     if self.failed then return false, "could not write the PDF (is the storage full?)" end
     return true
 end

@@ -4215,6 +4215,155 @@ do
     UIManager.reset()
 end
 
+-- Links between pages and the contents page
+do
+    local TestEnv = require("testenv")
+    local Export = require("ink/export")
+    local Storage = require("ink/storage")
+    local Project = require("ink/project")
+    local LIB = TestEnv.libraryDir() .. "/linkview"
+    os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. LIB .. "'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkGeom = require("ink/geom")
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    view.stampTextInto = function() end   -- the mocks cannot lay out text
+    UIManager:show(view)
+    local v = view.view
+    local function scr(cx, cy) return InkGeom.toScreen(v, cx, cy) end
+    local function ink(x, y) return { kind = "ink", width = 4, alpha = 255, pts = { x, y, x + 60, y + 20 } } end
+    view:newNotebook("lines", LIB)
+    view.canvas.ops[1] = ink(100, 100)
+    view:markDirty()
+    for i = 2, 4 do view:nbAddPage(); view.canvas.ops[1] = ink(100, 100 * i); view:markDirty() end
+    view:nbSyncOut()
+    view.notebook.pages[3].title = "Forces"
+    view.notebook.pages[4].title = "Energy"
+    view:renameDocument("Physics")
+    view:saveDocument()
+    local nb = view.notebook
+    local id4 = nb.pages[4].id
+
+    -- a link from the selection's menu to page 4
+    view:nbGoTo(1)
+    view:selectOps({ 1 }, "lasso")
+    view:openSelectionMenu()
+    ok(findButton(view._sel_dialog, "Link to page\u{2026}") ~= nil, "links: the menu offers a link")
+    findButton(view._sel_dialog, "Link to page\u{2026}").callback()
+    ok(view._link_sheet ~= nil and findButton(view._link_sheet, "Energy"), "links: the pages of this notebook to choose from")
+    findButton(view._link_sheet, "Energy").callback()
+    local link = view.canvas.ops[#view.canvas.ops]
+    ok(link.kind == "link" and link.to.id == id4 and link.to.path == nil, "links: a link to the page, within the notebook")
+    ok(view.selection and #view.selection.idxs == 2 and view._sel_dialog ~= nil, "links: it joins the selection")
+    ok(findButton(view._sel_dialog, "Remove link") and findButton(view._sel_dialog, "Change link\u{2026}"),
+        "links: the menu then offers to change or remove it")
+    view:paintTo(Screen.bb, 0, 0)
+    view:dropSelection()
+
+    -- following it with Pan, and back
+    view:setTool("pan")
+    local lx, ly = scr(link.x + link.w / 2, link.y + link.h / 2)
+    view:onIaTouch(nil, pos(lx, ly))
+    view:onIaTap(nil, pos(lx, ly))
+    ok(nb.index == 4 and view._link_back and view._link_back.page == 1, "links: a tap with Pan follows it")
+    ok(view:fabRect("back") ~= nil and view:fabHit(view:fabRect("back").x + 5, view:fabRect("back").y + 5) == "back",
+        "links: a Back pill shows")
+    view:fabAction("back")
+    ok(nb.index == 1 and view._link_back == nil and view:fabRect("back") == nil, "links: Back returns to page 1")
+    -- a drag that starts on it pans instead
+    view:onIaTouch(nil, pos(lx, ly)); view:onIaPan(nil, pos(lx + 40, ly)); view:onIaPanRelease(nil, pos(lx + 40, ly))
+    ok(nb.index == 1, "links: a drag from it does not follow it")
+    -- the page moves: the link follows it by id
+    view:nbGoTo(4); view.notebook:movePage(-1); view:nbGoTo(1)
+    view:onIaTouch(nil, pos(lx, ly)); view:onIaTap(nil, pos(lx, ly))
+    ok(nb.pages[nb.index].id == id4 and nb.index == 3, "links: it still leads to its page after the page moved")
+    view:fabAction("back")
+
+    -- a link to a page of another notebook
+    view:nbSyncOut(); view:saveDocument()
+    local phys = view.doc_path
+    view:newNotebook("grid", LIB)
+    view.canvas.ops[1] = ink(200, 200); view:markDirty()
+    view:renameDocument("Maths"); view:saveDocument()
+    view:selectOps({ 1 }, "lasso")
+    view:selLink()
+    findButton(view._link_sheet, "Another notebook\u{2026}").callback()
+    findButton(view._link_sheet, "Physics").callback()
+    findButton(view._link_sheet, "Forces").callback()
+    local far = view.canvas.ops[#view.canvas.ops]
+    ok(far.kind == "link" and far.to.path == phys and far.to.label:find("Forces", 1, true), "links: to another notebook's page")
+    view:dropSelection()
+    view:followLink(far)
+    ok(view.doc_path == phys and view.notebook.pages[view.notebook.index].title == "Forces",
+        "links: following it opens that notebook at that page")
+    view:linkBack()
+    ok(view.doc_path:find("Maths", 1, true) ~= nil, "links: and Back returns to the first notebook")
+    -- removing it leaves what it was made on
+    view:selectOps({ 1, #view.canvas.ops }, "lasso")
+    view:selUnlink()
+    ok(#view.canvas.ops == 1 and view.canvas.ops[1].kind == "ink", "links: Remove link keeps the writing")
+    view:dropSelection()
+
+    -- the contents page
+    view:openDocument(phys)
+    nb = view.notebook
+    local n0 = nb:count()
+    view:nbMakeContents()
+    ok(nb:count() == n0 + 1 and nb.pages[1].contents and nb.pages[1].title == "Contents" and nb.index == 1,
+        "contents: a contents page at the front, shown")
+    local toc_links = {}
+    for _, op in ipairs(view.canvas.ops) do if op.kind == "link" then toc_links[#toc_links + 1] = op end end
+    -- (Energy was moved before Forces above; with the contents in front it is page 4)
+    ok(#toc_links == 2 and toc_links[1].to.id == id4 and toc_links[1].to.page == 4,
+        "contents: a line for each titled page, with its number now")
+    -- something written on it stays when it is brought up to date
+    view.canvas.ops[#view.canvas.ops + 1] = ink(500, 900); view:markDirty()
+    nb.pages[2].title = "Introduction"
+    view:nbMakeContents()
+    local lines, mine = 0, 0
+    for _, op in ipairs(view.canvas.ops) do
+        if op.kind == "link" then lines = lines + 1 end
+        if op.kind == "ink" then mine = mine + 1 end
+    end
+    ok(nb:count() == n0 + 1 and lines == 3 and mine == 1, "contents: an update lists the new title and keeps the ink")
+    -- following a contents line
+    view:setTool("pan")
+    local first = nil
+    for _, op in ipairs(view.canvas.ops) do if op.kind == "link" and not first then first = op end end
+    local fx, fy = scr(first.x + 20, first.y + first.h / 2)
+    view:onIaTouch(nil, pos(fx, fy)); view:onIaTap(nil, pos(fx, fy))
+    ok(nb.pages[nb.index].title == "Introduction", "contents: a tap on a line opens its page")
+    view:fabAction("back")
+
+    -- in an exported PDF: links between exported pages
+    local saved = Export.notebookPDFJob
+    local got
+    Export.notebookPDFJob = function(pages, w, h, template, path, quality, tmp, bg, opts)
+        got = { pages = pages, opts = opts, h = h }
+        return { step = function() return "done" end, cancel = function() end }
+    end
+    view:exportOptions().fmt, view:exportOptions().scope = "pdf", "all"
+    view:writePDF(LIB .. "/Physics.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    local annots = got and got.opts.links and got.opts.links(1)
+    ok(annots and #annots == 3 and annots[1].page == 2 and annots[1].y1 > annots[1].y0,
+        "export: the contents' lines are links in the PDF, to their pages")
+    view:exportOptions().scope, view:exportOptions().range = "range", { from = 1, to = 2 }
+    view:writePDF(LIB .. "/Physics.pdf")
+    UIManager.fireScheduled(); UIManager.fireScheduled()
+    annots = got.opts.links(1)
+    ok(#annots == 1 and annots[1].page == 2, "export: links to pages left out are dropped")
+    Export.notebookPDFJob = saved
+
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

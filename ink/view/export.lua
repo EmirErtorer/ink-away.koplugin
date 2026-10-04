@@ -18,6 +18,7 @@ local _ = require("gettext")
 local RenderImage = require("ui/renderimage")
 local Export = require("ink/export")
 local ImageProc = require("ink/imageproc")
+local Links = require("ink/links")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
@@ -384,7 +385,7 @@ end
 function InkAwayView:writePDF(path)
     local o = self:exportOptions()
     local nb = self.notebook
-    local pages_ops, template, bg, w, h, outline
+    local pages_ops, template, bg, w, h, outline, links
     local bg_opaque, quality = false, 85
     if nb then
         self:nbSyncOut()
@@ -393,6 +394,15 @@ function InkAwayView:writePDF(path)
         pages_ops = {}
         for j = 1, #sel do pages[j] = nb.pages[sel[j]]; pages_ops[j] = pages[j].ops end
         outline = titledPages(pages)
+        -- links between the exported pages become links in the PDF
+        local at = {}
+        for j, p in ipairs(pages) do if p.id then at[p.id] = j end end
+        links = function(j)
+            return Links.pdfAnnots(pages_ops[j], h, function(to)
+                if to.path and to.path ~= self.doc_path then return nil end
+                return to.id and at[to.id]
+            end)
+        end
         w, h = nb.w, nb.h
         template = function(j) return self:exportTemplate(sel[j]) end
         if nb.template.pdf_path then
@@ -419,7 +429,7 @@ function InkAwayView:writePDF(path)
         if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
     end
     self:runPdfJob(path, { pages = pages_ops, w = w, h = h, template = template, bg = bg,
-        bg_opaque = bg_opaque, numbers = o.numbers, quality = quality, outline = outline })
+        bg_opaque = bg_opaque, numbers = o.numbers, quality = quality, outline = outline, links = links })
 end
 
 -- Add the pages of folder `dir` to `acc` (pages, templates, sources): its
@@ -429,6 +439,7 @@ end
 function InkAwayView:collectFolderPages(dir, acc)
     local folders, docs = self:binderEntries(dir)
     local pages, templates, sources = acc.pages, acc.templates, acc.sources
+    acc.places = acc.places or {}   -- each page's document and id, for links
     local outline = {}
     for _, f in ipairs(folders) do
         local first = #pages + 1
@@ -443,6 +454,7 @@ function InkAwayView:collectFolderPages(dir, acc)
                 local nb = Notebook.fromData(data)
                 for i, page in ipairs(nb.pages) do
                     pages[#pages + 1] = page.ops
+                    acc.places[#pages] = { path = d.path, id = page.id }
                     templates[#pages] = self:pageExportTemplate(nb, i, "white", true)
                     if nb.template.pdf_path and page.src then
                         sources[#pages] = { pdf = nb.template.pdf_path, src = page.src }
@@ -451,6 +463,7 @@ function InkAwayView:collectFolderPages(dir, acc)
                 end
             else
                 pages[#pages + 1] = data.ops or {}
+                acc.places[#pages] = { path = d.path }
                 templates[#pages] = { style = "blank", paper = PAPERS.white }
                 if type(data.bg) == "string" and Storage.exists(data.bg) then sources[#pages] = { image = data.bg } end
             end
@@ -466,8 +479,20 @@ end
 function InkAwayView:exportFolderPDF(dir)
     self:leaveDocument()   -- so the open document's latest changes are in its file
     local W, H = self.view.canvas_w, self.view.canvas_h
-    local acc = { pages = {}, templates = {}, sources = {} }
+    local acc = { pages = {}, templates = {}, sources = {}, places = {} }
     local outline = self:collectFolderPages(dir, acc)
+    -- links to pages in the folder become links in the PDF, across notebooks too
+    local at = {}
+    for j, p in ipairs(acc.places) do
+        if p.id then at[p.path .. "\0" .. p.id] = j end
+    end
+    local function links(j)
+        local here = acc.places[j] and acc.places[j].path
+        return Links.pdfAnnots(acc.pages[j], H, function(to)
+            local p = to.path or here
+            return p and to.id and at[p .. "\0" .. to.id]
+        end)
+    end
     local pages, templates, sources = acc.pages, acc.templates, acc.sources
     if #pages == 0 then
         UIManager:show(InfoMessage:new{ text = _("There is nothing to export in this folder."), timeout = 3 })
@@ -504,7 +529,7 @@ function InkAwayView:exportFolderPDF(dir)
         title = _("Export the folder as PDF"), name = Storage.baseName(dir), default = Storage.baseName(dir),
         dir = self:defaultExportDir(), ext = "pdf",
         on_path = function(path)
-            self:runPdfJob(path, { pages = pages, w = W, h = H, bg = bg, outline = outline,
+            self:runPdfJob(path, { pages = pages, w = W, h = H, bg = bg, outline = outline, links = links,
                 template = function(j) return templates[j] end, done = closeDocs })
         end,
     }
@@ -521,7 +546,8 @@ function InkAwayView:runPdfJob(path, spec)
     -- imported PDF neither freezes the reader nor builds the whole file in memory
     local job, jerr = Export.notebookPDFJob(pages_ops, spec.w, spec.h, spec.template, path, spec.quality or 85,
         Storage.settingsDir(), spec.bg,
-        { footer = spec.numbers or nil, bg_opaque = spec.bg_opaque or nil, outline = spec.outline })
+        { footer = spec.numbers or nil, bg_opaque = spec.bg_opaque or nil, outline = spec.outline,
+          links = spec.links })
     if not job then
         if spec.done then spec.done() end
         UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(jerr) })

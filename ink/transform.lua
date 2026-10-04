@@ -17,7 +17,8 @@ How each kind takes it:
   * a picture: its box moves and scales about its centre, its angle (degrees)
     turns, and a mirror flips it and reverses its angle
   * a text box: it moves and its letters scale, but it stays upright and
-    readable: a turn or a mirror moves it to where its centre goes
+    readable: a turn or a mirror moves it to where its centre goes; a link's
+    area (see ink/links.lua) the same way
   * a fill (a paint bucket area, stored as pixel runs): mirrored run by run;
     resized or turned by resampling its pixels
 ]]
@@ -126,11 +127,11 @@ function Transform.scale(op, ax, ay, s)
         local cx, cy = sc(boxCentre(op))
         op.w, op.h = op.w * s, op.h * s
         op.x, op.y = cx - op.w / 2, cy - op.h / 2
-    elseif k == "text" then
+    elseif k == "text" or k == "link" then
         op.x, op.y = sc(op.x, op.y)
         op.w = (op.w or 0) * s
         if op.h then op.h = op.h * s end
-        op.size = (op.size or 20) * s
+        if k == "text" then op.size = (op.size or 20) * s end
     elseif k == "fill" then
         resampleFill(op, sc, function(x, y) return ax + (x - ax) / s, ay + (y - ay) / s end)
     else
@@ -149,7 +150,7 @@ function Transform.rotate(op, cx, cy, a)
         local nx, ny = rotPoint(ox, oy, cx, cy, ca, sa)
         shiftBox(op, nx - ox, ny - oy)
         op.angle = ((op.angle or 0) + math.deg(a)) % 360
-    elseif k == "text" then
+    elseif k == "text" or k == "link" then
         local ox, oy = boxCentre(op)
         local nx, ny = rotPoint(ox, oy, cx, cy, ca, sa)
         shiftBox(op, nx - ox, ny - oy)   -- it stays upright
@@ -172,7 +173,7 @@ function Transform.flip(op, axis, mid)
     local h = axis == "h"
     local function fl(x, y) if h then return 2 * mid - x, y end return x, 2 * mid - y end
     local k = op.kind
-    if k == "image" or k == "text" then
+    if k == "image" or k == "text" or k == "link" then
         local ox, oy = boxCentre(op)
         local nx, ny = fl(ox, oy)
         shiftBox(op, nx - ox, ny - oy)

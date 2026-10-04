@@ -100,5 +100,37 @@ do
     end
     os.remove(out)
 end
+-- links: a link on page 1 to page 3 is a link MuPDF follows, over the same area
+do
+    local Links = require("ink/links")
+    local link = Links.new({ x0 = 100, y0 = 200, x1 = 400, y1 = 260 }, { id = 3 })
+    local pages = { { link }, {}, {} }
+    local job4 = assert(Export.notebookPDFJob(pages, W, H, { style = "blank" }, out, 85, tmp, nil,
+        { links = function(i)
+            return Links.pdfAnnots(pages[i], H, function(to) return to.id end)
+        end }))
+    local okc, state, err
+    repeat okc, state, err = pcall(job4.step) until not okc or state ~= "page"
+    if not okc then state, err = nil, state end
+    ok(state == "done", "a PDF with links exports: " .. tostring(err))
+    if mok and state == "done" then
+        local dok, doc = pcall(Mupdf.openDocument, out)
+        if dok and doc then
+            local page = doc:openPage(1)
+            local links = page:getPageLinks() or {}
+            ok(#links == 1 and links[1].page == 2, "MuPDF finds the link, to the third page")
+            local l = links[1] or {}
+            ok(math.abs((l.x0 or 0) - 100) < 1 and math.abs((l.y0 or 0) - 200) < 1
+                and math.abs((l.x1 or 0) - 400) < 1 and math.abs((l.y1 or 0) - 260) < 1,
+                "over the area it was made on")
+            page:close()
+            local p2 = doc:openPage(2)
+            ok(#(p2:getPageLinks() or {}) == 0, "a page without links has none")
+            p2:close()
+            doc:close()
+        end
+    end
+    os.remove(out)
+end
 print(("realbb pdfexport: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -115,7 +115,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     -- finger on its own card, see view/selection.lua)
     local lifted = self._lifted
     for _, op in ipairs(ops) do
-        if not op.hidden and not (lifted and lifted[op]) and (not region or meets(op, region)) then
+        if op.kind == "link" then
+            -- a link draws nothing into the page (see ink/links.lua)
+        elseif not op.hidden and not (lifted and lifted[op]) and (not region or meets(op, region)) then
             if op.kind == "text" then
                 self:stampTextInto(dst, op, region)   -- glyphs, drawn straight into dst (z-order)
             elseif op.kind == "image" then

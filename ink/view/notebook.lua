@@ -397,6 +397,9 @@ function InkAwayView:openPageMenu()
         add(row2(act(_("Save as template\u{2026}"), halfW, function() self:nbSaveTemplate() end),
                  act(_("From template\u{2026}"), halfW, function() self:nbFromTemplate() end)))
         add(vspan(8))
+        add(act(self:nbHasContents() and _("Update the contents page") or _("Make a contents page"), content_w,
+            function() self:nbMakeContents() end))
+        add(vspan(8))
         if Clipboard.count() > 0 then
             add(row2(act(_("Paste"), halfW, function() self:pasteAt(nil) end),
                      act(_("Delete page"), halfW, function() self:nbDeletePage() end)))

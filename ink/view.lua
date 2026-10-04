@@ -526,6 +526,13 @@ function InkAwayView:onIaTouch(_, ges)
     if self.tool == "fill" then self:doFill(pos); return true end
     if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
+        -- a tap on a link follows it (a drag from it still pans)
+        local link = self:linkAtScreen(pos.x, pos.y)
+        if link then
+            self._link_press = link
+            self.pan_last = { x = pos.x, y = pos.y }
+            return true
+        end
         -- a touch on a picture or a shape selects it and can drag it; its menu
         -- opens on the tap or hold, since opening it here would let the same
         -- gesture close it
@@ -574,6 +581,7 @@ function InkAwayView:onIaPan(_, ges)
     if self.tool == "fill" then return true end   -- fill is a tap, ignore drags
     if self.tool == "shape" then return self:shapeMove(pos) end
     if self.tool == "pan" then
+        self._link_press = nil   -- a drag, not a tap on a link
         if self.pan_last then
             self:panByScreen(pos.x - self.pan_last.x, pos.y - self.pan_last.y)
             self.pan_last.x, self.pan_last.y = pos.x, pos.y
@@ -657,8 +665,11 @@ InkAwayView.onIaMultiSwipe = InkAwayView.onIaSwipe
 
 function InkAwayView:onIaTap(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
-    if self._finger_nav and not self._pen_feeding then   -- a navigating finger's tap does nothing
+    if self._finger_nav and not self._pen_feeding then   -- a navigating finger's tap follows a link
+        local nav = self._finger_nav
         self._finger_nav = nil
+        local link = nav.mode == "navigate" and ges and ges.pos and self:linkAtScreen(ges.pos.x, ges.pos.y)
+        if link then self:followLink(link) end
         return true
     end
     if self._clip_press then
@@ -686,6 +697,13 @@ function InkAwayView:onIaTap(_, ges)
         if p.y >= v.area_y + v.area_h then return true end
     end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
+    -- a tap on a link with Pan follows it
+    if self._link_press then
+        local link = self._link_press
+        self._link_press, self.pan_last = nil, nil
+        self:followLink(link)
+        return true
+    end
     -- a tap on the selection (its touch began a drag that never moved) opens its
     -- menu, on the completed tap, so the tap cannot close it again
     if self.sel_drag then return self:selRelease() end
@@ -731,8 +749,11 @@ function InkAwayView:onIaHold(_, ges)
         -- a hold on the selection (or on a picture or shape, which it selects)
         -- opens its menu; the drag its touch began is dropped
         if self.sel_drag then self:endSelectionDrag(true) end
+        self._link_press = nil
         if not (self.selection and self:selHit(pos.x, pos.y)) then
-            local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+            local _, link_idx = self:linkAtScreen(pos.x, pos.y)
+            local hit = (link_idx and { idx = link_idx }) or self:hitTestImage(pos.x, pos.y)
+                or self:hitTestShape(pos.x, pos.y)
             if not (hit and self:selectOps({ hit.idx }, "pan")) then return true end
         end
         self:openSelectionMenu()
@@ -926,6 +947,7 @@ function InkAwayView:paintTo(bb, x, y)
     if self.shape_preview then self:paintShapePreview(bb, x, y) end
     if self.selecting_crop and self._crop_screen then self:paintCropOverlay(bb, x, y) end
     if self.lassoing then self:paintLassoLoop(bb, x, y) end
+    self:paintLinks(bb, x, y)
     if self.selection then self:paintSelection(bb, x, y) end
 
     -- the text box being edited: glyphs, frame, caret and selection
@@ -946,7 +968,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

@@ -248,7 +248,9 @@ end
 -- symmetry copies, or nil when it draws nothing (or is text not laid out yet).
 function Canvas.opBox(op)
     local k = op.kind
-    if k == "text" then
+    if k == "link" then
+        return op.x, op.y, op.x + (op.w or 0), op.y + (op.h or 0)
+    elseif k == "text" then
         if not ((op.h or 0) > 0) then return nil end
         return op.x, op.y, op.x + (op.w or 0), op.y + op.h
     elseif k == "image" then
