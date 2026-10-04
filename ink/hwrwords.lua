@@ -83,7 +83,9 @@ end
 -- Decode a word from its characters' log probabilities (a list, one list of
 -- class log probabilities per character). Returns the text (lower case for a
 -- dictionary word, digits for a number, the classes as read otherwise), whether
--- it is a dictionary word, and each position's best class index.
+-- it is a dictionary word, each position's best class index, and the reading's
+-- score (log probability, less the word's level cost, or less KEEP_RAW for
+-- characters kept as read), so different splits of a line can be compared.
 function Words:decode(lps)
     local raw, idx, raw_score = rawReading(lps, self.classes)
     local n = #lps
@@ -117,8 +119,8 @@ function Words:decode(lps)
     end
     if num_score > score then text, score, used = table.concat(num), num_score, false end
     local keep = (raw:find("%d") and raw:find("%a")) and Words.KEEP_RAW_MIXED or Words.KEEP_RAW
-    if not text or raw_score > score + keep then return raw, false, idx end
-    return text, used, idx
+    if not text or raw_score > score + keep then return raw, false, idx, raw_score - keep end
+    return text, used, idx, score
 end
 
 return Words

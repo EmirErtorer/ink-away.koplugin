@@ -71,29 +71,7 @@ end
 -- Read `strokes` (flat point lists in writing order). Returns the text: words
 -- joined by spaces, lines by new lines.
 function InkAwayView:readWriting(strokes, net, words)
-    local out_lines = {}
-    for _, line in ipairs(Hwr.segment(strokes)) do
-        -- read every character first: the line's x-height comes from them
-        local all_chars, all_best, per_word = {}, {}, {}
-        for wi, word in ipairs(line.words) do
-            local lps = {}
-            for ci, c in ipairs(word.chars) do lps[ci] = net:classify(c.strokes) end
-            local text, _, best = words:decode(lps)
-            per_word[wi] = { text = text, lps = lps }
-            for ci, c in ipairs(word.chars) do
-                all_chars[#all_chars + 1] = c
-                all_best[#all_best + 1] = best[ci]
-            end
-        end
-        local xh, base = Hwr.lineMetrics(all_chars, net.classes, all_best)
-        local out = {}
-        for wi, word in ipairs(line.words) do
-            local r = per_word[wi]
-            out[wi] = Hwr.cased(r.text, word.chars, r.lps, net.classes, xh, base)
-        end
-        out_lines[#out_lines + 1] = table.concat(out, " ")
-    end
-    return table.concat(out_lines, "\n")
+    return Hwr.read(strokes, net, words)
 end
 
 -- Convert the selected writing to text. Shows a message when there is none, or
