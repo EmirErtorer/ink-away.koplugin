@@ -227,6 +227,11 @@ function InkAwayView:fingerOnPage()
     return self.finger_mode == "nothing" and "nothing" or "navigate"
 end
 
+-- Is the page zoomed in past where it starts (filling the drawing area)?
+function InkAwayView:zoomedIn()
+    return self.view.zoom > (self.zoom_min or 0) * 1.001
+end
+
 -- Is the page zoomed in wider than the drawing area, so it can pan sideways?
 function InkAwayView:sidewaysRoom()
     local v = self.view

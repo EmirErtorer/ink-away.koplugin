@@ -2488,11 +2488,17 @@ do
     local n0 = view.canvas:opCount()
     view:onIaTwoTap(nil, { pos = { x = 500, y = v.area_y + 500 } })
     ok(view.canvas:opCount() == n0 - 1, "two fingers: a tap undoes")
+    view._two_tap = nil   -- (faster than a person: not a double tap)
     view:onIaTouch(nil, pos(300, v.area_y + 300))   -- a finger dot just begun (gesture path)
     view:onIaTwoTap(nil, { pos = { x = 500, y = v.area_y + 500 } })
     ok(view.canvas:opCount() == n0 - 2 and not view.capturing,
         "two fingers: the first finger's dot is dropped, and the undo takes the last real change")
     view:redo(); view:redo()
+    view._two_tap = nil
+    -- zooming out stops where the page fills the area: no margins at the sides
+    view:setZoom(3); view:setZoom(0.1)
+    ok(math.abs(v.zoom - view.zoom_min) < 1e-9 and v.canvas_w * v.zoom >= v.area_w - 1,
+        "zoom: pinching out stops at the starting size, the page filling the width")
     idx = nb.index
     view:onIaTwoSwipe(nil, { pos = { x = 800, y = v.area_y + 600 }, end_pos = { x = 300, y = v.area_y + 620 } })
     ok(nb.index == idx + 1, "two fingers: a swipe to the left turns to the next page")

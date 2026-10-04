@@ -270,10 +270,10 @@ function InkAwayView:init()
         canvas_w = W, canvas_h = H,
         zoom = 1, pan_x = 0, pan_y = 0,
     }
-    self.zoom_min = InkGeom.fitZoom(self.view)
-    -- Start with the page covering the drawing area; fit-to-page (zoom_min) is the
-    -- floor for pinching out.
-    self.view.zoom = math.max(self.zoom_min, InkGeom.coverZoom(self.view))
+    self.zoom_min = InkGeom.coverZoom(self.view)
+    -- Start with the page covering the drawing area, which is also as far as it
+    -- zooms out (zoom_min): further out would only add margins at the sides.
+    self.view.zoom = self.zoom_min
     InkGeom.clampPan(self.view)
 
     -- The toolbar is the child that receives taps; paintTo does all the painting.
@@ -759,7 +759,8 @@ function InkAwayView:onIaTwoPan(_, ges)
     self._finger_nav = nil
     local pos = ges.pos
     if not self.pan_last then
-        self.pan_last = { x = pos.x, y = pos.y, x0 = pos.x, y0 = pos.y }
+        self.pan_last = { x = pos.x, y = pos.y, x0 = pos.x, y0 = pos.y,
+            px = self.view.pan_x, py = self.view.pan_y }   -- where the page was (see onIaTwoSwipe)
     else
         local dx, dy = pos.x - self.pan_last.x, pos.y - self.pan_last.y
         self.pan_last.x, self.pan_last.y = pos.x, pos.y
@@ -774,10 +775,14 @@ function InkAwayView:onIaTwoPanRel()
     return true
 end
 
--- A two-finger tap undoes, with any tool. A dot the first finger began (with palm
--- rejection on, a drawing finger arrives as gestures) is dropped first, so the
--- undo takes back the last real change and not the dot; any other stroke still
--- open is committed first, so that is what goes.
+-- A two-finger tap undoes, with any tool, at once. A second two-finger tap soon
+-- after (within TWO_TAP_REDO_MS) makes the pair a redo: it takes that undo back
+-- and redoes one step, so the undo never waits to see whether a second tap is
+-- coming. A dot the first finger began (with palm rejection off, a drawing
+-- finger arrives as gestures) is dropped first, so the undo takes back the last
+-- real change and not the dot; any other stroke still open is committed first,
+-- so that is what goes.
+local TWO_TAP_REDO_MS = 600
 function InkAwayView:onIaTwoTap()
     if self:fingerRejected() then return true end   -- the writing hand, not a gesture
     self._finger_nav = nil
@@ -787,17 +792,39 @@ function InkAwayView:onIaTwoTap()
     end
     self:flushPending()
     self:cancelShape()
-    self:undo()
+    local now = self:nowMs()
+    local last = self._two_tap
+    if last and now - last.at <= TWO_TAP_REDO_MS then
+        self._two_tap = nil
+        if last.undid then self:redo() end   -- take that undo back
+        self:redo()
+        return true
+    end
+    self._two_tap = { at = now, undid = self:undo() }
     return true
 end
 
 -- A two-finger swipe sideways turns a notebook's page: to the left for the
--- next, as in the reader (see pageSwipes for when).
+-- next, as in the reader (see pageSwipes for when). A long swipe up, when not
+-- zoomed in, opens the notebook's Browse, or the Library from a drawing; a
+-- short one stays a scroll.
 function InkAwayView:onIaTwoSwipe(_, ges)
     if self:fingerRejected() then return true end
+    local start = self.pan_last
     self.pan_last, self._finger_nav = nil, nil
     local a, b = ges and ges.pos, ges and ges.end_pos
-    if a and b then self:swipeTurn(b.x - a.x, b.y - a.y) end
+    if not (a and b) then return true end
+    local dx, dy = b.x - a.x, b.y - a.y
+    if self:swipeTurn(dx, dy) then return true end
+    if dy < 0 and -dy >= self.view.area_h / 4 and -dy > 1.5 * math.abs(dx) and not self:zoomedIn() then
+        -- the two-finger move panned on its way: put the page back first
+        if start and start.px then
+            self.view.pan_x, self.view.pan_y = start.px, start.py
+            InkGeom.clampPan(self.view)
+            self:renderView()
+        end
+        if self.notebook then self:openOverview() else self:openLibrary() end
+    end
     return true
 end
 
@@ -805,14 +832,15 @@ end
 -- Undo and exit
 ------------------------------------------------------------------------------
 
+-- Undo the last change. Returns true when something was undone.
 function InkAwayView:undo()
-    if self.editing_text then return self:textUndo() end   -- undo within the box
+    if self.editing_text then self:textUndo(); return true end   -- undo within the box
     -- a committed text box is undone a word at a time; once its history is used up,
     -- the normal undo removes or restores the whole box
     local idx, h = self:topTextHist()
     if idx and #h.undo > 0 then
         self:commitTextStep(idx, h.undo, h.redo)
-        return
+        return true
     end
     self._peel_op = nil   -- leaving any text-peel sequence
     self:flushPending()
@@ -820,12 +848,13 @@ function InkAwayView:undo()
     if self.rotating then self:rotateEnd() end
     if not self.canvas:undo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to undo."), timeout = 1 })
-        return
+        return false
     end
     self.selected = nil
     self:resetLasso()
     self:markDirty()
     self:recompose()   -- rebuild the master from the restored ops
+    return true
 end
 
 function InkAwayView:redo()

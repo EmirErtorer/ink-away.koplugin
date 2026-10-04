@@ -83,11 +83,37 @@ do
     ok(has(w, "two_finger_tap"), "finger reader: KOReader sees a two-finger tap (" .. table.concat(w.gestures, ",") .. ")")
     ok(view.canvas:opCount() == 0 and not view.capturing, "finger reader: it undoes the stroke and draws nothing")
     view:redo()
+    view._two_tap = nil   -- (the test runs faster than a person: no double tap)
     -- a slower second finger (still well inside KOReader's tap time)
     w.gestures = {}
     twoTap(w, 400, ay + 600, 120)
     ok(has(w, "two_finger_tap") and view.canvas:opCount() == 0,
         "finger reader: a second finger 120 ms later still makes a two-finger tap")
+
+    -- a quick second two-finger tap makes the pair a redo
+    view:redo()
+    view._two_tap = nil
+    twoTap(w, 400, ay + 600)
+    ok(view.canvas:opCount() == 0, "finger reader: a two-finger tap undoes")
+    twoTap(w, 400, ay + 600)
+    ok(view.canvas:opCount() == 1, "finger reader: a second one right after redoes instead")
+    view._two_tap = nil
+    -- "Nothing to redo." times out on a reader; here it would sit on top
+    for i = #H.UIManager._window_stack, 1, -1 do
+        local wd = H.UIManager._window_stack[i].widget
+        if wd ~= view then H.UIManager:close(wd) end
+    end
+    -- a long two-finger swipe up opens the Library from a drawing
+    local opened
+    view.openLibrary = function() opened = "library" end
+    view.openOverview = function() opened = "overview" end
+    opened = nil
+    panel.down(w, 0, nextId(), 400, ay + 1000, 0, 400)
+    panel.down(w, 1, nextId(), 650, ay + 1000, 0, 20)
+    for i = 1, 6 do panel.move(w, { { 0, 400, ay + 1000 - i * 90 }, { 1, 650, ay + 1000 - i * 90 } }, 20) end
+    panel.up(w, 0, 15); panel.up(w, 1, 10)
+    H.tick(w, 400)
+    ok(opened == "library", "finger reader: a long two-finger swipe up opens the Library from a drawing")
 
     -- two-finger swipes in a notebook
     view:newNotebook("lines")
@@ -99,6 +125,22 @@ do
         "finger reader: a two-finger swipe to the left turns to the next page (" .. table.concat(w.gestures, ",") .. ")")
     twoSwipe(w, 300, ay + 400, 500)
     ok(view.notebook.index == 2, "finger reader: to the right goes back")
+    opened = nil
+    panel.down(w, 0, nextId(), 400, ay + 1000, 0, 400)
+    panel.down(w, 1, nextId(), 650, ay + 1000, 0, 20)
+    for i = 1, 6 do panel.move(w, { { 0, 400, ay + 1000 - i * 90 }, { 1, 650, ay + 1000 - i * 90 } }, 20) end
+    panel.up(w, 0, 15); panel.up(w, 1, 10)
+    H.tick(w, 400)
+    ok(opened == "overview" and view.notebook.index == 2, "finger reader: in a notebook it opens Browse")
+    view:setZoom(2)
+    opened = nil
+    panel.down(w, 0, nextId(), 400, ay + 1000, 0, 400)
+    panel.down(w, 1, nextId(), 650, ay + 1000, 0, 20)
+    for i = 1, 6 do panel.move(w, { { 0, 400, ay + 1000 - i * 90 }, { 1, 650, ay + 1000 - i * 90 } }, 20) end
+    panel.up(w, 0, 15); panel.up(w, 1, 10)
+    H.tick(w, 400)
+    ok(opened == nil, "finger reader: zoomed in, a swipe up scrolls instead")
+    view:setZoom(view.zoom_min)
     ok(view.canvas:opCount() == 0, "finger reader: and the swipes leave no ink")
     -- a one-finger stroke still draws right after
     stroke(w, 200, ay + 300)
