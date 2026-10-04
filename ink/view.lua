@@ -170,6 +170,7 @@ function InkAwayView:init()
     -- Shape assist: a finished pen stroke that reads as a line, rectangle, ellipse,
     -- triangle or an L becomes a clean shape.
     self.shape_assist = self:getSetting("inkaway_shape_assist", false)
+    self.hold_straighten = self:getSetting("inkaway_hold_straighten", true)
     -- Palm rejection: draw from the pen's own events and ignore fingers while the
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
     -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua.
@@ -254,6 +255,7 @@ function InkAwayView:init()
         end
     end
     self._reconcile_cb = function() self:runReconcile() end
+    self._straighten_cb = function() self:straightenNow() end
     -- Throttled refresh while dragging a lasso selection, so pan events never flood
     -- the panel.
     self._sel_refresh_tick = function() self:selRefreshNow() end
@@ -407,6 +409,7 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._live_flush_cb)
     UIManager:unschedule(self._reconcile_cb)
     UIManager:unschedule(self._pen_hold_cb)
+    UIManager:unschedule(self._straighten_cb)
     UIManager:unschedule(self._pdf_prefetch_cb)
     if self._export_job then self._export_job.cancel(); self._export_job = nil end
     if self._search_job then self._search_job.abort(); self._search_job = nil end
@@ -502,6 +505,7 @@ function InkAwayView:onIaTouch(_, ges)
         self:hideClipBubble()
     end
     if not pos or not self:inArea(pos.x, pos.y) then return false end
+    self._swallow = nil   -- a new touch: any straightened stroke's contact is over
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
     -- floating controls: a tap on one acts; a drag off it (below) draws instead
     local fab = self:fabHit(pos.x, pos.y)
@@ -560,6 +564,7 @@ function InkAwayView:onIaTouch(_, ges)
     end
     self._finger_dot = not self._pen_feeding   -- a finger's own stroke (see onIaTwoTap)
     self:beginStroke(pos.x, pos.y)
+    self:straightenWatch(pos.x, pos.y, true)
     return true
 end
 
@@ -589,12 +594,14 @@ function InkAwayView:onIaPan(_, ges)
         end
         return false
     end
+    if self._swallow then return true end   -- the rest of a touch whose stroke was straightened
     if not self.capturing then return false end
     if self.pending_lift then          -- movement resumes the held stroke
         UIManager:unschedule(self._finalize)
         self.pending_lift = nil
     end
     self:addScreenPoint(pos.x, pos.y, false)
+    self:straightenWatch(pos.x, pos.y)
     return true
 end
 InkAwayView.onIaHoldPan = InkAwayView.onIaPan
@@ -608,6 +615,7 @@ function InkAwayView:onIaPanRelease(_, ges)
         return true
     end
     if self._fab_press then self._fab_press = nil; return true end
+    if self._swallow then self._swallow = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
     if self.sel_drag then
         if ges and ges.pos then self:selPan(ges.pos) end
@@ -636,6 +644,7 @@ function InkAwayView:onIaSwipe(_, ges)
     end
     if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
+    if self._swallow then self._swallow = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
     if self.sel_drag then
         -- a quick drag arrives as a swipe: its end is where the selection goes

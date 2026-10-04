@@ -21,7 +21,7 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 ## Features
 
 - **Pen**: size, opacity, color (greys everywhere, full color + a wheel on color screens) and brush styles (you can make your own brushes too).
-- **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline), plus a **paint bucket** for one-tap fills.
+- **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline), plus a **paint bucket** for one-tap fills. Or draw one by hand and hold the pen still at its end: it snaps into a clean line, rectangle, ellipse or triangle (Hold still to straighten, in the pen settings; writing is left alone).
 - **Eraser** that removes ink (back to transparent) instead of painting white, or whole strokes at a time.
 - **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
 - **Selection**: loop anything with the lasso (pen writing, shapes, fills, pictures, text boxes), or touch or hold a shape or picture with Pan. Drag it to move it, drag a corner to resize it (lines grow with it) and the round handle to turn it. Its menu, beside it: cut, copy and paste on any page of any notebook or drawing, duplicate, a quarter turn, mirror, to front, colour, opacity and size, delete, and Convert to text for writing. Text boxes stay upright and readable. Four-way **symmetry**, and a **background image** to draw over.

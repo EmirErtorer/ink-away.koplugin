@@ -1292,10 +1292,10 @@ do
     local midy = v.area_y + math.floor(v.area_h / 2)
 
     -- snapshot lifecycle in beginStroke
-    view.shape_assist = false
+    view.shape_assist, view.hold_straighten = false, false
     view.tool = "pen"
     view:beginStroke(midx, midy)
-    ok(not view._pre_stroke_valid, "beautify: no snapshot when shape assist is off")
+    ok(not view._pre_stroke_valid, "beautify: no snapshot when shape assist and straightening are off")
     view.capturing = false
 
     view.shape_assist = true
@@ -4361,6 +4361,102 @@ do
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
+-- Hold to straighten: a stroke held still at its end becomes a clean shape
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkGeom = require("ink/geom")
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local v = view.view
+    view:setTool("pen")
+    view.shape_assist = false
+    local function scr(cx, cy) return InkGeom.toScreen(v, cx, cy) end
+    -- draw through canvas points, then hold still (the timer fires)
+    local function draw(pts, hold)
+        local x, y = scr(pts[1], pts[2])
+        view:onIaTouch(nil, pos(x, y))
+        for i = 3, #pts - 1, 2 do
+            x, y = scr(pts[i], pts[i + 1])
+            view:onIaPan(nil, pos(x, y))
+        end
+        if hold then
+            -- only the straightening timer, as the hold would let it fire
+            UIManager.scheduled[view._straighten_cb] = nil
+            view:straightenNow()
+        end
+        return x, y
+    end
+    local function lift(x, y)
+        view:onIaPanRelease(nil, pos(x, y))
+        UIManager.fireScheduled(); UIManager.fireScheduled()
+    end
+    -- a slightly wobbly line, held at its end
+    view.canvas:setOps({})
+    local line = {}
+    for i = 0, 20 do line[#line + 1] = 200 + i * 20; line[#line + 1] = 400 + ((i % 2 == 0) and 2 or -2) end
+    local x, y = draw(line, false)
+    ok(UIManager.scheduled[view._straighten_cb] ~= nil, "straighten: drawing arms the hold timer")
+    UIManager.scheduled[view._straighten_cb] = nil
+    view:straightenNow()
+    local op = view.canvas.ops[1]
+    ok(op and op.kind == "shape" and op.shape == "line" and not view.capturing,
+        "straighten: holding at the end makes it a clean line at once")
+    view:onIaPan(nil, pos(x + 80, y + 80))
+    ok(#view.canvas.ops == 1 and not view.capturing, "straighten: moving on afterwards draws nothing")
+    lift(x + 80, y + 80)
+    ok(#view.canvas.ops == 1 and view._swallow == nil, "straighten: the lift ends it")
+    view:undo()
+    ok(#view.canvas.ops == 0, "straighten: one undo takes it away")
+
+    -- a rough box becomes a rectangle
+    local box = { 300, 300, 600, 302, 602, 600, 301, 598, 302, 304 }
+    local fine = {}
+    for i = 1, #box - 3, 2 do
+        for t = 0, 9 do
+            fine[#fine + 1] = box[i] + (box[i + 2] - box[i]) * t / 10
+            fine[#fine + 1] = box[i + 1] + (box[i + 3] - box[i + 1]) * t / 10
+        end
+    end
+    x, y = draw(fine, true)
+    op = view.canvas.ops[1]
+    ok(op and op.kind == "shape" and op.shape == "rect", "straighten: a box held at its end becomes a rectangle ("
+        .. tostring(op and (op.shape or op.kind)) .. ")")
+    lift(x, y)
+    view.canvas:setOps({})
+
+    -- writing is left alone: a small letter, and a big scribble, held still
+    x, y = draw({ 100, 100, 104, 112, 110, 100, 116, 112 }, true)
+    ok(view.capturing and #view.canvas.ops == 0, "straighten: a small stroke is never straightened")
+    lift(x, y)
+    ok(view.canvas.ops[1] and view.canvas.ops[1].kind == "ink", "straighten: and stays ink")
+    view.canvas:setOps({})
+    local scribble = {}
+    for i = 0, 40 do scribble[#scribble + 1] = 200 + i * 8; scribble[#scribble + 1] = 300 + math.sin(i * 0.9) * 60 end
+    x, y = draw(scribble, true)
+    ok(view.capturing, "straighten: a scribble that is no shape is never straightened")
+    lift(x, y)
+    ok(view.canvas.ops[1] and view.canvas.ops[1].kind == "ink", "straighten: and stays ink")
+    view.canvas:setOps({})
+
+    -- off: no timer
+    view.hold_straighten = false
+    draw(line, false)
+    ok(UIManager.scheduled[view._straighten_cb] == nil, "straighten: off, holding does nothing")
+    lift(scr(line[#line - 1], line[#line]))
+    view.hold_straighten = true
+    -- a jitter within a millimetre does not restart the wait
+    view.canvas:setOps({})
+    x, y = draw(line, false)
+    local at = view._straight_at
+    view:onIaPan(nil, pos(x + 2, y + 1))
+    ok(view._straight_at == at, "straighten: a tremble keeps the wait going")
+    lift(x + 2, y + 1)
+    UIManager:close(view)
     UIManager.reset()
 end
 

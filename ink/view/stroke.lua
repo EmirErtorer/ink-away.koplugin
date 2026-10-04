@@ -256,7 +256,7 @@ function InkAwayView:beginStroke(sx, sy)
     -- master now so that swap restores just the stroke's footprint instead of
     -- replaying every op (see beautifyRecompose); only when assist could run.
     self._pre_stroke_valid = false
-    if self.shape_assist and not is_erase and self.canvas_bb then
+    if (self.shape_assist or self.hold_straighten) and not is_erase and self.canvas_bb then
         local W, H = self.view.canvas_w, self.view.canvas_h
         if self._pre_stroke_bb and (self._pre_stroke_bb:getWidth() ~= W
                 or self._pre_stroke_bb:getHeight() ~= H) then
@@ -367,11 +367,57 @@ function InkAwayView:beautifyRecompose(raw, committed)
     return true
 end
 
+------------------------------------------------------------------------------
+-- Hold to straighten: a pen stroke held still at its end for HOLD_SEC becomes a
+-- clean line or shape at once (what shape assist does on lift, on demand). Only
+-- a stroke of some size that the recogniser takes for a line, box, ellipse or
+-- triangle snaps, so a pause in writing leaves the writing alone; the rest of
+-- that touch draws nothing.
+------------------------------------------------------------------------------
+
+local HOLD_SEC = 0.6
+
+-- A point of the stroke being drawn: moving more than a little restarts the
+-- wait (a still pen sends no points, so the timer then fires).
+function InkAwayView:straightenWatch(sx, sy, fresh)
+    if not (self.hold_straighten and self.capturing and self.tool == "pen") or self._wipe then return end
+    local a = self._straight_at
+    local slop = Screen:scaleBySize(7)
+    if fresh or not a or math.abs(sx - a.x) > slop or math.abs(sy - a.y) > slop then
+        self._straight_at = { x = sx, y = sy }
+        UIManager:unschedule(self._straighten_cb)
+        UIManager:scheduleIn(HOLD_SEC, self._straighten_cb)
+    end
+end
+
+-- The wait is over: straighten the stroke if it is a shape.
+function InkAwayView:straightenNow()
+    self._straight_at = nil
+    local live = self.canvas.live
+    if not (self.capturing and self.tool == "pen" and live and not self.pending_lift) or self._wipe then return end
+    local lp = live.pts
+    if #lp < 4 then return end
+    local x0, y0, x1, y1 = InkGeom.bounds(lp)
+    local zoom = (self.view and self.view.zoom) or 1
+    -- about 5 mm on screen: a letter is smaller, a drawn shape is not
+    if math.max(x1 - x0, y1 - y0) * zoom < Screen:scaleBySize(32) then return end
+    -- only a true shape (a line, a box, an ellipse, a triangle): a zigzag of
+    -- big writing straightened into corners is not what a pause asks for
+    local pts, shape = Recognize.detect(lp, { min_size = Screen:scaleBySize(20) / zoom })
+    if not (pts and shape) then return end
+    self._straighten = true
+    self:finalizeStroke()
+    self._straighten = nil
+    self._swallow = true   -- the rest of this touch draws nothing
+end
+
 -- Commit the live stroke as one op. Called by the coalesce timer, or straight
 -- away by flushPending before anything that needs the ops up to date.
 function InkAwayView:finalizeStroke()
     if not self.capturing then return end
     UIManager:unschedule(self._finalize)
+    UIManager:unschedule(self._straighten_cb)
+    self._straight_at = nil
     self.pending_lift = nil
     self.capturing = false
     if self._wipe then return self:wipeEnd() end
@@ -383,7 +429,7 @@ function InkAwayView:finalizeStroke()
     -- keep the raw points before finishStroke simplifies them: shape assist
     -- recognises from the full path
     local raw
-    if self.shape_assist and self.tool == "pen" and self.canvas.live then
+    if (self.shape_assist or self._straighten) and self.tool == "pen" and self.canvas.live then
         local lp = self.canvas.live.pts
         raw = {}
         for i = 1, #lp do raw[i] = lp[i] end

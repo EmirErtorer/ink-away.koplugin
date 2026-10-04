@@ -142,8 +142,8 @@ function InkAwayView:openPenSettings()
         local tail = VerticalGroup:new{ align = "left" }
         local assist = toggle(_("Shape assist"), self.shape_assist, function(on)
             self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
-            -- free the pre-stroke snapshot, which only shape assist uses
-            if not on and self._pre_stroke_bb then
+            -- free the pre-stroke snapshot, which only the straightening uses
+            if not on and not self.hold_straighten and self._pre_stroke_bb then
                 self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
                 self._pre_stroke_valid = false
             end end)
@@ -158,6 +158,16 @@ function InkAwayView:openPenSettings()
         table.insert(tail, HorizontalGroup:new{ align = "center", assist,
             HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - assist.width - palm.width) },
             palm })
+        table.insert(tail, vspan(10))
+        table.insert(tail, ToggleRow:new{ label = _("Hold still to straighten"), is_on = self.hold_straighten,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.hold_straighten = on; self:setSetting("inkaway_hold_straighten", on)
+                if not on and not self.shape_assist and self._pre_stroke_bb then
+                    self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
+                    self._pre_stroke_valid = false
+                end
+            end })
         table.insert(tail, vspan(10))
         table.insert(tail, ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
             width = content_w, parent = menu,
