@@ -80,6 +80,7 @@ function InkAwayView:openLibrary(dir, over_grid)
             { "+ " .. _("Folder"), function()
                 self:promptNewFolder(self._lib_dir, function() self:refreshLibrary() end)
             end, true },
+            { _("Search"), function() self:openSearch("library") end, icon = self:iconPath("search") },
             { "\u{22EF}", function() self:libraryMenu() end },
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,

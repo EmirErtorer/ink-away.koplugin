@@ -3782,6 +3782,140 @@ do
     UIManager.reset()
 end
 
+-- Search: the magnifier in the library and the overview, names by default and
+-- text inside pages on request, results that open where they point, and a
+-- search that is stopped or fails without harm.
+do
+    local TestEnv = require("testenv")
+    local InputDialog = require("ui/widget/inputdialog")
+    local Search = require("ink/search")
+    local Text = require("ink/text")
+    local LIB = TestEnv.libraryDir() .. "/searchview"
+    os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. LIB .. "/Physics'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function drain()
+        for _ = 1, 50 do
+            if UIManager.pendingCount() == 0 then break end
+            UIManager.fireScheduled()
+        end
+    end
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", LIB .. "/Physics")
+    stroke(view, 100, 100)
+    view:nbAddPage()
+    stroke(view, 120, 120)
+    view.notebook.pages[2].title = "Forces and motion"
+    view:nbAddPage()
+    local op = Text.new{ x = 20, y = 20, w = 300, size = 20 }
+    Text.insert(op, { p = 1, o = 0 }, "Newton wrote about inertia", nil)
+    view.canvas.ops[#view.canvas.ops + 1] = op
+    view:markDirty()
+    view:renameDocument("Mechanics")
+    local mech = view.doc_path
+    view:nbGoTo(1)
+
+    local got
+    local real = view.showSearchResults
+    view.showSearchResults = function(self, results, ...)
+        got = results
+        return real(self, results, ...)
+    end
+
+    -- the magnifier in the library header
+    view:openLibrary(LIB)
+    local pill
+    for _, a in ipairs(view._library.actions) do if a.icon and a.icon:find("search", 1, true) then pill = a end end
+    ok(pill ~= nil, "search: the library header has a magnifier")
+    pill[2]()
+    local d = InputDialog.last
+    ok(d and d.title == "Search", "search: it asks what to look for")
+    d.input = "forces"
+    for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    drain()
+    ok(got and #got == 1 and got[1].kind == "page" and got[1].page == 2, "search: a page is found by its title, "
+        .. "with the open notebook's latest changes")
+    ok(view._search_sheet ~= nil and view._search_job == nil, "search: the results show, and the search is over")
+    got = nil
+    view:runSearch("inertia", false, "library")
+    drain()
+    ok(got and #got == 0, "search: names only leaves the text on pages alone")
+    view:closeSheet("_search_sheet")
+    view:runSearch("inertia", true, "library")
+    drain()
+    ok(got and #got == 1 and got[1].page == 3 and got[1].text and got[1].text:find("inertia", 1, true),
+        "search: inside pages finds typed text, with the words around it")
+    ok(G_reader_settings.data.inkaway_search_inside == true, "search: the choice is remembered for next time")
+    view:runSearch("physics", false, "library")
+    drain()
+    ok(got and got[1].kind == "folder", "search: a folder by name")
+    view:closeSheet("_search_sheet")
+
+    -- a result opens where it points
+    view:newDrawing(LIB)
+    stroke(view, 50, 50)
+    view:saveDocument()
+    view:openLibrary(LIB)
+    view:openSearchResult({ kind = "page", path = mech, page = 2, id = view.notebook and nil }, "library")
+    ok(view.doc_path == mech and view.notebook and view.notebook.index == 2 and view._library == nil,
+        "search: a page result opens its notebook at that page")
+    view:openLibrary(LIB)
+    view:openSearchResult({ kind = "folder", path = LIB .. "/Physics", name = "Physics" }, "library")
+    ok(view._library and view._lib_dir == LIB .. "/Physics", "search: a folder result shows the folder")
+    view._library:close()
+    view:openSearchResult({ kind = "doc", path = LIB .. "/Gone.inkaway" }, "library")
+    ok(view.doc_path == mech, "search: a result whose file is gone opens nothing")
+
+    -- the overview has it too
+    view:openOverview()
+    local found
+    for _, a in ipairs(view._overview.actions) do if a.icon then found = a end end
+    ok(found ~= nil, "search: the overview header has the magnifier too")
+    view:openSearchResult({ kind = "folder", path = LIB .. "/Physics", name = "Physics" }, "overview")
+    ok(view._overview and view._ov.dir == LIB .. "/Physics", "search: from the overview a folder opens there")
+    view._overview:close()
+
+    -- stopping, failing, and asking twice
+    view:runSearch("forces", true, "library")
+    local job = view._search_job
+    ok(job ~= nil, "search: a search is under way")
+    view:runSearch("other", true, "library")
+    ok(view._search_job == job, "search: a second one waits for the first")
+    job.cancel()
+    drain()
+    ok(view._search_job == nil and UIManager.shown and tostring(UIManager.shown.text):find("stopped", 1, true),
+        "search: a tap on the bar stops it")
+    local walk = Search.walk
+    Search.walk = function() error("disk on fire") end
+    view:runSearch("forces", true, "library")
+    drain()
+    Search.walk = walk
+    ok(view._search_job == nil and UIManager.shown and tostring(UIManager.shown.text):find("could not finish", 1, true),
+        "search: an error ends it with a message, not a crash")
+    view:runSearch("   ", false, "library")
+    ok(view._search_job == nil, "search: nothing to look for starts nothing")
+    view:runSearch("forces", true, "library")
+    UIManager:close(view)
+    drain()
+    ok(view._search_job == nil and view._search_sheet == nil, "search: closing Ink Away ends a search quietly")
+
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

@@ -528,72 +528,44 @@ function InkAwayView:runPdfJob(path, spec)
         return
     end
     self._export_job = job
-    local progress
-    local pok, ProgressbarDialog = pcall(require, "ui/widget/progressbardialog")
-    if pok and ProgressbarDialog then
-        progress = ProgressbarDialog:new{
-            title = string.format(_("Exporting %d page(s) to PDF"), #pages_ops),
-            subtitle = _("Tap to stop"),
-            progress_max = #pages_ops,
-            refresh_time_seconds = 1,
-            dismissable = true,
-            dismiss_text = _("Stop exporting? The PDF will not be saved."),
-            dismiss_callback = function()   -- closed by the reader (stop), not by us
-                if self._export_job == job and not job.over then
-                    job.cancel()
-                    if spec.done then spec.done() end
-                    self._export_job = nil
-                    UIManager:show(InfoMessage:new{ text = _("Export stopped."), timeout = 2 })
-                end
-            end,
-        }
-        progress:show()
-    else
-        progress = InfoMessage:new{ text = string.format(_("Exporting %d page(s)\u{2026}"), #pages_ops) }
-        UIManager:show(progress)
-    end
-    local function closeProgress()
-        if progress then
-            local p = progress
-            progress = nil
-            if p.close then p:close() else UIManager:close(p) end
-        end
-    end
-    local function finished()
-        self._export_job = nil
-        closeProgress()
+    local function stopped()
+        job.cancel()
+        if self._export_job == job then self._export_job = nil end
         if spec.done then spec.done() end
-        -- make the PDF open as a full page with no auto-crop the first time
-        self:seedPdfView(path)
-        self:markDirty()   -- keep the export settings with the document
-        local msg = string.format(_("PDF saved:\n%s"), path)
-        UIManager:show(ConfirmBox:new{
-            text = msg .. _("\n\nOpen the PDF now?"),
-            ok_text = _("Open"),
-            ok_callback = function() self:openExportedPDF(path) end,
-        })
     end
-    local step
-    step = function()
-        if self._export_job ~= job or job.over and job.i < job.n then return end   -- stopped
-        local ok, state, a = pcall(job.step)
-        if not ok or not state then
-            job.cancel()
-            if spec.done then spec.done() end
+    self:runSteps{
+        title = string.format(_("Exporting %d page(s) to PDF"), #pages_ops),
+        max = #pages_ops,
+        dismiss_text = _("Stop exporting? The PDF will not be saved."),
+        step = function()
+            if self._export_job ~= job then return "abort" end
+            local state, a = job.step()
+            if not state then return nil, a end
+            if state == "done" then return "done" end
+            return a or 0
+        end,
+        on_cancel = function()
+            stopped()
+            UIManager:show(InfoMessage:new{ text = _("Export stopped."), timeout = 2 })
+        end,
+        on_error = function(err)
+            stopped()
+            UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(err) })
+        end,
+        on_done = function()
             self._export_job = nil
-            closeProgress()
-            UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(ok and a or state) })
-            return
-        end
-        if state == "done" then
-            if progress and progress.reportProgress then pcall(progress.reportProgress, progress, #pages_ops) end
-            finished()
-            return
-        end
-        if progress and progress.reportProgress then pcall(progress.reportProgress, progress, a) end
-        UIManager:scheduleIn(0.05, step)   -- let the screen update and taps through
-    end
-    UIManager:scheduleIn(0.2, step)        -- let the progress bar paint first
+            if spec.done then spec.done() end
+            -- make the PDF open as a full page with no auto-crop the first time
+            self:seedPdfView(path)
+            self:markDirty()   -- keep the export settings with the document
+            local msg = string.format(_("PDF saved:\n%s"), path)
+            UIManager:show(ConfirmBox:new{
+                text = msg .. _("\n\nOpen the PDF now?"),
+                ok_text = _("Open"),
+                ok_callback = function() self:openExportedPDF(path) end,
+            })
+        end,
+    }
 end
 
 -- Seed a freshly exported PDF's sidecar so KOReader opens it as a whole page

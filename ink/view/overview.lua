@@ -193,6 +193,7 @@ function InkAwayView:openOverview()
         actions = {
             { "\u{2605}", function() self:overviewToggleStarred() end },
             { _("Library"), function() local d = self._ov.dir; grid:close(); self:openLibrary(d, true) end },
+            { _("Search"), function() self:openSearch("overview") end, icon = self:iconPath("search") },
         },
         on_back = self:overviewUp(),
         render = function(it, w, h) return self:overviewThumb(it, w, h) end,

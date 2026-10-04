@@ -59,12 +59,25 @@ function Project.serialize(canvas, extra)
     return serializeRoot(addExtra({ v = 1, w = canvas.w, h = canvas.h, ops = canvas.ops }, extra))
 end
 
+-- The list of page titles a notebook file carries before its pages, so a
+-- search by name reads only the start of the file: { n = page count,
+-- { p = page number, i = page id, t = title }, ... } for the titled pages.
+function Project.toc(pages)
+    local toc = { n = #pages }
+    for i, p in ipairs(pages) do
+        if type(p) == "table" and type(p.title) == "string" and p.title ~= "" then
+            toc[#toc + 1] = { p = i, i = p.id, t = p.title }
+        end
+    end
+    return toc
+end
+
 -- Serialize a multi-page notebook (v2): the template plus one entry per page.
 -- `cache` (optional, keyed by page) keeps each page's text from the last save,
 -- so only pages missing from it are written out again; the caller drops a page
 -- from the cache whenever that page changes.
 function Project.serializeNotebook(nb, cache, extra)
-    local head = addExtra({ v = 2, w = nb.w, h = nb.h, template = nb.template }, extra)
+    local head = addExtra({ v = 2, w = nb.w, h = nb.h, template = nb.template, toc = Project.toc(nb.pages) }, extra)
     local out = { "return " }
     ser(head, out)
     out[#out] = "[\"pages\"]={"   -- reopen the root table: replace its closing brace

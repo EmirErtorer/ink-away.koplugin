@@ -315,6 +315,49 @@ function InkAwayView:actionButton(label, w, cb, dark, big)
     return b
 end
 
+-- A wide row to open something from a list (a search result, an entry of a
+-- notebook's contents): a grey rounded button with an icon on the left, a bold
+-- title and small grey lines under it (`notes`, each cut short to fit).
+function InkAwayView:listRow(icon, title, notes, w, cb, hold_cb)
+    local S = function(px) return Screen:scaleBySize(px) end
+    local pad, isz = S(14), S(26)
+    local tw = w - 3 * pad - isz
+    local texts = VerticalGroup:new{ align = "left",
+        TextWidget:new{ text = title, face = Font:getFace("cfont", 17), bold = true, max_width = tw } }
+    for _, note in ipairs(notes or {}) do
+        table.insert(texts, VerticalSpan:new{ width = S(2) })
+        table.insert(texts, TextWidget:new{ text = note, face = Font:getFace("cfont", 13), fgcolor = HINT,
+            max_width = tw })
+    end
+    local iw = (icon and self:tileIcon(icon, isz, false)) or HorizontalSpan:new{ width = isz }
+    local used = pad + isz + pad + texts:getSize().w
+    -- fgcolor is set for the tap highlight (see imageLabel)
+    local row = HorizontalGroup:new{ align = "center", fgcolor = BLACK,
+        HorizontalSpan:new{ width = pad }, iw, HorizontalSpan:new{ width = pad }, texts,
+        HorizontalSpan:new{ width = math.max(0, w - used) } }
+    local b = Button:new{ text = "", width = w, height = math.max(S(56), texts:getSize().h + S(20)),
+        bordersize = 0, radius = S(14), background = TILE_BG, margin = 0, padding = 0,
+        callback = cb, hold_callback = hold_cb, show_parent = self }
+    self:setButtonLabel(b, row)
+    return b
+end
+
+-- Arrows either side of "2 / 3" across `w`, for a sheet whose content comes in
+-- pages (0-based `page` of `pages`); a tap on an arrow calls on_turn(-1) or
+-- on_turn(1).
+function InkAwayView:pagerRow(page, pages, w, gap, on_turn)
+    local aw = math.floor(w / 4)
+    local label = TextWidget:new{ text = string.format("%d / %d", page + 1, pages),
+        face = Font:getFace("cfont", 17), bold = true }
+    local mid = w - 2 * aw - 2 * gap
+    return HorizontalGroup:new{ align = "center",
+        self:actionButton("\u{2039}", aw, function() on_turn(-1) end),
+        HorizontalSpan:new{ width = gap },
+        CenterContainer:new{ dimen = Geom:new{ w = mid, h = Screen:scaleBySize(48) }, label },
+        HorizontalSpan:new{ width = gap },
+        self:actionButton("\u{203A}", aw, function() on_turn(1) end) }
+end
+
 -- A row of equal buttons across `width`, one per { value, label } option, with
 -- the current one filled black. A tap calls onpick(value).
 function InkAwayView:segmentedRow(options, current, width, onpick)

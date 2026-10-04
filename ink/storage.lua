@@ -105,7 +105,8 @@ function Storage.list(dir)
             local path = Storage.join(dir, name)
             local attr = fs.attributes(path)
             if attr then
-                out[#out + 1] = { name = name, path = path, mode = attr.mode, mtime = attr.modification or 0 }
+                out[#out + 1] = { name = name, path = path, mode = attr.mode, mtime = attr.modification or 0,
+                    size = attr.size or 0 }
             end
         end
     end

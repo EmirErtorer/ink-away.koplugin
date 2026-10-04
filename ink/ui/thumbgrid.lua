@@ -37,7 +37,7 @@ local ThumbGrid = InputContainer:extend{
     on_hold = nil,      -- function(item) after a hold
     on_back = nil,      -- function(): shows a back arrow before the title
     on_close = nil,     -- function() once the grid has closed
-    actions = nil,      -- header buttons left of the close pill: { { label, cb, dark }, ... }
+    actions = nil,      -- header buttons left of the close pill: { { label, cb, dark, icon = svg path }, ... }
     close_label = nil,  -- the close pill's text (Close by default)
     empty_text = nil,   -- shown when there are no items
     folder_icon = nil,  -- path of the SVG drawn on folder cards
@@ -178,14 +178,19 @@ end
 -- The folder icon on a card-coloured tile, drawn once per size; `slot` keeps
 -- the card's and the tabs' sizes apart.
 function ThumbGrid:folderTile(sz, slot)
-    slot = slot or "_folder"
+    return self:iconTile(self.folder_icon, sz, slot or "_folder")
+end
+
+-- The SVG at `path` drawn `sz` square on the card grey, kept in self[slot]
+-- until the size changes or the grid closes.
+function ThumbGrid:iconTile(path, sz, slot)
     local held = self[slot]
-    if held and held.sz == sz then return held.bb end
+    if held and held.sz == sz and held.path == path then return held.bb end
     if held and held.bb then held.bb:free() end
-    self[slot] = { sz = sz }
-    if not self.folder_icon then return nil end
+    self[slot] = { sz = sz, path = path }
+    if not path then return nil end
     local ok, raw, straight = pcall(function()
-        return RenderImage:renderSVGImageFile(self.folder_icon, sz, sz)
+        return RenderImage:renderSVGImageFile(path, sz, sz)
     end)
     if ok and raw then
         local w, h = raw:getWidth(), raw:getHeight()
@@ -231,16 +236,23 @@ function ThumbGrid:paintTo(bb, x, y)
     local pface = Font:getFace("cfont", 15)
     local right = x + sw - self.pad
     local accent = Accent.get()
-    local function pill(text, dark)
+    local function pill(text, dark, icon)
         local t = TextWidget:new{ text = text, face = pface, bold = true }
-        -- a word gets a pill at least as wide as "Close"; a lone symbol a small one
-        local glyph = #text <= 4 and not text:find("%w")
-        local w = math.max(glyph and S(52) or S(84), t:getSize().w + S(22))
+        -- a word gets a pill at least as wide as "Close"; a lone symbol or an
+        -- icon a small one
+        local glyph = icon or (#text <= 4 and not text:find("%w"))
+        local w = icon and S(52) or math.max(glyph and S(52) or S(84), t:getSize().w + S(22))
         t:free()
         right = right - w
         if dark then Accent.paintRounded(bb, right, pill_y, w, pill_h, S(11))
         else bb:paintRoundedRect(right, pill_y, w, pill_h, CARD, S(11)) end
-        label(text, right + w / 2, pill_y + pill_h / 2, pface, dark and accent.text or BLACK, nil, true)
+        local ib = icon and not dark and self:iconTile(icon, S(22), "_icon " .. icon)
+        if ib then
+            bb:blitFrom(ib, math.floor(right + (w - ib:getWidth()) / 2),
+                math.floor(pill_y + (pill_h - ib:getHeight()) / 2), 0, 0, ib:getWidth(), ib:getHeight())
+        else
+            label(text, right + w / 2, pill_y + pill_h / 2, pface, dark and accent.text or BLACK, nil, true)
+        end
         local r = { x = right, y = pill_y, w = w, h = pill_h }
         right = right - S(6)
         return r
@@ -249,7 +261,7 @@ function ThumbGrid:paintTo(bb, x, y)
     self._actions = {}
     for i = #(self.actions or {}), 1, -1 do
         local a = self.actions[i]
-        self._actions[i] = pill(a[1], a[3])
+        self._actions[i] = pill(a[1], a[3], a.icon)
     end
     local tx = x + self.pad
     self._back = nil
@@ -481,7 +493,11 @@ end
 
 function ThumbGrid:onCloseWidget()
     self:freeCache()
-    for _, slot in ipairs({ "_folder", "_tab_folder" }) do
+    local slots = { "_folder", "_tab_folder" }
+    for k in pairs(self) do
+        if type(k) == "string" and k:sub(1, 6) == "_icon " then slots[#slots + 1] = k end
+    end
+    for _, slot in ipairs(slots) do
         if self[slot] and self[slot].bb then self[slot].bb:free() end
         self[slot] = nil
     end

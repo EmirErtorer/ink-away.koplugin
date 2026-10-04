@@ -7,9 +7,7 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
-local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
-local Font = require("ui/font")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -734,21 +732,11 @@ function InkAwayView:openPaperSheet(o)
         end
         -- the other pages of papers: arrows either side of "1 / 2", turned in place
         if pages > 1 then
-            local function turn(d)
+            add(VerticalSpan:new{ width = gap })
+            add(self:pagerRow(page, pages, content_w, gap, function(d)
                 page = (page + d) % pages
                 self:rebuildSheet(field)
-            end
-            local aw = math.floor(content_w / 4)
-            local label = TextWidget:new{ text = string.format("%d / %d", page + 1, pages),
-                face = Font:getFace("cfont", 17), bold = true }
-            local mid = content_w - 2 * aw - 2 * gap
-            add(VerticalSpan:new{ width = gap })
-            add(HorizontalGroup:new{ align = "center",
-                self:actionButton("\u{2039}", aw, function() turn(-1) end),
-                HorizontalSpan:new{ width = gap },
-                CenterContainer:new{ dimen = GeomUI:new{ w = mid, h = S(48) }, label },
-                HorizontalSpan:new{ width = gap },
-                self:actionButton("\u{203A}", aw, function() turn(1) end) })
+            end))
         end
         if o.footer then o.footer(add, content_w, gap, closeSelf) end
         return content

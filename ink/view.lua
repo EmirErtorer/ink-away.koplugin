@@ -409,6 +409,7 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._pen_hold_cb)
     UIManager:unschedule(self._pdf_prefetch_cb)
     if self._export_job then self._export_job.cancel(); self._export_job = nil end
+    if self._search_job then self._search_job.abort(); self._search_job = nil end
     self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
     local tm = self._text_btn_metrics
     if tm then
@@ -962,7 +963,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)
