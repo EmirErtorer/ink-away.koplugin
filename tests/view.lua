@@ -454,6 +454,35 @@ for _, wh in ipairs(SIZES) do
         ok(view.selection and #view.selection.idxs == 1,
             tag .. ": lasso picks a stroke even when its average point is outside the loop")
         view:clearSelection()
+
+        -- a sloppy loop: open (the lift is joined back to the start with a straight
+        -- line), running on past its start, and grazing a letter; and a text box
+        local function loop(list)
+            view:onIaTouch(nil, pos(scr(list[1], list[2])))
+            for i = 3, #list - 2, 2 do view:onIaPan(nil, pos(scr(list[i], list[i + 1]))) end
+            view:onIaPanRelease(nil, pos(scr(list[#list - 1], list[#list])))
+        end
+        view.canvas:setOps({
+            { kind = "ink", width = 6, pts = { 200, 200, 230, 240, 260, 200 } },   -- inside
+            { kind = "ink", width = 6, pts = { 300, 210, 300, 260 } },             -- the loop runs over it
+            { kind = "text", x = 220, y = 300, w = 60, h = 30, text = "hi", size = 20 },
+            { kind = "ink", width = 6, pts = { 700, 700, 720, 720 } },             -- far away
+        })
+        -- an open C: from top left, round the right, ending bottom left (no return)
+        loop({ 180, 180, 300, 180, 330, 260, 300, 350, 180, 350 })
+        local picked = {}
+        for _, i in ipairs(view.selection and view.selection.idxs or {}) do picked[i] = true end
+        ok(picked[1] and picked[3] and not picked[4], tag .. ": an open loop is closed with a straight line back to its start")
+        ok(picked[2], tag .. ": writing the loop's line runs over is still taken")
+        ok(picked[3], tag .. ": a text box inside is taken too")
+        view:clearSelection()
+        -- a loop that carries on past where it began, wrapping the start twice
+        loop({ 180, 180, 330, 180, 330, 350, 180, 350, 180, 170, 260, 175, 330, 190 })
+        picked = {}
+        for _, i in ipairs(view.selection and view.selection.idxs or {}) do picked[i] = true end
+        ok(picked[1] and picked[3] and not picked[4], tag .. ": a loop that overlaps its own start still holds what is inside")
+        view:clearSelection()
+        view.canvas:setOps({})   -- (the mock cannot lay out the text box later)
         view:setTool("pen")
     end
 

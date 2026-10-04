@@ -140,6 +140,40 @@ function Geom.pointInPoly(px, py, poly)
     return inside
 end
 
+-- Nonzero-winding test: is (px, py) inside the loop `poly` (flat x,y list, closed
+-- back to its start)? Unlike the even-odd rule, a part the loop wraps twice (a
+-- hand that carries on past where it started) still counts as inside.
+function Geom.windingInPoly(px, py, poly)
+    local n = math.floor(#poly / 2)
+    if n < 3 then return false end
+    local wn = 0
+    local jx, jy = poly[2 * n - 1], poly[2 * n]
+    for i = 1, n do
+        local ix, iy = poly[2 * i - 1], poly[2 * i]
+        local left = (ix - jx) * (py - jy) - (px - jx) * (iy - jy)
+        if jy <= py then
+            if iy > py and left > 0 then wn = wn + 1 end
+        elseif iy <= py and left < 0 then
+            wn = wn - 1
+        end
+        jx, jy = ix, iy
+    end
+    return wn ~= 0
+end
+
+-- Is (px, py) within sqrt(d2) of the closed path `poly` (flat x,y list)?
+function Geom.nearPath(px, py, poly, d2)
+    local n = math.floor(#poly / 2)
+    if n < 1 then return false end
+    local jx, jy = poly[2 * n - 1], poly[2 * n]
+    for i = 1, n do
+        local ix, iy = poly[2 * i - 1], poly[2 * i]
+        if Geom.segDist2(px, py, jx, jy, ix, iy) <= d2 then return true end
+        jx, jy = ix, iy
+    end
+    return false
+end
+
 -- Squared distance from (px, py) to the segment (ax, ay)-(bx, by).
 function Geom.segDist2(px, py, ax, ay, bx, by)
     local dx, dy = bx - ax, by - ay

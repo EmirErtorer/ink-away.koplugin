@@ -10,6 +10,7 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
+local Device = require("device")
 local _ = require("gettext")
 local Canvas = require("ink/canvas")
 local Clipboard = require("ink/clipboard")
@@ -19,6 +20,8 @@ local Paint = require("ink/paint")
 local opInPoly = Canvas.opInPoly
 local accumBounds = Canvas.accumBounds
 local translateOp = Canvas.translateOp
+
+local Screen = Device.screen
 
 local InkAwayView = {}
 
@@ -59,11 +62,18 @@ function InkAwayView:inSelBBoxScreen(sx, sy)
     return sx >= x0 - pad and sx <= x1 + pad and sy >= y0 - pad and sy <= y1 + pad
 end
 
--- Pick every op whose centroid lies inside the lasso polygon (canvas coords).
+-- How close (canvas px) to the lasso's line writing still counts as inside it:
+-- about 2.5 mm on screen, whatever the zoom.
+function InkAwayView:lassoSlop()
+    return Screen:scaleBySize(16) / ((self.view and self.view.zoom) or 1)
+end
+
+-- Pick every op the lasso loop holds (canvas coords; see Canvas.opInPoly).
 function InkAwayView:computeSelection(poly)
     local idxs = {}
+    local slop = self:lassoSlop()
     for i, op in ipairs(self.canvas.ops) do
-        if op.kind ~= "erase" and opInPoly(op, poly) then idxs[#idxs + 1] = i end
+        if op.kind ~= "erase" and opInPoly(op, poly, slop) then idxs[#idxs + 1] = i end
     end
     if #idxs == 0 then self.selection = nil; return false end
     self.selection = { idxs = idxs }
