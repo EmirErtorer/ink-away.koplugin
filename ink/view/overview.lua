@@ -114,6 +114,18 @@ function InkAwayView:overviewDoc(path)
     return doc
 end
 
+-- The notebook in the file at `path`, read for a change outside the overview:
+-- { data, nb }, nb nil when it is not a notebook.
+function InkAwayView:notebookFileDoc(path)
+    local data = Project.load(path)
+    local doc = { data = data }
+    if data and Project.isNotebook(data) then
+        doc.nb = Notebook.fromData(data)
+        doc.nb.w, doc.nb.h = self.screen_w, self.screen_h
+    end
+    return doc
+end
+
 -- The cards for the selected tab: its pages, or only the starred ones.
 function InkAwayView:overviewItems()
     local ov = self._ov
@@ -409,7 +421,7 @@ function InkAwayView:editNotebookAt(path, fn, page)
         self:markDirty()
         return self:saveDocument()
     end
-    local doc = self:overviewDoc(path)
+    local doc = self._ov and self:overviewDoc(path) or self:notebookFileDoc(path)
     if not doc.nb then return false end
     fn(doc.nb)
     local ok, err = Project.saveNotebook(doc.nb, path, nil, { export = doc.data and doc.data.export })
@@ -494,10 +506,14 @@ function InkAwayView:overviewDeletePage(path, page)
         UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
         return
     end
-    UIManager:show(ConfirmBox:new{ text = _("Delete this page?"), ok_text = _("Delete"), ok_callback = function()
-        self:editNotebookAt(path, function(n) n:takePage(indexOf(n, page)) end)
-        self:refreshOverview()
-    end })
+    UIManager:show(ConfirmBox:new{ text = self:deleteQuestion(),
+        ok_text = _("Delete"), ok_callback = function()
+            self:editNotebookAt(path, function(n)
+                local i = indexOf(n, page)
+                if i and self:trashPage(path, n, i) then n:takePage(i) end
+            end)
+            self:refreshOverview()
+        end })
 end
 
 -- Move (or copy) a page to the end of another notebook, in this folder or any
@@ -647,25 +663,14 @@ end
 -- document goes, a new drawing takes its place.
 function InkAwayView:overviewDeleteTab(it)
     local dir = self._ov.dir
-    local text = it.folder
-        and string.format(_("Delete the folder \u{201C}%s\u{201D} and everything in it?"), it.label)
-        or string.format(_("Delete \u{201C}%s\u{201D}?"), it.label)
-    UIManager:show(ConfirmBox:new{ text = text, ok_text = _("Delete"), ok_callback = function()
-        local open = self.doc_path ~= nil and Storage.within(self.doc_path, it.path)
-        if self.doc_written or not open or it.folder then
-            if not Storage.removeTree(it.path) then
-                UIManager:show(InfoMessage:new{ text = _("Could not delete it.") })
-                return
-            end
-        end
-        if not it.folder then self:dropThumbs(it.path) end
-        Folder.update(dir, function(d) Folder.forget(d, Storage.baseName(it.path)) end)
-        if open then self:discardDocument(dir) end
-        local ov = self._ov
-        for p in pairs(ov.docs) do if Storage.within(p, it.path) then ov.docs[p] = nil end end
-        if ov.path and Storage.within(ov.path, it.path) then ov.path = self:overviewPickIn(dir) end
-        self:refreshOverview(true)
-    end })
+    UIManager:show(ConfirmBox:new{ text = self:deleteQuestion(it.label, it.folder), ok_text = _("Delete"),
+        ok_callback = function()
+            if not self:trashPath(it.path, it.folder, dir) then return end
+            local ov = self._ov
+            for p in pairs(ov.docs) do if Storage.within(p, it.path) then ov.docs[p] = nil end end
+            if ov.path and Storage.within(ov.path, it.path) then ov.path = self:overviewPickIn(dir) end
+            self:refreshOverview(true)
+        end })
 end
 
 return InkAwayView

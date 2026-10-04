@@ -589,10 +589,14 @@ function InkAwayView:nbDeletePage()
         return
     end
     UIManager:show(ConfirmBox:new{
-        text = _("Delete this page?"),
+        text = self:deleteQuestion(),
         ok_text = _("Delete"),
         ok_callback = function()
-            self.notebook:deletePage()
+            local nb = self.notebook
+            if not nb then return end
+            self:nbSyncOut()
+            if not self:trashPage(self.doc_path, nb, nb.index) then return end
+            nb:deletePage()
             self:nbLoad()
             self:markDirty()
         end,

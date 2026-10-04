@@ -59,6 +59,7 @@ function InkAwayView:openLibrary(dir, over_grid)
     dir = dir or self:docDir()
     if not Storage.within(dir, root) or not Storage.isDir(dir) then dir = root end
     self:closeSheet("_library")
+    pcall(require("ink/trash").purge, root)   -- what has waited its 30 days goes
     self._lib_dir = dir
     local start = 1
     local items = self:libraryItems(dir)
@@ -126,6 +127,7 @@ function InkAwayView:libraryMenu()
             self:setSetting("inkaway_library_sort", by_name and "recent" or "name")
             self:refreshLibrary()
         end } },
+        { { text = _("Trash\u{2026}"), callback = function() UIManager:close(dialog); self:openTrash() end } },
     } }
     UIManager:show(dialog)
 end
@@ -232,21 +234,20 @@ function InkAwayView:duplicateItem(it)
     self:refreshLibrary()
 end
 
+-- The question before something goes to the trash: a document or folder
+-- called `label`, or a page when there is no label.
+function InkAwayView:deleteQuestion(label, is_folder)
+    local text = not label and _("Delete this page?")
+        or is_folder and string.format(_("Delete the folder \u{201C}%s\u{201D} and everything in it?"), label)
+        or string.format(_("Delete \u{201C}%s\u{201D}?"), label)
+    return text .. "\n" .. string.format(_("It stays in the trash for %d days."), require("ink/trash").KEEP_DAYS)
+end
+
 function InkAwayView:confirmDeleteItem(it)
-    local text = it.folder
-        and string.format(_("Delete the folder \u{201C}%s\u{201D} and everything in it?"), it.label)
-        or string.format(_("Delete \u{201C}%s\u{201D}?"), it.label)
-    UIManager:show(ConfirmBox:new{ text = text, ok_text = _("Delete"), ok_callback = function()
-        local holds_open = self.doc_path and Storage.within(self.doc_path, it.path)
-        if not Storage.removeTree(it.path) then
-            UIManager:show(InfoMessage:new{ text = _("Could not delete it.") })
-            return
-        end
-        if not it.folder then self:dropThumbs(it.path) end
-        Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
-        if holds_open then self:discardDocument(self._lib_dir) end
-        self:refreshLibrary()
-    end })
+    UIManager:show(ConfirmBox:new{ text = self:deleteQuestion(it.label, it.folder), ok_text = _("Delete"),
+        ok_callback = function()
+            if self:trashPath(it.path, it.folder, self._lib_dir) then self:refreshLibrary() end
+        end })
 end
 
 -- Pick a destination folder in the library and move the card's file or folder

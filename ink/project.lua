@@ -16,7 +16,13 @@ Project.EXT = "inkaway"
 local function ser(v, out)
     local t = type(v)
     if t == "number" then
-        out[#out + 1] = string.format("%.6g", v)
+        -- six digits keep files small; a large whole number (a time) is written
+        -- exactly, as six digits would round it
+        if (v >= 1e6 or v <= -1e6) and v == math.floor(v) and v < 2^53 and v > -2^53 then
+            out[#out + 1] = string.format("%d", v)
+        else
+            out[#out + 1] = string.format("%.6g", v)
+        end
     elseif t == "boolean" then
         out[#out + 1] = v and "true" or "false"
     elseif t == "string" then

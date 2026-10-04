@@ -342,6 +342,23 @@ function InkAwayView:listRow(icon, title, notes, w, cb, hold_cb)
     return b
 end
 
+-- How many list rows (listRow with two grey lines, `gap` apart) a sheet of
+-- width `w` holds under the toolbar, besides a title, a line of text, the page
+-- arrows and a row of buttons, inside the sheet's frame.
+function InkAwayView:listRowsFit(w, gap)
+    local S = function(px) return Screen:scaleBySize(px) end
+    local function h(widget)
+        local ok, sz = pcall(widget.getSize, widget)
+        return ok and sz and sz.h or 0
+    end
+    local row_h = h(self:listRow("file", "M", { "M", "M" }, w, function() end)) + gap
+    local fixed = h(self:sheetTitle("M", w, _("Close"), function() end)) + S(6)
+        + h(self:sheetLabel("M")) + gap + S(48) + S(14) + S(48)
+    local room = Screen:getHeight() - self:sheetTopY() - 2 * (S(18) + S(4)) - S(8)
+    local per = row_h > gap and math.floor((room - fixed) / row_h) or 6
+    return math.max(2, math.min(10, per))
+end
+
 -- Arrows either side of "2 / 3" across `w`, for a sheet whose content comes in
 -- pages (0-based `page` of `pages`); a tap on an arrow calls on_turn(-1) or
 -- on_turn(1).

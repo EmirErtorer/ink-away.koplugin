@@ -2129,7 +2129,7 @@ do
     view:libraryItemMenu(view._library.items[1])
     ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: holding a card shows its menu")
     view:libraryMenu()
-    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 2, "lib: the library menu offers import and sort")
+    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: the library menu offers import, sort and the trash")
     ButtonDialog.last.buttons[2][1].callback()
     ok(G_reader_settings.data.inkaway_library_sort == "name", "lib: sorting by name is remembered")
     G_reader_settings.data.inkaway_library_sort = nil
@@ -3909,6 +3909,120 @@ do
     UIManager:close(view)
     drain()
     ok(view._search_job == nil and view._search_sheet == nil, "search: closing Ink Away ends a search quietly")
+
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
+    G_reader_settings.data.inkaway_last_doc = nil
+    UIManager.reset()
+end
+
+-- The trash: deleting from the library, the overview and the page menu keeps
+-- things there, and they come back where they were, the open notebook too.
+do
+    local TestEnv = require("testenv")
+    local Project = require("ink/project")
+    local Storage = require("ink/storage")
+    local Trash = require("ink/trash")
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local LIB = TestEnv.libraryDir() .. "/trashview"
+    os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. LIB .. "/Physics'")
+    G_reader_settings.data.inkaway_library_dir = LIB
+    G_reader_settings.data.inkaway_last_doc = nil
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local function stroke(view, x, y)
+        local v = view.view
+        view:onIaTouch(nil, pos(x, v.area_y + y))
+        view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    local function confirm()
+        local box = UIManager.shown
+        if box and box.ok_callback then box.ok_callback() end
+    end
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", LIB .. "/Physics")
+    stroke(view, 100, 100)
+    for i = 2, 4 do view:nbAddPage(); stroke(view, 100 + 20 * i, 100) end
+    view:renameDocument("Mechanics")
+    local mech = view.doc_path
+    view:saveDocument()
+
+    -- a page from the page menu: kept, then back in its place with its id
+    view:nbGoTo(2)
+    local id2 = view.notebook.pages[2].id
+    view:nbDeletePage()
+    ok(UIManager.shown and UIManager.shown.text:find("trash", 1, true), "trash: deleting a page says it is kept")
+    confirm()
+    ok(view.notebook:count() == 3 and #Trash.list(LIB) == 1 and Trash.list(LIB)[1].kind == "page",
+        "trash: the page leaves the notebook for the trash")
+    view:nbGoTo(3)
+    view:restoreTrashItem(Trash.list(LIB)[1])
+    ok(view.notebook:count() == 4 and view.notebook.pages[2].id == id2 and #view.notebook.pages[2].ops > 0,
+        "trash: putting it back returns it to the open notebook, between its neighbours")
+    ok(view.notebook.index == 4, "trash: the page shown stays the same one")
+    ok(#Trash.list(LIB) == 0, "trash: and it leaves the trash")
+
+    -- the open notebook itself: saved first, then a new drawing; it comes back whole
+    stroke(view, 300, 300)   -- an unsaved change
+    local ink_before = 0
+    view:nbSyncOut()
+    for _, p in ipairs(view.notebook.pages) do ink_before = ink_before + #p.ops end
+    view:openLibrary(LIB .. "/Physics")
+    local card
+    for _, it in ipairs(view._library.items) do if it.path == mech then card = it end end
+    view:confirmDeleteItem(card)
+    confirm()
+    ok(not Storage.exists(mech) and view.doc_path ~= mech and not view.notebook, "trash: the open notebook goes, "
+        .. "and a new drawing takes its place")
+    view:openTrash()
+    ok(view._trash_sheet ~= nil, "trash: the trash opens from the library menu")
+    local item = Trash.list(LIB)[1]
+    ok(item and item.kind == "doc" and item.nb, "trash: it holds the notebook")
+    view:restoreTrashItem(item)
+    view:closeSheet("_trash_sheet")
+    ok(Storage.exists(mech), "trash: the notebook comes back")
+    view:openDocument(mech)
+    local ink_after = 0
+    for _, p in ipairs(view.notebook.pages) do ink_after = ink_after + #p.ops end
+    ok(view.notebook:count() == 4 and ink_after == ink_before, "trash: with every page, and the change made just "
+        .. "before it was deleted (" .. ink_after .. "/" .. ink_before .. ")")
+
+    -- from the overview: a page of a notebook that is not open, and a folder
+    view:newNotebook("grid", LIB .. "/Physics")
+    stroke(view, 50, 50)
+    view:renameDocument("Optics")
+    view:saveDocument()
+    view:openOverview()
+    view:overviewShowTab(mech)
+    local cards = view._overview.items
+    view:overviewDeletePage(mech, cards[3].page)
+    confirm()
+    local data = Project.load(mech)
+    ok(#data.pages == 3 and Trash.list(LIB)[1].kind == "page", "trash: a page deleted in the overview is kept")
+    view:restoreTrashItem(Trash.list(LIB)[1])
+    data = Project.load(mech)
+    ok(#data.pages == 4, "trash: and goes back into its notebook's file")
+    view._overview:close()
+    view:openLibrary(LIB)
+    for _, it in ipairs(view._library.items) do if it.folder then card = it end end
+    view:confirmDeleteItem(card)
+    confirm()
+    ok(not Storage.exists(LIB .. "/Physics") and Trash.list(LIB)[1].kind == "folder", "trash: a folder goes whole")
+    view:restoreTrashItem(Trash.list(LIB)[1])
+    ok(Storage.exists(mech) and Storage.exists(LIB .. "/Physics/Optics.inkaway"), "trash: and comes back whole")
+    view._library:close()
+
+    -- emptying asks first
+    view:trashPath(LIB .. "/Physics/Optics.inkaway", false)
+    view:openTrash()
+    ok(#Trash.list(LIB) >= 1, "trash: something to empty")
+    Trash.empty(LIB)
+    ok(#Trash.list(LIB) == 0, "trash: emptied")
+    view:closeSheet("_trash_sheet")
 
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()

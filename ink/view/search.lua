@@ -162,16 +162,7 @@ function InkAwayView:showSearchResults(results, query, inside, from)
         local content_w = self:sheetWidth()
         local gap = S(10)
         if not per then
-            -- as many of the tallest kind of row (a title and two lines) as fit
-            -- under the toolbar with the title, the count, the page arrows and
-            -- the buttons, inside the sheet's frame
-            local function h(w) local ok, sz = pcall(w.getSize, w); return ok and sz and sz.h or 0 end
-            local row_h = h(self:listRow("file", "M", { "M", "M" }, content_w, function() end)) + gap
-            local fixed = h(self:sheetTitle("M", content_w, _("Close"), closeSelf)) + S(6)
-                + h(self:sheetLabel("M")) + gap + S(48) + S(14) + S(48)
-            local room = Screen:getHeight() - self:sheetTopY() - 2 * (S(18) + S(4)) - S(8)
-            per = row_h > 0 and math.floor((room - fixed) / row_h) or 6
-            per = math.max(2, math.min(10, per))
+            per = self:listRowsFit(content_w, gap)
             pages = math.max(1, math.ceil(#results / per))
         end
         local content = VerticalGroup:new{ align = "left" }

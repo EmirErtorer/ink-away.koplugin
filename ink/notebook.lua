@@ -204,6 +204,25 @@ function Notebook:putPage(page, same_pdf, style, at)
     return at
 end
 
+-- Put `page` itself back (a page taken out earlier, kept in the trash) at
+-- position `at`, keeping its id, so links to it work again, unless another
+-- page has that id now. Returns its index.
+function Notebook:insertPage(page, at)
+    local taken = type(page.id) ~= "number"
+    for _, p in ipairs(self.pages) do if p.id == page.id then taken = true end end
+    if taken then
+        page.id = self.next_id or 1
+        self.next_id = page.id + 1
+    elseif page.id >= (self.next_id or 1) then
+        self.next_id = page.id + 1
+    end
+    page.ops = page.ops or {}
+    at = math.max(1, math.min(#self.pages + 1, at or #self.pages + 1))
+    table.insert(self.pages, at, page)
+    if at <= self.index and #self.pages > 1 then self.index = self.index + 1 end
+    return at
+end
+
 -- Remove the current page (never below one page). Returns the new index.
 function Notebook:deletePage()
     if #self.pages <= 1 then
