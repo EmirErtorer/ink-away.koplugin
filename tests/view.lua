@@ -954,17 +954,18 @@ do
     UIManager.fireScheduled()                   -- fires the debounce clear
     ok(not view:fingerRejected(), "palm: after the debounce, fingers work again")
 
-    -- ...and now a finger draws normally (Ink Away is still a finger app when the pen is idle)
+    -- ...but even with the pen idle a finger never draws: it navigates, as a hand
+    -- resting on the page is a finger too
     local n = view.canvas:opCount()
     view:onIaTouch(nil, pos(midx, yy))
-    ok(view.capturing, "palm: with the pen idle, a finger begins a stroke")
+    ok(not view.capturing, "palm: with the pen idle, a finger does not draw")
     view:onIaPanRelease(nil, pos(midx + 5, yy + 20))
     UIManager.fireScheduled()
-    ok(view.canvas:opCount() == n + 1, "palm: a finger stroke commits when the pen is idle")
+    ok(view.canvas:opCount() == n, "palm: and leaves no ink")
 
-    -- palm-before-pen: a finger stroke already going is dropped when the pen lands
-    view:onIaTouch(nil, pos(200, yy + 100))     -- palm starts a stroke first
-    ok(view.capturing, "palm: finger (palm) starts a stroke before the pen")
+    -- palm-before-pen: a palm landing first draws nothing, and the pen still writes
+    view:onIaTouch(nil, pos(200, yy + 100))     -- palm lands first
+    ok(not view.capturing, "palm: a palm landing before the pen draws nothing")
     local m = view.canvas:opCount()
     pen(0, midx, yy)                            -- pen touches down
     pen(0, midx + 10, yy + 20)
@@ -1037,9 +1038,9 @@ do
     UIManager.fireScheduled()                    -- clear any lingering debounce
     ok(not view:fingerRejected(), "palm: rejection is clear before the promotion test")
     local r0 = view.canvas:opCount()
-    view:onIaTouch(nil, pos(240, yy + 260))      -- palm lands, not yet flagged -> opens a stroke
+    view:onIaTouch(nil, pos(240, yy + 260))      -- palm lands, not yet flagged: a finger, which navigates
     view:onIaPan(nil, pos(250, yy + 270))
-    ok(view.capturing, "palm: an unflagged palm touch opens a stroke, like an ordinary finger")
+    ok(not view.capturing, "palm: an unflagged palm touch opens no stroke")
     palm(11, 250, yy + 270, 2)                    -- the digitizer now flags that slot a palm
     ok(not view.capturing, "palm: the promotion retires the stray stroke it had started")
     palm(-1, 250, yy + 270, 2)                    -- palm lifts
@@ -2479,10 +2480,9 @@ do
     ok(nb.index == idx and view.canvas:opCount() == 2, "fingers: set to nothing, a finger neither turns nor draws")
     view:onIaTouch(nil, pos(sx, sy)); view:onIaHold(nil, pos(sx, sy)); view:onIaHoldRel(nil, pos(sx, sy))
     ok(view._shape_menu == nil, "fingers: nor opens menus")
-    view.finger_mode = "draw"
-    fingerSwipe(800, 200, 600)
-    ok(nb.index == idx and view.canvas:opCount() == 3, "fingers: set to draw, it draws")
     view.palm_reject = false
+    fingerSwipe(800, 200, 600)
+    ok(nb.index == idx and view.canvas:opCount() == 3, "fingers: without palm rejection, a finger draws")
 
     -- two fingers: a tap undoes, a sideways swipe turns the page
     local n0 = view.canvas:opCount()
@@ -2892,13 +2892,35 @@ do
     local function selectAll(view)
         view:computeSelection({ -10, -10, 5000, -10, 5000, 5000, -10, 5000 })
     end
+    local view
+    -- tap the button labelled `text` in the open selection or paste sheet
     local function press(text)
-        for _, row in ipairs(ButtonDialog.last.buttons) do
-            for _, b in ipairs(row) do if b.text == text then b.callback(); return true end end
+        local sheet = view._sel_dialog or view._paste_dialog
+        local function texts(w, seen)
+            if type(w) ~= "table" or seen[w] then return false end
+            seen[w] = true
+            if w.text == text then return true end
+            for k, val in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" and texts(val, seen) then return true end
+            end
+            return false
         end
+        local function find(w, seen)
+            if type(w) ~= "table" or seen[w] then return nil end
+            seen[w] = true
+            if type(w.callback) == "function" and texts(w, {}) then return w end
+            for k, val in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" then
+                    local f = find(val, seen); if f then return f end
+                end
+            end
+        end
+        local b = sheet and find(sheet, {})
+        if b then b.callback(); return true end
+        return false
     end
 
-    local view = InkAwayView:new{}
+    view = InkAwayView:new{}
     UIManager:show(view)
     view:newNotebook("lines")
     stroke(view, 100, 100); stroke(view, 200, 150)
@@ -2910,7 +2932,7 @@ do
     view:nbAddPage()
     local v = view.view
     view:lassoTap({ x = 500, y = v.area_y + 600 })
-    ok(ButtonDialog.last and ButtonDialog.last.title:find("2", 1, true), "clip: a lasso tap on an empty spot offers to paste")
+    ok(view._paste_dialog ~= nil, "clip: a lasso tap on an empty spot offers to paste")
     press("Paste here")
     ok(view.canvas:opCount() == 2 and view.selection and #view.selection.idxs == 2,
         "clip: Paste here adds the ink on the new page, selected")
@@ -3393,7 +3415,6 @@ end
 do
     UIManager.reset()
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
-    local ButtonDialog = require("ui/widget/buttondialog")
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
     UIManager:show(view)
@@ -3429,11 +3450,27 @@ do
     view.canvas:setOps(ops)
     view:setTool("lasso")
     view:computeSelection({ 0, 0, 1000, 0, 1000, 800, 0, 800 })
-    view:openSelectionMenu()
-    local convert
-    for _, row in ipairs(ButtonDialog.last.buttons) do
-        for _, b in ipairs(row) do if b.text == "Convert to text" then convert = b end end
+    -- the button labelled `text` in the open selection sheet
+    local function sheetButton(text)
+        local function has(w, seen)
+            if type(w) ~= "table" or seen[w] then return false end
+            seen[w] = true
+            if w.text == text then return true end
+            for k, val in pairs(w) do if k ~= "show_parent" and k ~= "parent" and has(val, seen) then return true end end
+            return false
+        end
+        local function find(w, seen)
+            if type(w) ~= "table" or seen[w] then return nil end
+            seen[w] = true
+            if type(w.callback) == "function" and has(w, {}) then return w end
+            for k, val in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" then local f = find(val, seen); if f then return f end end
+            end
+        end
+        return view._sel_dialog and find(view._sel_dialog, {})
     end
+    view:openSelectionMenu()
+    local convert = sheetButton("Convert to text")
     ok(convert ~= nil, "hwr: the lasso menu offers Convert to text for handwriting")
     local n_before = view.canvas:opCount()
     convert.callback()
@@ -3454,11 +3491,8 @@ do
     view.canvas:setOps({ { kind = "shape", shape = "rect", pts = { 600, 600, 700, 700 }, width = 4 } })
     view:computeSelection({ 0, 0, 1000, 0, 1000, 800, 0, 800 })
     view:openSelectionMenu()
-    local found = false
-    for _, row in ipairs(ButtonDialog.last.buttons) do
-        for _, b in ipairs(row) do if b.text == "Convert to text" then found = true end end
-    end
-    ok(not found, "hwr: a shape alone is not offered for conversion")
+    ok(sheetButton("Copy") ~= nil and not sheetButton("Convert to text"),
+        "hwr: a shape alone is not offered for conversion")
     view.canvas:setOps({})
     UIManager:close(view)
     UIManager.reset()

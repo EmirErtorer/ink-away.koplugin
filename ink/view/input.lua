@@ -220,13 +220,11 @@ end
 
 -- What a finger touch on the page does instead of using the tool: "navigate" or
 -- "nothing", from the Finger on the page setting, or nil when it uses the tool.
--- The setting applies with palm rejection on, where the pen arrives on its own
--- and does the writing.
+-- With palm rejection on the pen does the writing and a finger never draws: a
+-- hand resting on the page while the pen is away is a finger too.
 function InkAwayView:fingerOnPage()
     if self._pen_feeding or not self.palm_reject then return nil end
-    local m = self.finger_mode
-    if m == "navigate" or m == "nothing" then return m end
-    return nil
+    return self.finger_mode == "nothing" and "nothing" or "navigate"
 end
 
 -- Is the page zoomed in wider than the drawing area, so it can pan sideways?

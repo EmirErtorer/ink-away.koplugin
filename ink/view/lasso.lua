@@ -6,10 +6,13 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local ButtonDialog = require("ui/widget/buttondialog")
 local GeomUI = require("ui/geometry")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local Device = require("device")
 local _ = require("gettext")
 local Canvas = require("ink/canvas")
@@ -192,43 +195,61 @@ end
 
 -- A lasso tap on empty canvas with something on the clipboard: offer to paste
 -- it there.
+-- A sheet of actions: a title with a Close pill, a note, then `rows`, each a
+-- list of { label, callback[, dark] } laid out side by side. Every action
+-- closes the sheet first.
+function InkAwayView:openActionSheet(field, title, note, rows)
+    self:closeSheet(field)
+    local content_w, gap = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(title, content_w, _("Close"), closeSelf))
+        if note then
+            add(VerticalSpan:new{ width = Screen:scaleBySize(6) })
+            add(self:sheetLabel(note))
+        end
+        for _, row in ipairs(rows) do
+            add(VerticalSpan:new{ width = Screen:scaleBySize(row.space or 8) })
+            local w = math.floor((content_w - (#row - 1) * gap) / #row)
+            local hg = HorizontalGroup:new{ align = "center" }
+            for i, a in ipairs(row) do
+                if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
+                table.insert(hg, self:actionButton(a[1], w, function() closeSelf(); a[2]() end, a[3]))
+            end
+            add(hg)
+        end
+        return content
+    end
+    self:showSheet(field, build)
+end
+
 function InkAwayView:openPasteMenu(pos)
-    local dlg
-    dlg = ButtonDialog:new{ title = string.format(_("%d item(s) on the clipboard"), Clipboard.count()),
-        title_align = "center", buttons = {
-            {{ text = _("Paste here"), callback = function() UIManager:close(dlg); self:pasteAt(pos) end }},
-            {{ text = _("Paste where it was"), callback = function() UIManager:close(dlg); self:pasteAt(nil) end }},
-            {{ text = _("Cancel"), callback = function() UIManager:close(dlg) end }},
-        } }
-    self._shape_menu = dlg
-    UIManager:show(dlg)
+    self:openActionSheet("_paste_dialog", _("Paste"),
+        string.format(_("%d item(s) on the clipboard"), Clipboard.count()), {
+            { { _("Paste here"), function() self:pasteAt(pos) end, true },
+              { _("Paste where it was"), function() self:pasteAt(nil) end } },
+        })
 end
 
 function InkAwayView:openSelectionMenu()
     if not self.selection then return end
-    local dlg
-    local n = #self.selection.idxs
-    local buttons = {
-        {{ text = string.format(_("%d item(s) selected"), n), enabled = false }},
-        {{ text = _("Cut"), callback = function() UIManager:close(dlg); self:selCopy(true) end },
-         { text = _("Copy"), callback = function() UIManager:close(dlg); self:selCopy(false) end }},
-        {{ text = _("Duplicate"), callback = function() UIManager:close(dlg); self:selDuplicate() end }},
-        {{ text = _("Delete"), callback = function() UIManager:close(dlg); self:selDelete() end }},
-        {{ text = _("Deselect"), callback = function() UIManager:close(dlg); self:clearSelection() end }},
-        {{ text = _("Keep selection"), callback = function() UIManager:close(dlg) end }},
-    }
+    local rows = {}
     -- printed handwriting can become text (see view/handwriting.lua)
     if self:selectionHasWriting() then
-        table.insert(buttons, 2, {{ text = _("Convert to text"), callback = function()
-            UIManager:close(dlg); self:convertSelectionToText()
-        end }})
+        rows[#rows + 1] = { { _("Convert to text"), function() self:convertSelectionToText() end, true }, space = 12 }
     end
-    dlg = ButtonDialog:new{ title = _("Selection"), title_align = "center", buttons = buttons }
-    self._shape_menu = dlg
-    UIManager:show(dlg)
+    rows[#rows + 1] = { { _("Cut"), function() self:selCopy(true) end },
+                        { _("Copy"), function() self:selCopy(false) end } }
+    rows[#rows + 1] = { { _("Duplicate"), function() self:selDuplicate() end },
+                        { _("Delete"), function() self:selDelete() end } }
+    rows[#rows + 1] = { { _("Deselect"), function() self:clearSelection() end } }
+    if not rows[1].space then rows[1].space = 12 end
+    self:openActionSheet("_sel_dialog", _("Selection"),
+        string.format(_("%d item(s) selected"), #self.selection.idxs), rows)
 end
 
--- The selection box as a screen rect at drag offset (dx, dy), padded, or nil.
 function InkAwayView:selBoxScreenRect(dx, dy)
     local b = self.selection and self.selection.bbox
     if not b then return nil end

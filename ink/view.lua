@@ -179,12 +179,12 @@ function InkAwayView:init()
     -- with palm rejection on; without it the pen already arrives as a finger.
     self.pen_ui = self:getSetting("inkaway_pen_ui", true) and true or false
     -- Finger on the page, with palm rejection on (see fingerOnPage): "navigate"
-    -- (scroll, turn pages, hold a picture or shape for its menu, and the pen does
-    -- the writing), "draw" (a finger uses the tool while the pen is away) or
-    -- "nothing". Earlier versions' "finger swipes turn pages" was a part of
-    -- navigate, which is the default.
+    -- (scroll, turn pages, hold a picture or shape for its menu, while the pen
+    -- does the writing) or "nothing". A finger never draws then: with the pen
+    -- away a resting hand is a finger too. Earlier versions' "finger swipes turn
+    -- pages" was a part of navigate, which is the default.
     local fmode = self:getSetting("inkaway_finger_mode")
-    if fmode ~= "draw" and fmode ~= "nothing" then fmode = "navigate" end
+    if fmode ~= "nothing" then fmode = "navigate" end
     self.finger_mode = fmode
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot drawing the current pen stroke

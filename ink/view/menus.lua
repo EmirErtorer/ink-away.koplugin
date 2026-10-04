@@ -168,8 +168,8 @@ function InkAwayView:openPenSettings()
             table.insert(tail, vspan(10))
             table.insert(tail, self:sheetLabel(_("Finger on the page")))
             table.insert(tail, vspan(6))
-            table.insert(tail, self:segmentedRow({ { "navigate", _("Navigate") }, { "draw", _("Draw") },
-                    { "nothing", _("Nothing") } }, self.finger_mode, content_w,
+            table.insert(tail, self:segmentedRow({ { "navigate", _("Navigate") }, { "nothing", _("Nothing") } },
+                    self.finger_mode, content_w,
                 function(m)
                     self.finger_mode = m; self:setSetting("inkaway_finger_mode", m)
                     self:openPenSettings()
