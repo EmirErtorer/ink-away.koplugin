@@ -1,6 +1,7 @@
 --[[
 Notebook rulings (lined, grid, dots, margin, Cornell, blank) and planner pages
-(checklist, two columns, weekly, monthly, storyboard, music). Like the
+(handwriting, checklist, two columns, storyboard, music, daily, weekly, week
+columns, monthly, meeting notes, habit tracker). Like the
 rasterizer it emits horizontal spans through a `put(x, y, len)` callback, so the
 page on screen and the export share the geometry; the caller's `put` picks the
 colour. Every page follows the spacing `size` (the reader's line spacing), so
@@ -134,6 +135,99 @@ function PAGES.music(w, h, size, put)
         vrule(put, w - m - 1, y, y + 4 * gap + 1, 1)
         y = y + pitch
     end
+end
+
+-- A horizontal dashed rule: dashes of `dash` px with gaps as long.
+local function dashed(put, x0, x1, y, dash)
+    local x = x0
+    while x < x1 do
+        put(x, y, math.min(dash, x1 - x))
+        x = x + 2 * dash
+    end
+end
+
+-- Handwriting practice: a top line, a dashed midline and a baseline per line,
+-- with room for descenders before the next.
+function PAGES.handwriting(w, h, size, put)
+    local m = math.floor(size * 0.5)
+    local dash = math.max(3, math.floor(size / 6))
+    local y = size
+    while y + size < h do
+        put(m, math.floor(y), w - 2 * m)
+        dashed(put, m, w - m, math.floor(y + size / 2), dash)
+        put(m, math.floor(y + size), w - 2 * m)
+        y = y + size * 1.6
+    end
+end
+
+-- A day: a column for the times, then a line every half hour, solid on the
+-- hour and dashed between, under a band for the date.
+function PAGES.daily(w, h, size, put)
+    local m = math.floor(size * 0.5)
+    local top = m + math.floor(size * 1.5)
+    local tx = m + math.floor(w * 0.16)
+    local dash = math.max(3, math.floor(size / 6))
+    put(m, top, w - 2 * m)
+    put(m, top + 1, w - 2 * m)
+    vrule(put, tx, top, h - m, 1)
+    local k, y = 1, top + size
+    while y < h - m do
+        if k % 2 == 0 then put(m, math.floor(y), w - 2 * m)
+        else dashed(put, tx, w - m, math.floor(y), dash) end
+        y = y + size
+        k = k + 1
+    end
+end
+
+-- A week in seven columns side by side, a band at the top of each for its
+-- day, lines across.
+function PAGES.weekcols(w, h, size, put)
+    local m = math.floor(size * 0.5)
+    local top = m + math.floor(size * 1.5)
+    local cw = math.floor((w - 2 * m) / 7)
+    local gw = cw * 7
+    box(put, m, m, gw, h - 2 * m, 2)
+    put(m, top, gw)
+    put(m, top + 1, gw)
+    for c = 1, 6 do vrule(put, m + c * cw, m, h - m, 1) end
+    rulesIn(put, m, m + gw, top, h - m, size)
+end
+
+-- Meeting notes: a box for the title, date and who came, lines for the notes,
+-- and a box of action items with checkboxes at the bottom.
+function PAGES.meeting(w, h, size, put)
+    local m = math.floor(size * 0.5)
+    local head = math.floor(size * 3)
+    box(put, m, m, w - 2 * m, head, 2)
+    rulesIn(put, m + 2, w - m - 2, m, m + head - 2, size)
+    vrule(put, math.floor(w * 0.62), m + size, m + head, 1)
+    local act_y = math.floor(h * 0.72)
+    rulesIn(put, m, w - m, m + head, act_y - size * 0.5, size)
+    box(put, m, act_y, w - 2 * m, h - m - act_y, 2)
+    local b = math.max(6, math.floor(size * 0.5))
+    local y = act_y + size
+    while y < h - m - 2 do
+        box(put, m + math.floor(size * 0.4), math.floor(y - size * 0.2) - b, b, b, 1)
+        local lx = m + math.floor(size * 0.4) + b + math.floor(size * 0.3)
+        put(lx, math.floor(y), w - m - 2 - lx)
+        y = y + size
+    end
+end
+
+-- A habit tracker: a column for the habits and one narrow column a day for a
+-- month, a row per habit, under a band for the dates.
+function PAGES.habits(w, h, size, put)
+    local m = math.floor(size * 0.5)
+    local top = m + math.floor(size * 1.5)
+    local label = math.floor((w - 2 * m) * 0.28)
+    local dw = math.max(4, math.floor((w - 2 * m - label) / 31))
+    local gw = label + dw * 31
+    local rows = math.floor((h - m - top) / size)
+    local gh = rows * size
+    box(put, m, top, gw, gh, 2)
+    vrule(put, m + label, top, top + gh, 2)
+    for d = 1, 30 do vrule(put, m + label + d * dw, top, top + gh, 1) end
+    for r = 1, rows - 1 do put(m, top + r * size, gw) end
 end
 
 -- Is `style` one of the planner pages (rather than a plain ruling)?

@@ -682,8 +682,7 @@ function InkAwayView:openPdfAsNotebook(dir)
 end
 
 -- A sheet of paper tiles, each a small page drawn with its ruling, six to a
--- page in rows of three, with arrows to the other pages; blank paper, which
--- needs no picture, is a button above them. `o` holds title,
+-- page in rows of three, with arrows to the other pages. `o` holds title,
 -- current (the style shown selected, whose page opens first), onpick(style),
 -- field (the sheet's slot), same (a label for a "same as the notebook" choice
 -- above the papers, picked as "same") and footer(add, content_w, gap, close),
@@ -693,10 +692,7 @@ function InkAwayView:openPaperSheet(o)
     local field = o.field or "_chooser_dialog"
     self:closeSheet(field)
     local content_w, gap = self:sheetWidth()
-    local styles, blank = {}, nil
-    for _, s in ipairs(self:notebookStyles()) do
-        if s[1] == "blank" then blank = s else styles[#styles + 1] = s end
-    end
+    local styles = self:notebookStyles()
     local pages = math.ceil(#styles / PAPERS_PER_PAGE)
     local page = 0
     for i, s in ipairs(styles) do
@@ -708,7 +704,6 @@ function InkAwayView:openPaperSheet(o)
     -- for them with the title, the optional rows and the sheet's frame
     local S = function(px) return Screen:scaleBySize(px) end
     local fixed = S(34) + S(16) + (o.same and S(48) + gap or 0) + (o.footer and S(16) + S(48) or 0)
-        + S(48) + gap   -- the blank paper button
         + (pages > 1 and gap + S(48) or 0) + (rows - 1) * gap + 2 * S(18) + S(40)
     local tileH = math.max(S(90), math.min(math.floor(tileW * 1.25),
         math.floor((Screen:getHeight() - fixed) / rows)))
@@ -723,9 +718,6 @@ function InkAwayView:openPaperSheet(o)
                 o.current == "same"))
             add(VerticalSpan:new{ width = gap })
         end
-        add(self:actionButton(blank[2], content_w, function() closeSelf(); o.onpick("blank") end,
-            o.current == "blank"))
-        add(VerticalSpan:new{ width = gap })
         local first = page * PAPERS_PER_PAGE
         for r = 0, rows - 1 do
             local row = HorizontalGroup:new{ align = "center" }
@@ -825,14 +817,18 @@ function InkAwayView:newNotebookFromTemplate(name, dir)
     self:saveDocument(true)
 end
 
--- The notebook paper styles, as { style, label } pairs for the choosers: blank
--- first, the rulings, then the planner pages (see ink/template.lua).
+-- The notebook paper styles, as { style, label } pairs for the choosers, six to
+-- a page of the picker: blank and the rulings, then layouts for notes, then the
+-- planners (see ink/template.lua).
 function InkAwayView:notebookStyles()
-    return { { "blank", _("Blank") },
-        { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
-        { "iso", _("Isometric") }, { "margin", _("Margin ruled") }, { "cornell", _("Cornell") },
-        { "checklist", _("Checklist") }, { "twocol", _("2 columns") }, { "weekly", _("Weekly") },
-        { "monthly", _("Monthly") }, { "storyboard", _("Storyboard") }, { "music", _("Music") } }
+    return {
+        { "blank", _("Blank") }, { "lines", _("Lined") }, { "grid", _("Grid") },
+        { "dots", _("Dotted") }, { "iso", _("Isometric") }, { "margin", _("Margin ruled") },
+        { "cornell", _("Cornell") }, { "handwriting", _("Handwriting") }, { "checklist", _("Checklist") },
+        { "twocol", _("2 columns") }, { "storyboard", _("Storyboard") }, { "music", _("Music") },
+        { "daily", _("Daily") }, { "weekly", _("Weekly") }, { "weekcols", _("Week columns") },
+        { "monthly", _("Monthly") }, { "meeting", _("Meeting notes") }, { "habits", _("Habit tracker") },
+    }
 end
 
 -- The notebook's bottom bar: the toolbar's height, icons and columns.

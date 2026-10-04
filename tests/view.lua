@@ -3426,7 +3426,7 @@ do
     local view = InkAwayView:new{}
     UIManager:show(view)
     local styles = view:notebookStyles()
-    ok(styles[1][1] == "blank" and #styles == 13, "papers: blank comes first, then twelve more")
+    ok(styles[1][1] == "blank" and #styles == 18, "papers: blank comes first, eighteen in all")
     for _, s in ipairs(styles) do
         local bad = 0
         Template.render(s[1], 1072, 1448, 40, function(x, y, len)
@@ -3440,13 +3440,17 @@ do
     view.paperTile = function(self, style, ...) shown[#shown + 1] = style; return real_tile(self, style, ...) end
     shown = {}
     view:openNotebookPaper()
-    ok(#shown == 6 and shown[1] == "lines" and shown[4] == "iso", "papers: the first page shows the six rulings ("
+    ok(#shown == 6 and shown[1] == "blank" and shown[5] == "iso", "papers: the first page shows blank and the rulings ("
         .. table.concat(shown, ",") .. ")")
     shown = {}
     view.nb_style = "music"
     view:openNotebookPaper()
-    ok(#shown == 6 and shown[1] == "checklist" and shown[6] == "music",
+    ok(#shown == 6 and shown[1] == "cornell" and shown[6] == "music",
         "papers: it opens on the page holding the paper last used")
+    shown = {}
+    view.nb_style = "habits"
+    view:openNotebookPaper()
+    ok(#shown == 6 and shown[1] == "daily" and shown[6] == "habits", "papers: the third page holds the planners")
     view:closeSheet("_new_dialog")
     view.paperTile = real_tile
     -- the planners as a drawing's guide, at any zoom
@@ -3457,7 +3461,8 @@ do
         view:paintTo(Screen.bb, 0, 0)
         return BB.out_of_bounds
     end
-    for _, st in ipairs({ "checklist", "twocol", "weekly", "monthly", "storyboard", "music", "iso" }) do
+    for _, st in ipairs({ "checklist", "twocol", "weekly", "monthly", "storyboard", "music", "iso",
+            "handwriting", "daily", "weekcols", "meeting", "habits" }) do
         for _, z in ipairs({ view.zoom_min, 2.5 }) do
             view:setZoom(z)
             view.grid_on = false

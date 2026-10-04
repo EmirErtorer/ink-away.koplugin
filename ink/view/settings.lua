@@ -24,7 +24,8 @@ local function pxfmt(v) return v .. _(" px") end
 local TEMPLATE_LABEL = { lines = _("lined"), grid = _("grid"), dots = _("dotted"), iso = _("isometric"),
     margin = _("margin"), cornell = _("Cornell"), blank = _("blank"), checklist = _("checklist"),
     twocol = _("2 columns"), weekly = _("weekly"), monthly = _("monthly"), storyboard = _("storyboard"),
-    music = _("music") }
+    music = _("music"), handwriting = _("handwriting"), daily = _("daily"), weekcols = _("week columns"),
+    meeting = _("meeting notes"), habits = _("habit tracker") }
 
 local InkAwayView = {}
 
@@ -195,6 +196,12 @@ function InkAwayView:openGridSettings()
         add(vspan(8))
         add(self:segmentedRow({ { "monthly", _("Monthly") }, { "storyboard", _("Storyboard") },
             { "music", _("Music") } }, cur, content_w, pick))
+        add(vspan(8))
+        add(self:segmentedRow({ { "handwriting", _("Handwriting") }, { "daily", _("Daily") },
+            { "weekcols", _("Week columns") } }, cur, content_w, pick))
+        add(vspan(8))
+        add(self:segmentedRow({ { "meeting", _("Meeting notes") }, { "habits", _("Habit tracker") },
+            { "cornell", _("Cornell") } }, cur, content_w, pick))
         add(vspan(16))
 
         -- size and opacity, refreshing the grid behind the sheet as they move
@@ -274,7 +281,9 @@ function InkAwayView:openSettings()
             local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
                 lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds"), checklist = _("Checklist"),
                 twocol = _("2 columns"), weekly = _("Weekly"), monthly = _("Monthly"),
-                storyboard = _("Storyboard"), music = _("Music") }
+                storyboard = _("Storyboard"), music = _("Music"), handwriting = _("Handwriting"),
+                daily = _("Daily"), weekcols = _("Week columns"), meeting = _("Meeting notes"),
+                habits = _("Habit tracker"), cornell = _("Cornell") }
             local cur = self.grid_on and self.grid_style or "off"
             add(act(_("Grid: ") .. (GRID_LABEL[cur] or cur), content_w, function()
                 self:openGridSettings() end))

@@ -565,7 +565,7 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
 
     if not g or g <= 0 then return end
 
-    if Template.isPlanner(style) then               -- a planner page as a guide
+    if Template.isPlanner(style) or style == "cornell" then   -- a notebook page as a guide
         local zoom = v.zoom
         for _, r in ipairs(self:plannerRects(style, g)) do
             if r[1] + r[3] >= cxA and r[1] <= cxB and r[2] + r[4] >= cyA and r[2] <= cyB then
