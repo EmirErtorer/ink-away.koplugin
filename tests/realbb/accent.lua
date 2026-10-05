@@ -120,5 +120,38 @@ r, g, b = px(Device.screen.bb, c.x + math.floor(c.w / 2), c.y + 3)
 ok(r == 0 and g == 0 and b == 0, "grid: black again once the accent is black")
 Accent.free()
 
+-- the floating Pan button: light with clear corners while off, the accent while on
+local Toolbar = dofile(REPO .. "/ink/view/toolbar.lua")
+local fab = setmetatable({}, { __index = Toolbar })
+for _, typ in ipairs({ BB.TYPE_BB8, BB.TYPE_BBRGB32 }) do
+    local name = typ == BB.TYPE_BB8 and "grey" or "colour"
+    Device.screen.bb = BB.new(1072, 1448, typ)
+    local scr2 = Device.screen.bb
+    scr2:fill(BB.COLOR_WHITE)
+    Accent.set(nil)
+    local x0, y0, w = 100, 100, 64
+    fab:drawPanFab(scr2, x0, y0, w, false)
+    r, g, b = px(scr2, x0 + 1, y0 + 1)
+    ok(r == 255 and g == 255 and b == 255, "pan button (" .. name .. "): its corner shows the page")
+    r, g, b = px(scr2, x0 + 8, y0 + math.floor(w / 2))
+    ok(near(r, 0xF0) and near(g, 0xF0) and near(b, 0xF0), "pan button (" .. name .. "): light grey when off")
+    fab:drawPanFab(scr2, x0, y0, w, true)
+    r, g, b = px(scr2, x0 + 8, y0 + math.floor(w / 2))
+    ok(r == 0 and g == 0 and b == 0, "pan button (" .. name .. "): black when on")
+    r, g, b = px(scr2, x0 + 1, y0 + 1)
+    ok(r == 255 and g == 255 and b == 255, "pan button (" .. name .. "): still round")
+    if typ == BB.TYPE_BBRGB32 then
+        Accent.set({ 0x1E, 0x6F, 0xD9 })
+        fab:drawPanFab(scr2, x0, y0, w, true)
+        r, g, b = px(scr2, x0 + 8, y0 + math.floor(w / 2))
+        ok(r == 0x1E and g == 0x6F and b == 0xD9, "pan button: in the accent colour when on")
+        r, g, b = px(scr2, x0 + math.floor(w / 2), y0 + math.floor(w / 2))
+        ok(r == 255 and g == 255 and b == 255, "pan button: its icon white on the colour")
+        Accent.set(nil)
+    end
+    fab:freeFabSprites()
+    ok(fab._fab_sprites == nil and fab._pan_fab_icons == nil, "pan button (" .. name .. "): its images freed")
+end
+
 print(("realbb accent: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

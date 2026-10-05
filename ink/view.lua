@@ -359,7 +359,7 @@ function InkAwayView:free()
     if ok_cp and ColorPicker.freeCache then ColorPicker.freeCache() end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
-    if self._zoom_pill and self._zoom_pill.bb then self._zoom_pill.bb:free(); self._zoom_pill = nil end
+    self:freeFabSprites()
     if self._nav_img then
         for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
         self._nav_img = nil

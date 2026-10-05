@@ -1,6 +1,6 @@
 --[[
-The toolbar, switching tools, and the floating controls (the zoom pill and the
-bar collapse chevrons) that fade while drawing near them.
+The toolbar, switching tools, and the floating controls (the Pan button, the
+zoom pill and the bar collapse chevrons) that fade while drawing near them.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -25,9 +25,9 @@ local Paint = require("ink/paint")
 local Screen = Device.screen
 local HAIRLINE = Paint.HAIRLINE
 
--- The floating zoom pill: e-ink cannot show a see-through fill, so it is a light
--- opaque pill with a soft border and dark glyphs, and it hides while drawing
--- near it so the canvas underneath stays reachable.
+-- The floating zoom pill and Pan button: e-ink cannot show a see-through fill,
+-- so they are light opaque shapes with a soft border and dark glyphs, and they
+-- hide while drawing near them so the canvas underneath stays reachable.
 local FAB_FILL   = Blitbuffer.ColorRGB32(0xF0, 0xF0, 0xF0, 0xFF)
 local FAB_BORDER = Blitbuffer.ColorRGB32(0xB4, 0xB4, 0xB4, 0xFF)
 local FAB_GLYPH  = Blitbuffer.ColorRGB32(0x33, 0x34, 0x36, 0xFF)
@@ -36,6 +36,7 @@ local FAB_GLYPH  = Blitbuffer.ColorRGB32(0x33, 0x34, 0x36, 0xFF)
 -- the callback (made by initFabs) that brings it back.
 local FABS = {
     { rect = "zoom",  hidden = "_zoom_hidden",         show = "_show_zoom_fab" },
+    { rect = "pan",   hidden = "_pan_hidden",          show = "_show_pan_fab" },
     { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
     { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
     { rect = "back",  hidden = "_back_hidden",         show = "_show_back_fab" },
@@ -68,7 +69,8 @@ function InkAwayView:buildToolbar()
         end },
         -- placing an image, one tap away
         { id = "image", label = _("Image"), cb = function() self:chooseImage() end },
-        { id = "pan",   label = _("Pan"),   tool = true, cb = function() self:setTool("pan") end },
+        -- Pan has its own button by the zoom pill (see drawPanFab)
+        { id = "lasso", label = _("Lasso"), tool = true, cb = function() self:setTool("lasso") end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
         { id = "redo",  label = _("Redo"),  cb = function() self:redo() end },
         { id = "menu",  label = "\u{2699}", cb = function() self:openSettings() end },   -- gear
@@ -78,7 +80,7 @@ function InkAwayView:buildToolbar()
     }
     -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
     local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",
-        image = "image", pan = "pan",
+        image = "image", lasso = "lasso",
         undo = "undo", redo = "redo", menu = "menu", library = "library", file = "file", exit = "exit" }
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
     local n = #specs
@@ -163,7 +165,7 @@ end
 -- is swapped for one drawn on the accent.
 function InkAwayView:updateToolbarActive()
     if not self._toolbar_icons then return end
-    local active = (self.tool == "fill" or self.tool == "lasso") and "shape" or self.tool
+    local active = (self.tool == "fill") and "shape" or self.tool
     self._active_btn_idx = nil
     for i, e in ipairs(self._toolbar_icons) do
         if e.tool and e.button then
@@ -192,10 +194,16 @@ function InkAwayView:drawActiveToolPill(bb, ox, oy)
     Accent.paintRounded(bb, cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m, Screen:scaleBySize(9))
 end
 
--- Show the current tool as active. Only the toolbar needs repainting.
+-- Show the current tool as active: the toolbar, and the Pan button when Pan
+-- comes or goes.
 function InkAwayView:refreshToolLabels()
     self:updateToolbarActive()   -- move the pill to the current tool
     UIManager:setDirty(self, "ui", self.toolbar and self.toolbar.dimen or nil)
+    local pan = self.tool == "pan"
+    if pan ~= (self._pan_fab_on or false) then
+        self._pan_fab_on = pan
+        if not self._pan_hidden then self:refreshFabRegion(self:fabRect("pan")) end
+    end
 end
 
 -- The plugin's own directory, found from this file's path (it lives under ink/).
@@ -257,6 +265,7 @@ function InkAwayView:setTool(tool)
     if self.editing_text then self:finishTextEdit(true) end   -- bake any open text box
     if self.selection or self.lassoing then self:dropSelection() end
     self.pan_last = nil
+    if tool == "pan" then self._tool_before_pan = self.tool end   -- for the Pan button's second tap
     self.tool = tool
     self:refreshToolLabels()
     -- the toolbar strip changes too (the pill moves), so clear any area-only flag
@@ -267,7 +276,8 @@ function InkAwayView:setTool(tool)
 end
 
 ------------------------------------------------------------------------------
--- Floating controls: a zoom pill at the bottom right and chevrons that collapse
+-- Floating controls: a zoom pill at the bottom right with the Pan button above
+-- it, and chevrons that collapse
 -- the toolbar (and, in a notebook, the bottom bar). They hide while drawing comes
 -- near them and return shortly after, so the canvas beneath stays reachable.
 -- They follow the drawing area, so they move when a bar collapses.
@@ -293,7 +303,7 @@ function InkAwayView:cancelFabs()
     end
 end
 
--- Screen rect of a named control ("zoom", "bar" or "nbbar"), or nil.
+-- Screen rect of a named control ("zoom", "pan", "bar", "nbbar" or "back"), or nil.
 function InkAwayView:fabRect(which)
     if not self.view then return nil end
     local v = self.view
@@ -305,6 +315,9 @@ function InkAwayView:fabRect(which)
     elseif which == "zoom" then
         local h = Screen:scaleBySize(92)
         return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
+    elseif which == "pan" then   -- a round button a little above the zoom pill
+        local z = self:fabRect("zoom")
+        return { x = z.x, y = z.y - Screen:scaleBySize(12) - w, w = w, h = w }
     elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
         -- bar's top left, anchored to the area bottom so it sits on the bar's top
         -- edge when shown and near the screen bottom when collapsed
@@ -333,14 +346,19 @@ function InkAwayView:refreshFabRegion(r)
         x = r.x - m, y = r.y - m, w = r.w + 2 * m, h = r.h + 2 * m })
 end
 
--- What a point hits: "zoomin" or "zoomout" (halves of the pill), "bar" or "nbbar"
--- (the toggles), or nil. Hidden controls cannot be hit, so drawing passes through.
+-- What a point hits: "zoomin" or "zoomout" (halves of the pill), "pan", "bar" or
+-- "nbbar" (the toggles), "back", or nil. Hidden controls cannot be hit, so drawing
+-- passes through.
 function InkAwayView:fabHit(px, py)
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
         if r and InkGeom.inRect(px, py, r) then
             return (py < r.y + r.h / 2) and "zoomin" or "zoomout"
         end
+    end
+    if not self._pan_hidden then
+        local r = self:fabRect("pan")
+        if r and InkGeom.inRect(px, py, r) then return "pan" end
     end
     -- (not while a text box is open: the chevron would sit on its Done button)
     if not self._bar_toggle_hidden and not self.editing_text then
@@ -366,9 +384,18 @@ end
 function InkAwayView:fabAction(kind)
     if kind == "zoomin" then self:zoomStep(1)
     elseif kind == "zoomout" then self:zoomStep(-1)
+    elseif kind == "pan" then self:togglePan()
     elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden)
     elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed)
     elseif kind == "back" then self:linkBack() end
+end
+
+-- The Pan button: the first tap picks Pan, a second goes back to the tool in use
+-- before it.
+function InkAwayView:togglePan()
+    if self.tool ~= "pan" then return self:setTool("pan") end
+    local back = self._tool_before_pan
+    self:setTool((back and back ~= "pan") and back or "pen")
 end
 
 -- Called from the drawing handlers: if the active point comes near a control,
@@ -407,14 +434,31 @@ local function fabChevron(bb, r, ox, oy, dir)
     seg(cx, yTip, cx + half, yEnd)
 end
 
--- The zoom pill as an alpha sprite with transparent corners. A rounded colour
--- fill is a slow per-pixel path, so the pill is drawn once and stamped with a C
--- alpha-blit on each paint; it is rebuilt only when its size, the screen buffer
--- type or night mode changes.
-function InkAwayView:zoomPillSprite(w, h)
+-- What each floating control shows on its light shape, drawn into its sprite
+-- (w x h). The Pan button's icon is painted over it instead (see drawPanFab).
+local FAB_GLYPHS = {
+    zoom = function(bb, w, h, S1)   -- a divider, + over -
+        local midy = math.floor(h / 2)
+        bb:paintRect(Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
+        local gw = math.floor(w * 0.34)
+        local gt = math.max(2, Screen:scaleBySize(2))
+        local cx = math.floor(w / 2)
+        local cyTop, cyBot = math.floor(h / 4), math.floor(3 * h / 4)
+        bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+        bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
+        bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
+    end,
+}
+
+-- A floating control's light shape as an alpha sprite with transparent corners.
+-- A rounded colour fill is a slow per-pixel path, so each is drawn once and
+-- stamped with a C alpha-blit on each paint; it is rebuilt only when its size,
+-- the screen buffer type or night mode changes.
+function InkAwayView:fabSprite(name, w, h)
     local typ = Screen.bb:getType()
     local inv = (Screen.bb.getInverse and Screen.bb:getInverse()) or 0
-    local c = self._zoom_pill
+    self._fab_sprites = self._fab_sprites or {}
+    local c = self._fab_sprites[name]
     if c and c.w == w and c.h == h and c.type == typ and c.inv == inv then return c.bb end
     if c and c.bb then c.bb:free() end
     local S1 = math.max(1, Screen:scaleBySize(1))
@@ -423,17 +467,61 @@ function InkAwayView:zoomPillSprite(w, h)
     local rad = math.floor(w / 2)
     bb:paintRoundedRect(0, 0, w, h, FAB_FILL, rad)      -- fills only the rounded shape;
     bb:paintBorder(0, 0, w, h, S1, FAB_BORDER, rad)     -- corners stay transparent
-    local midy = math.floor(h / 2)
-    bb:paintRect(Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
-    local gw = math.floor(w * 0.34)
-    local gt = math.max(2, Screen:scaleBySize(2))
-    local cx = math.floor(w / 2)
-    local cyTop, cyBot = math.floor(h / 4), math.floor(3 * h / 4)
-    bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
-    bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
-    bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
-    self._zoom_pill = { bb = bb, w = w, h = h, type = typ, inv = inv }
+    if FAB_GLYPHS[name] then FAB_GLYPHS[name](bb, w, h, S1) end
+    self._fab_sprites[name] = { bb = bb, w = w, h = h, type = typ, inv = inv }
     return bb
+end
+
+-- The Pan icon at `size`: dark on the light button, or for the active button
+-- (on) white on black, as the toolbar shows its active tool. Kept until close.
+function InkAwayView:panFabIcon(size, on)
+    local c = self._pan_fab_icons
+    if not c or c.size ~= size then
+        self:freeFabSprites(true)
+        local file = self:pluginDir() .. "ink/icons/pan.svg"
+        local function icon(o)
+            local ok, w = pcall(IconWidget.new, IconWidget, o)
+            return ok and w or nil
+        end
+        c = { size = size, file = file,
+              plain = icon{ file = file, width = size, height = size, alpha = true },
+              inv = icon{ file = file, width = size, height = size, invert = true } }
+        self._pan_fab_icons = c
+    end
+    return on and c.inv or c.plain, c.file
+end
+
+-- Paint the Pan button at (x, y), w wide: the light round shape, or the accent
+-- while Pan is the tool, with the Pan icon centred on it.
+function InkAwayView:drawPanFab(bb, x, y, w, on)
+    local isz = math.floor(w * 0.56)
+    local ix, iy = x + math.floor((w - isz) / 2), y + math.floor((w - isz) / 2)
+    local icon, file = self:panFabIcon(isz, on)
+    if on then
+        Accent.paintRounded(bb, x, y, w, w, math.floor(w / 2))
+        local tinted = Accent.icon(file, isz)   -- nil with the black accent
+        if tinted then
+            bb:blitFrom(tinted, ix, iy, 0, 0, isz, isz)
+            return
+        end
+    else
+        bb:alphablitFrom(self:fabSprite("pan", w, w), x, y, 0, 0, w, w)
+    end
+    if icon then icon:paintTo(bb, ix, iy) end
+end
+
+-- Free the controls' sprites and the Pan icons (on close); with icons_only,
+-- just the icons.
+function InkAwayView:freeFabSprites(icons_only)
+    local c = self._pan_fab_icons
+    if c then
+        if c.plain then c.plain:free() end
+        if c.inv then c.inv:free() end
+        self._pan_fab_icons = nil
+    end
+    if icons_only then return end
+    for _, sp in pairs(self._fab_sprites or {}) do if sp.bb then sp.bb:free() end end
+    self._fab_sprites = nil
 end
 
 -- Paint the floating controls onto the screen buffer, last in paintTo so they
@@ -444,8 +532,16 @@ function InkAwayView:drawFabs(bb, ox, oy)
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
         if r then
-            local sprite = self:zoomPillSprite(r.w, r.h)
+            local sprite = self:fabSprite("zoom", r.w, r.h)
             bb:alphablitFrom(sprite, ox + r.x, oy + r.y, 0, 0, r.w, r.h)
+        end
+    end
+    -- the Pan button above it, lit while Pan is the tool
+    if not self._pan_hidden then
+        local r = self:fabRect("pan")
+        if r then
+            self._pan_fab_on = self.tool == "pan"
+            self:drawPanFab(bb, ox + r.x, oy + r.y, r.w, self._pan_fab_on)
         end
     end
     -- toolbar toggle: a bare chevron, up to collapse and down to expand; hidden

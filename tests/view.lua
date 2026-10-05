@@ -4456,6 +4456,79 @@ do
     UIManager.reset()
 end
 
+-- ---- Pan on its own button above the zoom pill, Lasso in the toolbar --------
+for _, wh in ipairs(SIZES) do
+    Screen:setRotationMode(0); Screen:setSize(wh[1], wh[2])
+    UIManager.reset()
+    BB.out_of_bounds = 0
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local v = view.view
+    local tag = " (" .. wh[1] .. "x" .. wh[2] .. ")"
+    local ids = {}
+    for _, e in ipairs(view._toolbar_icons) do ids[e.id] = e end
+    ok(ids.lasso and ids.lasso.tool and not ids.pan, "pan button: Lasso takes Pan's place in the toolbar" .. tag)
+    local zr, pr = view:fabRect("zoom"), view:fabRect("pan")
+    ok(pr.x == zr.x and pr.w == zr.w and pr.h == pr.w and pr.y + pr.h < zr.y and zr.y - (pr.y + pr.h) < pr.h,
+        "pan button: round, a little above the zoom pill and apart from it" .. tag)
+    ok(pr.y >= v.area_y and pr.x + pr.w <= v.area_x + v.area_w, "pan button: inside the drawing area" .. tag)
+    -- the Lasso button picks the lasso and is lit
+    view:setTool("pen")
+    ids.lasso.button.callback()
+    ok(view.tool == "lasso" and view._toolbar_icons[view._active_btn_idx].id == "lasso",
+        "pan button: the toolbar's Lasso picks the lasso, lit" .. tag)
+    -- a tap on the Pan button picks Pan, a second goes back
+    local cx, cy = math.floor(pr.x + pr.w / 2), math.floor(pr.y + pr.h / 2)
+    local function tapAt(x, y) view:onIaTouch(nil, pos(x, y)); view:onIaTap(nil, pos(x, y)) end
+    local function refreshed(r)
+        for _, f in ipairs(UIManager.refreshes) do
+            local g = f.region
+            if g and g.x <= r.x and g.y <= r.y and g.x + g.w >= r.x + r.w and g.y + g.h >= r.y + r.h then
+                return true
+            end
+        end
+        return false
+    end
+    ok(view:fabHit(cx, cy) == "pan" and view:penOnUI(cx, cy), "pan button: a finger or the pen reaches it" .. tag)
+    UIManager.refreshes = {}
+    tapAt(cx, cy)
+    ok(view.tool == "pan" and view._active_btn_idx == nil, "pan button: a tap picks Pan; no toolbar tool is lit" .. tag)
+    ok(refreshed(pr), "pan button: it repaints to show Pan is on" .. tag)
+    view:paintTo(Screen.bb, 0, 0)
+    ok(view._pan_fab_on == true and view._pan_fab_icons and view._pan_fab_icons.inv, "pan button: painted lit" .. tag)
+    UIManager.refreshes = {}
+    tapAt(cx, cy)
+    ok(view.tool == "lasso" and refreshed(pr), "pan button: a second tap goes back to the lasso, and repaints" .. tag)
+    view:setTool("text"); tapAt(cx, cy); tapAt(cx, cy)
+    ok(view.tool == "text", "pan button: and back to any tool it came from" .. tag)
+    view:setTool("pan"); view:setTool("erase"); tapAt(cx, cy)
+    ok(view.tool == "pan", "pan button: Pan from a toolbar tool too" .. tag)
+    view:setTool("pen")
+    -- drawing near it fades it, so the canvas under it is reachable, and it comes back
+    view:fabProximity(cx, pr.y - 4)
+    ok(view._pan_hidden and view:fabHit(cx, cy) == nil, "pan button: drawing near it hides it" .. tag)
+    UIManager.fireScheduled()
+    ok(not view._pan_hidden and view:fabHit(cx, cy) == "pan", "pan button: it comes back" .. tag)
+    -- a drag that starts on it draws, as on the zoom pill
+    view:onIaTouch(nil, pos(cx, cy))
+    view:onIaPan(nil, pos(cx - 80, cy - 80))
+    ok(view._fab_press == nil and view.tool == "pen", "pan button: a drag off it is no tap" .. tag)
+    view:onIaPanRelease(nil, pos(cx - 80, cy - 80))
+    -- painted in bounds, lit and not (compared with a paint before, as earlier
+    -- landscape tests leave the mock a stray out-of-bounds paint of their own)
+    BB.out_of_bounds = 0
+    view:paintTo(Screen.bb, 0, 0)
+    local base = BB.out_of_bounds
+    BB.out_of_bounds = 0
+    view:setTool("pan"); view:paintTo(Screen.bb, 0, 0)
+    view:setTool("pen"); view:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 2 * base, "pan button: paints in bounds" .. tag)
+    UIManager:close(view)
+    ok(view._pan_fab_icons == nil and view._fab_sprites == nil, "pan button: its images are freed on close" .. tag)
+end
+UIManager.reset()
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)
