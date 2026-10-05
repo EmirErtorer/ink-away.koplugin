@@ -25,25 +25,78 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 
 ## Features
 
-- **Pen**: size, opacity, color (greys everywhere, full color + a wheel on color screens) and brush styles (you can make your own brushes too).
-- **Shapes & arrows** (line, curve, rectangle, ellipse, triangle, filled or outline), plus a **paint bucket** for one-tap fills. Or draw one by hand and hold the pen still at its end: it snaps into a clean line, rectangle, ellipse or triangle (Hold still to straighten, in the pen settings; writing is left alone).
-- **Eraser** that removes ink (back to transparent) instead of painting white, or whole strokes at a time.
-- **Text boxes**: any installed font, bold/italic/underline/highlight, sizes and lists.
-- **Selection**: loop anything with the lasso (pen writing, shapes, fills, pictures, text boxes), or touch or hold a shape or picture with Pan. Drag it to move it, drag a corner to resize it (lines grow with it) and the round handle to turn it. Its menu, beside it: cut, copy and paste on any page of any notebook or drawing, duplicate, a quarter turn, mirror, to front, colour, opacity and size, delete, and Convert to text for writing. Text boxes stay upright and readable. Four-way **symmetry**, and a **background image** to draw over.
-- **Palm rejection**: rest your hand, only the pen draws (on by default on Kindle Scribe / reMarkable). The pen can still tap the toolbar and menus.
-- **Papers and planners**: notebooks come blank, lined, grid, dotted, isometric, margin ruled or Cornell, or as layouts and planners: handwriting practice, checklist, two columns, storyboard, music, daily, weekly, week columns, monthly, meeting notes and habit tracker. All follow the line spacing and strength you set, and drawings can use the same pages as a guide (Settings → Grid). New drawings start plain.
-- **Handwriting to text**: lasso printed writing and choose "Convert to text": it becomes a text box in your current text style (one undo brings the writing back). English letters and digits, read on the device by a small model; nothing is sent anywhere.
-- **Gestures**: tap with two fingers to undo, and tap twice quickly with two fingers to redo; swipe sideways with two fingers to turn a notebook's page; a long two-finger swipe up opens Browse in a notebook, or the Library from a drawing; pinch to zoom and drag with two fingers to move around; hold Prev or Next in the bottom bar to jump to the first or last page. With palm rejection on, "Finger on the page" in the pen settings decides what a finger does while the pen writes: Navigate (drag to scroll, swipe to turn pages, hold a picture or shape for its menu) or Nothing. A finger never draws then, so a resting hand can't either.
-- **Notebook mode**: Keep a notebook with as many pages (lined/grid/dotted/Cornell) as you want, or open any PDF and write on it; export to a paged PDF, where titled pages become bookmarks. A whole folder can be exported as one PDF too, subfolders included, bookmarked by folder, notebook and titled page. Pages can have titles and stars, their own paper, and be moved, inserted or duplicated; save a page as a template (a planner, a meeting sheet) and start new pages from it. The overview (one tap away in the bottom bar) shows a folder like a binder: its subfolders and notebooks as coloured tabs (a folder tab goes into it, the back arrow goes up), the pages of the chosen notebook, a starred-only filter, and moving or copying pages to any notebook in any folder.
-- **Links and contents**: select anything and choose "Link to page…" to make it lead to a page of this notebook or any other; a tap with Pan (or a navigating finger) follows it, and a Back pill brings you back. "Make a contents page" in the page menu lists the titled pages, each line a link, and updates later. Links stay links in exported PDFs.
-- **Search**: the magnifier in the Library and in Browse finds folders, notebooks, drawings and page titles. Tick "Also look inside pages" to search the typed text on pages too, handwriting turned into text included. It runs only when you ask, a tap on its progress bar stops it, and it remembers what it read, so the next search is quick.
-- **Library**: every drawing and notebook is a file that saves itself as you go. Browse them by thumbnail, sort them into folders, rename, move, duplicate or delete them, all without a computer. Deleted notebooks, drawings, folders and pages wait in the trash (Library → ⋯ → Trash) for 30 days and go back exactly where they were: a notebook with all its pages, a page between the pages it sat between.
-- **Theme color** (color screens): Ink Away's own green (R159 G214 B101) by default, first in the row and marked Default. Pick black, a ready-made color or any color on the same wheel as the pen, and the buttons, selected tiles, switches and active tool take it. Text on them turns black or white, whichever reads better.
-- **Colour while drawing** (color screens, on by default): color ink shows in its color as you draw, and one refresh settles the exact shade when the pen rests. Turn it off to see color ink in black until the pen rests, which can read more clearly on some color e-ink screens.
-- Undo/redo, zoom & pan, and an optional grid.
-- And more!
+### Write and draw
 
-Toolbar: Pen, Eraser, Shapes, Text, Image, Lasso, Undo/Redo, Settings, Library, File (rename, duplicate, export, new drawing, new notebook) and Exit. Zoom is the floating +/− control in the corner, with the Pan button just above it: tap it to pan, tap it again to go back to the tool you had.
+| | |
+|---|---|
+| **Pen** | Size, opacity, a stabilizer for shaky lines, greys everywhere and full color on color screens. Brush styles, plus a brush maker for your own. |
+| **Hold to straighten** | Hold the pen still at the end of a stroke and a rough line, box, ellipse or triangle snaps clean. Writing is left alone. |
+| **Shapes** | Lines, curves, single and double arrows, rectangles, ellipses and triangles, filled or outlined, snapped to the grid or to 45°. A paint bucket fills an area in one tap. |
+| **Eraser** | Clears ink back to transparent, or removes whole strokes. It leaves pictures alone unless you ask, and can spare text too. |
+| **Text** | Text boxes in any installed font, with bold, italic, underline, highlight, lists and sizes, snapped to a notebook's lines. |
+| **Pictures** | From a file or found online (Wikimedia or Openverse), then moved, resized, turned and cut out of their background. A picture can also sit behind a drawing to trace over. |
+| **Symmetry** | Draw mirrored left to right, top to bottom, or four ways. |
+
+### Select and edit
+
+| | |
+|---|---|
+| **Lasso** | Loop writing, shapes, pictures and text, then move, resize, turn, flip, recolor, change opacity or size, duplicate or delete them, or cut, copy and paste to any page of any notebook or drawing. With Pan, a touch picks a shape or picture. |
+| **Convert to text** | Lassoed printed handwriting becomes a text box, read on the device (English letters and digits). One undo brings the writing back. |
+| **Undo and redo** | From the toolbar, or with two fingers (see Gestures). |
+
+### Notebooks and PDFs
+
+| | |
+|---|---|
+| **Notebooks** | As many pages as you like, each with a title, a star and its own paper. Insert, duplicate and move pages, or save one as a template to start new pages from. |
+| **Papers and planners** | Blank, lined, grid, dotted, isometric, margin ruled and Cornell, plus handwriting practice, checklist, two columns, storyboard, music, daily, weekly, week columns, monthly, meeting notes and a habit tracker. You set the line spacing and strength, and drawings can use any of them as a guide. |
+| **Annotate PDFs** | Open any PDF as a notebook and write on its pages. |
+| **Links and contents** | Make anything a link to a page of this or another notebook, with a Back button to return. A contents page lists the titled pages, each one a link. |
+
+### Organize and find
+
+| | |
+|---|---|
+| **Library** | Every drawing and notebook is a file that saves itself. Folders, thumbnails, rename, move, duplicate and delete, all without a computer. |
+| **Browse** | A folder's notebooks as colored tabs beside their pages, with a starred-only view. Move or copy pages to any notebook. |
+| **Search** | By name, or by the text inside pages, handwriting turned into text included. |
+| **Trash** | Deleted notebooks, drawings, folders and pages wait 30 days and go back exactly where they were. |
+
+### Export
+
+| | |
+|---|---|
+| **PNG** | Transparent or white, at your screen size, of the whole page or an area you pick, with or without the grid. |
+| **PDF** | A notebook, some of its pages, or a whole folder at once, with bookmarks for titled pages, working links and page numbers, on white or sandpaper paper. |
+| **Bookshelf ornament** | With the Bookshelf plugin installed, save a drawing straight into its ornaments. |
+
+### Pen, screen and color
+
+| | |
+|---|---|
+| **Palm rejection** | Rest your hand on the screen while the pen writes (on by default on Kindle Scribe and reMarkable). The pen can still tap the toolbar and menus. |
+| **Stylus buttons** | The eraser end erases and the side button lassos, on pens that have them. |
+| **Color screens** | A theme color, Ink Away green by default, and color ink that shows as you draw. |
+| **E-ink** | Light refreshes while you draw, an optional clean-up refresh every few strokes, portrait or landscape, and bars that fold away for more room. |
+
+### Gestures
+
+| Gesture | What it does |
+|---|---|
+| Two-finger tap | Undo |
+| Two-finger double tap | Redo |
+| Two-finger swipe left or right | Turn a notebook's page |
+| Long two-finger swipe up | Open Browse in a notebook, or the Library from a drawing |
+| Pinch | Zoom |
+| Two-finger drag | Move around the page |
+| Hold Prev or Next | Jump to the first or last page |
+
+With palm rejection on, **Finger on the page** in the pen settings decides what a finger does while the pen writes: **Navigate** (scroll, turn pages, hold a picture or shape for its menu) or **Nothing**. A finger never draws then, so a resting hand can't either.
+
+### Toolbar
+
+Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File (rename, duplicate, export, new drawing, new notebook) and Exit. Zoom is the floating +/− control in the corner, with the Pan button just above it: tap it to pan, and again to go back to the tool you had.
 
 
 ## Installation
