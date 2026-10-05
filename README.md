@@ -1,4 +1,5 @@
-<h1><img src="assets/ink-away-title.svg" alt="Ink Away"></h1>
+<p><img src="assets/ink-away-title.svg" alt="Ink Away"><br>
+<img src="assets/readme-divider.svg" width="100%" height="4" alt=""></p>
 
 [![GitHub Release](https://img.shields.io/github/v/release/EmirErtorer/ink-away.koplugin?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMyAzaDguNUwyMSAxMi41IDEyLjUgMjEgMyAxMS41ek03LjUgNS41YTIgMiAwIDEgMCAwIDQgMiAyIDAgMCAwIDAtNHoiLz48L3N2Zz4%3D&label=Latest%20Release&labelColor=rgb(159%2C%20214%2C%20101)&color=rgb(255%2C255%2C255))](https://github.com/EmirErtorer/ink-away.koplugin/releases/latest)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/EmirErtorer/ink-away.koplugin/total?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI%2BPHBhdGggZD0iTTExIDNoMnY5LjE3bDMuNTktMy41OEwxOCAxMGwtNiA2LTYtNiAxLjQxLTEuNDFMMTEgMTIuMTd6TTQgMTVoMnYzaDEydi0zaDJ2NUg0eiIvPjwvc3ZnPg%3D%3D&label=Total%20Downloads&labelColor=rgb(159%2C%20214%2C%20101)&color=rgb(255%2C255%2C255))](https://github.com/EmirErtorer/ink-away.koplugin/releases)
@@ -104,12 +105,16 @@ With palm rejection on, **Finger on the page** in the pen settings decides what 
 
 ### Toolbar
 
-Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File (rename, duplicate, export, new drawing, new notebook) and Exit. Zoom is the floating +/− control in the corner, with the Pan button  just above it: tap it to pan, and again to go back to the tool you had.
+<img src="assets/readme-toolbar.svg" alt="The toolbar: Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File and Exit">
+
+File holds rename, duplicate, export, new drawing and new notebook. Zoom is the floating +/− control in the corner, with the Pan button just above it: tap it to pan, and again to go back to the tool you had.
 
 
 ## Installation
 
-Copy the whole `ink-away.koplugin` folder into KOReader's `plugins` directory:
+<a href="https://github.com/EmirErtorer/ink-away.koplugin/releases/latest"><img src="assets/readme-download.svg" alt="Download the latest release"></a>
+
+Unzip the download and copy the `ink-away.koplugin` folder inside it into KOReader's `plugins` directory:
 
 - Kindle: `koreader/plugins/ink-away.koplugin/`
 - Kobo: `.adds/koreader/plugins/ink-away.koplugin/`
