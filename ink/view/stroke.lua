@@ -1,6 +1,7 @@
 --[[
 Freehand pen and eraser strokes, from touch-down to commit: live stamping into the
-master and the on-screen buffer, rejoining a dropped contact, and shape assist.
+master and the on-screen buffer, rejoining a dropped contact, and hold to
+straighten.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -68,14 +69,16 @@ function InkAwayView:setupLiveWriters()
     self._lw_seg_c = self._lw_seg_c or { 0, 0, 0, 0 }
     self._lw_seg_a = self._lw_seg_a or { 0, 0, 0, 0 }
     local sym = self.symmetry
-    -- On a colour panel live ink uses the fast black-and-white waveform (the
-    -- grey-capable one blocks on each sample there), which cannot show colour, grey
-    -- or a light tint. So the screen copy is drawn black while the master keeps the
-    -- real colour; the true pixels come back on lift and settle in one refresh.
+    -- On a colour panel live ink uses the fast waveform (the colour one blocks on
+    -- each sample there). Ink is drawn in its own colour at once ("Colour while
+    -- drawing"); the fast waveform shows it roughly on colour e-ink, and one
+    -- refresh settles the true colour once the pen rests. With that setting off
+    -- the screen copy of a non-black pen is drawn black, which that waveform shows
+    -- sharply, and its colour comes back on lift. The master always keeps it.
     local area_color = color
     self._live_preview = false
-    if self:colourPanel() and self.tool ~= "erase" and self._live_mode == "fast"
-            and not self:pureBlackPen() then
+    if self:colourPanel() and not self.live_colour and self.tool ~= "erase"
+            and self._live_mode == "fast" and not self:pureBlackPen() then
         area_color, self._live_preview = PREVIEW_INK, true
     end
     -- master (1:1) writer
@@ -252,24 +255,6 @@ function InkAwayView:beginStroke(sx, sy)
         self._lw_cacc.x0, self._lw_cacc.y0 = math.huge, math.huge
         self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
     end
-    -- With shape assist on, any stroke may be swapped for a clean shape on lift,
-    -- so the master is copied now and the swap restores just the stroke's
-    -- footprint from it (see beautifyRecompose). Without assist a swap is rare
-    -- (a hold), and it composes the footprint again instead, so a stroke start
-    -- copies nothing.
-    self._pre_stroke_valid = false
-    if self.shape_assist and not is_erase and self.canvas_bb then
-        local W, H = self.view.canvas_w, self.view.canvas_h
-        if self._pre_stroke_bb and (self._pre_stroke_bb:getWidth() ~= W
-                or self._pre_stroke_bb:getHeight() ~= H) then
-            self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
-        end
-        if not self._pre_stroke_bb then
-            self._pre_stroke_bb = Blitbuffer.new(W, H, self.canvas_bb:getType())
-        end
-        self._pre_stroke_bb:blitFrom(self.canvas_bb, 0, 0, 0, 0, W, H)
-        self._pre_stroke_valid = true
-    end
     self:setupLiveWriters()
     self:addScreenPoint(sx, sy, true)
 end
@@ -286,7 +271,7 @@ end
 -- Committing a stroke
 ------------------------------------------------------------------------------
 
--- Shape assist: replace the just-committed ink op `committed` with a clean shape
+-- Straighten: replace the just-committed ink op `committed` with a clean shape
 -- recognised from its raw path, in place. Returns true if it did. It reuses the
 -- history entry finishStroke pushed, so the swap is part of the same undo step.
 function InkAwayView:beautifyStroke(raw, committed)
@@ -319,11 +304,10 @@ function InkAwayView:beautifyStroke(raw, committed)
     return true
 end
 
--- Update the master after shape assist (or a hold) swapped a stroke for a clean
--- op, over just the footprint of the raw ink and the clean op, and of each
--- symmetry mirror of it: restored from the copy beginStroke made (with shape
--- assist on) with the clean op stamped on top, or else composed again. Both are
--- pixel-identical to composeCanvas. Returns false without a master.
+-- Update the master after a hold swapped a stroke for a clean op, over just the
+-- footprint of the raw ink and the clean op, and of each symmetry mirror of it,
+-- composed again (pixel-identical to composeCanvas). Returns false without a
+-- master.
 function InkAwayView:beautifyRecompose(raw, committed)
     if not self.canvas_bb then return false end
     local W, H = self.view.canvas_w, self.view.canvas_h
@@ -350,27 +334,16 @@ function InkAwayView:beautifyRecompose(raw, committed)
     }
     -- under symmetry the raw ink was mirrored too, so redo every mirror
     local rects, nr = Symmetry.mirrorRects(base, committed.sym, W, H)
-    local snap = self._pre_stroke_valid and self._pre_stroke_bb
-    if snap and (snap:getWidth() ~= W or snap:getHeight() ~= H) then snap = nil end
-    self._pre_stroke_valid = false      -- a snapshot is used once
     for i = 1, nr do
         local r = rects[i]
-        if r.x1 > r.x0 and r.y1 > r.y0 then
-            if snap then
-                self.canvas_bb:blitFrom(snap, r.x0, r.y0, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0)
-                self:markCanvasDirty(r.x0, r.y0, r.x1, r.y1)
-            else
-                self:composeRegion(r.x0, r.y0, r.x1, r.y1)
-            end
-        end
+        if r.x1 > r.x0 and r.y1 > r.y0 then self:composeRegion(r.x0, r.y0, r.x1, r.y1) end
     end
-    if snap then self:stampOpIntoCanvas(committed) end   -- the clean op (all mirrors) on top
     return true
 end
 
 ------------------------------------------------------------------------------
 -- Hold to straighten: a pen stroke held still at its end for HOLD_SEC becomes a
--- clean line or shape at once (what shape assist does on lift, on demand). Only
+-- clean line or shape at once. Only
 -- a stroke of some size that the recogniser takes for a line, box, ellipse or
 -- triangle snaps, so a pause in writing leaves the writing alone; the rest of
 -- that touch draws nothing.
@@ -427,10 +400,10 @@ function InkAwayView:finalizeStroke()
     self.last_ax, self.last_ay = nil, nil
     self.last_cx, self.last_cy = nil, nil
     local was_erase = self.tool == "erase"
-    -- keep the raw points before finishStroke simplifies them: shape assist
-    -- recognises from the full path
+    -- keep the raw points before finishStroke simplifies them: a held stroke is
+    -- recognised from the full path
     local raw
-    if (self.shape_assist or self._straighten) and self.tool == "pen" and self.canvas.live then
+    if self._straighten and self.tool == "pen" and self.canvas.live then
         local lp = self.canvas.live.pts
         raw = {}
         for i = 1, #lp do raw[i] = lp[i] end
@@ -450,19 +423,21 @@ function InkAwayView:finalizeStroke()
     local sr = self._stroke_rect
     if self:colourPanel() then
         -- show the last samples now, put the real colours back where the black
-        -- preview was, and let one refresh settle them once the pen rests
+        -- preview was, and let one refresh settle them once the pen rests (not
+        -- needed where every refresh already shows the colour as drawn)
         self:liveFlush()
+        local settle = self._live_preview or not self:instantColour()
         if sr then
             local rects, nr = self:symAreaRects(sr)
             for i = 1, nr do
                 local rr = rects[i]
                 if self._live_preview then self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1) end
-                self:queueReconcile(rr, 2)
+                if settle then self:queueReconcile(rr, 2) end
             end
         else
             local v = self.view
             if self._live_preview then self:renderView() end
-            self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0)
+            if settle then self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0) end
         end
         self._live_preview = false
     elseif was_erase then
@@ -510,10 +485,8 @@ function InkAwayView:healMemory()
 end
 
 -- Give the previous drawing's or notebook's memory back after starting a new one
--- (not on a page turn): drop the stroke snapshot and collect now.
+-- (not on a page turn): collect now.
 function InkAwayView:resetTransientMemory()
-    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
-    self._pre_stroke_valid = false
     self._commits_since_gc = 0
     collectgarbage("collect")
 end

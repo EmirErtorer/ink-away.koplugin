@@ -136,29 +136,17 @@ function InkAwayView:openPenSettings()
         -- The stroke aids (toggles and stabilizer) end the sheet and must never be
         -- pushed off screen, so they are built and measured first and the custom
         -- colour rows are capped to the space left (see the colour section).
-        local function toggle(label, on, cb)
-            return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
-        end
         local tail = VerticalGroup:new{ align = "left" }
-        local assist = toggle(_("Shape assist"), self.shape_assist, function(on)
-            self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
-            -- free the pre-stroke snapshot, which only shape assist uses
-            if not on and self._pre_stroke_bb then
-                self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
-                self._pre_stroke_valid = false
-            end
-        end)
-        local palm = toggle(_("Palm rejection"), self.palm_reject, function(on)
+        local palm = ToggleRow:new{ label = _("Palm rejection"), is_on = self.palm_reject,
+            width = content_w, parent = menu, callback = function(on)
             self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
             self:openPenSettings()   -- show or hide the options that need it
             if on and not self:penCapable() then
                 UIManager:show(InfoMessage:new{ text = _(
                     "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
             end
-        end)
-        table.insert(tail, HorizontalGroup:new{ align = "center", assist,
-            HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - assist.width - palm.width) },
-            palm })
+        end }
+        table.insert(tail, palm)
         table.insert(tail, vspan(10))
         table.insert(tail, ToggleRow:new{ label = _("Hold still to straighten"), is_on = self.hold_straighten,
             width = content_w, parent = menu,

@@ -295,6 +295,17 @@ function InkAwayView:colourPanel()
     return self._is_colour
 end
 
+-- Does every refresh show colour exactly as drawn? On the emulator and on screens
+-- that are not e-ink (a desktop, a phone) there are no waveforms, so live ink
+-- needs no settling refresh after it.
+function InkAwayView:instantColour()
+    if self._instant_colour == nil then
+        local ok, r = pcall(function() return Device:isEmulator() or not Device:hasEinkScreen() end)
+        self._instant_colour = (ok and r) and true or false
+    end
+    return self._instant_colour
+end
+
 -- setDirty, except that on a colour panel a "full" refresh becomes a non-flashing
 -- "ui" one over the same region. Use it where only the pixels need updating (tool
 -- switches, bar toggles, page turns, committing a text box); keep a plain "full"

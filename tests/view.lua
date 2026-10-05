@@ -1276,12 +1276,10 @@ do
     ok(sr._valw.text == sr:_fmt(0), "slider: value text updated to min in place")
 end
 
--- ---- shape assist rebuilds the master incrementally (snapshot + restore) ------
--- Shape assist and hold to straighten swap a stroke for a clean op, then update
--- the master over just the footprint (and each symmetry mirror of it): with
--- shape assist on, from the copy of the master beginStroke made; without it (a
--- hold), by composing the footprint again, so a stroke start copies nothing.
--- The pixel result of both is checked on the real blitter
+-- ---- straightening rebuilds the master over the footprint only ------------
+-- Hold to straighten swaps a stroke for a clean op, then updates the master over
+-- just the footprint (and each symmetry mirror of it) by composing it again, so
+-- a stroke start copies nothing. The pixel result is checked on the real blitter
 -- (tests/realbb/selection.lua); here the wiring, and that the work is the
 -- footprint's, not the page's.
 do
@@ -1292,29 +1290,14 @@ do
     local v = view.view
     local midx = v.area_x + math.floor(v.area_w / 2)
     local midy = v.area_y + math.floor(v.area_h / 2)
-
-    -- which strokes copy the master
-    view.shape_assist, view.hold_straighten = false, true
+    view.hold_straighten = true
     view.tool = "pen"
     view:beginStroke(midx, midy)
-    ok(not view._pre_stroke_valid and view._pre_stroke_bb == nil, "beautify: without shape assist a stroke copies nothing")
+    ok(view._pre_stroke_bb == nil, "beautify: a stroke start copies nothing")
     view.capturing = false
-    view.shape_assist = true
-    view:beginStroke(midx, midy)
-    ok(view._pre_stroke_valid and view._pre_stroke_bb ~= nil and view._pre_stroke_bb:getWidth() == v.canvas_w,
-        "beautify: with shape assist on a pen stroke copies the master")
-    view.capturing = false
-    view.tool = "erase"
-    view:beginStroke(midx, midy)
-    ok(not view._pre_stroke_valid, "beautify: the eraser never copies it")
-    view.capturing = false
-    view.tool = "pen"
 
-    local regions, blits, stamps = {}, 0, 0
+    local regions = {}
     view.composeRegion = function(_, x0, y0, x1, y1) regions[#regions + 1] = { x0, y0, x1, y1 } end
-    local realBlit = view.canvas_bb.blitFrom
-    view.canvas_bb.blitFrom = function(self2, ...) blits = blits + 1; return realBlit(self2, ...) end
-    view.stampOpIntoCanvas = function() stamps = stamps + 1 end
     local function inBounds()
         for _, r in ipairs(regions) do
             if r[1] < 0 or r[2] < 0 or r[3] > v.canvas_w or r[4] > v.canvas_h or r[3] <= r[1] or r[4] <= r[2] then
@@ -1323,26 +1306,14 @@ do
         end
         return true
     end
-    -- with the copy: one restore and the clean op stamped, then the copy is used up
-    view._pre_stroke_valid = true
     local okc = view:beautifyRecompose({ 100, 100, 300, 260 }, { kind = "ink", pts = { 110, 120, 290, 250 }, width = 8 })
-    ok(okc == true and blits == 1 and stamps == 1 and #regions == 0, "beautify: with the copy it restores and stamps")
-    ok(not view._pre_stroke_valid, "beautify: the copy is used once")
-    -- without it: composed again, one region per mirror
-    blits, stamps = 0, 0
-    okc = view:beautifyRecompose({ 100, 100, 300, 260 }, { kind = "ink", pts = { 110, 120, 290, 250 }, width = 8 })
-    ok(okc == true and #regions == 1 and blits == 0 and stamps == 0, "beautify: without it the footprint is composed")
+    ok(okc == true and #regions == 1, "beautify: the footprint is composed again")
     ok(regions[1][1] <= 96 and regions[1][2] <= 96 and regions[1][3] >= 304 and regions[1][4] >= 264,
         "beautify: covering the raw ink and the clean op, with their width")
     regions = {}
     okc = view:beautifyRecompose({ 100, 100, 300, 260 },
         { kind = "ink", pts = { 100, 100, 300, 260 }, width = 8, sym = "quad" })
     ok(okc == true and #regions == 4 and inBounds(), "beautify: quad symmetry composes four mirror regions, in bounds")
-    view._pre_stroke_valid = true
-    blits = 0
-    okc = view:beautifyRecompose({ 100, 100, 300, 260 },
-        { kind = "ink", pts = { 100, 100, 300, 260 }, width = 8, sym = "quad" })
-    ok(okc == true and blits == 4, "beautify: and with the copy, four mirror restores")
     -- the work is the footprint's, however many ops the page holds
     for i = 1, 500 do
         view.canvas.ops[#view.canvas.ops + 1] = { kind = "ink", pts = { i, i, i + 1, i + 1 }, width = 2 }
@@ -1353,14 +1324,7 @@ do
     regions = {}
     okc = view:beautifyRecompose({ -50, -50, 5, 5 }, { kind = "ink", pts = { -40, -40, 2, 2 }, width = 8 })
     ok(okc == true and inBounds(), "beautify: a footprint off the page's edge is clipped to it")
-    -- a stale-sized copy (after a rotation) is not used
-    view._pre_stroke_valid = true
-    view._pre_stroke_bb = BB.new(10, 10, 1)
-    blits, regions = 0, {}
-    okc = view:beautifyRecompose({ 1, 1, 2, 2 }, { kind = "ink", pts = { 1, 1, 2, 2 }, width = 2 })
-    ok(okc == true and blits == 0 and #regions == 1, "beautify: a stale-sized copy is composed around instead")
     view.composeRegion = nil
-    view.canvas_bb.blitFrom = nil
 end
 
 -- ---- bookshelf ornament save: detection degrades safely off-device -----------
@@ -3529,7 +3493,8 @@ do
     UIManager.reset()
     view = InkAwayView:new{}
     UIManager:show(view)
-    ok(not Accent.get().custom, "accent: black until one is chosen")
+    ok(Accent.get().key == "159,214,101" and Accent.get().chromatic and Accent.get().text == BB.COLOR_BLACK,
+        "accent: Ink Away green until another is chosen, with black text on it")
     view:openSettings()
     ok(says(view._settings_dialog, "Theme Color"), "accent: a colour screen's settings offer it")
     view:chooseAccent()
@@ -3584,10 +3549,12 @@ do
     ok(BB.out_of_bounds == 0 and view._active_btn_idx ~= nil, "accent: the active tool's pill paints in bounds")
     UIManager:close(view)
 
-    -- the row: black, presets, the last two wheel picks, the wheel, in boxes
-    -- of one size spread across the sheet
+    -- the row: Ink Away green, black, presets, the last two wheel picks, the
+    -- wheel, in boxes of one size spread across the sheet
     local Paint = require("ink/paint")
-    view:setAccent(nil)
+    view:setAccent({ 0, 0, 0 })
+    ok(not Accent.get().custom and G_reader_settings.data.inkaway_accent[1] == 0,
+        "accent: black is a choice of its own, kept as such")
     G_reader_settings.data.inkaway_accent_recent = nil
     local content_w = view:sheetWidth()
     local row = view:accentRow(content_w)
@@ -3597,11 +3564,17 @@ do
     end
     local sw = Screen:scaleBySize(56)
     -- (KOReader scales sizes by the screen's short side, so eight fit on every
-    -- reader; the test screen scales differently, and room for a fifth preset
-    -- goes to one)
-    ok((#tiles == 8 or #tiles == 9) and #tiles * sw + (gaps[1] or 0) * #gaps <= content_w,
-        ("accent: black, four or five presets, two boxes and the wheel fit the row (%d)"):format(#tiles))
-    ok(tiles[1].bordersize == Screen:scaleBySize(3), "accent: black is framed while it is in use")
+    -- reader; the test screen scales differently, and fits all five presets)
+    ok(#tiles >= 8 and #tiles <= 10 and #tiles * sw + (gaps[1] or 0) * #gaps <= content_w,
+        ("accent: green, black, three to five presets, two boxes and the wheel fit the row (%d)"):format(#tiles))
+    local function frameOf(t) return t.bordersize and t or t[1] end
+    ok(says(tiles[1], "Default") and frameOf(tiles[1]).bordersize == Screen:scaleBySize(1),
+        "accent: Ink Away green comes first, captioned as the default")
+    ok(tiles[2].bordersize == Screen:scaleBySize(3), "accent: black is framed while it is in use")
+    view:setAccent(nil)
+    row = view:accentRow(content_w)
+    ok(Accent.get().key == "159,214,101" and G_reader_settings.data.inkaway_accent == nil
+        and row[1][1].bordersize == Screen:scaleBySize(3), "accent: going back to the default frames the green")
     ok(tiles[#tiles - 2].color == Paint.HAIRLINE and tiles[#tiles - 1].color == Paint.HAIRLINE,
         "accent: the two boxes for picked colours start empty, before the wheel")
     -- picks on the wheel fill them, newest first; presets do not
@@ -3616,6 +3589,9 @@ do
     pick({ 0x24, 0x57, 0xD6 })
     rec = G_reader_settings.data.inkaway_accent_recent
     ok(#rec == 2 and rec[1][1] == 20, "accent: a preset picked on the wheel does not take a box")
+    pick({ 159, 214, 101 })
+    rec = G_reader_settings.data.inkaway_accent_recent
+    ok(#rec == 2 and rec[1][1] == 20, "accent: nor does Ink Away green")
     pick({ 9, 9, 200 })
     rec = G_reader_settings.data.inkaway_accent_recent
     ok(#rec == 2 and rec[1][3] == 200 and rec[2][1] == 20, "accent: a third pick pushes the oldest out")
@@ -3624,6 +3600,8 @@ do
     local again = view:accentRecent()
     ok(again[1][3] == 200 and again[2][1] == 20, "accent: using a kept colour leaves the boxes in place")
     ok(Accent.remember({ { 1, 2, 3 } }, { 0, 0, 0 }, 2)[1][1] == 1, "accent: black is never kept")
+    local old = Accent.remember({ { 159, 214, 101 }, { 1, 2, 3 } }, nil, 2)
+    ok(#old == 1 and old[1][1] == 1, "accent: Ink Away green kept from before is dropped from the boxes")
     G_reader_settings.data.inkaway_accent_recent = nil
     view:setAccent({ 30, 111, 217 })
 
@@ -3632,8 +3610,14 @@ do
     view = InkAwayView:new{}
     UIManager:show(view)
     ok(Accent.get().key == "30,111,217", "accent: Ink Away opens with the saved colour")
+    view:setAccent({ 0, 0, 0 })
+    UIManager.reset()
+    view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(not Accent.get().custom, "accent: and with black when black was chosen")
     view:setAccent(nil)
-    ok(G_reader_settings.data.inkaway_accent == nil and not Accent.get().custom, "accent: Black goes back")
+    ok(G_reader_settings.data.inkaway_accent == nil and Accent.get().key == "159,214,101",
+        "accent: the default goes back to Ink Away green")
     UIManager:close(view)
     Device.hasColorScreen = had
     G_reader_settings.data.inkaway_accent = nil
@@ -4368,7 +4352,6 @@ do
     UIManager:show(view)
     local v = view.view
     view:setTool("pen")
-    view.shape_assist = false
     local function scr(cx, cy) return InkGeom.toScreen(v, cx, cy) end
     -- draw through canvas points, then hold still (the timer fires)
     local function draw(pts, hold)
@@ -4582,6 +4565,54 @@ for _, nb in ipairs({ false, true }) do
     UIManager:close(view)
 end
 UIManager.reset()
+
+-- ---- pen sheet without shape assist; "Colour while drawing" on colour screens --
+do
+    local Device = require("device")
+    local function find(w, pred, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return nil end
+        seen[w] = true
+        if pred(w) then return w end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = find(val, pred, seen); if f then return f end
+            end
+        end
+    end
+    local function labelled(text) return function(w) return w.label == text or w.text == text end end
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    view:openPenSettings()
+    ok(find(view._pen_dialog or UIManager.shown, labelled("Shape assist")) == nil
+        and find(view._pen_dialog or UIManager.shown, labelled("Palm rejection")) ~= nil,
+        "pen sheet: no Shape assist toggle (hold to straighten does it), Palm rejection stays")
+    ok(view.shape_assist == nil, "pen sheet: and no shape assist setting is read")
+    view:closeSheet("_pen_dialog")
+    view:openSettings()
+    ok(find(view._settings_dialog, labelled("Colour while drawing")) == nil, "live colour: not offered on a grey screen")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    local had = Device.hasColorScreen
+    Device.hasColorScreen = function() return true end
+    UIManager.reset()
+    view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    ok(view.live_colour == true, "live colour: on by default")
+    view:openSettings()
+    local t = find(view._settings_dialog, labelled("Colour while drawing"))
+    ok(t ~= nil and t.callback ~= nil, "live colour: offered on a colour screen")
+    if t then t.callback(false) end
+    ok(view.live_colour == false and G_reader_settings.data.inkaway_live_colour == false, "live colour: the toggle is kept")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_live_colour = nil
+    Device.hasColorScreen = had
+    require("ink/accent").set(nil)
+    UIManager.reset()
+end
 
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()

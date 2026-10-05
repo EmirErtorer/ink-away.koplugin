@@ -14,6 +14,7 @@ local _ = require("gettext")
 local Accent = require("ink/accent")
 local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
+local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
 
@@ -51,11 +52,12 @@ function InkAwayView:chooseExportRoot()
     end)
 end
 
--- Use colour {r,g,b} for the buttons, or black when nil, and remember it. Only
--- the colour is kept; everything drawn in it is drawn again as it is needed.
+-- Use colour {r,g,b} for the buttons (black is {0,0,0}) and remember it; nil
+-- goes back to the default, Ink Away green. Only the colour is kept; everything
+-- drawn in it is drawn again as it is needed.
 function InkAwayView:setAccent(rgb)
     self:setSetting("inkaway_accent", rgb and { rgb[1], rgb[2], rgb[3] } or nil)
-    Accent.set(self:colorScreen() and rgb or nil)
+    Accent.apply(rgb, self:colorScreen())
     -- what was built in the old colour: the Paste bubble, the text box's Done
     -- button and the active tool's icon (brush samples are kept by colour)
     if self._clip_widget then
@@ -102,10 +104,10 @@ function InkAwayView:chooseAccent()
     })
 end
 
--- The theme colour row: black, the ready-made colours, the last two picked on
--- the wheel (empty boxes until then) and the wheel, each a box the size of a
--- swatch, spread across `width`, the one in use framed. A tap uses a colour at
--- once.
+-- The theme colour row: Ink Away green (the default, captioned so), black, the
+-- ready-made colours, the last two picked on the wheel (empty boxes until then)
+-- and the wheel, each a box the size of a swatch, spread across `width`, the one
+-- in use framed. A tap uses a colour at once.
 function InkAwayView:accentRow(width)
     local sw, sh = Screen:scaleBySize(56), Screen:scaleBySize(48)
     local min_gap = Screen:scaleBySize(6)
@@ -114,12 +116,19 @@ function InkAwayView:accentRow(width)
     local cur = Accent.get().rgb or { 0, 0, 0 }
     local function use(rgb)
         return function()
-            self:setAccent((rgb[1] + rgb[2] + rgb[3] > 0) and rgb or nil)
+            self:setAccent(rgb)
             self:openSettings()
         end
     end
-    local tiles = { self:swatchTile({ 0, 0, 0 }, Accent.same(cur, { 0, 0, 0 }), sw, use({ 0, 0, 0 }), nil, sh) }
-    for i = 1, math.min(#Accent.PRESETS, n - 4) do
+    local green = Accent.SIGNATURE
+    local tiles = {
+        VerticalGroup:new{ align = "center",
+            self:swatchTile(green, Accent.same(cur, green), sw, use(green), nil, sh),
+            VerticalSpan:new{ width = Screen:scaleBySize(3) },
+            self:sheetLabel(_("Default")) },
+        self:swatchTile({ 0, 0, 0 }, Accent.same(cur, { 0, 0, 0 }), sw, use({ 0, 0, 0 }), nil, sh),
+    }
+    for i = 1, math.min(#Accent.PRESETS, n - 5) do
         local p = Accent.PRESETS[i]
         tiles[#tiles + 1] = self:swatchTile(p, Accent.same(cur, p), sw, use(p), nil, sh)
     end
@@ -130,7 +139,7 @@ function InkAwayView:accentRow(width)
             or self:emptySlot(sw, sh)
     end
     tiles[#tiles + 1] = self:wheelTile(sw, sh, function() self:chooseAccent() end)
-    local row = HorizontalGroup:new{ align = "center" }
+    local row = HorizontalGroup:new{ align = "top" }   -- (the caption hangs below)
     for i, t in ipairs(tiles) do
         if i > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
         table.insert(row, t)
@@ -254,6 +263,12 @@ function InkAwayView:openSettings()
             add(self:sheetLabel(_("Theme Color"), true))
             add(vspan(6))
             add(self:accentRow(content_w))
+            add(vspan(16))
+            add(ToggleRow:new{ label = _("Colour while drawing"), is_on = self.live_colour,
+                width = content_w, parent = menu,
+                callback = function(on) self.live_colour = on; self:setSetting("inkaway_live_colour", on) end })
+            add(vspan(4))
+            add(self:sheetHint(_("Off: colour ink shows black until the pen rests, which reads more clearly on some colour e-ink screens."), content_w))
             add(vspan(16))
         end
 

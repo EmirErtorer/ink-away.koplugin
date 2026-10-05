@@ -63,8 +63,8 @@ local function boundary(op)
             poly[#poly + 1] = cy + ry * sin(a)
         end
     elseif s == "poly" then
-        -- an explicit point path (a snapped triangle or polygon from shape
-        -- assist), drawn as its points and closed on demand
+        -- an explicit point path (a snapped triangle or polygon from hold to
+        -- straighten), drawn as its points and closed on demand
         for i = 1, #p do poly[i] = p[i] end
         closed = op.closed and true or false
     end

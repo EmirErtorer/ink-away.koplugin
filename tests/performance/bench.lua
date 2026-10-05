@@ -202,26 +202,6 @@ if PART == "ui" then
         UIManager.fireScheduled(); UIManager.refreshes = {}
     end
 
-    view.shape_assist = true
-    do
-        local ax, ay = area()
-        for k = 1, 4 do
-            local x0, y0 = ax + 100 + k * 30, ay + 150 + k * 40
-            local pts = {}
-            local function line(x1, y1, x2, y2, n)
-                for i = 0, n - 1 do
-                    local u = i / n
-                    pts[#pts + 1] = x1 + (x2 - x1) * u + math.sin(i) * 2
-                    pts[#pts + 1] = y1 + (y2 - y1) * u + math.cos(i) * 2
-                end
-            end
-            line(x0, y0, x0 + 300, y0, 30); line(x0 + 300, y0, x0 + 300, y0 + 200, 20)
-            line(x0 + 300, y0 + 200, x0, y0 + 200, 30); line(x0, y0 + 200, x0, y0 + 4, 20)
-            stroke("pen.assist", pts)
-        end
-    end
-    view.shape_assist = false
-
     view:setTool("erase")
     strokes("erase.soft", 6, 100, 25)
     if view.erase_whole ~= nil or view.setEraseWhole then end

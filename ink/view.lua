@@ -167,9 +167,11 @@ function InkAwayView:init()
     self.nb_strength = self:getSetting("inkaway_nb_strength", nil)      -- nil = fall back to grid_strength
     self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
-    -- Shape assist: a finished pen stroke that reads as a line, rectangle, ellipse,
-    -- triangle or an L becomes a clean shape.
-    self.shape_assist = self:getSetting("inkaway_shape_assist", false)
+    -- Colour screens: ink shows in its colour while it is drawn (on), or black
+    -- until the pen rests (off; clearer for light colours on colour e-ink)
+    self.live_colour = self:getSetting("inkaway_live_colour", true)
+    -- Hold to straighten: a pen stroke held still at its end that reads as a line,
+    -- rectangle, ellipse, triangle or an L becomes a clean shape.
     self.hold_straighten = self:getSetting("inkaway_hold_straighten", true)
     -- Palm rejection: draw from the pen's own events and ignore fingers while the
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
@@ -205,8 +207,9 @@ function InkAwayView:init()
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
     self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes
-    -- the colour of what is black by default: a chosen one on a colour screen
-    Accent.set(self:colorScreen() and self:getSetting("inkaway_accent") or nil)
+    -- the colour of what is black by default: Ink Away green or a chosen one on a
+    -- colour screen
+    Accent.apply(self:getSetting("inkaway_accent"), self:colorScreen())
     self._strokes_since_full = 0
     -- The open document (see view/document.lua): its file, whether that file
     -- exists yet, and whether there are changes the canvas does not count.
@@ -407,8 +410,6 @@ function InkAwayView:onCloseWidget()
     UIManager:unschedule(self._reconcile_cb)
     UIManager:unschedule(self._pen_hold_cb)
     UIManager:unschedule(self._straighten_cb)
-    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
-    self._pre_stroke_valid = false
     UIManager:unschedule(self._pdf_prefetch_cb)
     if self._export_job then self._export_job.cancel(); self._export_job = nil end
     if self._search_job then self._search_job.abort(); self._search_job = nil end

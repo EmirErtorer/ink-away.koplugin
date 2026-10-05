@@ -43,7 +43,7 @@ function InkAwayView:freeHandwriting()
 end
 
 -- The strokes of the ops at `idxs` that can be read as writing: pen ink, and the
--- lines shape assist may have made of single strokes. Returns the strokes (flat
+-- lines a hold to straighten may have made of single strokes. Returns the strokes (flat
 -- point lists, in writing order) and their ops.
 function InkAwayView:writingOf(idxs)
     local sorted = {}
