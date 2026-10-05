@@ -112,6 +112,22 @@ r, g, b = px(Device.screen.bb, cell.x + math.floor(cell.w / 2), cell.y + 1)
 ok(near(r, 0xC0) and near(g, 0x30), "grid: and the selected card's border")
 grid:onCloseWidget()
 
+-- a binder tab's colour strip is drawn in its colour, not a grey
+local Paint = require("ink/paint")
+grid = ThumbGrid:new{ title = "Physics", items = {},
+    tabs = { { label = "Electrics", color = Paint.uiFill({ 0xD0, 0x00, 0x00 }) }, { label = "Optics" } } }
+grid:paintTo(Device.screen.bb, 0, 0)
+local found = false
+for yy = 0, 1447, 2 do
+    for xx = 0, 80 do
+        local rr, gg, bb2 = px(Device.screen.bb, xx, yy)
+        if near(rr, 0xD0) and gg < 30 and bb2 < 30 then found = true; break end
+    end
+    if found then break end
+end
+ok(found, "grid: a red tab's strip is red on a colour screen")
+grid:onCloseWidget()
+
 Accent.set(nil)
 grid = ThumbGrid:new{ title = "Library", items = {} }
 grid:paintTo(Device.screen.bb, 0, 0)

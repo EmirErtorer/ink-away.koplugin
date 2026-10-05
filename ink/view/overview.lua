@@ -10,6 +10,11 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
+local Device = require("device")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
@@ -585,33 +590,45 @@ function InkAwayView:overviewMoveTab(tab, delta)
     end
 end
 
--- The colours a tab can take: none and the greys, and on a colour screen the
--- colours too.
-function InkAwayView:tabColours()
-    local out = { { "none", _("No colour") } }
-    for i = 2, 4 do out[#out + 1] = { Palette.SHADES[i].name, Palette.SHADES[i].name, Palette.SHADES[i].rgb } end
-    if self:colorScreen() then
-        for _, c in ipairs(Palette.COLORS) do out[#out + 1] = { c.name, c.name, c.rgb } end
-    end
-    return out
-end
-
+-- A tab's colour, as swatches: the greys, and on a colour screen the colours
+-- (the one in use framed), and No colour.
 function InkAwayView:overviewTabColour(tab)
     local dir = self._ov.dir
-    local options = self:tabColours()
-    local data = Folder.load(dir)
-    local current = "none"
-    for _, o in ipairs(options) do
-        if o[3] and Palette.sameColor(o[3], data.colors[tab.name]) then current = o[1] end
-    end
-    self:openChooserSheet(_("Tab colour"), options, current, function(v)
-        local rgb
-        for _, o in ipairs(options) do if o[1] == v then rgb = o[3] end end
+    local current = Folder.load(dir).colors[tab.name]
+    local S = function(px) return Device.screen:scaleBySize(px) end
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_chooser_dialog") end
+    local function pick(rgb)
+        closeSelf()
         local d = Folder.load(dir)
         d.colors[tab.name] = rgb and { rgb[1], rgb[2], rgb[3] } or nil
         Folder.save(dir, d)
         self:refreshOverview()
-    end)
+    end
+    local function row(list)
+        local hg = HorizontalGroup:new{ align = "center" }
+        for i, c in ipairs(list) do
+            if i > 1 then table.insert(hg, HorizontalSpan:new{ width = S(10) }) end
+            table.insert(hg, self:swatchTile(c.rgb, Palette.sameColor(c.rgb, current) and true or false, S(56),
+                function() pick(c.rgb) end, nil, S(48)))
+        end
+        return hg
+    end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Tab colour"), content_w, _("Done"), closeSelf))
+        add(VerticalSpan:new{ width = S(16) })
+        add(row({ Palette.SHADES[2], Palette.SHADES[3], Palette.SHADES[4] }))
+        if self:colorScreen() then
+            add(VerticalSpan:new{ width = S(10) })
+            add(row(Palette.COLORS))
+        end
+        add(VerticalSpan:new{ width = S(16) })
+        add(self:actionButton(_("No colour"), content_w, function() pick(nil) end, current == nil))
+        return content
+    end
+    self:showSheet("_chooser_dialog", build)
 end
 
 -- A file or folder in the overview moved from `old` to `new`: follow it.

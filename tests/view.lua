@@ -2661,10 +2661,25 @@ do
     press(ButtonDialog.last, "Move down")
     ok(tabNames(ov) == "Waves,*Mechanics", "overview: Move down reorders the tabs")
     ok(Folder.load(DIR).order[1] == "Waves.inkaway", "overview: and the order is saved in the folder")
+    -- the choice is swatches of the colours themselves, and No colour
+    local picks = {}
+    local realSwatch = view.swatchTile
+    view.swatchTile = function(self2, rgb, sel, w, cb, hold, h)
+        picks[#picks + 1] = { rgb = rgb, cb = cb }
+        return realSwatch(self2, rgb, sel, w, cb, hold, h)
+    end
     view:overviewTabColour(ov.tabs[2])
+    view.swatchTile = nil
     local chooser = view._chooser_dialog
     ok(chooser ~= nil, "overview: Colour offers a choice")
-    view:closeSheet("_chooser_dialog")
+    ok(#picks == 3 and findButton(chooser, "No colour") ~= nil,
+        ("overview: three grey swatches on a grey screen, and No colour (%d)"):format(#picks))
+    picks[2].cb()   -- the middle grey
+    ok(view._chooser_dialog == nil and Folder.load(DIR).colors["Mechanics.inkaway"]
+        and Folder.load(DIR).colors["Mechanics.inkaway"][1] == 0x88, "overview: a tap on a swatch colours the tab")
+    view:overviewTabColour(ov.tabs[2])
+    findButton(view._chooser_dialog, "No colour").callback()
+    ok(Folder.load(DIR).colors["Mechanics.inkaway"] == nil, "overview: No colour takes it off")
     local data = Folder.load(DIR)
     data.colors["Mechanics.inkaway"] = { 0x88, 0x88, 0x88 }
     Folder.save(DIR, data)

@@ -19,6 +19,7 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Accent = require("ink/accent")
+local Paint = require("ink/paint")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -306,7 +307,9 @@ function ThumbGrid:paintTo(bb, x, y)
                 else
                     bb:paintRoundedRect(rx, ry, r.w - self.pad, r.h, CARD, S(12))
                 end
-                if t.color then bb:paintRect(rx + S(4), ry + S(8), strip, r.h - S(16), t.color) end
+                if t.color then   -- (a plain paintRect would draw a colour grey)
+                    Paint.fillRect(bb, rx + S(4), ry + S(8), strip, r.h - S(16), t.color, Paint.isChromatic(t.color))
+                end
                 local lx = rx + strip + S(10)
                 if t.folder then
                     local icon = self:folderTile(S(22), "_tab_folder")
