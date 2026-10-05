@@ -32,6 +32,13 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 
 ## Features
 
+### Toolbar
+
+<img src="assets/readme-toolbar.svg" alt="The toolbar: Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File and Exit">
+
+* File holds rename, duplicate, export, new drawing and new notebook. Zoom is the floating +/− control in the corner, with the Pan button just above it: tap it to pan, and again to go back to the tool you had.
+
+
 ### Write and draw
 
 | | |
@@ -102,12 +109,6 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 With palm rejection on, **Finger on the page** in the pen settings decides what a finger does while the pen writes:
 * **Navigate** (scroll, turn pages, hold a picture or shape for its menu) or
 * **Nothing**. A finger never draws then, so a resting hand can't either.
-
-### Toolbar
-
-<img src="assets/readme-toolbar.svg" alt="The toolbar: Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File and Exit">
-
-File holds rename, duplicate, export, new drawing and new notebook. Zoom is the floating +/− control in the corner, with the Pan button just above it: tap it to pan, and again to go back to the tool you had.
 
 
 ## Installation
