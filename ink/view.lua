@@ -258,7 +258,6 @@ function InkAwayView:init()
     self._straighten_cb = function() self:straightenNow() end
     -- Throttled refresh while dragging a lasso selection, so pan events never flood
     -- the panel.
-    self._sel_refresh_tick = function() self:selRefreshNow() end
     self:initFabs()
     -- The exporter has no fonts or image decoder; it renders text and pictures
     -- through these.
@@ -423,7 +422,6 @@ function InkAwayView:onCloseWidget()
         if self._clip_widget.free then self._clip_widget:free() end
         self._clip_widget = nil
     end
-    if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     self:cancelFabs()
     if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
     self._pen_capture = nil
@@ -951,8 +949,8 @@ function InkAwayView:paintTo(bb, x, y)
         -- during a region blit only that region is redrawn
         self:drawGrid(bb, x + v.area_x, y + v.area_y, br)
     end
-    -- page edges that fall inside the drawing area; unchanged during a region blit
-    if not br then self:paintPageEdges(bb, x, y) end
+    -- page edges that fall inside the drawing area (a region blit may cross one)
+    self:paintPageEdges(bb, x, y)
     if self.shape_preview then self:paintShapePreview(bb, x, y) end
     if self.selecting_crop and self._crop_screen then self:paintCropOverlay(bb, x, y) end
     if self.lassoing then self:paintLassoLoop(bb, x, y) end
@@ -970,8 +968,8 @@ function InkAwayView:paintTo(bb, x, y)
     -- area-only paints like the toolbar
     if paint_chrome and self.notebook and self.nb_bar_h > 0 then self:paintNotebookBar(bb, x, y) end
 
-    -- the floating controls, on top; a region blit never reaches them
-    if not br then self:drawFabs(bb, x, y) end
+    -- the floating controls, on top (a region blit paints the ones it reaches)
+    self:drawFabs(bb, x, y, br)
 end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.

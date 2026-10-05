@@ -269,7 +269,11 @@ function InkAwayView:selPan(pos)
     if not d.began then
         if math.abs(pos.x - d.sx) + math.abs(pos.y - d.sy) < S(3) then return true end
         d.began = true
+        -- the menu goes while it moves (it comes back beside the new place), or
+        -- every frame would repaint it too; the one paint after it is a full one
+        self:closeSelectionMenu()
         if d.kind ~= "turn" then self:liftSelection() end
+        self._area_only, self._full_blit = false, true
     end
     if d.kind == "resize" then
         local px, py = InkGeom.toCanvas(self.view, pos.x, pos.y)
@@ -279,7 +283,7 @@ function InkAwayView:selPan(pos)
     elseif d.kind == "turn" then
         d.a = snapAngle(math.atan2(pos.y - d.cy, pos.x - d.cx) - d.grab)
     end
-    self:scheduleSelRefresh()
+    self:selShowDrag()
     return true
 end
 
@@ -297,12 +301,13 @@ function InkAwayView:liftSelection()
     if box.x1 <= box.x0 or box.y1 <= box.y0 then return end
     local ops = self:selectionOps()
     local ok = pcall(function()
-        local scratch = Blitbuffer.new(W, H, self.canvas_bb:getType())
-        self:composeInto(scratch, ops, nil, nil, nil, nil, true, nil, box)
+        -- the selection alone, drawn into its box of the master and copied out;
+        -- the box is composed again without it just below
+        local cb = self.canvas_bb
+        self:composeInto(cb, ops, nil, nil, nil, nil, true, nil, box)
         local w, h = box.x1 - box.x0, box.y1 - box.y0
-        local card = Blitbuffer.new(w, h, scratch:getType())
-        card:blitFrom(scratch, 0, 0, box.x0, box.y0, w, h)
-        scratch:free()
+        local card = Blitbuffer.new(w, h, cb:getType())
+        card:blitFrom(cb, 0, 0, box.x0, box.y0, w, h)
         d.card, d.card_box = card, box
     end)
     if not ok then d.card = nil end
@@ -382,28 +387,23 @@ function InkAwayView:selDragRect()
              w = math.ceil(x1 - x0) + 2 * pad, h = math.ceil(y1 - y0) + 2 * pad }
 end
 
--- Refresh the old and new places of the frame, at most a few times a second.
-function InkAwayView:selRefreshNow()
-    self._sel_refresh_pending = false
-    if not self.sel_drag then return end
-    local cur = self:selDragRect()
+-- Show the drag as it stands, at every move: the frame's old and new places are
+-- painted from the page buffer (no toolbar, no full blit) and refreshed with the
+-- fast waveform, so the card keeps up with the finger. The places it passed are
+-- kept, so the drop can clean the fast waveform's trail with one even refresh.
+function InkAwayView:selShowDrag()
+    local d = self.sel_drag
+    local cur = d and self:selDragRect()
     if not cur then return end
+    local v = self.view
     local last = self._sel_last_rect or cur
     self._sel_last_rect = cur
-    self:refreshRectUnion(cur, last, 0, "ui")
-end
-
-function InkAwayView:scheduleSelRefresh()
-    if self._sel_refresh_pending then return end
-    if not self._sel_last_rect then self._sel_last_rect = self:selDragRect() end
-    self._sel_refresh_pending = true
-    UIManager:scheduleIn(0.15, self._sel_refresh_tick)   -- at most ~6 refreshes a second
-end
-
-function InkAwayView:stopSelRefresh()
-    UIManager:unschedule(self._sel_refresh_tick)
-    self._sel_refresh_pending = false
-    self._sel_last_rect = nil
+    local x0, y0 = math.min(cur.x, last.x) - v.area_x, math.min(cur.y, last.y) - v.area_y
+    local x1 = math.max(cur.x + cur.w, last.x + last.w) - v.area_x
+    local y1 = math.max(cur.y + cur.h, last.y + last.h) - v.area_y
+    d.swept = InkGeom.growRect(d.swept, x0, y0, x1, y1)
+    self._blit_rect = InkGeom.growRect(self._blit_rect, x0, y0, x1, y1)
+    self:liveDirty("fast", { x0 = x0, y0 = y0, x1 = x1, y1 = y1 })
 end
 
 -- End a drag: commit it (a move, a resize or a turn), or with `drop` just undo
@@ -412,31 +412,50 @@ function InkAwayView:endSelectionDrag(drop)
     local d = self.sel_drag
     if not d then return false end
     self.sel_drag = nil
-    self:stopSelRefresh()
+    self._sel_last_rect = nil
+    self:liveDrop()   -- the drop's own refresh covers anything still pending
     local lifted = self._lifted
     self._lifted = nil
     local changed = false
+    local rx0, ry0, rx1, ry1   -- the screen box the repaint below refreshes
     if d.began and not drop and self.selection then
         local v = self.view
         if d.kind == "move" then
             local dx, dy = (d.x - d.sx) / v.zoom, (d.y - d.sy) / v.zoom
             if math.abs(dx) >= 0.5 or math.abs(dy) >= 0.5 then
-                self:transformSelection(function(op) translateOp(op, dx, dy) end, lifted)
+                rx0, ry0, rx1, ry1 = self:transformSelection(function(op) translateOp(op, dx, dy) end)
                 changed = true
             end
         elseif d.kind == "resize" and math.abs(d.s - 1) > 1e-3 then
-            self:transformSelection(function(op) Transform.scale(op, d.ax, d.ay, d.s) end, lifted)
+            rx0, ry0, rx1, ry1 = self:transformSelection(function(op) Transform.scale(op, d.ax, d.ay, d.s) end)
             changed = true
         elseif d.kind == "turn" and math.abs(d.a) > 1e-3 then
             local b = self.selection.bbox
             local cx, cy = (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2
-            self:transformSelection(function(op) Transform.rotate(op, cx, cy, d.a) end)
+            rx0, ry0, rx1, ry1 = self:transformSelection(function(op) Transform.rotate(op, cx, cy, d.a) end)
             changed = true
         end
     end
     if lifted and not changed and self.selection and self.selection.bbox then
         local b = self.selection.bbox   -- nothing moved after all: put it back
-        self:repaintCanvasBoxes({ b }, self:selNeedsFullCompose(self:selectionOps()))
+        rx0, ry0, rx1, ry1 = self:repaintCanvasBoxes({ b }, self:selNeedsFullCompose(self:selectionOps()))
+    end
+    -- the drag's path, once, with an even refresh. With the menu gone since the
+    -- drag began, nothing else needs painting, so the paint stays a region one
+    -- (a full compose above has already asked for a full one).
+    local sw = d.swept
+    if sw then
+        local v = self.view
+        self:refreshAreaBox("ui", v.area_x + sw.x0, v.area_y + sw.y0, v.area_x + sw.x1, v.area_y + sw.y1)
+        if drop then
+            self._blit_rect = nil   -- called off: a full paint puts everything back
+        else
+            self._blit_rect = InkGeom.growRect(self._blit_rect, sw.x0, sw.y0, sw.x1, sw.y1)
+            if rx0 then
+                self._blit_rect = InkGeom.growRect(self._blit_rect, rx0 - v.area_x, ry0 - v.area_y,
+                    rx1 - v.area_x, ry1 - v.area_y)
+            end
+        end
     end
     if d.card_view and d.card_view ~= d.card then d.card_view:free() end
     if d.card then d.card:free() end
@@ -470,29 +489,44 @@ function InkAwayView:selNeedsFullCompose(ops)
 end
 
 -- Compose the canvas boxes `boxes` again (or the whole page with `full`), show
--- them and refresh them.
+-- them and refresh them. Boxes that touch are composed as one; boxes apart (a
+-- selection moved away) each on their own, far less than the box around both.
+-- Returns the screen box refreshed (nil for the whole page).
 function InkAwayView:repaintCanvasBoxes(boxes, full)
     if full then
         self:composeCanvas(); self:renderView()
         UIManager:setDirty(self, "ui", self:areaScreenRect())
         return
     end
-    local x0, y0, x1, y1
+    local groups = {}
     for _, b in ipairs(boxes) do
-        x0, y0 = math.min(x0 or b.x0, b.x0), math.min(y0 or b.y0, b.y0)
-        x1, y1 = math.max(x1 or b.x1, b.x1), math.max(y1 or b.y1, b.y1)
+        local g = { x0 = b.x0 - 2, y0 = b.y0 - 2, x1 = b.x1 + 2, y1 = b.y1 + 2 }
+        for i = #groups, 1, -1 do
+            local o = groups[i]
+            if g.x0 < o.x1 and o.x0 < g.x1 and g.y0 < o.y1 and o.y0 < g.y1 then
+                g = { x0 = math.min(g.x0, o.x0), y0 = math.min(g.y0, o.y0),
+                      x1 = math.max(g.x1, o.x1), y1 = math.max(g.y1, o.y1) }
+                table.remove(groups, i)
+            end
+        end
+        groups[#groups + 1] = g
+    end
+    local v = self.view
+    local x0, y0, x1, y1
+    for _, g in ipairs(groups) do
+        self:composeRegion(g.x0, g.y0, g.x1, g.y1)
+        local sx0, sy0 = InkGeom.toScreen(v, g.x0, g.y0)
+        local sx1, sy1 = InkGeom.toScreen(v, g.x1, g.y1)
+        self:renderViewRect(sx0 - v.area_x, sy0 - v.area_y, sx1 - v.area_x, sy1 - v.area_y)
+        x0, y0 = math.min(x0 or sx0, sx0), math.min(y0 or sy0, sy0)
+        x1, y1 = math.max(x1 or sx1, sx1), math.max(y1 or sy1, sy1)
     end
     if not x0 then return end
-    self:composeRegion(x0 - 2, y0 - 2, x1 + 2, y1 + 2)
-    local v = self.view
-    local sx0, sy0 = InkGeom.toScreen(v, x0 - 2, y0 - 2)
-    local sx1, sy1 = InkGeom.toScreen(v, x1 + 2, y1 + 2)
-    self:renderViewRect(sx0 - v.area_x, sy0 - v.area_y, sx1 - v.area_x, sy1 - v.area_y)
-    self:refreshAreaBox("ui", sx0 - S(56), sy0 - S(56), sx1 + S(56), sy1 + S(56))
+    return self:refreshAreaBox("ui", x0 - S(56), y0 - S(56), x1 + S(56), y1 + S(56))
 end
 
 -- Change every selected op through fn(copy), as one undo step, and repaint the
--- old and new boxes.
+-- old and new boxes. Returns the screen box refreshed, as repaintCanvasBoxes.
 function InkAwayView:transformSelection(fn)
     local sel = self.selection
     if not sel then return end
@@ -510,7 +544,7 @@ function InkAwayView:transformSelection(fn)
     self:recomputeSelectionBBox()
     local boxes = { before }
     if self.selection and self.selection.bbox then boxes[2] = self.selection.bbox end
-    self:repaintCanvasBoxes(boxes, self:selNeedsFullCompose(self:selectionOps()))
+    return self:repaintCanvasBoxes(boxes, self:selNeedsFullCompose(self:selectionOps()))
 end
 
 -- Edit the op at `idx` as one undo step: it is copied, mutate(copy) changes the

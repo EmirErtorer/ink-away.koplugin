@@ -184,6 +184,70 @@ for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
         view:onCloseWidget()
     end
 end
+-- a drag shown by region paints, frame after frame, and its drop leave the
+-- screen exactly as a full paint of the same moment would, upright and turned
+for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
+    for _, rot in ipairs({ 0, 1 }) do
+        local tag = (typ == BB.TYPE_BBRGB32 and "colour" or "grey") .. " / rotation " .. rot
+        local W, H = 1072, 1448
+        Device.screen.bb = BB.new(W, H, typ)
+        Device.screen.bb:setRotation(rot)
+        Device.screen:setSize(W, H)
+        Device.hasColorScreen = function() return typ == BB.TYPE_BBRGB32 end
+        UIManager.reset()
+        local view = dofile(REPO .. "/ink/view.lua"):new{}
+        UIManager:show(view)
+        view.canvas:setOps(page())
+        view:composeCanvas(); view:renderView()
+        local sb = Device.screen.bb
+        -- (the drawing area only: the stand-in toolbar buttons cannot paint here)
+        local function paint(full)
+            if full then view._full_blit = true end
+            view._area_only = true
+            view:paintTo(sb, 0, 0)
+        end
+        paint(true)
+        view:setTool("lasso")
+        view:selectOps({ 2, 4, 6, 9 }, "lasso")
+        paint(true)
+        local f = view:selFrame()
+        local mx, my = (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2
+        view:onIaTouch(nil, { pos = { x = mx, y = my } })
+        local regional = true
+        -- (steps longer than the frame's padding, so a missed old place would show)
+        for i = 1, 4 do
+            view:onIaPan(nil, { pos = { x = mx + i * 110, y = my + i * 60 } })
+            if i > 1 then regional = regional and view._blit_rect ~= nil and not view._full_blit end
+            paint(false)
+        end
+        ok(regional, tag .. ": each move after the first is a region paint")
+        local shown = bytes(sb)
+        paint(true)
+        ok(bytes(sb) == shown, tag .. ": mid-drag, the region paints match a full paint")
+        view:onIaPanRelease(nil, { pos = { x = mx + 440, y = my + 240 } })
+        ok(view._blit_rect ~= nil and not view._full_blit, tag .. ": the drop is a region paint too")
+        paint(false)
+        shown = bytes(sb)
+        paint(true)
+        ok(bytes(sb) == shown, tag .. ": after the drop, the screen matches a full paint")
+        -- a resize, the same way
+        f = view:selFrame()
+        view:onIaTouch(nil, { pos = { x = f.x1, y = f.y1 } })
+        for i = 1, 4 do
+            view:onIaPan(nil, { pos = { x = f.x1 - i * 60, y = f.y1 - i * 45 } })
+            paint(false)
+        end
+        shown = bytes(sb)
+        paint(true)
+        ok(bytes(sb) == shown, tag .. ": mid-resize, the region paints match a full paint")
+        view:onIaPanRelease(nil, { pos = { x = f.x1 - 240, y = f.y1 - 180 } })
+        paint(false)
+        shown = bytes(sb)
+        paint(true)
+        ok(bytes(sb) == shown, tag .. ": after the resize, the screen matches a full paint")
+        view:onCloseWidget()
+    end
+end
 print(("realbb selection: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

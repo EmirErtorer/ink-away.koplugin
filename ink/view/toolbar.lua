@@ -411,10 +411,10 @@ function InkAwayView:fabProximity(px, py)
     end
 end
 
--- A small chevron centred in rect r (drawn at offset ox, oy): up = -1, down = 1.
-local function fabChevron(bb, r, ox, oy, dir)
-    local cx, cy = ox + r.x + math.floor(r.w / 2), oy + r.y + math.floor(r.h / 2)
-    local half, tk = math.floor(r.w * 0.28), math.max(2, Screen:scaleBySize(2))
+-- A small chevron centred in a w x h buffer: up = -1, down = 1.
+local function chevron(bb, w, h, dir)
+    local cx, cy = math.floor(w / 2), math.floor(h / 2)
+    local half, tk = math.floor(w * 0.28), math.max(2, Screen:scaleBySize(2))
     local function seg(x0, y0, x1, y1)
         local dx, dy = math.abs(x1 - x0), -math.abs(y1 - y0)
         local sx, sy = x0 < x1 and 1 or -1, y0 < y1 and 1 or -1
@@ -434,10 +434,11 @@ local function fabChevron(bb, r, ox, oy, dir)
     seg(cx, yTip, cx + half, yEnd)
 end
 
--- What each floating control shows on its light shape, drawn into its sprite
--- (w x h). The Pan button's icon is painted over it instead (see drawPanFab).
+-- What each floating control shows, drawn into its sprite (w x h) over its light
+-- shape, or on nothing when `bare`. The Pan button's icon is painted over its
+-- sprite instead (see drawPanFab).
 local FAB_GLYPHS = {
-    zoom = function(bb, w, h, S1)   -- a divider, + over -
+    zoom = { draw = function(bb, w, h, S1)   -- a divider, + over -
         local midy = math.floor(h / 2)
         bb:paintRect(Screen:scaleBySize(10), midy, w - 2 * Screen:scaleBySize(10), S1, FAB_BORDER)
         local gw = math.floor(w * 0.34)
@@ -447,13 +448,17 @@ local FAB_GLYPHS = {
         bb:paintRect(cx - math.floor(gw / 2), cyTop - math.floor(gt / 2), gw, gt, FAB_GLYPH)
         bb:paintRect(cx - math.floor(gt / 2), cyTop - math.floor(gw / 2), gt, gw, FAB_GLYPH)
         bb:paintRect(cx - math.floor(gw / 2), cyBot - math.floor(gt / 2), gw, gt, FAB_GLYPH)
-    end,
+    end },
+    pan = {},
+    -- the bars' collapse toggles: a bare chevron, up (^) or down (v)
+    chev_up = { bare = true, draw = function(bb, w, h) chevron(bb, w, h, -1) end },
+    chev_down = { bare = true, draw = function(bb, w, h) chevron(bb, w, h, 1) end },
 }
 
--- A floating control's light shape as an alpha sprite with transparent corners.
--- A rounded colour fill is a slow per-pixel path, so each is drawn once and
--- stamped with a C alpha-blit on each paint; it is rebuilt only when its size,
--- the screen buffer type or night mode changes.
+-- A floating control as an alpha sprite with transparent corners. A rounded
+-- colour fill or a chevron's dots are slow per-pixel paths, so each is drawn once
+-- and stamped with a C alpha-blit on each paint; it is rebuilt only when its
+-- size, the screen buffer type or night mode changes.
 function InkAwayView:fabSprite(name, w, h)
     local typ = Screen.bb:getType()
     local inv = (Screen.bb.getInverse and Screen.bb:getInverse()) or 0
@@ -464,10 +469,13 @@ function InkAwayView:fabSprite(name, w, h)
     local S1 = math.max(1, Screen:scaleBySize(1))
     local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8A or typ)   -- alpha: starts transparent
     if bb.setInverse then bb:setInverse(inv) end   -- so software night mode still blits in C
-    local rad = math.floor(w / 2)
-    bb:paintRoundedRect(0, 0, w, h, FAB_FILL, rad)      -- fills only the rounded shape;
-    bb:paintBorder(0, 0, w, h, S1, FAB_BORDER, rad)     -- corners stay transparent
-    if FAB_GLYPHS[name] then FAB_GLYPHS[name](bb, w, h, S1) end
+    local g = FAB_GLYPHS[name] or {}
+    if not g.bare then
+        local rad = math.floor(w / 2)
+        bb:paintRoundedRect(0, 0, w, h, FAB_FILL, rad)      -- fills only the rounded shape;
+        bb:paintBorder(0, 0, w, h, S1, FAB_BORDER, rad)     -- corners stay transparent
+    end
+    if g.draw then g.draw(bb, w, h, S1) end
     self._fab_sprites[name] = { bb = bb, w = w, h = h, type = typ, inv = inv }
     return bb
 end
@@ -525,21 +533,29 @@ function InkAwayView:freeFabSprites(icons_only)
 end
 
 -- Paint the floating controls onto the screen buffer, last in paintTo so they
--- sit on top.
-function InkAwayView:drawFabs(bb, ox, oy)
+-- sit on top. With `br` (an area-local region paint) only the ones it reaches
+-- are painted again; the rest of the screen is untouched.
+function InkAwayView:drawFabs(bb, ox, oy, br)
     if self.selecting_crop then return end
+    local v = self.view
+    local function reached(r)
+        if not r then return false end
+        if not br then return true end
+        return r.x < v.area_x + br.x1 and v.area_x + br.x0 < r.x + r.w
+           and r.y < v.area_y + br.y1 and v.area_y + br.y0 < r.y + r.h
+    end
+    local function stamp(name, r)
+        bb:alphablitFrom(self:fabSprite(name, r.w, r.h), ox + r.x, oy + r.y, 0, 0, r.w, r.h)
+    end
     -- zoom pill (+ over -), stamped from the cached sprite
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
-        if r then
-            local sprite = self:fabSprite("zoom", r.w, r.h)
-            bb:alphablitFrom(sprite, ox + r.x, oy + r.y, 0, 0, r.w, r.h)
-        end
+        if reached(r) then stamp("zoom", r) end
     end
     -- the Pan button above it, lit while Pan is the tool
     if not self._pan_hidden then
         local r = self:fabRect("pan")
-        if r then
+        if reached(r) then
             self._pan_fab_on = self.tool == "pan"
             self:drawPanFab(bb, ox + r.x, oy + r.y, r.w, self._pan_fab_on)
         end
@@ -548,18 +564,18 @@ function InkAwayView:drawFabs(bb, ox, oy)
     -- while a text box is edited, as its Done button sits in that corner
     if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
-        if r then fabChevron(bb, r, ox, oy, self._toolbar_hidden and 1 or -1) end   -- down = expand, up = collapse
+        if reached(r) then stamp(self._toolbar_hidden and "chev_down" or "chev_up", r) end
     end
     -- notebook bottom-bar toggle: the same chevron at the bar's top left, down
     -- to collapse and up to bring it back
     if self.notebook and not self._nbbar_toggle_hidden then
         local r = self:fabRect("nbbar")
-        if r then fabChevron(bb, r, ox, oy, self._nb_collapsed and -1 or 1) end   -- up = expand, down = collapse
+        if reached(r) then stamp(self._nb_collapsed and "chev_up" or "chev_down", r) end
     end
     -- the way back from a followed link: a dark pill
     if not self._back_hidden then
         local r = self:fabRect("back")
-        if r then
+        if reached(r) then
             Accent.paintRounded(bb, ox + r.x, oy + r.y, r.w, r.h, math.floor(r.h / 2))
             local t = TextWidget:new{ text = "\u{2039} " .. _("Back"), face = Font:getFace("cfont", 15), bold = true,
                 fgcolor = Accent.get().text }

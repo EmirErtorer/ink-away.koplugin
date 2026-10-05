@@ -391,6 +391,15 @@ function InkAwayView:liveDirty(mode, r, pad)
     end
 end
 
+-- Forget the pending live rect, when a refresh that covers it follows.
+function InkAwayView:liveDrop()
+    if self._live_flush_armed then
+        UIManager:unschedule(self._live_flush_cb)
+        self._live_flush_armed = false
+    end
+    self._live_pend = nil
+end
+
 -- Send the pending live rect now, if there is one.
 function InkAwayView:liveFlush()
     if self._live_flush_armed then
