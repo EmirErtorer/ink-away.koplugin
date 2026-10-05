@@ -69,7 +69,7 @@ function InkAwayView:refreshPreview()
     end
     self._preview_rect = r
     if not u then return end
-    local x0, y0, x1, y1 = self:refreshAreaBox("fast", u.x, u.y, u.x2, u.y2)
+    local x0, y0, x1, y1 = self:liveBox("fast", u.x, u.y, u.x2, u.y2)
     -- Region fast path (see paintTo): while creating a shape (a live drag or the
     -- curve's bend stage), paint only this region instead of the whole view and
     -- toolbar on every touch sample, which matters most on a rotated landscape

@@ -567,7 +567,7 @@ function InkAwayView:textToolPan(pos)
         self.editing_text.x = d.x0 + dx
         self.editing_text.y = d.y0 + dy
         -- refresh the union of the old and new positions so no ghost is left
-        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast")
+        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast", true)
     elseif d.kind == "resize" then
         local dw = (pos.x - d.sx) / self.view.zoom
         local old = self:textBoxScreenRect()
@@ -577,7 +577,7 @@ function InkAwayView:textToolPan(pos)
         self:invalidateLayout()   -- width changed: re-wrap (and grow the height)
         self:editTextLayout()     -- recompute now so op.h reflects the new wrap
         -- refresh the union of the old and new box, so a shrink leaves no ghost
-        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast")
+        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast", true)
     elseif d.kind == "select" then
         local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()

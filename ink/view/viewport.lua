@@ -280,6 +280,13 @@ function InkAwayView:panByScreen(dx, dy)
     v.pan_y = v.pan_y - dy / v.zoom
     InkGeom.clampPan(v)
     if v.pan_x == px and v.pan_y == py then return end   -- at the edge: nothing to redraw
+    if self:onAndroid() then
+        -- each refresh there copies the whole screen, so the page is redrawn when
+        -- the paced refresh goes out, where the finger is by then (see liveFlush)
+        self._view_stale = true
+        self:liveDirty("ui", { x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h })
+        return
+    end
     self:redraw()
 end
 

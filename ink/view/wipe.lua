@@ -83,6 +83,7 @@ function InkAwayView:wipeEnd()
     if self:colourPanel() then
         self:liveFlush()
     elseif w.flash then
+        self:liveDrop()   -- (Android) this covers every rect still pending
         self:dirtyAreaRect(self:cleanMode(), w.flash, 2)
     end
     self:afterCommit()

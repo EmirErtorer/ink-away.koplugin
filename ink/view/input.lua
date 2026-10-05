@@ -271,6 +271,7 @@ end
 function InkAwayView:fingerNavEnd(pos, dir)
     local n = self._finger_nav
     self._finger_nav = nil
+    if self._view_stale then self:liveFlush() end   -- show where the pan ended
     if n.mode ~= "navigate" or not self:pageSwipes() then return true end
     if dir == "west" or dir == "east" then
         self:nbGo(dir == "west" and 1 or -1)

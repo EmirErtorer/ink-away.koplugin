@@ -35,8 +35,12 @@ end
 -- every LIVE_FAST_MS and the grey-capable one (which blocks until the driver takes
 -- it) every LIVE_UI_MS; the last samples of a burst follow within LIVE_TAIL_MS.
 -- The true colours settle in one refresh RECONCILE_SEC after the pen rests.
+-- On Android every refresh, however small, copies the whole screen into the app's
+-- window before the e-ink driver sees it, so there live refreshes of any waveform
+-- go out at most every LIVE_ANDROID_MS.
 local LIVE_FAST_MS = 20
 local LIVE_UI_MS = 80
+local LIVE_ANDROID_MS = 40
 local LIVE_TAIL_MS = 35
 local RECONCILE_SEC = 0.8
 
@@ -282,9 +286,11 @@ function InkAwayView:refreshAreaBox(mode, x0, y0, x1, y1)
     return x0, y0, x1, y1
 end
 
--- Refresh the union of two screen rects ({x, y, w, h}), each grown by `pad`.
-function InkAwayView:refreshRectUnion(a, b, pad, mode)
-    return self:refreshAreaBox(mode, math.min(a.x, b.x) - pad, math.min(a.y, b.y) - pad,
+-- Refresh the union of two screen rects ({x, y, w, h}), each grown by `pad`;
+-- with `live`, paced as a drag (see liveBox).
+function InkAwayView:refreshRectUnion(a, b, pad, mode, live)
+    local refresh = live and self.liveBox or self.refreshAreaBox
+    return refresh(self, mode, math.min(a.x, b.x) - pad, math.min(a.y, b.y) - pad,
         math.max(a.x + a.w, b.x + b.w) + pad, math.max(a.y + a.h, b.y + b.h) + pad)
 end
 
@@ -304,6 +310,16 @@ function InkAwayView:instantColour()
         self._instant_colour = (ok and r) and true or false
     end
     return self._instant_colour
+end
+
+-- Running on Android (a Boox, a phone)? There KOReader shows any refresh by
+-- copying the whole screen into the app's window, so live refreshes are paced.
+function InkAwayView:onAndroid()
+    if self._android == nil then
+        local ok, r = pcall(function() return Device:isAndroid() end)
+        self._android = (ok and r) and true or false
+    end
+    return self._android
 end
 
 -- setDirty, except that on a colour panel a "full" refresh becomes a non-flashing
@@ -389,10 +405,12 @@ function InkAwayView:nowMs()
 end
 
 -- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect. On a colour
--- panel the rect joins the pending one, which is sent at a bounded pace (see
--- LIVE_*_MS): the first sample shows at once, later ones go with the next update.
+-- panel or on Android the rect joins the pending one, which is sent at a bounded
+-- pace (see LIVE_*_MS): the first sample shows at once, later ones go with the
+-- next update.
 function InkAwayView:liveDirty(mode, r, pad)
-    if not self:colourPanel() then return self:dirtyAreaRect(mode, r, pad) end
+    local android = self:onAndroid()
+    if not (android or self:colourPanel()) then return self:dirtyAreaRect(mode, r, pad) end
     local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
     if not x0 then return end
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
@@ -400,7 +418,7 @@ function InkAwayView:liveDirty(mode, r, pad)
     local p = growRect(self._live_pend, x0, y0, x1, y1)
     self._live_pend = p
     if fresh or mode ~= "fast" then p.mode = mode end
-    local gap = (p.mode == "fast") and LIVE_FAST_MS or LIVE_UI_MS
+    local gap = android and LIVE_ANDROID_MS or (p.mode == "fast") and LIVE_FAST_MS or LIVE_UI_MS
     local elapsed = self:nowMs() - (self._live_last or -math.huge)
     if elapsed >= gap then
         self:liveFlush()
@@ -410,8 +428,24 @@ function InkAwayView:liveDirty(mode, r, pad)
     end
 end
 
--- Forget the pending live rect, when a refresh that covers it follows.
+-- Refresh the screen box (x0, y0)-(x1, y1) of something a drag keeps changing: a
+-- shape being placed, the lasso loop, the export box, a text box. On Android it is
+-- paced like live ink; elsewhere it is refreshAreaBox, sent at once. Returns the
+-- box clipped to the drawing area, or nil.
+function InkAwayView:liveBox(mode, x0, y0, x1, y1)
+    if not self:onAndroid() then return self:refreshAreaBox(mode, x0, y0, x1, y1) end
+    local v = self.view
+    x0, y0 = math.max(v.area_x, x0), math.max(v.area_y, y0)
+    x1, y1 = math.min(v.area_x + v.area_w, x1), math.min(v.area_y + v.area_h, y1)
+    if x1 <= x0 or y1 <= y0 then return nil end
+    self:liveDirty(mode, { x0 = x0 - v.area_x, y0 = y0 - v.area_y, x1 = x1 - v.area_x, y1 = y1 - v.area_y })
+    return x0, y0, x1, y1
+end
+
+-- Forget the pending live rect, when a refresh that covers it follows. A page
+-- still waiting to be redrawn after a pan is sent instead (see panByScreen).
 function InkAwayView:liveDrop()
+    if self._view_stale then return self:liveFlush() end
     if self._live_flush_armed then
         UIManager:unschedule(self._live_flush_cb)
         self._live_flush_armed = false
@@ -429,6 +463,7 @@ function InkAwayView:liveFlush()
     if not p or self.closing then self._live_pend = nil; return end
     self._live_pend = nil
     self._live_last = self:nowMs()
+    if self._view_stale then self:renderView() end   -- panned since the last refresh
     local v = self.view
     UIManager:setDirty(self, p.mode, GeomUI:new{
         x = v.area_x + p.x0, y = v.area_y + p.y0, w = p.x1 - p.x0, h = p.y1 - p.y0 })
@@ -468,6 +503,7 @@ end
 -- however far zoomed and however much is drawn, is what keeps zoom and pan cheap.
 function InkAwayView:renderView()
     if not (self.area_bb and self.canvas_bb) then return end
+    self._view_stale = nil
     self._blit_rect = nil   -- the whole area_bb is rebuilt, so paintTo must blit it all,
     -- even if a stroke starts before that paint (a page turn and a pen landing in
     -- the same input batch): its small rect must not replace the full blit

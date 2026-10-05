@@ -112,7 +112,11 @@ function InkAwayView:lassoPan(pos)
         self.lasso_scr[#self.lasso_scr + 1] = pos.y
         -- refresh only a small box around the new point (a whole segment of a
         -- fast stroke is huge and floods the panel); earlier points stay shown
-        UIManager:setDirty(self, "fast", GeomUI:new{ x = pos.x - 14, y = pos.y - 14, w = 28, h = 28 })
+        if self:onAndroid() then
+            self:liveBox("fast", pos.x - 14, pos.y - 14, pos.x + 14, pos.y + 14)
+        else
+            UIManager:setDirty(self, "fast", GeomUI:new{ x = pos.x - 14, y = pos.y - 14, w = 28, h = 28 })
+        end
     end
     return true
 end

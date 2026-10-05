@@ -626,6 +626,7 @@ function InkAwayView:onIaPanRelease(_, ges)
     if self.tool == "shape" then return self:shapeRelease(ges and ges.pos) end
     if self.tool == "pan" then
         self.pan_last = nil
+        if self._view_stale then self:liveFlush() end   -- show where the pan ended
         return true
     end
     if not self.capturing then return false end
@@ -659,6 +660,7 @@ function InkAwayView:onIaSwipe(_, ges)
     if self.tool == "text" then return self:textToolRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "pan" then
         self.pan_last = nil
+        if self._view_stale then self:liveFlush() end   -- show where the pan ended
         return true
     end
     if not self.capturing then return false end
@@ -792,6 +794,7 @@ end
 
 function InkAwayView:onIaTwoPanRel()
     self.pan_last = nil
+    if self._view_stale then self:liveFlush() end   -- show where the pan ended
     return true
 end
 
