@@ -6,14 +6,19 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 
 <table>
   <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" alt="Pen settings"></a><br><sub>The pen: size, opacity, brush style and shade, with palm rejection.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/brush-maker.png"><img src="assets/screenshots/brush-maker.png" alt="Brush maker"></a><br><sub>Design your own brush while a sample stroke redraws live.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/shapes-menu.png"><img src="assets/screenshots/shapes-menu.png" alt="Shapes menu"></a><br><sub>Shapes and arrows, a fill toggle, snapping, paint bucket and lasso.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/library.png"><img src="assets/screenshots/library.png" alt="Library"></a><br><sub>The library: folders, notebooks and drawings, saved as you go.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/browse.png"><img src="assets/screenshots/browse.png" alt="Notebooks in a folder"></a><br><sub>A folder's notebooks as coloured tabs, with every page at a glance.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/search.png"><img src="assets/screenshots/search.png" alt="Search"></a><br><sub>Search names, or the typed and converted text inside pages.</sub></td>
   </tr>
   <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/text-settings.png"><img src="assets/screenshots/text-settings.png" alt="Text settings"></a><br><sub>Typed text with any installed font, sizing and ruling snap.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/settings-menu.png"><img src="assets/screenshots/settings-menu.png" alt="Settings"></a><br><sub>Notebooks, open a PDF to annotate, grid, symmetry and autosave.</sub></td>
-    <td width="33%" valign="top"><a href="assets/screenshots/notebook.png"><img src="assets/screenshots/notebook.png" alt="Notebook page"></a><br><sub>A notebook page with handwritten notes, an image and shapes.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/notebook-page.png"><img src="assets/screenshots/notebook-page.png" alt="Notebook page"></a><br><sub>Handwriting, typed text and diagrams on lined, grid or dotted paper, in colour.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/lasso-selection.png"><img src="assets/screenshots/lasso-selection.png" alt="Lasso selection"></a><br><sub>Lasso anything to move, resize, rotate, recolour or link it, or turn writing into text.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/pen-settings.png"><img src="assets/screenshots/pen-settings.png" alt="Pen settings"></a><br><sub>Brushes, greys and colours, palm rejection, and hold still to straighten.</sub></td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><a href="assets/screenshots/new-notebook.png"><img src="assets/screenshots/new-notebook.png" alt="New notebook"></a><br><sub>Start a notebook on the paper you need, or from a PDF.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/pdf-annotation.png"><img src="assets/screenshots/pdf-annotation.png" alt="PDF annotation"></a><br><sub>Open a PDF and write on it, then export it with your ink.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/contents-page.png"><img src="assets/screenshots/contents-page.png" alt="Contents page"></a><br><sub>A contents page that links to your titled pages.</sub></td>
   </tr>
 </table>
 
