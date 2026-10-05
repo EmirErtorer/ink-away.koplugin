@@ -56,12 +56,12 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 
 ### Organize and find
 
-| | |
-|---|---|
+|             |                                                                                                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Library** | Every drawing and notebook is a file that saves itself. Folders, thumbnails, rename, move, duplicate and delete, all without a computer. |
-| **Browse** | A folder's notebooks as colored tabs beside their pages, with a starred-only view. Move or copy pages to any notebook. |
-| **Search** | By name, or by the text inside pages, handwriting turned into text included. |
-| **Trash** | Deleted notebooks, drawings, folders and pages wait 30 days and go back exactly where they were. |
+| **Browse**  | A folder's notebooks as colored tabs beside their pages, with a starred-only view. Move or copy pages to any notebook.                   |
+| **Search**  | By name, or by the text inside pages, handwriting turned into text included.                                                             |
+| **Trash**   | Deleted notebooks, drawings, folders and pages wait 30 days and go back exactly where they were if restored.                             |
 
 ### Export
 
@@ -92,11 +92,13 @@ A **drawing** & **note-taking** app for KOReader, with **palm rejection** for st
 | Two-finger drag | Move around the page |
 | Hold Prev or Next | Jump to the first or last page |
 
-With palm rejection on, **Finger on the page** in the pen settings decides what a finger does while the pen writes: **Navigate** (scroll, turn pages, hold a picture or shape for its menu) or **Nothing**. A finger never draws then, so a resting hand can't either.
+With palm rejection on, **Finger on the page** in the pen settings decides what a finger does while the pen writes:
+* **Navigate** (scroll, turn pages, hold a picture or shape for its menu) or
+* **Nothing**. A finger never draws then, so a resting hand can't either.
 
 ### Toolbar
 
-Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File (rename, duplicate, export, new drawing, new notebook) and Exit. Zoom is the floating +/− control in the corner, with the Pan button just above it: tap it to pan, and again to go back to the tool you had.
+Pen, Eraser, Shapes, Text, Image, Lasso, Undo, Redo, Settings, Library, File (rename, duplicate, export, new drawing, new notebook) and Exit. Zoom is the floating +/− control in the corner, with the Pan button  just above it: tap it to pan, and again to go back to the tool you had.
 
 
 ## Installation
