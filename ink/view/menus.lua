@@ -136,33 +136,38 @@ function InkAwayView:openPenSettings()
         -- The stroke aids (toggles and stabilizer) end the sheet and must never be
         -- pushed off screen, so they are built and measured first and the custom
         -- colour rows are capped to the space left (see the colour section).
-        local function toggle(label, on, cb)
-            return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
-        end
         local tail = VerticalGroup:new{ align = "left" }
-        local assistRow = HorizontalGroup:new{ align = "center",
-            toggle(_("Shape assist"), self.shape_assist, function(on)
-                self.shape_assist = on; self:setSetting("inkaway_shape_assist", on)
-                -- free the pre-stroke snapshot, which only shape assist uses
-                if not on and self._pre_stroke_bb then
-                    self._pre_stroke_bb:free(); self._pre_stroke_bb = nil
-                    self._pre_stroke_valid = false
-                end end),
-        }
-        do
-            local pr = toggle(_("Palm rejection"), self.palm_reject, function(on)
-                self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
-                if on and not self:penCapable() then
-                    UIManager:show(InfoMessage:new{ text = _(
-                        "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
-                end
-            end)
-            local a1w = assistRow[1].width
-            local slack = math.max(Screen:scaleBySize(16), content_w - a1w - pr.width)
-            table.insert(assistRow, HorizontalSpan:new{ width = slack })
-            table.insert(assistRow, pr)
+        local palm = ToggleRow:new{ label = _("Palm rejection"), is_on = self.palm_reject,
+            width = content_w, parent = menu, callback = function(on)
+            self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
+            self:openPenSettings()   -- show or hide the options that need it
+            if on and not self:penCapable() then
+                UIManager:show(InfoMessage:new{ text = _(
+                    "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+            end
+        end }
+        table.insert(tail, palm)
+        table.insert(tail, vspan(10))
+        table.insert(tail, ToggleRow:new{ label = _("Hold still to straighten"), is_on = self.hold_straighten,
+            width = content_w, parent = menu,
+            callback = function(on) self.hold_straighten = on; self:setSetting("inkaway_hold_straighten", on) end })
+        table.insert(tail, vspan(10))
+        table.insert(tail, ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
+            width = content_w, parent = menu,
+            callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
+        -- with palm rejection on, the pen writes and fingers can be kept for moving
+        -- around: scrolling, turning pages, holding a picture or shape for its menu
+        if self.palm_reject then
+            table.insert(tail, vspan(10))
+            table.insert(tail, self:sheetLabel(_("Finger on the page")))
+            table.insert(tail, vspan(6))
+            table.insert(tail, self:segmentedRow({ { "navigate", _("Navigate") }, { "nothing", _("Nothing") } },
+                    self.finger_mode, content_w,
+                function(m)
+                    self.finger_mode = m; self:setSetting("inkaway_finger_mode", m)
+                    self:openPenSettings()
+                end))
         end
-        table.insert(tail, assistRow)
         -- Debug: the pen input test, hidden unless show_pen_test is set.
         if self.show_pen_test and self:penCapable() then
             table.insert(tail, vspan(10))
@@ -176,19 +181,6 @@ function InkAwayView:openPenSettings()
         table.insert(tail, vspan(4))
         table.insert(tail, self:sheetHint(
             _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."), content_w))
-        -- Unfinished: handwriting to text, hidden unless show_handwriting is set.
-        if self.show_handwriting then
-            table.insert(tail, vspan(10))
-            table.insert(tail, ToggleRow:new{ label = _("Handwriting to text (beta)"), is_on = self.hwr_enabled,
-                width = content_w, parent = menu, callback = function(on)
-                    self.hwr_enabled = on; self:setSetting("inkaway_hwr", on)
-                    if not on then self:hwrCancel() end
-                end })
-            table.insert(tail, vspan(4))
-            table.insert(tail, self:sheetHint(
-                _("Print letters with the pen, then pause -- they turn into text in your current text style. Offline; clear, separated capitals and digits work best."),
-                content_w))
-        end
 
         -- Colour swatches: the shades, then on a colour screen the colours and
         -- saved ones, and always the "+" tile for the colour wheel. Six tiles fill
@@ -298,7 +290,8 @@ function InkAwayView:confirmDeleteBrush(key, label)
     })
 end
 
--- The eraser sheet: a size slider and the Erase pictures toggle.
+-- The eraser sheet: a size slider, and the Erase pictures and Erase whole
+-- strokes toggles.
 function InkAwayView:openEraserSettings()
     if self:rebuildSheet("_eraser_dialog") then return end
     self:ensureUserIcons()
@@ -313,9 +306,15 @@ function InkAwayView:openEraserSettings()
             width = content_w, parent = menu, format = pxfmt,
             on_set = function(v) self.eraser_width = math.max(1, v) end })
         add(vspan(14))
-        add(ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
-            width = content_w, parent = menu,
-            callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end })
+        local pictures = ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
+            compact = true, parent = menu,
+            callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end }
+        local whole = ToggleRow:new{ label = _("Erase whole strokes"), is_on = self.erase_whole,
+            compact = true, parent = menu,
+            callback = function(on) self.erase_whole = on; self:setSetting("inkaway_erase_whole", on) end }
+        add(HorizontalGroup:new{ align = "center", pictures,
+            HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
+            whole })
         return content
     end
     self:showSheet("_eraser_dialog", build)

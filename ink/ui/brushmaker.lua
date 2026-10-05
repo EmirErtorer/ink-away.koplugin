@@ -16,6 +16,7 @@ local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local Device = require("device")
 local Brushes = require("ink/brushes")
+local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local _ = require("gettext")
@@ -158,7 +159,7 @@ function BrushMaker:paintTo(bb, x, y)
         local frac = (val - f.min) / (f.max - f.min)
         if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
         local fillw = math.floor(tw * frac)
-        if fillw > 0 then bb:paintRoundedRect(tx, cy - tr, math.max(th, fillw), th, BLACK, tr) end
+        if fillw > 0 then Accent.paintBar(bb, tx, cy - tr, math.max(th, fillw), th) end
         local kd = Screen:scaleBySize(24)
         local kx = math.max(tx, math.min(tx + tw - kd, tx + fillw - math.floor(kd / 2)))
         bb:paintRoundedRect(kx, cy - math.floor(kd / 2), kd, kd, WHITE, math.floor(kd / 2))
@@ -170,14 +171,15 @@ function BrushMaker:paintTo(bb, x, y)
         vw:free()
     end
 
-    -- buttons: Save black, Cancel grey
+    -- buttons: Save in the accent (black by default), Cancel grey
     local save, cancel = self:buttonRects()
     local br = Screen:scaleBySize(14)
     for _, b in ipairs({ { save, _("Save brush"), true }, { cancel, _("Cancel"), false } }) do
         local r, label = b[1], b[2]
-        bb:paintRoundedRect(r.x + x, r.y + y, r.w, r.h, b[3] and BLACK or TILE, br)
+        if b[3] then Accent.paintRounded(bb, r.x + x, r.y + y, r.w, r.h, br)
+        else bb:paintRoundedRect(r.x + x, r.y + y, r.w, r.h, TILE, br) end
         local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 18), bold = true,
-            fgcolor = b[3] and WHITE or BLACK }
+            fgcolor = b[3] and Accent.get().text or BLACK }
         t:paintTo(bb, r.x + x + math.floor((r.w - t:getSize().w) / 2),
                       r.y + y + math.floor((r.h - t:getSize().h) / 2))
         t:free()

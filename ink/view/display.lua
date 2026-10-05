@@ -12,6 +12,7 @@ local UIManager = require("ui/uimanager")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
+local Template = require("ink/template")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -87,19 +88,31 @@ function InkAwayView:physView(bb)
     return p
 end
 
--- Copy the logical rect (sx, sy, w, h) of area_bb to screen (dstx, dsty). With a
--- rotated screen it copies between the physical views of both buffers, which is
--- byte-identical to the rotated blit and 40-60 times faster; that keeps a live
--- stroke's growing region from lagging behind the pen in landscape.
-function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
-    local area = self.area_bb
-    if self._area_rot == 0 then
-        bb:blitFrom(area, dstx, dsty, sx, sy, w, h)
+-- A w x h buffer in the screen's pixel order and type (see newAreaBuffer), for
+-- anything blitted onto the screen often (the area, a lifted selection's card).
+function InkAwayView:newPanelBuffer(w, h)
+    return panelBuffer(w, h, self:screenBBRot(), self:screenBBInv(), Screen.bb:getType())
+end
+
+-- Copy the logical rect (sx, sy, w, h) of `src`, a buffer in the screen's pixel
+-- order (rotated by `rot`), to screen (dstx, dsty). With a rotated screen it
+-- copies between the physical views of both buffers, which is byte-identical to
+-- the rotated blit and 40-60 times faster.
+function InkAwayView:blitPanel(bb, src, rot, dstx, dsty, sx, sy, w, h)
+    if rot == 0 then
+        bb:blitFrom(src, dstx, dsty, sx, sy, w, h)
         return
     end
     local dpx, dpy, dpw, dph = bb:getPhysicalRect(dstx, dsty, w, h)
-    local apx, apy = area:getPhysicalRect(sx, sy, w, h)
-    self:physView(bb):blitFrom(self:physView(area), dpx, dpy, apx, apy, dpw, dph)
+    local spx, spy = src:getPhysicalRect(sx, sy, w, h)
+    self:physView(bb):blitFrom(self:physView(src), dpx, dpy, spx, spy, dpw, dph)
+end
+
+-- Copy the logical rect (sx, sy, w, h) of area_bb to screen (dstx, dsty), through
+-- the physical views on a rotated screen; that keeps a live stroke's growing
+-- region from lagging behind the pen in landscape.
+function InkAwayView:blitAreaRect(bb, dstx, dsty, sx, sy, w, h)
+    self:blitPanel(bb, self.area_bb, self._area_rot, dstx, dsty, sx, sy, w, h)
 end
 
 -- Copy the whole area_bb onto the screen at (dstx, dsty).
@@ -233,6 +246,14 @@ function InkAwayView:areaScreenRect()
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
 
+-- A sheet over the view closed or shrank: the next paint must be a whole one
+-- (toolbar, bars and all of the area), even if a stroke, a drag or an
+-- area-only refresh asked for less in the same moment, or the sheet's pixels
+-- would stay on the bars.
+function InkAwayView:uncovered()
+    self._paint_all = true
+end
+
 -- Refresh the drawing area.
 function InkAwayView:refreshArea()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
@@ -274,6 +295,17 @@ function InkAwayView:colourPanel()
     return self._is_colour
 end
 
+-- Does every refresh show colour exactly as drawn? On the emulator and on screens
+-- that are not e-ink (a desktop, a phone) there are no waveforms, so live ink
+-- needs no settling refresh after it.
+function InkAwayView:instantColour()
+    if self._instant_colour == nil then
+        local ok, r = pcall(function() return Device:isEmulator() or not Device:hasEinkScreen() end)
+        self._instant_colour = (ok and r) and true or false
+    end
+    return self._instant_colour
+end
+
 -- setDirty, except that on a colour panel a "full" refresh becomes a non-flashing
 -- "ui" one over the same region. Use it where only the pixels need updating (tool
 -- switches, bar toggles, page turns, committing a text box); keep a plain "full"
@@ -282,6 +314,31 @@ end
 function InkAwayView:refresh(target, mode, region)
     if self:colourPanel() and mode == "full" then mode = "ui" end
     UIManager:setDirty(target, mode, region)
+end
+
+-- The refresh that clears the faint ghost the fast waveform leaves where ink
+-- went back to white. Where KOReader's "partial" is a REAGL update of the whole
+-- rect (Kindle Paperwhite 2 and later, some older Kobos) it does that without a
+-- flash; elsewhere only a flashing refresh does.
+function InkAwayView:cleanMode()
+    if self._clean_mode == nil then
+        local reagl = Screen._isREAGLWaveFormMode and Screen.waveform_partial ~= nil
+            and Screen:_isREAGLWaveFormMode(Screen.waveform_partial)
+        self._clean_mode = reagl and "partial" or "flashui"
+    end
+    return self._clean_mode
+end
+
+-- A page turn changes the drawing area and the page counter, so one refresh
+-- covers them, from the top of the drawing area to the bottom of the screen; the
+-- toolbar is left out. Kindle's page-turn waveform (REAGL) redraws every dark
+-- pixel of its region, changed or not, so a whole-screen refresh made the toolbar
+-- blink on every turn. The bar stays in the same refresh as the page: given its
+-- own, the controller ran it only after the page's had finished, and the page
+-- number lagged a second behind the page.
+function InkAwayView:refreshPageTurn(mode)
+    local v = self.view
+    UIManager:setDirty(self, mode, GeomUI:new{ x = 0, y = v.area_y, w = self.screen_w, h = self.screen_h - v.area_y })
 end
 
 -- A stroke's changed rect (area-local) and one rect per mirror image of the current
@@ -351,6 +408,15 @@ function InkAwayView:liveDirty(mode, r, pad)
         self._live_flush_armed = true
         UIManager:scheduleIn(math.max(LIVE_TAIL_MS, gap - elapsed) / 1000, self._live_flush_cb)
     end
+end
+
+-- Forget the pending live rect, when a refresh that covers it follows.
+function InkAwayView:liveDrop()
+    if self._live_flush_armed then
+        UIManager:unschedule(self._live_flush_cb)
+        self._live_flush_armed = false
+    end
+    self._live_pend = nil
 end
 
 -- Send the pending live rect now, if there is one.
@@ -539,6 +605,18 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
 
     if not g or g <= 0 then return end
 
+    if Template.isPlanner(style) or style == "cornell" then   -- a notebook page as a guide
+        local zoom = v.zoom
+        for _, r in ipairs(self:plannerRects(style, g)) do
+            if r[1] + r[3] >= cxA and r[1] <= cxB and r[2] + r[4] >= cyA and r[2] <= cyB then
+                local w = r[3] <= 2 and r[3] or math.max(1, math.floor(r[3] * zoom + 0.5))
+                local h = r[4] <= 2 and r[4] or math.max(1, math.floor(r[4] * zoom + 0.5))
+                rect(math.floor(ax(r[1])), math.floor(ay(r[2])), w, h, col)
+            end
+        end
+        return
+    end
+
     if style == "lines" then                       -- ruled horizontal lines
         local cy = math.floor(cyA / g) * g
         while cy <= cyB do
@@ -597,6 +675,38 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
             cy = cy + g
         end
     end
+end
+
+-- A planner page (see ink/template.lua) at spacing `g` as canvas rects
+-- { x, y, w, h }: its spans, with a vertical rule's one-pixel pieces joined into
+-- one rect. Kept until the style, spacing or page size changes.
+function InkAwayView:plannerRects(style, g)
+    local v = self.view
+    local key = table.concat({ style, g, v.canvas_w, v.canvas_h }, "|")
+    local c = self._planner_rects
+    if c and c.key == key then return c.rects end
+    local runs = {}
+    Template.render(style, v.canvas_w, v.canvas_h, g, function(x, y, len)
+        local k = x .. ":" .. len
+        local list = runs[k]
+        if not list then list = { x = x, len = len }; runs[k] = list end
+        list[#list + 1] = y
+    end)
+    local rects = {}
+    for _, list in pairs(runs) do
+        table.sort(list)
+        local y0, prev = list[1], list[1]
+        for i = 2, #list + 1 do
+            local y = list[i]
+            if y ~= prev + 1 then
+                rects[#rects + 1] = { list.x, y0, list.len, prev - y0 + 1 }
+                y0 = y
+            end
+            prev = y
+        end
+    end
+    self._planner_rects = { key = key, rects = rects }
+    return rects
 end
 
 -- The page edges that fall inside the drawing area (when zoomed out past cover).

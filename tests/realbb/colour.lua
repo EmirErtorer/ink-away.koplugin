@@ -8,7 +8,7 @@ local REPO = arg[1] or "."
 require("ffi/loadlib")
 local BB = require("ffi/blitbuffer")
 package.path = REPO .. "/?.lua;" .. REPO .. "/tests/mock/?.lua;" .. package.path
-_G.G_reader_settings = { data = { inkaway_autosave = "off" },
+_G.G_reader_settings = { data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
     isTrue = function(self, k) return self.data[k] == true end, nilOrTrue = function() return true end }
@@ -52,7 +52,7 @@ do
     for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end   -- 5 ms apart
     local ax, ay = 400 - v.area_x, y - v.area_y
     local r, g, b = rgb(view.area_bb, ax, ay)
-    ok(r == 0 and g == 0 and b == 0, "colour: a red pen shows a black preview while drawing")
+    ok(r > 150 and g < 100, "colour: a red pen shows red while drawing")
     local cx, cy = view:toCanvasClamped(400, y)
     local mr, mg = rgb(view.canvas_bb, math.floor(cx), math.floor(cy))
     ok(mr > 150 and mg < 100, "colour: the master keeps the real red")
@@ -84,7 +84,48 @@ do
     view:onCloseWidget(); done()
 end
 
--- grey e-ink: unchanged (fast per sample for black, a ui settle at the lift)
+-- colour panel, "Colour while drawing" off: a black preview, the colour on lift
+do
+    local view, modes, tick, done = world(BB.TYPE_BBRGB32)
+    local v = view.view
+    view.live_colour = false
+    view:setTool("pen")
+    view.pen_color = { 220, 20, 20 }
+    local y = v.area_y + 400
+    view:onIaTouch(nil, { pos = { x = 200, y = y } })
+    for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end
+    local ax, ay = 400 - v.area_x, y - v.area_y
+    local r, g, b = rgb(view.area_bb, ax, ay)
+    ok(r == 0 and g == 0 and b == 0, "colour, black first: a red pen shows black while drawing")
+    ok(count(modes, "ui") == 0, "colour, black first: no blocking refresh while drawing")
+    view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
+    r, g, b = rgb(view.area_bb, ax, ay)
+    ok(r > 150 and g < 100 and view._reconcile ~= nil, "colour, black first: red on lift, settled when the pen rests")
+    view:onCloseWidget(); done()
+end
+
+-- the emulator (or a screen that is not e-ink): the colour as drawn, no settle
+do
+    local had = Device.isEmulator
+    Device.isEmulator = function() return true end
+    local view, modes, tick, done = world(BB.TYPE_BBRGB32)
+    local v = view.view
+    view:setTool("pen")
+    view.pen_color = { 220, 20, 20 }
+    local y = v.area_y + 400
+    view:onIaTouch(nil, { pos = { x = 200, y = y } })
+    for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end
+    local r, g = rgb(view.area_bb, 400 - v.area_x, y - v.area_y)
+    ok(r > 150 and g < 100, "instant colour: red while drawing")
+    view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
+    ok(view._reconcile == nil, "instant colour: nothing to settle after the lift")
+    UIManager.fireScheduled()
+    ok(count(modes, "ui") == 0, "instant colour: no settle refresh")
+    view:onCloseWidget(); done()
+    Device.isEmulator = had
+end
+
+-- grey e-ink: fast per sample for black, and nothing more at the lift
 do
     local view, modes, tick, done = world(BB.TYPE_BB8)
     local v = view.view
@@ -94,9 +135,10 @@ do
     for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end
     ok(count(modes, "fast") >= 99, "grey: every sample still refreshes at once (unchanged)")
     view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
-    ok(count(modes, "ui") == 1, "grey: the lift still settles with one ui refresh (unchanged)")
+    ok(count(modes, "ui") == 0 and count(modes, "flashui") == 0, "grey: the lift adds no refresh (the live ones showed it)")
     view:onCloseWidget(); done()
 end
 
 print(("realbb colour: %d checks, %d failures"):format(checks, failures))
+require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

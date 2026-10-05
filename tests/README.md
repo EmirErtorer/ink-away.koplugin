@@ -35,5 +35,8 @@ skipped.
 
 - `preview.lua [out_dir]` writes sample PNGs from the export code, so you can
   look at the transparent output on a computer.
+- `performance/` times two versions of the plugin against each other (drawing,
+  sheets, notebook files, export, library) and keeps the results of past runs.
+  See `performance/README.md`.
 - `rotverify.lua` checks the landscape rendering byte for byte. Run it from the
   emulator's `koreader` folder: `./luajit /path/to/ink-away.koplugin/tests/rotverify.lua`

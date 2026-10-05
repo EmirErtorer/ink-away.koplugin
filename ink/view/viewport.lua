@@ -184,8 +184,8 @@ end
 -- undrawable margin; a zoomed-in view is kept.
 function InkAwayView:refitArea()
     local v = self.view
-    self.zoom_min = InkGeom.fitZoom(v)
-    v.zoom = math.max(InkGeom.coverZoom(v), math.min(ZOOM_MAX, v.zoom))
+    self.zoom_min = InkGeom.coverZoom(v)   -- zooming out stops where the page fills the area
+    v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
@@ -274,10 +274,12 @@ end
 
 function InkAwayView:panByScreen(dx, dy)
     local v = self.view
+    local px, py = v.pan_x, v.pan_y
     -- content follows the finger: dragging right reveals more of the left
     v.pan_x = v.pan_x - dx / v.zoom
     v.pan_y = v.pan_y - dy / v.zoom
     InkGeom.clampPan(v)
+    if v.pan_x == px and v.pan_y == py then return end   -- at the edge: nothing to redraw
     self:redraw()
 end
 
@@ -290,10 +292,10 @@ function InkAwayView:recomputeArea()
     v.area_h = self.screen_h - th - self.nb_bar_h
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
-    self.zoom_min = InkGeom.fitZoom(v)
     -- cover the whole area, as for a drawing, even when the page shape differs
-    -- from the screen after a rotation
-    v.zoom = math.max(self.zoom_min, InkGeom.coverZoom(v))
+    -- from the screen after a rotation; zooming out stops there too
+    self.zoom_min = InkGeom.coverZoom(v)
+    v.zoom = self.zoom_min
     InkGeom.clampPan(v)
 end
 

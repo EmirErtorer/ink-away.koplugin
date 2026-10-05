@@ -1,5 +1,5 @@
 --[[
-Shape assist: turn a rough freehand stroke into clean, connected straight
+Hold to straighten: turn a rough freehand stroke into clean, connected straight
 segments or a primitive shape.
 
 detect takes one finished stroke (a flat {x,y,...} list in canvas coordinates)

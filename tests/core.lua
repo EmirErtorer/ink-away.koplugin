@@ -595,6 +595,45 @@ do
     ok(s:find("MediaBox %[0 0 100 200%]") ~= nil, "fixed page box matches the image size")
 end
 
+------------------------------------------------------------------------------
+-- pdf: bookmarks, and titles in any language
+------------------------------------------------------------------------------
+do
+    local Pdf = require("ink/pdf")
+    ok(Pdf.text("Plain (one) \\ two") == "(Plain \\(one\\) \\\\ two)", "pdf text: ASCII is a literal, escaped")
+    ok(Pdf.text("Şekil") == "<FEFF015E0065006B0069006C>", "pdf text: other letters become UTF-16")
+    ok(Pdf.text("a\u{1F600}") == "<FEFF0061D83DDE00>", "pdf text: beyond the basic plane as a surrogate pair")
+
+    local tmpdir = os.getenv("TMPDIR") or "/tmp"
+    local out = tmpdir .. "/inkaway_outline_test.pdf"
+    local doc = assert(Pdf.openStream(out))
+    for i = 1, 3 do
+        local jp = tmpdir .. "/inkaway_outline_page.jpg"
+        local f = io.open(jp, "wb"); f:write("JPEG" .. i); f:close()
+        doc:addJPEGFile(jp, 100, 200)
+        os.remove(jp)
+    end
+    ok(doc:finish({ { title = "Mechanics", page = 1, kids = { { title = "Forces", page = 2 } } },
+                    { title = "Dalgalar", page = 3 } }), "pdf: a document with bookmarks is written")
+    local f = io.open(out, "rb"); local s = f:read("*a"); f:close(); os.remove(out)
+    ok(s:find("/Outlines", 1, true) and s:find("/PageMode /UseOutlines", 1, true),
+        "pdf: the catalog points at the bookmarks and opens them")
+    ok(s:find("/Title (Forces)", 1, true) and s:find("/Title (Dalgalar)", 1, true), "pdf: every bookmark is there")
+    ok(s:find("/Dest [8 0 R /Fit]", 1, true) ~= nil, "pdf: a bookmark goes to its page")
+    ok(s:find("/Type /Outlines /First %d+ 0 R /Last %d+ 0 R /Count 3") ~= nil, "pdf: three bookmarks show, all open")
+    -- every object sits exactly where the cross-reference table says
+    local size = tonumber(s:match("/Size (%d+)"))
+    local xref = s:find("xref\n", 1, true)
+    local good = size ~= nil and xref ~= nil
+    local i = 0
+    for off in s:sub(xref):gmatch("(%d%d%d%d%d%d%d%d%d%d) 00000 n") do
+        i = i + 1
+        local at = tonumber(off) + 1
+        if s:sub(at, at + #tostring(i) + 5) ~= i .. " 0 obj" then good = false end
+    end
+    ok(good and i == size - 1, ("pdf: all %d objects are where the xref says"):format(i))
+end
+
 -- The streaming writer (used by notebook export) writes pages straight to disk:
 -- every object must sit exactly where the xref says, and the page tree (written
 -- last) must list every page.
@@ -931,6 +970,62 @@ do
     plain.ops[1] = { kind = "shape", shape = "rect", fill = false, width = 2, color = { 0, 0, 0 }, alpha = 255, pts = { 10, 8, 40, 30 } }
     local _, _, _, a_plain = centre(Export.buildRGBA(plain), 25, 19)
     ok(a_plain == 0, "an unfilled shape has a transparent interior")
+end
+
+------------------------------------------------------------------------------
+-- export: a PNG can carry the notebook ruling and be laid on white
+------------------------------------------------------------------------------
+do
+    local W, H = 120, 160
+    local c = Canvas.new(W, H)
+    c:startStroke("ink", 6, 255, { 0, 0, 0 }); c:addPoint(20, 20); c:addPoint(100, 20); c:finishStroke()
+    local function px(buf, w, x, y)
+        local o = (y * w + x) * 4
+        return buf[o], buf[o + 1], buf[o + 2], buf[o + 3]
+    end
+    local clear, w = Export.buildPNGRGBA(c)
+    local _, _, _, a0 = px(clear, w, 60, 120)
+    ok(a0 == 0, "a PNG is transparent where nothing is drawn")
+    local white, ww, wh = Export.buildPNGRGBA(c, { white = true })
+    local r, g, b, a = px(white, ww, 60, 120)
+    ok(ww == W and wh == H and r == 255 and g == 255 and b == 255 and a == 255, "laid on white, the empty page is white")
+    local ir, _, _, ia = px(white, ww, 60, 20)
+    ok(ir < 40 and ia == 255, "and the ink stays dark")
+    local ruled = Export.buildPNGRGBA(c, { template = { style = "lines", size = 20, gray = 100 } })
+    local lines = 0
+    for y = 0, H - 1 do
+        local lr, _, _, la = px(ruled, W, 5, y)
+        if la == 255 and lr == 100 then lines = lines + 1 end
+    end
+    ok(lines >= 4, ("a page with a template carries its ruling (%d rows)"):format(lines))
+    local crop, cw, ch = Export.buildPNGRGBA(c, { rect = { x = 10, y = 10, w = 50, h = 30 }, white = true })
+    local cr = px(crop, cw, 15, 10)
+    ok(cw == 50 and ch == 30 and cr < 40, "a crop keeps its own size and offset")
+end
+
+------------------------------------------------------------------------------
+-- clipboard: copies that outlive the page they came from
+------------------------------------------------------------------------------
+do
+    local Clipboard = require("ink/clipboard")
+    Clipboard.clear()
+    ok(Clipboard.count() == 0 and #Clipboard.take(1, 1) == 0, "an empty clipboard pastes nothing")
+    local ops = { { kind = "ink", width = 4, pts = { 10, 10, 30, 20 } },
+                  { kind = "fill", runs = { 12, 14, 5 } },
+                  { kind = "image", x = 20, y = 18, w = 10, h = 10, path = "/a.png" } }
+    Clipboard.put(ops, { x0 = 10, y0 = 10, x1 = 30, y1 = 30 })
+    ops[1].pts[1] = 999
+    ok(Clipboard.count() == 3, "it holds what was put")
+    local same = Clipboard.take()
+    ok(same[1].pts[1] == 10, "it holds copies, not the ops themselves")
+    ok(same[3].x == 20 and same[2].runs[1] == 12, "without a point they paste where they were")
+    local moved = Clipboard.take(120, 220)
+    ok(moved[1].pts[1] == 110 and moved[1].pts[2] == 210, "with a point the box is centred on it")
+    ok(moved[2].runs[1] == 112 and moved[3].x == 120 and moved[3].y == 218, "fills and pictures move with it")
+    ok(Clipboard.take()[1].pts[1] == 10, "pasting leaves the clipboard as it was")
+    local half = Clipboard.take(20.4, 20.6)
+    ok(half[2].runs[1] == math.floor(half[2].runs[1]), "pasted fills stay on whole pixels")
+    Clipboard.clear()
 end
 
 -- A loop that closes exactly on its start must keep its shape when simplified.

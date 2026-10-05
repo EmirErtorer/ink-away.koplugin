@@ -34,11 +34,19 @@ local IconMenu = InputContainer:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath
     build = nil,               -- function(menu) -> the sheet's content
+    flash = true,              -- flash on show (grey panels; see onShow)
     on_close = nil,
     top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
                                -- instead of centring it vertically
     bottom_y = nil,            -- if set, pin the sheet's bottom here (on the notebook
                                -- bottom bar); takes precedence over top_y
+    anchor = nil,              -- function() -> { x, y, w, h, gap }: sit beside this
+                               -- screen rect (above it when there is room, else
+                               -- below, else at the foot of the screen), `gap` away
+    tap_pos = nil,             -- where the tap that closed it landed, if one did
+    on_uncover = nil,          -- function(): the sheet left part of the screen to be
+                               -- painted again under it (it closed, or a rebuild
+                               -- shrank or moved it)
 }
 
 -- If the sheet is taller than the space it has (a long sheet, or any sheet in a
@@ -50,9 +58,11 @@ function IconMenu:fitFrame()
     local content = self.frame[1]
     if not content or not content.getSize then return end
     local pad = Screen:scaleBySize(4)
+    -- a sheet hung from the toolbar slides up over it when it is too tall (see
+    -- paintTo), so it only scrolls when it is taller than the screen
     local avail
     if self.bottom_y then avail = self.bottom_y - pad
-    else avail = Screen:getHeight() - (self.top_y or pad) - pad end
+    else avail = Screen:getHeight() - 2 * pad end
     local chrome = 2 * ((self.frame.padding or 0) + (self.frame.bordersize or 0))
     -- measuring can fail with the headless test mocks; then no scroll wrapper
     local ok, csz = pcall(function() return content:getSize() end)
@@ -84,12 +94,15 @@ end
 
 -- UIManager:show without a refresh type only marks the widget dirty, so the sheet
 -- schedules its own refresh, reading the region in a closure because
--- movable.dimen is nil until the first paint. It must be a flashing "flashui":
--- the sheet opens over dark ink and grid lines, a plain "ui" fades them out
--- slowly, and the fast waveform does not clear them at all, so the ink would show
--- through the sheet.
+-- movable.dimen is nil until the first paint. On a grey panel it is a flashing
+-- "flashui": the sheet opens over dark ink and grid lines, a plain "ui" fades
+-- them out slowly, and the fast waveform does not clear them at all, so the ink
+-- would show through the sheet. A colour panel (`flash` false) gets "ui": a
+-- flash there takes a second or two, and on Kobo's controller the reader waits
+-- for it to finish.
 function IconMenu:onShow()
-    UIManager:setDirty(self, function() return "flashui", self.movable.dimen end)
+    local mode = self.flash and "flashui" or "ui"
+    UIManager:setDirty(self, function() return mode, self.movable.dimen end)
 end
 
 -- On close UIManager repaints the canvas underneath, and a plain "ui" brings it
@@ -98,6 +111,7 @@ end
 function IconMenu:onCloseWidget()
     local region = self.movable and self.movable.dimen
     UIManager:setDirty(nil, function() return "ui", region end)
+    if self.on_uncover then self.on_uncover() end
     if self.movable and self.movable.free then self.movable:free() end
 end
 
@@ -105,7 +119,7 @@ end
 -- (picking a brush or a colour). When the footprint is unchanged, the usual case,
 -- only that region is refreshed with "ui" (the sheet is already opaque white on
 -- screen); when it changes, the uncovered canvas is repainted and the union
--- flashes.
+-- flashes (on a grey panel; see onShow).
 function IconMenu:rebuild()
     if not (self.movable and self.build) then return end
     local old = self.movable.dimen and self.movable.dimen:copy()
@@ -124,7 +138,9 @@ function IconMenu:rebuild()
         UIManager:setDirty(self, function() return "ui", new end)
     else
         local region = (old and new) and old:combine(new) or new
-        UIManager:setDirty("all", function() return "flashui", region end)
+        local mode = self.flash and "flashui" or "ui"
+        UIManager:setDirty("all", function() return mode, region end)
+        if self.on_uncover then self.on_uncover() end
     end
 end
 
@@ -136,7 +152,20 @@ function IconMenu:paintTo(bb, x, y)
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)
     local py
-    if self.bottom_y then
+    local r = self.anchor and self.anchor()
+    if r then
+        -- beside the rect, centred on it and kept on the screen
+        local gap = r.gap or pad
+        px = math.floor(r.x + r.w / 2 - sz.w / 2)
+        px = math.max(pad, math.min(px, Screen:getWidth() - sz.w - pad))
+        if r.y - gap - sz.h >= (r.top or pad) then
+            py = r.y - gap - sz.h
+        elseif r.y + r.h + gap + sz.h <= Screen:getHeight() - pad then
+            py = r.y + r.h + gap
+        else
+            py = Screen:getHeight() - sz.h - pad
+        end
+    elseif self.bottom_y then
         -- pin the sheet's bottom here (on the top of the notebook bottom bar)
         py = math.max(pad, math.min(self.bottom_y - sz.h, Screen:getHeight() - sz.h - pad))
     elseif self.top_y then
@@ -151,6 +180,7 @@ end
 function IconMenu:onTapClose(_, ges)
     if ges and ges.pos and self.movable.dimen
             and ges.pos:notIntersectWith(self.movable.dimen) then
+        self.tap_pos = { x = ges.pos.x, y = ges.pos.y }
         self:onCloseMenu()
     end
     return true

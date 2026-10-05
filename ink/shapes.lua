@@ -63,8 +63,8 @@ local function boundary(op)
             poly[#poly + 1] = cy + ry * sin(a)
         end
     elseif s == "poly" then
-        -- an explicit point path (a snapped triangle or polygon from shape
-        -- assist), drawn as its points and closed on demand
+        -- an explicit point path (a snapped triangle or polygon from hold to
+        -- straighten), drawn as its points and closed on demand
         for i = 1, #p do poly[i] = p[i] end
         closed = op.closed and true or false
     end
@@ -183,6 +183,10 @@ function Shapes.contains(op, px, py)
     return Geom.pointInPoly(px, py, poly)
 end
 
+-- The shape's outline as drawn (rotation applied): a flat {x, y, ...} list, and
+-- whether it is closed.
+Shapes.outline = boundary
+
 -- Bounding box {x0,y0,x1,y1} of the shape as actually drawn (rotation and any
 -- arrowheads included).
 function Shapes.bounds(op)
@@ -194,6 +198,47 @@ function Shapes.bounds(op)
         if y < y0 then y0 = y elseif y > y1 then y1 = y end
     end
     return x0, y0, x1, y1
+end
+
+-- Does a stroke of radius r along `pts` (flat) reach the shape as drawn: its
+-- outline, or its inside when filled (unless `edge_only`)? Tells whether an
+-- eraser touched it.
+function Shapes.reachedBy(op, pts, r, edge_only)
+    local poly, closed = boundary(op)
+    local filled = closed and (op.fill or op.fill_color) and not edge_only
+    local reach = r + ((op.fill and closed) and 0 or (op.width or 2) / 2)
+    local r2 = reach * reach
+    local segs = arrowSegs(op, poly)
+    local n = floor(#poly / 2)
+    local last = closed and n or (n - 1)
+    local bx0, by0, bx1, by1 = Shapes.bounds(op)
+    local function near(x, y)
+        if filled and Geom.pointInPoly(x, y, poly) then return true end
+        for i = 1, last do
+            local j = (i % n) + 1
+            if Geom.segDist2(x, y, poly[2 * i - 1], poly[2 * i], poly[2 * j - 1], poly[2 * j]) <= r2 then
+                return true
+            end
+        end
+        for _, s in ipairs(segs) do
+            if Geom.segDist2(x, y, s[1], s[2], s[3], s[4]) <= r2 then return true end
+        end
+        return false
+    end
+    if #pts < 4 then return #pts >= 2 and near(pts[1], pts[2]) end
+    -- walk each stroke segment that comes near the shape in 2 px steps
+    for i = 1, #pts - 3, 2 do
+        local ax, ay, bx, by = pts[i], pts[i + 1], pts[i + 2], pts[i + 3]
+        if min(ax, bx) - reach <= bx1 and max(ax, bx) + reach >= bx0
+                and min(ay, by) - reach <= by1 and max(ay, by) + reach >= by0 then
+            local steps = math.max(1, math.ceil(sqrt((bx - ax) ^ 2 + (by - ay) ^ 2) / 2))
+            for k = 0, steps do
+                local t = k / steps
+                if near(ax + (bx - ax) * t, ay + (by - ay) * t) then return true end
+            end
+        end
+    end
+    return false
 end
 
 -- Is point (px, py) on or inside the shape, for picking it by touch? A closed

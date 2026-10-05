@@ -110,7 +110,9 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
-        if op.kind == "text" then
+        if op.kind == "link" then
+            -- a link draws nothing (it becomes a PDF link annotation)
+        elseif op.kind == "text" then
             -- text comes from a rasteriser the view injects (Export.text_raster),
             -- in z-order; a text-sparing erase reveals a copy with the text, so
             -- the file matches the screen
@@ -466,21 +468,43 @@ local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy, clear_mask)
     end
 end
 
--- Save the canvas as a PNG with a transparent background. `opts` may carry
--- `rect` (crop) and `bg` (a canvas sized RGBA FFI buffer to composite under the
--- ink). Returns ok, err.
-function Export.savePNG(canvas, path, opts)
+-- Lay a packed RGBA buffer onto opaque white.
+local function flattenOnWhite(buf, ow, oh)
+    for i = 0, ow * oh - 1 do
+        local o = i * 4
+        local a = buf[o + 3]
+        if a < 255 then
+            local k = a / 255
+            buf[o]     = math.floor(buf[o] * k + 255 * (1 - k) + 0.5)
+            buf[o + 1] = math.floor(buf[o + 1] * k + 255 * (1 - k) + 0.5)
+            buf[o + 2] = math.floor(buf[o + 2] * k + 255 * (1 - k) + 0.5)
+            buf[o + 3] = 255
+        end
+    end
+end
+
+-- The RGBA pixels a PNG export encodes. `opts` may carry `rect` (crop), `bg` (a
+-- canvas sized RGBA FFI buffer to composite under the ink), `template` (a
+-- notebook ruling under the ink) and `white` (lay it all on white instead of
+-- leaving the page transparent). Returns buf, w, h.
+function Export.buildPNGRGBA(canvas, opts)
     opts = opts or {}
-    local Png = require("ffi/png")
     local ow, oh = dims(canvas, opts.rect)
     local mask = opts.bg and ffi.new("uint8_t[?]", ow * oh) or nil
-    local buf = Export.buildRGBA(canvas, opts.rect, mask)
+    local buf = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
     if opts.bg then
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
         compositeOverBg(buf, ow, oh, opts.bg, canvas.w, offx, offy, mask)
     end
-    return Png.encodeToFile(path, buf, ow, oh, 4)
+    if opts.white then flattenOnWhite(buf, ow, oh) end
+    return buf, ow, oh
+end
+
+-- Save the canvas as a PNG (see buildPNGRGBA for `opts`). Returns ok, err.
+function Export.savePNG(canvas, path, opts)
+    local buf, ow, oh = Export.buildPNGRGBA(canvas, opts)
+    return require("ffi/png").encodeToFile(path, buf, ow, oh, 4)
 end
 
 -- Nearest-neighbour upscale of a packed RGBA buffer by integer factor s.
@@ -564,7 +588,7 @@ end
 -- Is anything drawn on this canvas?
 function Export.hasVisibleOps(canvas)
     for _, op in ipairs(canvas.ops or {}) do
-        if not op.hidden then return true end
+        if not op.hidden and op.kind ~= "link" then return true end
     end
     return false
 end
@@ -591,13 +615,16 @@ function Export.saveJPEG(canvas, path, quality, opts)
 end
 
 -- Export a notebook (a list of per-page op lists) to a PDF at `path`: one page
--- each with the shared `template` ruling, as a job that does one page per step()
+-- each with the `template` ruling (one for all pages, or a function(i) giving
+-- each page's), as a job that does one page per step()
 -- so the UI can show progress and stop it. Each page goes through a JPEG scratch
 -- file in `tmp_dir` straight into the PDF, so memory stays flat.
 --   bg:   optional background, one RGBA buffer for every page or a
 --         function(i, scale) -> RGBA buffer rendering each page's own
 --   opts: { footer = stamp "i / n" page numbers, scale = pixel multiplier,
---           bg_opaque = the background has no transparency }
+--           bg_opaque = the background has no transparency,
+--           outline = bookmarks, { title, page, kids } (see Pdf Stream:finish),
+--           links = function(i) -> page i's link areas (see Pdf Stream:addJPEGFile) }
 -- step() returns "page", i, n while working, "done" when the file is complete,
 -- or nil, err (the partial file is removed). cancel() stops and deletes it.
 function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
@@ -615,7 +642,7 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
     function job.step()
         if job.over then return nil, "finished" end
         if job.i >= job.n then
-            local ok, e = stream:finish()
+            local ok, e = stream:finish(opts.outline)
             job.over = true
             if not ok then return nil, e end
             return "done"
@@ -624,13 +651,18 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
         local i = job.i
         local c = Canvas.new(w, h)
         c:setOps(pages[i])
-        local page_bg = (type(bg) == "function") and bg(i, scale) or bg
-        local jopts = { template = template, bg = page_bg, bg_opaque = opts.bg_opaque,
+        -- a function gives each page its own; it may have none (a blank page
+        -- inserted into an imported PDF)
+        local page_bg = bg
+        if type(bg) == "function" then page_bg = bg(i, scale) end
+        local page_template = template
+        if type(template) == "function" then page_template = template(i) end
+        local jopts = { template = page_template, bg = page_bg, bg_opaque = opts.bg_opaque,
             scale = (page_bg and scale) or 1,
             footer = opts.footer and (tostring(i) .. " / " .. job.n) or nil }
         local ok, e, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)
         if not ok then return fail(e or "could not render a page") end
-        ok, e = stream:addJPEGFile(tmp, w, h, pxw, pxh)
+        ok, e = stream:addJPEGFile(tmp, w, h, pxw, pxh, opts.links and opts.links(i))
         os.remove(tmp)
         if not ok then return fail(e) end
         -- release this page's buffers now (several MB each), not whenever the GC

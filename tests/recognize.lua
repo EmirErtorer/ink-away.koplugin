@@ -1,4 +1,4 @@
--- Tests for shape assist recognition (ink/recognize). Pure Lua under luajit.
+-- Tests for hold-to-straighten recognition (ink/recognize). Pure Lua under luajit.
 -- detect() returns a flat {x,y,...} point path to draw in place of the stroke,
 -- or nil to leave it freehand.
 --

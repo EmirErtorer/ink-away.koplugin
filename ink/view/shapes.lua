@@ -1,27 +1,18 @@
 --[[
-The shape tool (drag to place, a second drag to bend a curve), editing a placed
-shape from its menu, and the paint bucket.
+The shape tool (drag to place, a second drag to bend a curve), picking a placed
+shape, and the paint bucket. A picked shape is a selection like any other (see
+view/selection.lua).
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local ButtonDialog = require("ui/widget/buttondialog")
-local GeomUI = require("ui/geometry")
-local InfoMessage = require("ui/widget/infomessage")
-local SpinWidget = require("ui/widget/spinwidget")
-local UIManager = require("ui/uimanager")
-local _ = require("gettext")
-local Canvas = require("ink/canvas")
+local bit = require("bit")
 local Export = require("ink/export")
 local Fill = require("ink/fill")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
-local Palette = require("ink/palette")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
 
-local SHADES = Palette.SHADES
-local COLORS = Palette.COLORS
-local translateOp = Canvas.translateOp
 local displayColor = Paint.displayColor
 
 local InkAwayView = {}
@@ -203,7 +194,7 @@ function InkAwayView:commitShape()
         d.alpha or self.pen_alpha, d.color or self.pen_color)
     self:decorateShapeOp(op, d)
     self:stampOpIntoCanvas(op)
-    self.dirty = true
+    self:markDirty()
     local sx0, sy0, sx1, sy1 = d.x0, d.y0, d.x1, d.y1
     self.shape_drag = nil
     self.shape_preview = nil
@@ -222,7 +213,7 @@ function InkAwayView:commitCurve()
         (snap and snap.alpha) or self.pen_alpha, (snap and snap.color) or self.pen_color)
     self:decorateShapeOp(op, snap)
     self:stampOpIntoCanvas(op)
-    self.dirty = true
+    self:markDirty()
     -- the curve's screen extent = its two ends + control point (before they're cleared)
     local sx0 = math.min(self.curve_p0.x, self.curve_p1.x, self.curve_ctrl.x)
     local sy0 = math.min(self.curve_p0.y, self.curve_p1.y, self.curve_ctrl.y)
@@ -301,361 +292,51 @@ function InkAwayView:doFill(pos)
     local op = self.canvas:addFillOp(runs, self.fill_color, self.fill_alpha)
     if self.symmetry ~= "off" then op.sym = self.symmetry end
     self:stampOpIntoCanvas(op)
-    self.dirty = true
+    self:markDirty()
     self:redraw()
     self:afterCommit()
 end
 
 ------------------------------------------------------------------------------
--- Editing a placed shape: hold one to pick it, then rotate, recolour, resize or
--- delete it from a small menu anchored beside it
+-- Picking a placed shape (with Pan, or a finger's hold); what it can then do is
+-- the selection's (see view/selection.lua)
 ------------------------------------------------------------------------------
 
--- Edit the op at `idx` as one undo step: it is copied, mutate(copy) changes the
--- copy, and the copy takes its place, so history snapshots keep the original.
--- Returns the copy.
-function InkAwayView:editOp(idx, op, mutate)
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(op)
-    if mutate then mutate(clone) end
-    self.canvas:replaceOp(idx, clone)
-    self.dirty = true
-    return clone
-end
-
--- Move the op in `sel` to the top of the stack, above later marks. Snapshots
--- stay valid: only the list order changes, not the op.
-function InkAwayView:opToFront(sel)
-    local ops = self.canvas.ops
-    if sel.idx >= #ops then return end
-    self.canvas:pushHistory()
-    local op = table.remove(ops, sel.idx)
-    ops[#ops + 1] = op
-    sel.idx = #ops
-    self.dirty = true
-    self:recompose()
-end
-
--- Add a copy of the op in `sel`, offset a little down and right (a grid step
--- when the grid is on). Returns the selection for the copy.
-function InkAwayView:duplicateOp(sel)
-    self.canvas:pushHistory()
-    local clone = self.canvas:cloneOp(sel.op)
-    local d = self.grid_on and self.grid_size or 14
-    translateOp(clone, d, d)
-    self.canvas.ops[#self.canvas.ops + 1] = clone
-    self.dirty = true
-    return { op = clone, idx = #self.canvas.ops }
-end
-
--- Find the topmost shape op under a screen point. Returns {op, idx} or nil.
+-- Find the topmost shape op under a screen point. Returns {op, idx} or nil. A
+-- shape with any part erased is left alone: moving it would leave the erased
+-- part behind.
 function InkAwayView:hitTestShape(sx, sy)
     local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
         if op.kind == "shape" then
             local tol = (op.width or 6) / 2 + 8 / self.view.zoom
-            if Shapes.hit(op, cx, cy, tol) then return { op = op, idx = i } end
+            if Shapes.hit(op, cx, cy, tol) and not self:shapeErased(i) then
+                return { op = op, idx = i }
+            end
         end
     end
     return nil
 end
 
--- A screen-coordinate copy of a shape op (for the rotate preview overlay).
-function InkAwayView:screenShapeFromOp(op, angle)
-    local v = self.view
-    local sp = {}
-    for i = 1, #op.pts, 2 do
-        local sx, sy = InkGeom.toScreen(v, op.pts[i], op.pts[i + 1])
-        sp[#sp + 1] = sx
-        sp[#sp + 1] = sy
-    end
-    return {
-        kind = "shape", shape = op.shape, fill = op.fill, angle = angle,
-        closed = op.closed,
-        width = math.max(1, (op.width or 2) * v.zoom),
-        arrow = op.arrow, head = op.head and op.head * v.zoom or nil,
-        color = op.color, alpha = op.alpha,
-        fill_color = op.fill_color, fill_alpha = op.fill_alpha, pts = sp,
-    }
-end
-
--- Deselect the shape: close the menu, stop the canvas grabbing extra gestures,
--- and clear the selection. Called on a tap outside the menu (and by Done).
-function InkAwayView:deselectShape()
-    if self._shape_menu then
-        local m = self._shape_menu; self._shape_menu = nil
-        pcall(function() UIManager:close(m) end)
-    end
-    -- if a drag was somehow cut short, never leave the shape hidden from the master
-    if self.selected and self.selected.op and self.selected.op.hidden then
-        self.selected.op.hidden = nil
-        self.shape_preview = nil; self._preview_rect = nil
-        self:composeCanvas(); self:renderView()
-    end
-    self:setSelectionActive(false)
-    self.selected = nil
-    self.shape_move = nil
-end
-
-function InkAwayView:openShapeMenu(sel)
-    self:closeSheet("_shape_menu")
-    self:setSelectionActive(true)   -- keep the shape draggable while the menu is up
-    local op = sel.op
-    local dlg
-    local function close() if dlg then UIManager:close(dlg) end end
-    dlg = ButtonDialog:new{
-        shrink_unneeded_width = true,
-        tap_close_callback = function() self:deselectShape() end,
-        anchor = function()
-            local x0, y0, x1, y1 = Shapes.bounds(sel.op)
-            local sx0, sy0 = InkGeom.toScreen(self.view, x0, y0)
-            local sx1, sy1 = InkGeom.toScreen(self.view, x1, y1)
-            return GeomUI:new{ x = math.floor(sx0), y = math.floor(sy0),
-                               w = math.ceil(sx1 - sx0), h = math.ceil(sy1 - sy0) }
-        end,
-        buttons = {
-            {
-                { text = "\u{27F3} " .. _("Rotate"),  callback = function() close(); self:beginRotate(sel) end },
-                { text = "\u{21BB} " .. _("90\u{00B0}"), callback = function() close(); self:rotateShape90(sel) end },
-            },
-            {
-                { text = "\u{2194} " .. _("Flip H"),  callback = function() close(); self:flipShape(sel, "h") end },
-                { text = "\u{2195} " .. _("Flip V"),  callback = function() close(); self:flipShape(sel, "v") end },
-            },
-            {
-                { text = "\u{25B2} " .. _("To front"),  callback = function() close(); self:shapeToFront(sel) end },
-                { text = "\u{29C9} " .. _("Duplicate"), callback = function() close(); self:duplicateSelected(sel) end },
-            },
-            {
-                { text = "\u{25D1} " .. _("Colour"),  callback = function() close(); self:editSelectedColour(sel) end },
-                { text = "\u{25A9} " .. _("Opacity"), callback = function() close(); self:editSelectedOpacity(sel) end },
-                { text = "\u{25CF} " .. _("Size"),    callback = function() close(); self:editSelectedSize(sel) end },
-            },
-            {
-                { text = "\u{2715} " .. _("Delete"), callback = function() close(); self:deleteSelected(sel) end },
-                { text = _("Done"), callback = function() close(); self:deselectShape() end },
-            },
-        },
-    }
-    self._shape_menu = dlg
-    UIManager:show(dlg)
-end
-
--- Rotate the selected shape a quarter turn about its centre. Shapes carry
--- op.angle in radians.
-function InkAwayView:rotateShape90(sel)
-    self:applyEdit(sel, function(o) o.angle = ((o.angle or 0) + math.pi / 2) end)
-    self:openShapeMenu(sel)
-end
-
--- Is a screen point on the given shape op (for picking it up to drag)?
-function InkAwayView:pointOnShape(op, sx, sy)
-    if not (op and op.kind == "shape") then return false end
-    local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
-    local tol = (op.width or 6) / 2 + 12 / self.view.zoom
-    return Shapes.hit(op, cx, cy, tol)
-end
-
--- Drag a selected shape freely, like an image. A clone is edited from the first
--- movement (copy-on-write), so undo restores the original position.
-function InkAwayView:shapeMoveTouch(pos)
-    self.shape_move = { sx = pos.x, sy = pos.y, began = false }
-    return true
-end
-
-function InkAwayView:shapeMovePan(pos)
-    local d = self.shape_move
-    if not d then return true end
-    local sel = self.selected
-    if not sel then self.shape_move = nil; return true end
-    if not d.began then
-        -- first real movement: snapshot for undo, edit a clone and drop it from the
-        -- master once; from here the drag is a screen-space preview of the changed
-        -- rect, with no per-frame recompose
-        sel.op = self:editOp(sel.idx, sel.op, function(o) o.hidden = true end)
-        d.began = true
-        d.lastx, d.lasty = d.sx, d.sy
-        self:composeCanvas(); self:renderView()   -- once: the master, minus the shape
-        self._preview_rect = nil
-    end
-    local v = self.view
-    local dx = (pos.x - d.lastx) / v.zoom
-    local dy = (pos.y - d.lasty) / v.zoom
-    d.lastx, d.lasty = pos.x, pos.y
-    translateOp(sel.op, dx, dy)
-    self.shape_preview = self:screenShapeFromOp(sel.op, sel.op.angle or 0)
-    self:refreshPreview()   -- only the old+new preview rects repaint
-    return true
-end
-
-function InkAwayView:shapeMoveRelease()
-    if self.shape_move then
-        local moved = self.shape_move.began
-        self.shape_move = nil
-        if moved then
-            local sel = self.selected
-            if sel and sel.op then sel.op.hidden = nil end   -- bake it back into the master
-            self.shape_preview = nil
-            self._preview_rect = nil
-            self:composeCanvas(); self:renderView()
+-- Has an erase stroke made after shape ops[idx] touched any of it, on any
+-- mirror copy of either?
+function InkAwayView:shapeErased(idx)
+    local ops, W, H = self.canvas.ops, self.view.canvas_w, self.view.canvas_h
+    local op = ops[idx]
+    for j = idx + 1, #ops do
+        local e = ops[j]
+        if e.kind == "erase" and e.pts and #e.pts >= 2 then
+            for _, a in ipairs(Symmetry.flips(e.sym)) do
+                for _, b in ipairs(Symmetry.flips(op.sym)) do
+                    -- erase copy a against shape copy b: flip both by b
+                    local pts = Symmetry.flipPoints(e.pts, bit.bxor(a, b), W, H)
+                    if Shapes.reachedBy(op, pts, (e.width or 1) / 2) then return true end
+                end
+            end
         end
-        if self._shape_menu then self:openShapeMenu(self.selected) end   -- re-anchor the menu
-        self:refreshArea()
     end
-    return true
-end
-
--- Apply an edit to the selected op through copy-on-write, so it can be undone.
-function InkAwayView:applyEdit(sel, mutate)
-    local clone = self:editOp(sel.idx, sel.op, mutate)
-    sel.op = clone
-    if self.selected then self.selected.op = clone end
-    self:recompose()
-end
-
-function InkAwayView:deleteSelected(sel)
-    self.canvas:pushHistory()
-    self.canvas:removeOp(sel.idx)
-    self.selected = nil
-    self.shape_move = nil
-    self:setSelectionActive(false)
-    self:resetLasso()
-    self.dirty = true
-    self:recompose()
-end
-
--- Duplicate the selected shape, offset a little, and select the copy.
-function InkAwayView:duplicateSelected(sel)
-    self.selected = self:duplicateOp(sel)
-    self:recompose()
-    self:openShapeMenu(self.selected)
-end
-
--- Flip the selected shape across the middle of its bounding box. Reflecting the
--- defining points and negating the angle mirrors it exactly at any rotation.
-function InkAwayView:flipShape(sel, axis)
-    self:applyEdit(sel, function(o)
-        local p = o.pts
-        local start = axis == "h" and 1 or 2   -- x's are odd indices, y's even
-        local lo, hi = p[start], p[start]
-        for i = start, #p, 2 do
-            if p[i] < lo then lo = p[i] elseif p[i] > hi then hi = p[i] end
-        end
-        local s = lo + hi
-        for i = start, #p, 2 do p[i] = s - p[i] end
-        o.angle = -(o.angle or 0)
-    end)
-    self:openShapeMenu(sel)
-end
-
--- Move the selected shape to the top of the stack, above later marks.
-function InkAwayView:shapeToFront(sel)
-    self:opToFront(sel)
-    self:openShapeMenu(sel)
-end
-
-function InkAwayView:editSelectedColour(sel)
-    local dlg
-    local function pick(rgb)
-        self:applyEdit(sel, function(o) o.color = { rgb[1], rgb[2], rgb[3] } end)
-        UIManager:close(dlg)
-        self:editSelectedColour(sel)   -- reopen to move the selection border
-    end
-    local buttons = { self:swatchRowFor(SHADES, sel.op.color, pick) }
-    if self:colorScreen() then
-        buttons[#buttons + 1] = self:swatchRowFor(COLORS, sel.op.color, pick)
-    end
-    buttons[#buttons + 1] = {{ text = _("Done"), callback = function() UIManager:close(dlg) end }}
-    dlg = ButtonDialog:new{ title = _("Shape colour"), title_align = "center", buttons = buttons }
-    UIManager:show(dlg)
-end
-
-function InkAwayView:editSelectedSize(sel)
-    local op = sel.op
-    UIManager:show(SpinWidget:new{
-        title_text = _("Shape line size"),
-        value = op.width, value_min = 1, value_max = 60, value_step = 1, value_hold_step = 6,
-        unit = _("px"),
-        callback = function(spin)
-            self:applyEdit(sel, function(o) o.width = math.max(1, math.floor(spin.value)) end)
-        end,
-    })
-end
-
-function InkAwayView:editSelectedOpacity(sel)
-    local op = sel.op
-    UIManager:show(SpinWidget:new{
-        title_text = _("Shape opacity"),
-        value = math.floor((op.alpha or 255) / 255 * 100 + 0.5),
-        value_min = 5, value_max = 100, value_step = 5, value_hold_step = 20,
-        unit = "%",
-        callback = function(spin)
-            self:applyEdit(sel, function(o)
-                o.alpha = math.max(1, math.min(255, math.floor(spin.value / 100 * 255 + 0.5)))
-            end)
-        end,
-    })
-end
-
--- Rotation: hide the shape from the master, show it as a preview, and let a drag
--- spin it freely about its centre. Cheap per frame (only the preview redraws).
-function InkAwayView:beginRotate(sel)
-    local op = sel.op
-    self:setSelectionActive(false)   -- the menu is gone; rotate routes at the top
-    self.shape_move = nil
-    op.hidden = true
-    self.rotating = { op = op, idx = sel.idx, base = op.angle or 0, cur = op.angle or 0 }
-    self:composeCanvas(); self:renderView()
-    self.shape_preview = self:screenShapeFromOp(op, op.angle or 0)
-    self._preview_rect = nil
-    self:refreshPreview()
-    self:refreshArea()
-    UIManager:show(InfoMessage:new{
-        text = _("Drag anywhere to rotate the shape; lift to finish."), timeout = 2 })
-end
-
-function InkAwayView:rotateCentreScreen(op)
-    if op.shape == "poly" then
-        local minx, miny, maxx, maxy = InkGeom.bounds(op.pts)
-        return InkGeom.toScreen(self.view, (minx + maxx) / 2, (miny + maxy) / 2)
-    end
-    local x0, y0, x1, y1 = op.pts[1], op.pts[2], op.pts[3], op.pts[4]
-    return InkGeom.toScreen(self.view, (x0 + x1) / 2, (y0 + y1) / 2)
-end
-
-function InkAwayView:rotateTouch(pos)
-    local r = self.rotating
-    local cx, cy = self:rotateCentreScreen(r.op)
-    r.cx, r.cy = cx, cy
-    r.grab = math.atan2(pos.y - cy, pos.x - cx)
-    return true
-end
-
-function InkAwayView:rotateMove(pos)
-    local r = self.rotating
-    if not r.grab then return self:rotateTouch(pos) end
-    local a = math.atan2(pos.y - r.cy, pos.x - r.cx)
-    r.cur = r.base + (a - r.grab)
-    self.shape_preview = self:screenShapeFromOp(r.op, r.cur)
-    self:refreshPreview()
-    return true
-end
-
-function InkAwayView:rotateEnd()
-    local r = self.rotating
-    if not r then return true end
-    r.op.hidden = nil
-    self.rotating = nil
-    self.shape_preview = nil
-    self._preview_rect = nil
-    if math.abs((r.cur or r.base) - r.base) > 1e-4 then
-        -- commit the new angle through copy-on-write so it can be undone
-        local clone = self:editOp(r.idx, r.op, function(o) o.angle = r.cur end)
-        if self.selected then self.selected.op = clone end
-    end
-    self:recompose()
-    return true
+    return false
 end
 
 -- The shape being placed, over the drawing and clipped to the area.

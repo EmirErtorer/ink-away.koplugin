@@ -7,7 +7,7 @@ local REPO = arg[1] or "."
 require("ffi/loadlib")
 local BB = require("ffi/blitbuffer")
 package.path = REPO .. "/?.lua;" .. REPO .. "/tests/mock/?.lua;" .. package.path
-_G.G_reader_settings = { data = { inkaway_autosave = "off" },
+_G.G_reader_settings = { data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
     isTrue = function(self, k) return self.data[k] == true end, nilOrTrue = function() return true end }
@@ -66,4 +66,5 @@ for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
     end
 end
 print(("realbb eraser: %d checks, %d failures"):format(checks, failures))
+require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

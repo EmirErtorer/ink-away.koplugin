@@ -18,7 +18,7 @@ local KO = os.getenv("KO_SRC") or (os.getenv("HOME") .. "/koreader-emulator")
 local VERBOSE = os.getenv("V") == "1"
 
 _G.G_reader_settings = {
-    data = { inkaway_autosave = "off" },
+    data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
     isTrue = function() return false end, isFalse = function() return false end,
@@ -102,6 +102,7 @@ local function newWorld(opts)
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
     view.palm_reject = true
+    if opts.pen_ui ~= nil then view.pen_ui = opts.pen_ui end
     view:applyPalmReject()
     view:setTool(opts.tool or "pen")
 
@@ -120,13 +121,13 @@ local function newWorld(opts)
 
     local w = { view = view, input = input, log = {}, T = CLOCK.T, panel_last_slot = nil,
                 panel_tool = {}, fed = {}, gestures = {}, phys = "idle",
-                touch_frames = 0, hover_fed = 0, panel_fed = 0, stylus_frames = {} }
+                touch_frames = 0, hover_fed = 0, panel_fed = 0, stylus_frames = {}, ges_log = {} }
     local log = w.log
 
     local cb = input.stylus_callback
     input.stylus_callback = function(inp, slot)
         local r = cb(inp, slot)
-        w.stylus_frames[#w.stylus_frames + 1] = { tool = slot.tool, slot = slot.slot, id = slot.id }
+        w.stylus_frames[#w.stylus_frames + 1] = { tool = slot.tool, slot = slot.slot, id = slot.id, r = r }
         log[#log + 1] = string.format("  cb slot=%s tool=%s id=%s x=%s y=%s -> %s  [down=%s started=%s rejF=%s]",
             tostring(slot.slot), tostring(slot.tool), tostring(slot.id), tostring(slot.x), tostring(slot.y),
             tostring(r), tostring(view._pen_state.down), tostring(view._pen_started), tostring(view:fingerRejected()))
@@ -144,14 +145,25 @@ local function newWorld(opts)
     local map = { touch = "onIaTouch", pan = "onIaPan", hold_pan = "onIaHoldPan",
         pan_release = "onIaPanRelease", hold_release = "onIaHoldRel", swipe = "onIaSwipe",
         tap = "onIaTap", hold = "onIaHold", two_finger_pan = "onIaTwoPan",
-        two_finger_pan_release = "onIaTwoPanRel" }
+        two_finger_pan_release = "onIaTwoPanRel", two_finger_tap = "onIaTwoTap",
+        two_finger_swipe = "onIaTwoSwipe", pinch = "onIaPinch", spread = "onIaSpread" }
+    -- Gestures reach the view unless another widget is on top and the view is not
+    -- is_always_active (UIManager:sendEvent); those are logged as taken by "menu".
+    local function viewGets()
+        local st = UIManager._window_stack
+        local top = st[#st] and st[#st].widget
+        return top == nil or top == view or view.is_always_active
+    end
     local function dispatch(evs)
         for _, e in ipairs(evs or {}) do
             local ges = e.args and e.args[1]
             if ges then
                 local h = map[ges.ges]
-                local r = h and view[h] and view[h](view, nil, ges)
+                local r = "menu"
+                if viewGets() then r = h and view[h] and view[h](view, nil, ges) end
                 w.gestures[#w.gestures + 1] = ges.ges
+                w.ges_log[#w.ges_log + 1] = { ges = ges.ges, x = ges.pos and ges.pos.x,
+                    y = ges.pos and ges.pos.y, r = r }
                 log[#log + 1] = string.format("  GESTURE %s (%s,%s) -> %s %s", ges.ges,
                     tostring(ges.pos and ges.pos.x), tostring(ges.pos and ges.pos.y), tostring(h), tostring(r))
             end

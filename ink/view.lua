@@ -9,7 +9,6 @@ paintTo copies to the screen.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
@@ -17,6 +16,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local Brushes = require("ink/brushes")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
@@ -34,7 +34,9 @@ local function deferredCollect() collectgarbage("collect") end
 local function inNotebook(open)
     return function(v)
         if not v.notebook then
-            v:startNotebook({ style = "lines", size = v.grid_size or 40, strength = v.grid_strength or 45 })
+            v:beginDocument("notebook", nil, function()
+                v:startNotebook({ style = "lines", size = v.grid_size or 40, strength = v.grid_strength or 45 })
+            end)
         end
         open(v)
     end
@@ -44,7 +46,7 @@ local DEV_SHEETS = {
     eraser = function(v) v:openEraserSettings() end,
     text = function(v) v:openTextSettings() end,
     settings = function(v) v:openSettings() end,
-    save = function(v) v:onSave() end,
+    export = function(v) v:openExport() end,
     brush = function(v) v:openBrushMaker() end,
     shape = function(v) v:openShapePicker() end,
     shapeline = function(v) v:openShapePicker(); v:openShapeLineMenu() end,
@@ -58,9 +60,12 @@ local DEV_SHEETS = {
         v:newTextAt({ x = v.view.area_x + 40, y = v.view.area_y + 60 })
         v:openTextFormatMenu()
     end,
-    newnotebook = function(v) v:newNotebook() end,
+    newnotebook = function(v) v:openNotebookPaper() end,
+    file = function(v) v:openDocumentSheet() end,
+    library = function(v) v:openLibrary() end,
+    overview = inNotebook(function(v) v:openOverview() end),
     notebook = inNotebook(function() end),
-    export = inNotebook(function(v) v:exportNotebookPDF() end),
+    nbexport = inNotebook(function(v) v:openExport() end),
     pagemenu = inNotebook(function(v) v:openPageMenu() end),
     ["goto"] = inNotebook(function(v) v:nbJumpPrompt() end),
 }
@@ -77,7 +82,6 @@ local InkAwayView = InputContainer:extend{
     disable_double_tap = true,
     -- Hidden features kept for development. Set to true to show them in the pen menu.
     show_pen_test = false,      -- debug: the pen input test (startPenInputTest)
-    show_handwriting = false,   -- unfinished: handwriting to text (view/handwriting.lua)
 }
 
 ------------------------------------------------------------------------------
@@ -133,8 +137,8 @@ function InkAwayView:init()
     self.curve_stage = nil     -- "bend" during a curve's second drag
     self.shape_preview = nil   -- the op being placed (screen coords), drawn by paintTo
     self._preview_rect = nil   -- last previewed screen rect, for tidy refreshes
-    self.selected = nil        -- {op, idx}: the shape picked for editing
-    self.rotating = nil        -- free-rotation state
+    self.selection = nil       -- {idxs, bbox, from}: what is selected (see view/selection.lua)
+    self.sel_drag = nil        -- a move, resize or turn of the selection in progress
 
     -- Widths are in canvas pixels, so a stroke keeps its thickness in the export
     -- whatever the zoom.
@@ -163,16 +167,28 @@ function InkAwayView:init()
     self.nb_strength = self:getSetting("inkaway_nb_strength", nil)      -- nil = fall back to grid_strength
     self.snap_grid   = self:getSetting("inkaway_snap_grid", false)
     self.snap_angle  = self:getSetting("inkaway_snap_angle", false)
-    -- Shape assist: a finished pen stroke that reads as a line, rectangle, ellipse,
-    -- triangle or an L becomes a clean shape.
-    self.shape_assist = self:getSetting("inkaway_shape_assist", false)
-    -- Handwriting to text: printed pen strokes become a text box after a pause.
-    -- Unfinished, so it stays off unless the hidden feature is switched on.
-    self.hwr_enabled = self.show_handwriting and self:getSetting("inkaway_hwr", false) and true or false
+    -- Colour screens: ink shows in its colour while it is drawn (on), or black
+    -- until the pen rests (off; clearer for light colours on colour e-ink)
+    self.live_colour = self:getSetting("inkaway_live_colour", true)
+    -- Hold to straighten: a pen stroke held still at its end that reads as a line,
+    -- rectangle, ellipse, triangle or an L becomes a clean shape.
+    self.hold_straighten = self:getSetting("inkaway_hold_straighten", true)
     -- Palm rejection: draw from the pen's own events and ignore fingers while the
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
     -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua.
     self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus()) and true or false
+    -- Pen taps menus and buttons: the pen also works the toolbar, menus and
+    -- dialogs. Off keeps it for drawing and leaves the UI to fingers. Only matters
+    -- with palm rejection on; without it the pen already arrives as a finger.
+    self.pen_ui = self:getSetting("inkaway_pen_ui", true) and true or false
+    -- Finger on the page, with palm rejection on (see fingerOnPage): "navigate"
+    -- (scroll, turn pages, hold a picture or shape for its menu, while the pen
+    -- does the writing) or "nothing". A finger never draws then: with the pen
+    -- away a resting hand is a finger too. Earlier versions' "finger swipes turn
+    -- pages" was a part of navigate, which is the default.
+    local fmode = self:getSetting("inkaway_finger_mode")
+    if fmode ~= "nothing" then fmode = "navigate" end
+    self.finger_mode = fmode
     self._pen_state  = Stylus.new()
     self._pen_owner  = nil        -- slot drawing the current pen stroke
     self._palm_slots = {}         -- slot -> tracking id of each palm being ignored
@@ -185,11 +201,19 @@ function InkAwayView:init()
         self._palm_slots = {}
         self._palm_count = 0
     end
+    -- Ends the pass-through of a pen UI contact's gestures (see penUiFrame).
+    self._pen_ui_end = function() self._pen_ui = nil end
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off | vert | horiz | quad
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
+    self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes
+    -- the colour of what is black by default: Ink Away green or a chosen one on a
+    -- colour screen
+    Accent.apply(self:getSetting("inkaway_accent"), self:colorScreen())
     self._strokes_since_full = 0
-    self.autosave    = self:getSetting("inkaway_autosave", "exit")     -- off | exit | periodic
+    -- The open document (see view/document.lua): its file, whether that file
+    -- exists yet, and whether there are changes the canvas does not count.
+    self.doc_path, self.doc_written = nil, false
     self.dirty = false
     self._autosave_tick = function() self:autosaveTick() end
 
@@ -211,12 +235,8 @@ function InkAwayView:init()
 
     -- Optional background picture the drawing sits on.
     self.bg_bb, self.bg_rgba, self.bg_path = nil, nil, nil
-    self.export_bg = true          -- include the background when saving
     self.save_area = nil           -- nil = whole page, or a crop rect in canvas px
     self.selecting_crop = false    -- dragging out an export area
-
-    -- The "ink away" folders (see ensureDefaultDir).
-    self.default_dir = self:ensureDefaultDir()
 
     -- Notebook mode: nil for a single drawing. nb_bar_h is the height of the bottom
     -- page bar, 0 outside notebooks.
@@ -238,9 +258,9 @@ function InkAwayView:init()
         end
     end
     self._reconcile_cb = function() self:runReconcile() end
+    self._straighten_cb = function() self:straightenNow() end
     -- Throttled refresh while dragging a lasso selection, so pan events never flood
     -- the panel.
-    self._sel_refresh_tick = function() self:selRefreshNow() end
     self:initFabs()
     -- The exporter has no fonts or image decoder; it renders text and pictures
     -- through these.
@@ -254,10 +274,10 @@ function InkAwayView:init()
         canvas_w = W, canvas_h = H,
         zoom = 1, pan_x = 0, pan_y = 0,
     }
-    self.zoom_min = InkGeom.fitZoom(self.view)
-    -- Start with the page covering the drawing area; fit-to-page (zoom_min) is the
-    -- floor for pinching out.
-    self.view.zoom = math.max(self.zoom_min, InkGeom.coverZoom(self.view))
+    self.zoom_min = InkGeom.coverZoom(self.view)
+    -- Start with the page covering the drawing area, which is also as far as it
+    -- zooms out (zoom_min): further out would only add margins at the sides.
+    self.view.zoom = self.zoom_min
     InkGeom.clampPan(self.view)
 
     -- The toolbar is the child that receives taps; paintTo does all the painting.
@@ -280,6 +300,8 @@ function InkAwayView:init()
             IaHold       = { GestureRange:new{ ges = "hold",         range = full } },
             IaTwoPan     = { GestureRange:new{ ges = "two_finger_pan", range = full } },
             IaTwoPanRel  = { GestureRange:new{ ges = "two_finger_pan_release", range = full } },
+            IaTwoTap     = { GestureRange:new{ ges = "two_finger_tap", range = full } },
+            IaTwoSwipe   = { GestureRange:new{ ges = "two_finger_swipe", range = full } },
             IaPinch      = { GestureRange:new{ ges = "pinch",  range = full } },
             IaSpread     = { GestureRange:new{ ges = "spread", range = full } },
         }
@@ -295,10 +317,14 @@ function InkAwayView:init()
     self.canvas_bb = Blitbuffer.new(self.view.canvas_w, self.view.canvas_h, bbtype)
     self.area_bb = self:newAreaBuffer()   -- in the panel's pixel order (see view/display.lua)
 
-    self:restoreSession()   -- reopen the last drawing if one was kept
+    self:openStartDocument()   -- the last document, or a new drawing
     self:composeCanvas()
     self:renderView()
-    self:scheduleAutosave()
+    -- the library or the notebooks on top, when asked for (the library's gesture)
+    -- or chosen in the settings; they open as the canvas is shown (see onShow)
+    local start = self:getSetting("inkaway_start")
+    self._library_on_show = self.show_library or start == "library"
+    self._overview_on_show = not self._library_on_show and start == "notebooks"
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
@@ -328,11 +354,14 @@ function InkAwayView:free()
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
     self:freeWaveCache()
+    self:freePageThumbs()
+    self:freeHandwriting()
+    Accent.free()
+    local ok_cp, ColorPicker = pcall(require, "ink/ui/colorpicker")   -- its colour wheel
+    if ok_cp and ColorPicker.freeCache then ColorPicker.freeCache() end
     if self._reveal_text_bb then self._reveal_text_bb:free(); self._reveal_text_bb = nil end
     if self._reveal_pic_bb then self._reveal_pic_bb:free(); self._reveal_pic_bb = nil end
-    if self._pre_stroke_bb then self._pre_stroke_bb:free(); self._pre_stroke_bb = nil end
-    self._pre_stroke_valid = false
-    if self._zoom_pill and self._zoom_pill.bb then self._zoom_pill.bb:free(); self._zoom_pill = nil end
+    self:freeFabSprites()
     if self._nav_img then
         for _, ic in pairs(self._nav_img) do if ic then pcall(function() ic:free() end) end end
         self._nav_img = nil
@@ -344,6 +373,19 @@ end
 function InkAwayView:onShow()
     self:installRawFinger()
     UIManager:setDirty(self, "full")
+    -- opened here rather than a tick later, so its refresh joins the canvas's and
+    -- the screen flashes once, not twice
+    if self._library_on_show then
+        self._library_on_show = nil
+        self:openLibrary()
+    elseif self._overview_on_show then
+        self._overview_on_show = nil
+        self:openOverview()
+    end
+    if self._note_on_show then   -- shown over the canvas (and the library)
+        UIManager:show(InfoMessage:new{ text = self._note_on_show })
+        self._note_on_show = nil
+    end
     return true
 end
 
@@ -361,13 +403,16 @@ function InkAwayView:onCloseWidget()
         self._stylus_cb = nil
     end
     UIManager:unschedule(self._pen_clear)
+    UIManager:unschedule(self._pen_ui_end)
     UIManager:unschedule(self._finalize)
     UIManager:unschedule(self._autosave_tick)
     UIManager:unschedule(self._live_flush_cb)
     UIManager:unschedule(self._reconcile_cb)
     UIManager:unschedule(self._pen_hold_cb)
+    UIManager:unschedule(self._straighten_cb)
     UIManager:unschedule(self._pdf_prefetch_cb)
     if self._export_job then self._export_job.cancel(); self._export_job = nil end
+    if self._search_job then self._search_job.abort(); self._search_job = nil end
     self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
     local tm = self._text_btn_metrics
     if tm then
@@ -378,28 +423,24 @@ function InkAwayView:onCloseWidget()
         if self._clip_widget.free then self._clip_widget:free() end
         self._clip_widget = nil
     end
-    if self._sel_refresh_tick then UIManager:unschedule(self._sel_refresh_tick) end
     self:cancelFabs()
     if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
     self._pen_capture = nil
-    self:hwrCancel()   -- drop any pending handwriting recognition
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
-    if self.active_image then self:finishImageEdit() end       -- bake a selected image
-    self.selected, self.shape_move = nil, nil
-    self:setSelectionActive(false)
+    self:resetLasso()                                           -- drop any selection
     self:hideTextKeyboard()
     Export.text_raster = nil   -- drop the closures over this view
     Export.image_raster = nil
-    if self.autosave ~= "off" then self:saveSession() end
+    self:saveDocument()
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_shape_menu", "_image_menu", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_paste_dialog", "_search_sheet", "_trash_sheet", "_trash_item", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview" }) do
         self:closeSheet(key)
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
     self:closeNotebookPDF()
     self:free()
-    self.selected, self.rotating, self.shape_preview = nil, nil, nil
+    self.selection, self.sel_drag, self.shape_preview = nil, nil, nil
     if self.canvas then
         self.canvas.ops, self.canvas.undo_stack, self.canvas.redo_stack = {}, {}, {}
     end
@@ -418,7 +459,7 @@ function InkAwayView:onCloseWidget()
 end
 
 function InkAwayView:onIaClose()
-    self:promptExit()
+    self:closeCanvas()
     return true
 end
 
@@ -445,13 +486,14 @@ function InkAwayView:onIaTouch(_, ges)
     -- pen input test: count finger touches
     if self._pen_capture then self._pen_capture.fingers = self._pen_capture.fingers + 1 end
     -- a pen or palm is down: keep fingers out until it lifts
-    if self:fingerRejected() then self:holdReject(); return true end
+    if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
     -- a multi-touch that began as a raw stroke: its per-finger touches never draw
     if not self._pen_feeding and self._raw and self._raw.ignore_slot ~= nil then return true end
     local pos = ges.pos
     -- a new contact voids any press an earlier gesture left half-finished (the
     -- keyboard takes a key's tap but not its touch)
     self._fab_press, self._clip_press = nil, nil
+    self._finger_nav = nil
     UIManager:unschedule(self._pdf_prefetch_cb)   -- never pre-render in the way of a touch
     self:showPendingKeyboard()   -- in case the lift that should have shown it was missed
     -- touches on the on-screen keyboard belong to the keyboard, never the canvas
@@ -462,29 +504,46 @@ function InkAwayView:onIaTouch(_, ges)
         self:hideClipBubble()
     end
     if not pos or not self:inArea(pos.x, pos.y) then return false end
+    self._swallow = nil   -- a new touch: any straightened stroke's contact is over
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
     -- floating controls: a tap on one acts; a drag off it (below) draws instead
     local fab = self:fabHit(pos.x, pos.y)
     if fab then self._fab_press = fab; return true end
     if self.selecting_crop then return self:cropTouch(pos) end
-    if self.rotating then return self:rotateTouch(pos) end
-    if self.image_rotating then return self:imageRotateTouch(pos) end
-    if self.active_image then return self:imageTouch(pos) end
+    -- the selection's frame and handles, with any tool (a finger's hold can make
+    -- one under the pen); a touch on its menu is the menu's (its buttons answer
+    -- the tap), and a touch anywhere else drops it and does what the tool does
+    if self.selection then
+        if self:selTouch(pos) then return true end
+        local m = self._sel_dialog
+        if m and m.dimen and InkGeom.inRect(pos.x, pos.y, m.dimen) then return true end
+        self:dropSelection()
+    end
+    local fmode = self:fingerOnPage()
+    if fmode then   -- a finger navigates (or does nothing) while the pen writes
+        self._finger_nav = { mode = fmode, x = pos.x, y = pos.y, lx = pos.x, ly = pos.y }
+        return true
+    end
     if self.tool == "lasso" then return self:lassoTouch(pos) end
     if self.tool == "text" then return self:textToolTouch(pos) end
     if self.tool == "fill" then self:doFill(pos); return true end
     if self.tool == "shape" then return self:shapeTouch(pos) end
     if self.tool == "pan" then
-        -- a touch on a picture selects it and can drag it; its menu opens on the
-        -- tap or hold, since opening it here would let the same gesture close it
-        local hit = self:hitTestImage(pos.x, pos.y)
-        if hit then self:selectImage(hit); return self:imageTouch(pos) end
-        -- a selected shape can be dragged; a fresh touch on a shape selects it
-        if self.selected and self:pointOnShape(self.selected.op, pos.x, pos.y) then
-            return self:shapeMoveTouch(pos)
+        -- a tap on a link follows it (a drag from it still pans)
+        local link = self:linkAtScreen(pos.x, pos.y)
+        if link then
+            self._link_press = link
+            self.pan_last = { x = pos.x, y = pos.y }
+            return true
         end
-        local shp = self:hitTestShape(pos.x, pos.y)
-        if shp then self.selected = shp; return self:shapeMoveTouch(pos) end
+        -- a touch on a picture or a shape selects it and can drag it; its menu
+        -- opens on the tap or hold, since opening it here would let the same
+        -- gesture close it
+        local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+        if hit and self:selectOps({ hit.idx }, "pan") then
+            self:selTouch(pos)
+            return true
+        end
         self.pan_last = { x = pos.x, y = pos.y }
         return true
     end
@@ -502,12 +561,15 @@ function InkAwayView:onIaTouch(_, ges)
     elseif self.capturing then
         self:finalizeStroke()   -- a lift was missed; don't lose the old stroke
     end
+    self._finger_dot = not self._pen_feeding   -- a finger's own stroke (see onIaTwoTap)
     self:beginStroke(pos.x, pos.y)
+    self:straightenWatch(pos.x, pos.y, true)
     return true
 end
 
 function InkAwayView:onIaPan(_, ges)
-    if self:fingerRejected() then self:holdReject(); return true end
+    if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
+    if self._finger_nav and not self._pen_feeding then return self:fingerNavPan(ges.pos) end
     if self._clip_press then return true end   -- the release decides (paste or cancel)
     local pos = ges.pos
     if self._fab_press then           -- a drag off a control is a draw, not a tap
@@ -517,15 +579,13 @@ function InkAwayView:onIaPan(_, ges)
     end
     if pos then self:fabProximity(pos.x, pos.y) end   -- fade controls the drawing comes near
     if self.selecting_crop then return self:cropMove(pos) end
-    if self.rotating then return self:rotateMove(pos) end
-    if self.image_rotating then return self:imageRotateMove(pos) end
-    if self.active_image then return self:imagePan(pos) end
-    if self.shape_move then return self:shapeMovePan(pos) end
+    if self.sel_drag then return self:selPan(pos) end
     if self.tool == "text" then return self:textToolPan(pos) end
     if self.tool == "lasso" then return self:lassoPan(pos) end
     if self.tool == "fill" then return true end   -- fill is a tap, ignore drags
     if self.tool == "shape" then return self:shapeMove(pos) end
     if self.tool == "pan" then
+        self._link_press = nil   -- a drag, not a tap on a link
         if self.pan_last then
             self:panByScreen(pos.x - self.pan_last.x, pos.y - self.pan_last.y)
             self.pan_last.x, self.pan_last.y = pos.x, pos.y
@@ -533,29 +593,33 @@ function InkAwayView:onIaPan(_, ges)
         end
         return false
     end
+    if self._swallow then return true end   -- the rest of a touch whose stroke was straightened
     if not self.capturing then return false end
     if self.pending_lift then          -- movement resumes the held stroke
         UIManager:unschedule(self._finalize)
         self.pending_lift = nil
     end
     self:addScreenPoint(pos.x, pos.y, false)
+    self:straightenWatch(pos.x, pos.y)
     return true
 end
 InkAwayView.onIaHoldPan = InkAwayView.onIaPan
 
 function InkAwayView:onIaPanRelease(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
+    if self._finger_nav and not self._pen_feeding then return self:fingerNavEnd(ges and ges.pos) end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
         return true
     end
     if self._fab_press then self._fab_press = nil; return true end
+    if self._swallow then self._swallow = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
-    if self.rotating then return self:rotateEnd() end
-    if self.image_rotating then return self:imageRotateEnd() end
-    if self.active_image then return self:imageRelease() end
-    if self.shape_move then return self:shapeMoveRelease() end
+    if self.sel_drag then
+        if ges and ges.pos then self:selPan(ges.pos) end
+        return self:selRelease()
+    end
     if self.tool == "text" then return self:textToolRelease(ges and ges.pos) end
     if self.tool == "lasso" then return self:lassoRelease(ges and ges.pos) end
     if self.tool == "fill" then return true end
@@ -573,14 +637,20 @@ end
 InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
+    if self._finger_nav and not self._pen_feeding then
+        return self:fingerNavEnd(ges and (ges.end_pos or ges.pos), ges and ges.direction)
+    end
     if self._clip_press then self._clip_press = nil; return true end   -- slid off: cancel
     if self._fab_press then self._fab_press = nil; return true end
+    if self._swallow then self._swallow = nil; return true end
     if self.selecting_crop then return self:cropRelease(ges and (ges.end_pos or ges.pos)) end
-    if self.rotating then return self:rotateEnd() end
-    if self.image_rotating then return self:imageRotateEnd() end
-    if self.active_image then return self:imageRelease() end
-    if self.shape_move then return self:shapeMoveRelease() end
+    if self.sel_drag then
+        -- a quick drag arrives as a swipe: its end is where the selection goes
+        local p = ges and (ges.end_pos or ges.pos)
+        if p then self:selPan(p) end
+        return self:selRelease()
+    end
     if self.tool == "lasso" then return self:lassoRelease(ges and (ges.end_pos or ges.pos)) end
     if self.tool == "fill" then return true end
     -- a swipe's start would collapse a shape to a dot, so use only its end (or the
@@ -602,7 +672,14 @@ end
 InkAwayView.onIaMultiSwipe = InkAwayView.onIaSwipe
 
 function InkAwayView:onIaTap(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
+    if self._finger_nav and not self._pen_feeding then   -- a navigating finger's tap follows a link
+        local nav = self._finger_nav
+        self._finger_nav = nil
+        local link = nav.mode == "navigate" and ges and ges.pos and self:linkAtScreen(ges.pos.x, ges.pos.y)
+        if link then self:followLink(link) end
+        return true
+    end
     if self._clip_press then
         self._clip_press = nil
         if self:inClipBubble(ges and ges.pos) then self:textPaste() end
@@ -619,6 +696,7 @@ function InkAwayView:onIaTap(_, ges)
     if self.notebook and self.nb_bar_h > 0 and p then
         local function hit(r) return r and InkGeom.inRect(p.x, p.y, r) end
         if hit(self._nb_plus) then self:nbAddPage(); return true end
+        if hit(self._nb_overview) then self:openOverview(); return true end
         if hit(self._nb_prev) then self:nbGo(-1); return true end
         if hit(self._nb_next) then self:nbGo(1); return true end
         if hit(self._nb_count) then self:openPageMenu(); return true end
@@ -627,16 +705,16 @@ function InkAwayView:onIaTap(_, ges)
         if p.y >= v.area_y + v.area_h then return true end
     end
     if self.selecting_crop then return self:cropRelease(ges and ges.pos) end
-    if self.rotating then return self:rotateEnd() end
-    -- open the edit menu on the completed tap, so the tap cannot close it again
-    if p and self.tool == "pan" then
-        if self.active_image and self:imageZone(p.x, p.y) ~= "outside" then
-            self:openImageMenu(self.active_image); return true
-        end
-        if self.selected and self:pointOnShape(self.selected.op, p.x, p.y) then
-            self:openShapeMenu(self.selected); return true
-        end
+    -- a tap on a link with Pan follows it
+    if self._link_press then
+        local link = self._link_press
+        self._link_press, self.pan_last = nil, nil
+        self:followLink(link)
+        return true
     end
+    -- a tap on the selection (its touch began a drag that never moved) opens its
+    -- menu, on the completed tap, so the tap cannot close it again
+    if self.sel_drag then return self:selRelease() end
     if self.tool == "text" then return self:textToolRelease(ges and ges.pos) end
     if self.tool == "lasso" then return self:lassoTap(ges and ges.pos) end
     if self.tool == "fill" then return true end   -- fill already happened on touch
@@ -652,46 +730,62 @@ function InkAwayView:onIaTap(_, ges)
 end
 
 function InkAwayView:onIaHold(_, ges)
-    if self:fingerRejected() then return true end
+    if self:fingerRejected(ges and ges.pos) then return true end
     if self._clip_press then return true end
     if self._fab_press then self._fab_press = nil; return true end
     -- a long press in the text box being edited offers to paste there
     if self.editing_text and self:textHoldAt(ges and ges.pos) then return true end
     -- swallow holds while drawing or placing, so they never become a long-press menu
     if self.capturing or self.shape_drag or self.curve_stage
-       or self.rotating or self.image_rotating then return true end
+       or (self.sel_drag and self.sel_drag.began) then return true end
     local pos = ges and ges.pos
-    if not (pos and self:inArea(pos.x, pos.y)) then return false end
-    -- selecting only happens in Pan mode, so a hold never fights with drawing
-    if self.tool == "pan" then
-        if self.active_image then
-            if self:imageZone(pos.x, pos.y) ~= "outside" then
-                self._img_drag = nil     -- a hold cancels a pending move
-                self:openImageMenu(self.active_image)
-            end
-            return true
+    -- holding Prev or Next in a notebook's bar goes to the first or last page
+    if pos and self.notebook and self.nb_bar_h > 0 then
+        if self._nb_prev and InkGeom.inRect(pos.x, pos.y, self._nb_prev) then self:nbGoTo(1); return true end
+        if self._nb_next and InkGeom.inRect(pos.x, pos.y, self._nb_next) then
+            self:nbGoTo(self.notebook:count()); return true
         end
-        local isel = self:hitTestImage(pos.x, pos.y)
-        if isel then self:selectImage(isel); self:openImageMenu(self.active_image); return true end
-        if self.selected then self.shape_move = nil; self:openShapeMenu(self.selected); return true end
-        local sel = self:hitTestShape(pos.x, pos.y)
-        if sel then self.selected = sel; self:openShapeMenu(sel) end
+    end
+    if not (pos and self:inArea(pos.x, pos.y)) then return false end
+    -- a navigating finger opens a picture's or shape's menu, as the Move tool does
+    if self._finger_nav and not self._pen_feeding then
+        if self._finger_nav.mode == "navigate" then self:holdMenuAt(pos) end
+        return true
+    end
+    -- selecting only happens in Pan mode, so a hold never fights with drawing
+    if self.tool == "pan" or self.sel_drag then
+        -- a hold on the selection (or on a picture or shape, which it selects)
+        -- opens its menu; the drag its touch began is dropped
+        if self.sel_drag then self:endSelectionDrag(true) end
+        self._link_press = nil
+        if not (self.selection and self:selHit(pos.x, pos.y)) then
+            local _, link_idx = self:linkAtScreen(pos.x, pos.y)
+            local hit = (link_idx and { idx = link_idx }) or self:hitTestImage(pos.x, pos.y)
+                or self:hitTestShape(pos.x, pos.y)
+            if not (hit and self:selectOps({ hit.idx }, "pan")) then return true end
+        end
+        self:openSelectionMenu()
     end
     return true
 end
 
 -- Two-finger pan works with any tool: commit the stroke in progress, then pan by
--- how far the fingers' midpoint moved.
+-- how far the fingers' midpoint moved. On a notebook page with no room sideways a
+-- mostly sideways move pans nothing: it is a page swipe (see onIaTwoSwipe).
 function InkAwayView:onIaTwoPan(_, ges)
     if self:fingerRejected() then return true end   -- palm splayed under the pen
     self:flushPending()
     self:cancelShape()   -- a two-finger pan drops any half-placed shape
+    self._finger_nav = nil
     local pos = ges.pos
     if not self.pan_last then
-        self.pan_last = { x = pos.x, y = pos.y }
+        self.pan_last = { x = pos.x, y = pos.y, x0 = pos.x, y0 = pos.y,
+            px = self.view.pan_x, py = self.view.pan_y }   -- where the page was (see onIaTwoSwipe)
     else
-        self:panByScreen(pos.x - self.pan_last.x, pos.y - self.pan_last.y)
+        local dx, dy = pos.x - self.pan_last.x, pos.y - self.pan_last.y
         self.pan_last.x, self.pan_last.y = pos.x, pos.y
+        local tx, ty = pos.x - (self.pan_last.x0 or pos.x), pos.y - (self.pan_last.y0 or pos.y)
+        if not (self:pageSwipes() and math.abs(tx) > math.abs(ty)) then self:panByScreen(dx, dy) end
     end
     return true
 end
@@ -701,31 +795,83 @@ function InkAwayView:onIaTwoPanRel()
     return true
 end
 
+-- A two-finger tap undoes, with any tool, at once. A second two-finger tap soon
+-- after (within TWO_TAP_REDO_MS) makes the pair a redo: it takes that undo back
+-- and redoes one step, so the undo never waits to see whether a second tap is
+-- coming. A dot the first finger began (with palm rejection off, a drawing
+-- finger arrives as gestures) is dropped first, so the undo takes back the last
+-- real change and not the dot; any other stroke still open is committed first,
+-- so that is what goes.
+local TWO_TAP_REDO_MS = 600
+function InkAwayView:onIaTwoTap()
+    if self:fingerRejected() then return true end   -- the writing hand, not a gesture
+    self._finger_nav = nil
+    if self.capturing and self._finger_dot and self.canvas.live
+            and #self.canvas.live.pts <= 4 then
+        self:penDropFingerOps()
+    end
+    self:flushPending()
+    self:cancelShape()
+    local now = self:nowMs()
+    local last = self._two_tap
+    if last and now - last.at <= TWO_TAP_REDO_MS then
+        self._two_tap = nil
+        if last.undid then self:redo() end   -- take that undo back
+        self:redo()
+        return true
+    end
+    self._two_tap = { at = now, undid = self:undo() }
+    return true
+end
+
+-- A two-finger swipe sideways turns a notebook's page: to the left for the
+-- next, as in the reader (see pageSwipes for when). A long swipe up, when not
+-- zoomed in, opens the notebook's Browse, or the Library from a drawing; a
+-- short one stays a scroll.
+function InkAwayView:onIaTwoSwipe(_, ges)
+    if self:fingerRejected() then return true end
+    local start = self.pan_last
+    self.pan_last, self._finger_nav = nil, nil
+    local a, b = ges and ges.pos, ges and ges.end_pos
+    if not (a and b) then return true end
+    local dx, dy = b.x - a.x, b.y - a.y
+    if self:swipeTurn(dx, dy) then return true end
+    if dy < 0 and -dy >= self.view.area_h / 4 and -dy > 1.5 * math.abs(dx) and not self:zoomedIn() then
+        -- the two-finger move panned on its way: put the page back first
+        if start and start.px then
+            self.view.pan_x, self.view.pan_y = start.px, start.py
+            InkGeom.clampPan(self.view)
+            self:renderView()
+        end
+        if self.notebook then self:openOverview() else self:openLibrary() end
+    end
+    return true
+end
+
 ------------------------------------------------------------------------------
 -- Undo and exit
 ------------------------------------------------------------------------------
 
+-- Undo the last change. Returns true when something was undone.
 function InkAwayView:undo()
-    if self.editing_text then return self:textUndo() end   -- undo within the box
+    if self.editing_text then self:textUndo(); return true end   -- undo within the box
     -- a committed text box is undone a word at a time; once its history is used up,
     -- the normal undo removes or restores the whole box
     local idx, h = self:topTextHist()
     if idx and #h.undo > 0 then
         self:commitTextStep(idx, h.undo, h.redo)
-        return
+        return true
     end
     self._peel_op = nil   -- leaving any text-peel sequence
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end
-    if self.rotating then self:rotateEnd() end
+    self:resetLasso()   -- a selection's indices do not survive the change
     if not self.canvas:undo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to undo."), timeout = 1 })
-        return
+        return false
     end
-    self.selected = nil
-    self:resetLasso()
-    self.dirty = true
+    self:markDirty()
     self:recompose()   -- rebuild the master from the restored ops
+    return true
 end
 
 function InkAwayView:redo()
@@ -739,28 +885,19 @@ function InkAwayView:redo()
     end
     self._peel_op = nil
     self:flushPending()
-    if self.active_image then self:finishImageEdit() end
+    self:resetLasso()
     if not self.canvas:redo() then
         UIManager:show(InfoMessage:new{ text = _("Nothing to redo."), timeout = 1 })
         return
     end
-    self.selected = nil
-    self:resetLasso()
-    self.dirty = true
+    self:markDirty()
     self:recompose()
 end
 
-function InkAwayView:promptExit()
+-- Leave Ink Away. Nothing to ask: the document saves itself on the way out.
+function InkAwayView:closeCanvas()
     self:flushPending()
-    if self.canvas:isEmpty() then
-        UIManager:close(self)
-        return
-    end
-    UIManager:show(ConfirmBox:new{
-        text = _("Leave Ink Away? Any unsaved drawing will be lost."),
-        ok_text = _("Leave"),
-        ok_callback = function() UIManager:close(self) end,
-    })
+    UIManager:close(self)
 end
 
 ------------------------------------------------------------------------------
@@ -775,9 +912,10 @@ function InkAwayView:paintTo(bb, x, y)
     -- refresh (areaScreenRect) never covers the toolbar or the notebook bar, so
     -- both skip the chrome; on a software-rotated screen redrawing it is slow.
     local br = self._blit_rect
-    if self._full_blit then br = nil end   -- the area was rebuilt since the last full blit
-    local paint_chrome = not br and not self._area_only
-    self._area_only = false
+    -- the area was rebuilt since the last full blit, or a sheet over it went away
+    if self._full_blit or self._paint_all then br = nil end
+    local paint_chrome = not br and (self._paint_all or not self._area_only)
+    self._area_only, self._paint_all = false, false
     if paint_chrome then
         -- white around the drawing area (the area itself is blitted below)
         local ay0, ay1 = v.area_y, v.area_y + v.area_h
@@ -813,11 +951,13 @@ function InkAwayView:paintTo(bb, x, y)
         -- during a region blit only that region is redrawn
         self:drawGrid(bb, x + v.area_x, y + v.area_y, br)
     end
-    -- page edges that fall inside the drawing area; unchanged during a region blit
-    if not br then self:paintPageEdges(bb, x, y) end
+    -- page edges that fall inside the drawing area (a region blit may cross one)
+    self:paintPageEdges(bb, x, y)
     if self.shape_preview then self:paintShapePreview(bb, x, y) end
     if self.selecting_crop and self._crop_screen then self:paintCropOverlay(bb, x, y) end
-    if self.lassoing or (self.selection and self.selection.bbox) then self:paintLassoOverlay(bb, x, y) end
+    if self.lassoing then self:paintLassoLoop(bb, x, y) end
+    self:paintLinks(bb, x, y, br)
+    if self.selection then self:paintSelection(bb, x, y) end
 
     -- the text box being edited: glyphs, frame, caret and selection
     if self.editing_text then self:paintTextOverlay(bb, x, y) end
@@ -826,21 +966,18 @@ function InkAwayView:paintTo(bb, x, y)
         self:clipBubbleWidget():paintTo(bb, x + b.x, y + b.y)
     end
 
-    -- the selected image: frame, handles, and the picture itself while dragged
-    if self.active_image then self:paintImageOverlay(bb, x, y) end
-
     -- the notebook's bottom bar is chrome, so it is skipped on region blits and
     -- area-only paints like the toolbar
     if paint_chrome and self.notebook and self.nb_bar_h > 0 then self:paintNotebookBar(bb, x, y) end
 
-    -- the floating controls, on top; a region blit never reaches them
-    if not br then self:drawFabs(bb, x, y) end
+    -- the floating controls, on top (a region blit paints the ones it reaches)
+    self:drawFabs(bb, x, y, br)
 end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
-    "textedit", "textformat", "lasso", "notebook", "save", "projects", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting" }
+    "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

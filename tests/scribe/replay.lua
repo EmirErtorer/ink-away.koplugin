@@ -187,6 +187,225 @@ run("S6", "4 short strokes with a resting palm (finger tool) jittering; then a f
     return "expected: 5 separate pen strokes (4 short + B), no connecting line, no palm mark"
 end)
 
+---------------------------------------------------------------------------
+-- Pen taps menus and buttons: a pen contact that lands on the toolbar, a
+-- floating control, the notebook bar or a shown menu goes to the gesture
+-- detector like a finger.
+---------------------------------------------------------------------------
+local uichecks = {}
+local function uiok(c, what) uichecks[#uichecks + 1] = { c, what } end
+local C = require("ffi").C
+local K, A = C.EV_KEY, C.EV_ABS
+
+local function tapAt(w, x, y)
+    pen.enter(w, x - 3, y - 3, 60)
+    pen.hover(w, x - 1, y - 1, 7)
+    pen.touch(w, x, y, 7)
+    pen.move(w, x, y, 7)
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+end
+local function gestures(w, name)
+    local out = {}
+    for _, g in ipairs(w.ges_log) do if g.ges == name then out[#out + 1] = g end end
+    return out
+end
+local function uirun(id, desc, fn, opts)
+    if ONLY and ONLY ~= id then return end
+    local w = H.newWorld(opts)
+    print(("=== %s: %s ==="):format(id, desc))
+    fn(w)
+    if os.getenv("V") == "1" then for _, l in ipairs(w.log) do print(l) end end
+    H.tick(w, 1000)   -- the lift debounce and the UI pass-through run out
+    local v = w.view
+    uiok(not v._pen_ui_contact and v._pen_ui == nil, id .. ": the UI contact ended")
+    uiok(not v._pen_state.down and not v:fingerRejected(), id .. ": no stuck pen or finger rejection")
+end
+
+uirun("U1", "pen taps the toolbar", function(w)
+    local v = w.view
+    local y = math.floor(v.view.area_y / 2)
+    tapAt(w, 300, y)
+    local taps = gestures(w, "tap")
+    uiok(#taps == 1 and taps[1].x == 300 and taps[1].y == y, "U1: one tap on the toolbar reaches the gesture detector")
+    uiok(#w.fed == 0 and v.canvas:opCount() == 0, "U1: the pen drew nothing")
+end)
+
+uirun("U2", "pen taps the zoom pill", function(w)
+    local v = w.view
+    local r = v:fabRect("zoom")
+    local z0 = v.view.zoom
+    tapAt(w, math.floor(r.x + r.w / 2), math.floor(r.y + r.h / 4))
+    uiok(v.view.zoom > z0, "U2: the zoom pill zoomed in")
+    uiok(v.canvas:opCount() == 0, "U2: nothing drawn")
+end)
+
+uirun("U3", "toggle off: the pen on the toolbar stays with Ink Away", function(w)
+    local v = w.view
+    tapAt(w, 300, math.floor(v.view.area_y / 2))
+    uiok(#w.ges_log == 0, "U3: the gesture detector saw nothing from the pen")
+    uiok(v.canvas:opCount() == 0, "U3: nothing drawn")
+end, { pen_ui = false })
+
+uirun("U4", "a stroke that starts on the canvas carries on over the toolbar", function(w)
+    local v = w.view
+    local ay = v.view.area_y
+    pen.enter(w, 300, ay + 60, 60)
+    pen.touch(w, 300, ay + 60, 7)
+    for i = 1, 12 do pen.move(w, 300 + i * 4, ay + 60 - i * 8, 7) end
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(#w.ges_log == 0, "U4: the gesture detector saw nothing")
+    uiok(v.canvas:opCount() == 1 and #w.fed == 14, "U4: one stroke from every touching frame")
+end)
+
+uirun("U5", "a palm (finger tool) rests on the canvas while the pen taps the toolbar", function(w)
+    local v = w.view
+    local y = math.floor(v.view.area_y / 2)
+    pen.enter(w, 300, y - 4, 60)
+    panel.down(w, 0, 501, 500, 900, 0, 3)
+    panel.move(w, { { 0, 506, 904 } }, 8)
+    pen.touch(w, 300, y, 7)
+    panel.move(w, { { 0, 512, 908 } }, 4)
+    pen.move(w, 300, y, 4)
+    pen.lift(w, 7)
+    panel.move(w, { { 0, 518, 912 } }, 8)
+    panel.up(w, 0, 8)
+    pen.leave(w, 30)
+    local taps = gestures(w, "tap")
+    uiok(#taps == 1 and taps[1].y == y, "U5: the pen's tap reaches the detector")
+    uiok(v.canvas:opCount() == 0 and not v.capturing, "U5: the palm drew nothing")
+    -- the pen draws as usual afterwards
+    local ay = v.view.area_y
+    pen.enter(w, 300, ay + 300, 400)
+    pen.touch(w, 300, ay + 300, 7)
+    for i = 1, 6 do pen.move(w, 300 + i * 6, ay + 300 + i * 3, 7) end
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(v.canvas:opCount() == 1, "U5: a later pen stroke draws")
+end)
+
+uirun("U6", "pen lifts and leaves in one frame on the toolbar", function(w)
+    local v = w.view
+    local y = math.floor(v.view.area_y / 2)
+    pen.enter(w, 200, y, 60)
+    pen.touch(w, 200, y, 7)
+    pen.liftLeave(w, 7)
+    uiok(#gestures(w, "tap") == 1, "U6: the tap still reaches the detector")
+end)
+
+uirun("U7", "pen leaves range before its lift on the toolbar (tool key first)", function(w)
+    local v = w.view
+    local y = math.floor(v.view.area_y / 2)
+    pen.enter(w, 200, y, 60)
+    pen.touch(w, 200, y, 7)
+    pen.leaveLift(w, 7)
+    uiok(#gestures(w, "tap") == 1, "U7: the contact ends as a tap")
+    -- and the next stroke on the canvas draws
+    local ay = v.view.area_y
+    pen.enter(w, 300, ay + 300, 400)
+    pen.touch(w, 300, ay + 300, 7)
+    for i = 1, 6 do pen.move(w, 300 + i * 6, ay + 300 + i * 3, 7) end
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(v.canvas:opCount() == 1, "U7: the next stroke draws")
+end)
+
+uirun("U8", "a menu is open: the pen works it, and draws again once it closes", function(w)
+    local v = w.view
+    local UI = H.UIManager
+    local menu = { name = "menu" }
+    UI._window_stack[#UI._window_stack + 1] = { widget = v }
+    UI._window_stack[#UI._window_stack + 1] = { widget = menu }
+    local ay = v.view.area_y
+    pen.enter(w, 300, ay + 300, 60)
+    pen.touch(w, 300, ay + 300, 7)
+    for i = 1, 6 do pen.move(w, 300 + i * 6, ay + 300 + i * 3, 7) end
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(#gestures(w, "touch") == 1 and #w.fed == 0, "U8: with a menu up the pen goes to the gesture detector")
+    uiok(v.canvas:opCount() == 0, "U8: nothing drawn under the menu")
+    UI._window_stack[#UI._window_stack] = nil
+    pen.enter(w, 300, ay + 300, 400)
+    pen.touch(w, 300, ay + 300, 7)
+    for i = 1, 6 do pen.move(w, 300 + i * 6, ay + 300 + i * 3, 7) end
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(v.canvas:opCount() == 1, "U8: once it closes the pen draws")
+    UI._window_stack = {}
+end)
+
+uirun("U9", "a message that closes by itself does not take the pen", function(w)
+    local v = w.view
+    local UI = H.UIManager
+    UI._window_stack[#UI._window_stack + 1] = { widget = v }
+    UI._window_stack[#UI._window_stack + 1] = { widget = { timeout = 2 } }
+    local ay = v.view.area_y
+    pen.enter(w, 300, ay + 300, 60)
+    pen.touch(w, 300, ay + 300, 7)
+    for i = 1, 6 do pen.move(w, 300 + i * 6, ay + 300 + i * 3, 7) end
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(#w.ges_log == 0 and v.canvas:opCount() == 1, "U9: the pen still draws")
+    UI._window_stack = {}
+end)
+
+uirun("U10", "pen taps the notebook bar's add-page button", function(w)
+    local v = w.view
+    v:startNotebook({ style = "lines", size = 40, strength = 45 })
+    v:paintTo(require("device").screen.bb, 0, 0)   -- lays out the bar's buttons
+    local n0 = #v.notebook.pages
+    local r = v._nb_plus
+    tapAt(w, math.floor(r.x + r.w / 2), math.floor(r.y + r.h / 2))
+    uiok(#v.notebook.pages == n0 + 1, "U10: a page was added")
+end)
+
+uirun("U11", "the pen's eraser end on the toolbar works it, and the tool is left alone", function(w)
+    local v = w.view
+    local y = math.floor(v.view.area_y / 2)
+    w.frame(H.PEN_FD, { { K, C.BTN_TOOL_RUBBER, 1 }, { A, C.ABS_X, 300 }, { A, C.ABS_Y, y } }, 60, "rubber-enter", "hover")
+    w.frame(H.PEN_FD, { { K, C.BTN_TOUCH, 1 }, { A, C.ABS_X, 300 }, { A, C.ABS_Y, y }, { A, C.ABS_PRESSURE, 900 } }, 7, "rubber-touch", "touch")
+    pen.lift(w, 7)
+    pen.leave(w, 30)
+    uiok(#gestures(w, "tap") == 1, "U11: the tap reaches the detector")
+    uiok(v.tool == "pen", "U11: the tool is still the pen")
+end)
+
+uirun("U12", "keyboard up: the pen's taps on the canvas get through, a palm's do not", function(w)
+    local v = w.view
+    local UI = H.UIManager
+    UI._window_stack[#UI._window_stack + 1] = { widget = v }
+    UI._window_stack[#UI._window_stack + 1] = { widget = { name = "keyboard" } }
+    v.is_always_active = true   -- as while typing (showTextKeyboard)
+    local pen_seen, palm_seen = {}, {}
+    local fr = v.fingerRejected
+    v.fingerRejected = function(self, pos)
+        local r = fr(self, pos)
+        if pos then
+            local list = (pos.x < 400) and pen_seen or palm_seen
+            list[#list + 1] = r
+        end
+        return r
+    end
+    local ay = v.view.area_y
+    pen.enter(w, 300, ay + 200, 60)
+    panel.down(w, 0, 601, 600, 900, 0, 3)
+    pen.touch(w, 300, ay + 200, 7)
+    pen.move(w, 300, ay + 200, 7)
+    pen.lift(w, 7)
+    panel.up(w, 0, 8)
+    pen.leave(w, 30)
+    local all_false = #pen_seen > 0
+    for _, r in ipairs(pen_seen) do if r then all_false = false end end
+    local all_true = #palm_seen > 0
+    for _, r in ipairs(palm_seen) do if not r then all_true = false end end
+    uiok(all_false, "U12: the pen's touch and tap reach the canvas")
+    uiok(all_true, "U12: the palm is still rejected")
+    v.fingerRejected = nil
+    v.is_always_active = false
+    UI._window_stack = {}
+end)
+
 print()
 print("SUMMARY  id    fedStrokes ops connects palmMarks penPalmLines eraseOps hoverInk panelInk teleports  touchFramesDrawn  endDown endRejected")
 for _, row in ipairs(rows) do
@@ -207,5 +426,7 @@ for _, row in ipairs(rows) do
     ok(r.fed_touch == r.touch_frames, id .. ": every touching pen frame is drawn")
     ok(not r.final_down and not r.final_rejected, id .. ": no stuck pen or finger rejection")
 end
+for _, c in ipairs(uichecks) do ok(c[1], c[2]) end
 print(("scribe: %d checks, %d failures"):format(checks, failures))
+require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

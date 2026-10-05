@@ -7,17 +7,21 @@ Part of InkAwayView (see ink/view.lua).
 local ffi = require("ffi")
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local CenterContainer = require("ui/widget/container/centercontainer")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
+local ImageWidget = require("ui/widget/imagewidget")
+local OverlapGroup = require("ui/widget/overlapgroup")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Text = require("ink/text")
 
@@ -97,7 +101,7 @@ end
 -- the on-screen grid, in the styles that have rows (square, lines, dots).
 function InkAwayView:textRulingStep()
     if self.notebook then
-        local t = self.notebook.template
+        local t = self.notebook:pageTemplate()
         if t and t.style and t.style ~= "blank" then return t.size or 40 end
         return nil
     end
@@ -205,11 +209,17 @@ function InkAwayView:layoutText(op, scale)
     return lay, ctx
 end
 
--- Render a text op into a canvas-space bitmap at its own position.
-function InkAwayView:stampTextInto(dst, op)
+-- Render a text op into a canvas-space bitmap at its own position; with
+-- `region` (a canvas rect) only into that part of it.
+function InkAwayView:stampTextInto(dst, op, region)
     local lay, ctx = self:layoutText(op, 1)
     if op.auto_h then op.h = lay.height end
-    Text.render(op, lay, dst, op.x, op.y, ctx, { color = Blitbuffer.COLOR_BLACK })
+    local x, y = op.x, op.y
+    if region then
+        dst = dst:viewport(region.x0, region.y0, region.x1 - region.x0, region.y1 - region.y0)
+        x, y = x - region.x0, y - region.y0
+    end
+    Text.render(op, lay, dst, x, y, ctx, { color = Blitbuffer.COLOR_BLACK })
 end
 
 -- Rasterise a text op at 1:1 into an 8-bit level buffer (255 is untouched white,
@@ -441,23 +451,40 @@ function InkAwayView:textCopy(cut)
     end
 end
 
--- The bubble widget: a black pill with the clipboard icon and "Paste". Built
--- once and kept; only its position changes.
+-- The bubble widget: a pill in the accent (black by default) with the
+-- clipboard icon and "Paste". Built once and kept; only its position changes.
 function InkAwayView:clipBubbleWidget()
     if self._clip_widget then return self._clip_widget end
+    local a = Accent.get()
     local isz = math.max(16, math.floor((self._icon_sz or Screen:scaleBySize(28)) * 0.8))
-    local icon = IconWidget:new{ file = self:pluginDir() .. "ink/icons/clipboard.svg",
-        width = isz, height = isz }
-    icon.invert = true   -- renders on white; inverted it reads white on the black pill
+    local file = self:pluginDir() .. "ink/icons/clipboard.svg"
+    local tinted = Accent.icon(file, isz)
+    local icon
+    if tinted then
+        icon = ImageWidget:new{ image = tinted, width = isz, height = isz, image_disposable = false }
+    else
+        icon = IconWidget:new{ file = file, width = isz, height = isz }
+        icon.invert = true   -- renders on white; inverted it reads white on the black pill
+    end
     local label = TextWidget:new{ text = _("Paste"), face = self:faceAt("cfont", math.floor(isz * 0.85)),
-        fgcolor = WHITE, bold = true }
+        fgcolor = a.text, bold = true }
     local pad = Screen:scaleBySize(10)
     local h = math.max(isz, label:getSize().h) + 2 * pad
+    local row = HorizontalGroup:new{ align = "center", icon, HorizontalSpan:new{ width = pad }, label }
+    if a.chromatic then
+        -- a colour fill is the accent's cached image under the row
+        local w = row:getSize().w + math.floor(pad * 1.6) + math.floor(pad * 1.8)
+        local dimen = GeomUI:new{ w = w, h = h }
+        self._clip_widget = OverlapGroup:new{ dimen = dimen, allow_mirroring = false,
+            ImageWidget:new{ image = Accent.shape(w, h, math.floor(h / 2)), width = w, height = h,
+                alpha = true, image_disposable = false },
+            CenterContainer:new{ dimen = dimen, row } }
+        return self._clip_widget
+    end
     self._clip_widget = FrameContainer:new{
-        background = Blitbuffer.COLOR_BLACK, bordersize = 0, radius = math.floor(h / 2),
+        background = a.fill, bordersize = 0, radius = math.floor(h / 2),
         padding = pad, padding_left = math.floor(pad * 1.6), padding_right = math.floor(pad * 1.8),
-        margin = 0,
-        HorizontalGroup:new{ align = "center", icon, HorizontalSpan:new{ width = pad }, label },
+        margin = 0, row,
     }
     return self._clip_widget
 end

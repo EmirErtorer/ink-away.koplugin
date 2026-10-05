@@ -140,6 +140,40 @@ function Geom.pointInPoly(px, py, poly)
     return inside
 end
 
+-- Nonzero-winding test: is (px, py) inside the loop `poly` (flat x,y list, closed
+-- back to its start)? Unlike the even-odd rule, a part the loop wraps twice (a
+-- hand that carries on past where it started) still counts as inside.
+function Geom.windingInPoly(px, py, poly)
+    local n = math.floor(#poly / 2)
+    if n < 3 then return false end
+    local wn = 0
+    local jx, jy = poly[2 * n - 1], poly[2 * n]
+    for i = 1, n do
+        local ix, iy = poly[2 * i - 1], poly[2 * i]
+        local left = (ix - jx) * (py - jy) - (px - jx) * (iy - jy)
+        if jy <= py then
+            if iy > py and left > 0 then wn = wn + 1 end
+        elseif iy <= py and left < 0 then
+            wn = wn - 1
+        end
+        jx, jy = ix, iy
+    end
+    return wn ~= 0
+end
+
+-- Is (px, py) within sqrt(d2) of the closed path `poly` (flat x,y list)?
+function Geom.nearPath(px, py, poly, d2)
+    local n = math.floor(#poly / 2)
+    if n < 1 then return false end
+    local jx, jy = poly[2 * n - 1], poly[2 * n]
+    for i = 1, n do
+        local ix, iy = poly[2 * i - 1], poly[2 * i]
+        if Geom.segDist2(px, py, jx, jy, ix, iy) <= d2 then return true end
+        jx, jy = ix, iy
+    end
+    return false
+end
+
 -- Squared distance from (px, py) to the segment (ax, ay)-(bx, by).
 function Geom.segDist2(px, py, ax, ay, bx, by)
     local dx, dy = bx - ax, by - ay
@@ -148,6 +182,21 @@ function Geom.segDist2(px, py, ax, ay, bx, by)
     if t < 0 then t = 0 elseif t > 1 then t = 1 end
     local ex, ey = ax + t * dx - px, ay + t * dy - py
     return ex * ex + ey * ey
+end
+
+-- Which side of the line p-q point r lies on (the sign of the cross product).
+local function side(px, py, qx, qy, rx, ry)
+    return (qx - px) * (ry - py) - (qy - py) * (rx - px)
+end
+
+-- Squared distance between segments (ax, ay)-(bx, by) and (cx, cy)-(dx, dy): 0
+-- when they cross, otherwise the nearest endpoint-to-segment distance.
+function Geom.segSegDist2(ax, ay, bx, by, cx, cy, dx, dy)
+    local d1, d2 = side(cx, cy, dx, dy, ax, ay), side(cx, cy, dx, dy, bx, by)
+    local d3, d4 = side(ax, ay, bx, by, cx, cy), side(ax, ay, bx, by, dx, dy)
+    if d1 * d2 < 0 and d3 * d4 < 0 then return 0 end
+    return math.min(Geom.segDist2(ax, ay, cx, cy, dx, dy), Geom.segDist2(bx, by, cx, cy, dx, dy),
+        Geom.segDist2(cx, cy, ax, ay, bx, by), Geom.segDist2(dx, dy, ax, ay, bx, by))
 end
 
 ------------------------------------------------------------------------------

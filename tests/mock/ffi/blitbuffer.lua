@@ -48,6 +48,8 @@ function BB:getPhysicalRect(x, y, w, h)
     else return y, self.h - (x + w), h, w end
 end
 function BB:free() self.freed = true; if self._owns then M.allocated = M.allocated - 1 end end
+-- A new owning buffer of the same size and type (the real one copies the pixels).
+function BB:copy() return M.new(self.w, self.h, self.t) end
 
 local function checkBounds(self, x, y, w, h)
     if x < 0 or y < 0 or x + (w or 1) > self.w or y + (h or 1) > self.h then

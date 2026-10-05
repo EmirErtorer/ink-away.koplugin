@@ -5,6 +5,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
@@ -17,8 +18,11 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
+local Clipboard = require("ink/clipboard")
 local ImageProc = require("ink/imageproc")
 local Notebook = require("ink/notebook")
+local Storage = require("ink/storage")
+local Templates = require("ink/templates")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -122,14 +126,26 @@ end
 -- Height of the notebook bottom bar.
 function InkAwayView:nbBarHeight()
     if self._nb_collapsed then return 0 end   -- hidden via the bottom-bar toggle
-    -- snug around the icon row, so the bar is shorter than the toolbar
+    -- as tall as the toolbar, so both bars hold the same icons the same way
+    if self.toolbar then return self.toolbar:getSize().h end
     local isz = self._icon_sz or math.max(20, Screen:scaleBySize(26))
     return isz + 2 * Screen:scaleBySize(4)
 end
 
--- Save the on-screen canvas back into the current notebook page.
+-- Save the on-screen canvas back into the current notebook page. A page whose
+-- ops changed since it was loaded or last synced is stamped and dropped from the
+-- save cache, so the next save writes it out again.
 function InkAwayView:nbSyncOut()
-    if self.notebook then self.notebook:setCurrentOps(self.canvas.ops) end
+    local nb = self.notebook
+    if not nb then return end
+    nb:setCurrentOps(self.canvas.ops)
+    if self.canvas.rev ~= self._page_rev then
+        self._page_rev = self.canvas.rev
+        nb:touch()
+        if self._page_cache then self._page_cache[nb.pages[nb.index]] = nil end
+        self:dropPageThumb(nb.pages[nb.index])
+        self.dirty = true
+    end
 end
 
 -- Load the current notebook page into the canvas and repaint.
@@ -140,7 +156,7 @@ function InkAwayView:nbLoad()
     self:freeImageCache()
     self:loadNotebookPageBackground()   -- swap in this page's PDF image (if any)
     self.canvas:setOps(self.notebook:currentOps())
-    self.selected, self.rotating = nil, nil
+    self._page_rev = self.canvas.rev
     self:resetLasso()
     self:composeCanvas(); self:renderView()
     -- Like KOReader's reader, turn pages with a non-flashing refresh ("partial" on
@@ -152,9 +168,9 @@ function InkAwayView:nbLoad()
         self._turns_since_full = 0
         UIManager:setDirty(self, "full")
     elseif self:colourPanel() then
-        self:refresh(self, "full")   -- -> non-flashing "ui" on colour
+        self:refreshPageTurn("ui")
     else
-        UIManager:setDirty(self, "partial")
+        self:refreshPageTurn("partial")
     end
 end
 
@@ -205,7 +221,6 @@ function InkAwayView:loadNotebookPageBackground()
     self._bg_src = img and src or nil
     self.bg_rgba = nil          -- built on demand at export, never per page turn
     self.bg_path = t.pdf_path
-    self.export_bg = true
     self:trimPdfCache()
     UIManager:unschedule(self._pdf_prefetch_cb)
     UIManager:scheduleIn(1.0, self._pdf_prefetch_cb)
@@ -273,14 +288,13 @@ end
 -- Jump to an absolute page number (1-based).
 function InkAwayView:nbGoTo(target)
     if not self.notebook or type(target) ~= "number" then return end
-    if self.active_image then self:finishImageEdit() end   -- bake it onto this page first
+    self:resetLasso()   -- a selection belongs to this page
     target = math.floor(target)
     local nb = self.notebook
     if target < 1 or target > nb:count() or target == nb.index then return end
     self:nbSyncOut()
     nb:gotoPage(target)
     self:nbLoad()
-    self.dirty = true
 end
 
 -- Go to a page: a sheet with First and Last jumps and a button that opens the
@@ -334,39 +348,205 @@ function InkAwayView:nbDuplicatePage()
     self:nbSyncOut()
     self.notebook:duplicatePage()
     self:nbLoad()
-    self.dirty = true
+    self:markDirty()
+end
+
+-- Note a change to a page's own fields (title, star, paper): drop it from the
+-- save cache and mark the document changed.
+function InkAwayView:nbPageChanged(page)
+    if self._page_cache then self._page_cache[page] = nil end
+    self:markDirty()
 end
 
 -- The page menu, opened by tapping the page counter in the bottom bar: go to a
--- page, the overview, duplicate and delete.
+-- page, rename, star, insert, duplicate, move, its paper, templates, paste and
+-- delete.
 function InkAwayView:openPageMenu()
     local nb = self.notebook
     if not nb then return end
+    local page = nb.pages[nb.index]
     self:closeSheet("_page_dialog")
-    local content_w = self:sheetWidth()
+    local content_w, gap = self:sheetWidth()
+    local halfW = math.floor((content_w - gap) / 2)
     local closeSelf = function() self:closeSheet("_page_dialog") end
-    local function act(label, cb)
-        return self:actionButton(label, content_w, function() closeSelf(); cb() end)
+    local function act(label, w, cb)
+        return self:actionButton(label, w, function() closeSelf(); cb() end)
+    end
+    local function row2(a, b)
+        return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
     end
     local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Page"), content_w, _("Close"), closeSelf))
+        add(self:sheetTitle(page.title or string.format(_("Page %d"), nb.index), content_w, _("Close"), closeSelf))
         add(vspan(6))
-        add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())))
+        add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())
+            .. (page.star and "  \u{2605}" or "")))
         add(vspan(12))
-        add(act(_("Go to page\u{2026}"), function() self:nbJumpPrompt() end))
+        add(act(_("Go to page\u{2026}"), content_w, function() self:nbJumpPrompt() end))
         add(vspan(8))
-        add(act(_("Page overview\u{2026}"), function() self:openPageGrid() end))
+        add(row2(act(_("Rename\u{2026}"), halfW, function() self:nbRenamePage() end),
+                 act(page.star and _("Unstar") or _("Star"), halfW, function() self:nbToggleStar() end)))
         add(vspan(8))
-        add(act(_("Duplicate page"), function() self:nbDuplicatePage() end))
+        add(row2(act(_("Insert before"), halfW, function() self:nbInsertPageBefore() end),
+                 act(_("Duplicate"), halfW, function() self:nbDuplicatePage() end)))
         add(vspan(8))
-        add(act(_("Delete page"), function() self:nbDeletePage() end))
+        add(row2(act(_("Move\u{2026}"), halfW, function() self:nbMovePrompt() end),
+                 act(_("Paper\u{2026}"), halfW, function() self:nbPagePaper() end)))
+        add(vspan(8))
+        add(row2(act(_("Save as template\u{2026}"), halfW, function() self:nbSaveTemplate() end),
+                 act(_("From template\u{2026}"), halfW, function() self:nbFromTemplate() end)))
+        add(vspan(8))
+        add(act(self:nbHasContents() and _("Update the contents page") or _("Make a contents page"), content_w,
+            function() self:nbMakeContents() end))
+        add(vspan(8))
+        if Clipboard.count() > 0 then
+            add(row2(act(_("Paste"), halfW, function() self:pasteAt(nil) end),
+                     act(_("Delete page"), halfW, function() self:nbDeletePage() end)))
+        else
+            add(act(_("Delete page"), content_w, function() self:nbDeletePage() end))
+        end
         return content
     end
     -- the sheet's bottom sits on the top of the notebook bottom bar
     local v = self.view
     self:showSheet("_page_dialog", build, { bottom_y = v.area_y + v.area_h })
+end
+
+-- Give the current page a title (an empty one removes it).
+function InkAwayView:nbRenamePage()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    if not page then return end
+    self:promptText{ title = _("Page title"), input = page.title or "", hint = _("Untitled"),
+        ok_text = _("Rename"),
+        on_ok = function(text)
+            local title = (text or ""):match("^%s*(.-)%s*$")
+            page.title = (title ~= "") and title or nil
+            self:nbPageChanged(page)
+        end }
+end
+
+function InkAwayView:nbToggleStar()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    if not page then return end
+    page.star = (not page.star) or nil
+    self:nbPageChanged(page)
+    self:showNotice(page.star and _("Page starred") or _("Star removed"))
+end
+
+-- Insert a blank page before the current one and move to it.
+function InkAwayView:nbInsertPageBefore()
+    if not self.notebook then return end
+    self:nbSyncOut()
+    self.notebook:insertPageBefore()
+    self:nbLoad()
+    self:markDirty()
+end
+
+-- Ask for the position to move the current page to.
+function InkAwayView:nbMovePrompt()
+    local nb = self.notebook
+    if not nb or nb:count() < 2 then return end
+    self:promptText{
+        title = string.format(_("Move this page to (1\u{2013}%d)"), nb:count()),
+        input = tostring(nb.index), input_type = "number", ok_text = _("Move"),
+        on_ok = function(text)
+            local n = tonumber(text)
+            if not n then return end
+            self:nbSyncOut()
+            nb:movePageTo(n)
+            self:markDirty()
+            self:refreshArea()   -- the counter shows the new position
+            self:showNotice(string.format(_("Now page %d"), nb.index))
+        end }
+end
+
+-- Choose the paper of the current page: the notebook's, or one of its own.
+function InkAwayView:nbPagePaper()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    if not page then return end
+    self:openPaperSheet{ title = _("Paper for this page"), current = page.paper or "same",
+        same = _("Same as the notebook"),
+        onpick = function(v)
+            page.paper = (v ~= "same") and v or nil
+            self:nbPageChanged(page)
+            self:composeCanvas(); self:renderView(); self:refreshArea()
+        end }
+end
+
+-- Save the current page as a template, under a name asked for (its title by
+-- default), asking before replacing one of the same name.
+function InkAwayView:nbSaveTemplate()
+    local nb = self.notebook
+    if not nb then return end
+    self:nbSyncOut()
+    local page = nb.pages[nb.index]
+    local root = self:libraryDir()
+    self:promptText{ title = _("Template name"), input = page.title or "", hint = _("Planner"),
+        ok_text = _("Save"),
+        on_ok = function(text)
+            local name = (text or ""):gsub("[/\\]", "_"):match("^%s*(.-)%s*$")
+            if name == "" then return end
+            self:confirmReplace(Templates.path(root, name), function()
+                local ok, err = Templates.save(root, name, page, nb:pageTemplate(), nb.w, nb.h)
+                if ok then
+                    self:showNotice(string.format(_("Saved the template \u{201C}%s\u{201D}"), name))
+                else
+                    UIManager:show(InfoMessage:new{ text = _("Could not save the template.\n") .. tostring(err) })
+                end
+            end)
+        end }
+end
+
+-- Choose a template and add a page made from it after the current one. The
+-- last row switches to deleting templates instead.
+function InkAwayView:nbFromTemplate(deleting)
+    local nb = self.notebook
+    if not nb then return end
+    local root = self:libraryDir()
+    local names = Templates.list(root)
+    if #names == 0 then
+        UIManager:show(InfoMessage:new{ timeout = 4, text =
+            _("No templates yet. Save a page as one from this menu: Save as template.") })
+        return
+    end
+    local dialog
+    local rows = {}
+    for i = 1, #names do
+        local name = names[i]
+        rows[#rows + 1] = { { text = name, callback = function()
+            UIManager:close(dialog)
+            if not deleting then return self:nbAddFromTemplate(name) end
+            UIManager:show(ConfirmBox:new{
+                text = string.format(_("Delete the template \u{201C}%s\u{201D}?"), name),
+                ok_text = _("Delete"),
+                ok_callback = function() Templates.remove(root, name) end })
+        end } }
+    end
+    rows[#rows + 1] = { { text = deleting and _("Back") or _("Delete a template\u{2026}"), callback = function()
+        UIManager:close(dialog)
+        self:nbFromTemplate(not deleting)
+    end } }
+    dialog = ButtonDialog:new{
+        title = deleting and _("Delete which template?") or _("New page from template"), buttons = rows }
+    UIManager:show(dialog)
+end
+
+-- Add a page made from template `name` after the current one, and go to it.
+function InkAwayView:nbAddFromTemplate(name)
+    local nb = self.notebook
+    local page, style = Templates.load(self:libraryDir(), name)
+    if not (nb and page) then
+        UIManager:show(InfoMessage:new{ text = _("Could not open that template.") })
+        return
+    end
+    self:nbSyncOut()
+    nb.index = nb:putPage(page, false, style, nb.index + 1)
+    self:nbLoad()
+    self:markDirty()
 end
 
 -- Render one notebook page to a thumbnail fitting maxw x maxh, through the shared
@@ -384,7 +564,7 @@ function InkAwayView:renderPageThumb(index, maxw, maxh)
         self:ensureNotebookPDF()
         bg = self:renderPdfPage(self._nb_pdf_doc, page.src)
     end
-    self:composeInto(scratch, page.ops, bg, nb.template)
+    self:composeInto(scratch, page.ops, bg, nb:pageTemplate(index))
     if bg then bg:free() end
     local scale = math.min(maxw / W, maxh / H)
     local tw = math.max(1, math.floor(W * scale))
@@ -394,29 +574,13 @@ function InkAwayView:renderPageThumb(index, maxw, maxh)
     return thumb
 end
 
--- The page overview grid: tap a thumbnail to jump to that page.
-function InkAwayView:openPageGrid()
-    local nb = self.notebook
-    if not nb then return end
-    self:nbSyncOut()      -- so the current page's latest ink is in its thumbnail
-    local PageGrid = require("ink/ui/pagegrid")
-    local grid = PageGrid:new{
-        count = nb:count(),
-        current = nb.index,
-        render = function(i, w, h) return self:renderPageThumb(i, w, h) end,
-        on_pick = function(i) self:nbGoTo(i) end,
-    }
-    self._settings_dialog = grid
-    UIManager:show(grid)
-end
-
 -- Insert a blank page after the current one and move to it.
 function InkAwayView:nbAddPage()
     if not self.notebook then return end
     self:nbSyncOut()
     self.notebook:addPage()
     self:nbLoad()
-    self.dirty = true
+    self:markDirty()
 end
 
 -- Remove the current page (with a confirm; never drops below one page).
@@ -427,27 +591,27 @@ function InkAwayView:nbDeletePage()
         return
     end
     UIManager:show(ConfirmBox:new{
-        text = _("Delete this page?"),
+        text = self:deleteQuestion(),
         ok_text = _("Delete"),
         ok_callback = function()
-            self.notebook:deletePage()
+            local nb = self.notebook
+            if not nb then return end
+            self:nbSyncOut()
+            if not self:trashPage(self.doc_path, nb, nb.index) then return end
+            nb:deletePage()
             self:nbLoad()
-            self.dirty = true
+            self:markDirty()
         end,
     })
 end
 
--- Make `nb` the open notebook and show its current page. `keep` saves it to the
--- session at once, so a close before the next autosave still reopens it as a
--- notebook rather than the previous drawing.
-function InkAwayView:enterNotebook(nb, keep)
+-- Make `nb` the open notebook and show its current page.
+function InkAwayView:enterNotebook(nb)
     self.notebook = nb
     self.nb_bar_h = self:nbBarHeight()
     self:recomputeArea()
     self:nbLoad()
-    self.dirty = false
     self:resetTransientMemory()     -- reclaim the previous work's memory now
-    if keep and self.autosave ~= "off" then self:saveSession() end
 end
 
 -- Enter notebook mode with a fresh notebook using `template`
@@ -455,7 +619,7 @@ end
 function InkAwayView:startNotebook(template)
     self:clearBackground()
     self.save_area = nil
-    self:enterNotebook(Notebook.new(self.screen_w, self.screen_h, template), true)
+    self:enterNotebook(Notebook.new(self.screen_w, self.screen_h, template))
 end
 
 -- Rebuild notebook mode from a loaded v2 project.
@@ -485,9 +649,11 @@ function InkAwayView:exitNotebook()
     self:recomputeArea()
 end
 
--- Open an entire PDF as a notebook: one page per PDF page, each with the PDF
--- page as its background to write on. Pages are rendered lazily on demand.
-function InkAwayView:startPdfNotebook(path)
+-- Open an entire PDF as a new notebook in folder `dir`: one page per PDF page,
+-- each with the PDF page as its background to write on. Pages are rendered
+-- lazily on demand. It is saved at once, named after the PDF, so it is in the
+-- library straight away.
+function InkAwayView:startPdfNotebook(path, dir)
     local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(path) end)
     if not ok or not doc then
         UIManager:show(InfoMessage:new{ text = _("Could not open that PDF.") })
@@ -496,71 +662,170 @@ function InkAwayView:startPdfNotebook(path)
     local pages = 1
     pcall(function() pages = doc:getPageCount() or 1 end)
     if not pages or pages < 1 then pages = 1 end
-    self:closeNotebookPDF()
-    self._nb_pdf_doc, self._nb_pdf_path = doc, path
-    self:clearBackground()
-    self.save_area = nil
-    local nb = Notebook.new(self.screen_w, self.screen_h, {
-        style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
-    })
-    local list = {}
-    for i = 1, pages do list[i] = { ops = {}, src = i } end   -- one ink layer per PDF page
-    nb.pages, nb.index = list, 1
-    self:enterNotebook(nb, true)
+    self:beginDocument("notebook", Storage.stem(path), function()
+        self:closeNotebookPDF()
+        self._nb_pdf_doc, self._nb_pdf_path = doc, path
+        self:clearBackground()
+        self:enterNotebook(Notebook.forPdf(self.screen_w, self.screen_h, {
+            style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = path,
+        }, pages))
+    end, dir)
+    self:saveDocument(true)
 end
 
--- Pick a PDF and open it as a notebook (confirming first if there is work open).
-function InkAwayView:openPdfAsNotebook()
-    self:pickFile(self:defaultDir(), function(path)
+-- Pick a PDF (from KOReader's home folder) and open it as a new notebook in
+-- folder `dir`.
+function InkAwayView:openPdfAsNotebook(dir)
+    self:pickFile(self:homeDir(), function(path)
         if not path:lower():match("%.pdf$") then
             UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
             return
         end
-        self:confirmDiscard(_("Open this PDF as a notebook? The current work will be cleared."), _("Open"),
-            function() self:startPdfNotebook(path) end)
+        self:startPdfNotebook(path, dir)
     end)
 end
 
--- Start a new notebook: ask which ruling to use, then enter notebook mode.
-function InkAwayView:newNotebook()
-    local function begin(style)
-        self.nb_style = style
-        self:setSetting("inkaway_nb_style", style)
-        -- start from the last notebook's ruling (else the drawing grid's spacing
-        -- and strength), so a new notebook matches the last one
-        self:startNotebook({ style = style,
-            size = self.nb_size or self.grid_size or 40,
-            strength = self.nb_strength or self.grid_strength or 45 })
-    end
-    local function go(style)
-        self:confirmDiscard(_("Start a new notebook? The current work will be cleared."), _("New"),
-            function() begin(style) end)
-    end
-    self:closeSheet("_chooser_dialog")
-    local content_w = self:sheetWidth()
-    local closeSelf = function() self:closeSheet("_chooser_dialog") end
+-- A sheet of paper tiles, each a small page drawn with its ruling, six to a
+-- page in rows of three, with arrows to the other pages. `o` holds title,
+-- current (the style shown selected, whose page opens first), onpick(style),
+-- field (the sheet's slot), same (a label for a "same as the notebook" choice
+-- above the papers, picked as "same") and footer(add, content_w, gap, close),
+-- which adds more choices under them.
+local PAPERS_PER_PAGE = 6
+function InkAwayView:openPaperSheet(o)
+    local field = o.field or "_chooser_dialog"
+    self:closeSheet(field)
+    local content_w, gap = self:sheetWidth()
     local styles = self:notebookStyles()
+    local pages = math.ceil(#styles / PAPERS_PER_PAGE)
+    local page = 0
+    for i, s in ipairs(styles) do
+        if s[1] == o.current then page = math.floor((i - 1) / PAPERS_PER_PAGE) end
+    end
+    local rows = PAPERS_PER_PAGE / 3
+    local tileW = math.floor((content_w - 2 * gap) / 3)
+    -- page-shaped tiles, made shorter when the screen (or landscape) has no room
+    -- for them with the title, the optional rows and the sheet's frame
+    local S = function(px) return Screen:scaleBySize(px) end
+    local fixed = S(34) + S(16) + (o.same and S(48) + gap or 0) + (o.footer and S(16) + S(48) or 0)
+        + (pages > 1 and gap + S(48) or 0) + (rows - 1) * gap + 2 * S(18) + S(40)
+    local tileH = math.max(S(90), math.min(math.floor(tileW * 1.25),
+        math.floor((Screen:getHeight() - fixed) / rows)))
+    local closeSelf = function() self:closeSheet(field) end
     local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("New notebook"), content_w, _("Cancel"), closeSelf))
-        add(vspan(10))
-        for i, s in ipairs(styles) do
-            add(self:actionButton(s[2], content_w, function() closeSelf(); go(s[1]) end))
-            if i < #styles then add(vspan(8)) end
+        add(self:sheetTitle(o.title, content_w, _("Cancel"), closeSelf))
+        add(vspan(16))
+        if o.same then
+            add(self:actionButton(o.same, content_w, function() closeSelf(); o.onpick("same") end,
+                o.current == "same"))
+            add(VerticalSpan:new{ width = gap })
         end
+        local first = page * PAPERS_PER_PAGE
+        for r = 0, rows - 1 do
+            local row = HorizontalGroup:new{ align = "center" }
+            for c = 1, 3 do
+                local s = styles[first + r * 3 + c]
+                if s then
+                    if c > 1 then table.insert(row, HorizontalSpan:new{ width = gap }) end
+                    table.insert(row, self:paperTile(s[1], s[2], tileW, tileH, s[1] == o.current,
+                        function() closeSelf(); o.onpick(s[1]) end))
+                end
+            end
+            if r > 0 then add(VerticalSpan:new{ width = gap }) end
+            add(row)
+        end
+        -- the other pages of papers: arrows either side of "1 / 2", turned in place
+        if pages > 1 then
+            add(VerticalSpan:new{ width = gap })
+            add(self:pagerRow(page, pages, content_w, gap, function(d)
+                page = (page + d) % pages
+                self:rebuildSheet(field)
+            end))
+        end
+        if o.footer then o.footer(add, content_w, gap, closeSelf) end
         return content
     end
-    self:showSheet("_chooser_dialog", build)
+    self:showSheet(field, build)
 end
 
--- The notebook paper styles, as { style, label } pairs for the choosers.
+-- New notebook: pick its paper (the last one used is marked), or start it from
+-- a PDF or a saved page template, in folder `dir` (the open document's by
+-- default). The library or overview under it closes once a choice is made.
+function InkAwayView:openNotebookPaper(dir)
+    local function closeUnder()
+        if self._library then self._library:close() end
+        if self._overview then self._overview:close() end
+    end
+    local templates = #Templates.list(self:libraryDir()) > 0
+    self:openPaperSheet{ title = _("New notebook"), field = "_new_dialog", current = self.nb_style,
+        onpick = function(style) closeUnder(); self:newNotebook(style, dir) end,
+        footer = function(add, content_w, gap, closeSelf)
+            add(vspan(16))
+            local pdf = self:actionButton(_("From a PDF\u{2026}"), templates and math.floor((content_w - gap) / 2)
+                or content_w, function() closeSelf(); closeUnder(); self:openPdfAsNotebook(dir) end)
+            if templates then
+                add(HorizontalGroup:new{ align = "center", pdf, HorizontalSpan:new{ width = gap },
+                    self:actionButton(_("From a template\u{2026}"), math.floor((content_w - gap) / 2),
+                        function() closeSelf(); self:chooseNotebookTemplate(dir, closeUnder) end) })
+            else
+                add(pdf)
+            end
+        end }
+end
+
+-- Pick a saved page template and start a notebook with it as the first page.
+function InkAwayView:chooseNotebookTemplate(dir, before)
+    local dialog
+    local rows = {}
+    local names = Templates.list(self:libraryDir())
+    for i = 1, #names do
+        local name = names[i]
+        rows[#rows + 1] = { { text = name, callback = function()
+            UIManager:close(dialog)
+            if before then before() end
+            self:newNotebookFromTemplate(name, dir)
+        end } }
+    end
+    dialog = ButtonDialog:new{ title = _("New notebook from template"), buttons = rows }
+    UIManager:show(dialog)
+end
+
+-- Start a notebook in folder `dir` whose first page is template `name`, on its
+-- paper; it is named after the template and saved at once.
+function InkAwayView:newNotebookFromTemplate(name, dir)
+    local page, style = Templates.load(self:libraryDir(), name)
+    if not page then
+        UIManager:show(InfoMessage:new{ text = _("Could not open that template.") })
+        return
+    end
+    self:beginDocument("notebook", name, function()
+        local nb = Notebook.new(self.screen_w, self.screen_h, { style = style or "lines",
+            size = self.nb_size or self.grid_size or 40, strength = self.nb_strength or self.grid_strength or 45 })
+        nb.pages[1].ops, nb.pages[1].title = Notebook.deepcopy(page.ops or {}), page.title
+        self:clearBackground()
+        self.save_area = nil
+        self:enterNotebook(nb)
+    end, dir)
+    self:saveDocument(true)
+end
+
+-- The notebook paper styles, as { style, label } pairs for the choosers, six to
+-- a page of the picker: blank and the rulings, then layouts for notes, then the
+-- planners (see ink/template.lua).
 function InkAwayView:notebookStyles()
-    return { { "lines", _("Lined") }, { "grid", _("Grid") }, { "dots", _("Dotted") },
-        { "margin", _("Margin ruled") }, { "cornell", _("Cornell") }, { "blank", _("Blank") } }
+    return {
+        { "blank", _("Blank") }, { "lines", _("Lined") }, { "grid", _("Grid") },
+        { "dots", _("Dotted") }, { "iso", _("Isometric") }, { "margin", _("Margin ruled") },
+        { "cornell", _("Cornell") }, { "handwriting", _("Handwriting") }, { "checklist", _("Checklist") },
+        { "twocol", _("2 columns") }, { "storyboard", _("Storyboard") }, { "music", _("Music") },
+        { "daily", _("Daily") }, { "weekly", _("Weekly") }, { "weekcols", _("Week columns") },
+        { "monthly", _("Monthly") }, { "meeting", _("Meeting notes") }, { "habits", _("Habit tracker") },
+    }
 end
 
--- The notebook's bottom bar, matching the toolbar's height and icons.
+-- The notebook's bottom bar: the toolbar's height, icons and columns.
 function InkAwayView:paintNotebookBar(bb, x, y)
     local v = self.view
     local nb = self.notebook
@@ -572,22 +837,25 @@ function InkAwayView:paintNotebookBar(bb, x, y)
     bb:paintRect(x, sy0, w, h, WHITE)
     bb:paintRect(x, sy0, w, 1, FRAME)   -- divider above the strip
     local isz = self._icon_sz or math.max(20, math.floor(h * 0.66))
-    -- one nav icon (toolbar size) centred at cx
-    local function icon(name, cx)
-        local im = self:navImage(name, isz)
+    -- one icon centred at cx, the toolbar's size unless given
+    local function icon(name, cx, size)
+        local im = self:navImage(name, size or isz)
         if not im then return end
         local iw, ih = im:getWidth(), im:getHeight()
         bb:blitFrom(im, math.floor(cx - iw / 2), math.floor(cy - ih / 2), 0, 0, iw, ih)
     end
-    local pad = math.floor(isz * 0.4)              -- comfort padding around each tap zone
-    local zone = isz + 2 * pad
-    -- Prev (far left) and Next (far right)
+    -- every button sits in a toolbar column and takes taps across its width, like
+    -- a toolbar button: Prev under the first tool, Next under Exit. Those two are
+    -- the most used, so they are drawn larger and take taps half a column further
+    -- in, where the bar is empty.
+    local zone = self._btn_w or (isz * 2)
     local prev_cx = x + math.floor(zone / 2)
-    local next_cx = x + w - math.floor(zone / 2)
-    icon("nav_prev", prev_cx)
-    icon("nav_next", next_cx)
-    self._nb_prev = { x = math.floor(prev_cx - zone / 2), y = sy0, w = zone, h = h }
-    self._nb_next = { x = math.floor(next_cx - zone / 2), y = sy0, w = zone, h = h }
+    local next_cx = x + (self._last_btn_center or (w - math.floor(zone / 2)))
+    local nav = math.floor(isz * 1.35)
+    icon("nav_prev", prev_cx, nav)
+    icon("nav_next", next_cx, nav)
+    self._nb_prev = { x = x, y = sy0, w = math.floor(prev_cx + zone) - x, h = h }
+    self._nb_next = { x = math.floor(next_cx - zone), y = sy0, w = x + w - math.floor(next_cx - zone), h = h }
     -- the page counter "index / count", centred; the slash is drawn (the font's
     -- is taller than the digits) and the digits are centred on their measured ink
     local face = self:faceAt("cfont", math.max(10, math.floor(isz * 0.95)))
@@ -614,16 +882,19 @@ function InkAwayView:paintNotebookBar(bb, x, y)
         end
     end
     cntw:paintTo(bb, sx + slw + g, ty); cntw:free()
-    -- add-page icon, just right of the counter, clamped clear of Next
-    local margin = math.floor(isz * 0.5)
-    local icx = math.floor(x + w / 2 + counter_w / 2 + margin + isz / 2)
-    local max_icx = (next_cx - math.floor(zone / 2)) - margin - math.floor(isz / 2)
-    if icx > max_icx then icx = max_icx end
+    -- the overview and add-page icons a column and a half either side of the
+    -- middle, which puts them in toolbar columns too (further out when a long count
+    -- needs the room), clear of Prev and Next
+    local mid = x + w / 2
+    local off = math.max(math.floor(zone * 1.5), math.floor(counter_w / 2 + isz * 0.6 + isz / 2))
+    local ocx = math.max(math.floor(mid - off), prev_cx + zone)
+    local icx = math.min(math.floor(mid + off), next_cx - zone)
+    icon("overview", ocx)
     icon("newpage", icx)
+    self._nb_overview = { x = math.floor(ocx - zone / 2), y = sy0, w = zone, h = h }
     self._nb_plus = { x = math.floor(icx - zone / 2), y = sy0, w = zone, h = h }
-    -- the counter opens the page menu; its tap zone spans the gap between Prev
-    -- and the add-page icon
-    local count_x = self._nb_prev.x + self._nb_prev.w
+    -- the counter opens the page menu; its tap zone spans the room between them
+    local count_x = self._nb_overview.x + self._nb_overview.w
     self._nb_count = { x = count_x, y = sy0, w = math.max(1, self._nb_plus.x - count_x), h = h }
 end
 

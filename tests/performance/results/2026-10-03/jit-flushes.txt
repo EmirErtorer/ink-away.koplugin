@@ -1,0 +1,27 @@
+How often LuaJIT threw away its compiled code, with its default settings (resJit, 6 runs per row).
+A flush drops every compiled trace; the code runs interpreted until it is compiled again.
+old = main cf9949f, new = notebook-library 997ed2b. macOS arm64 also fails to place machine code at
+random ("failed to allocate mcode memory"), which causes flushes of its own, so the counts are high on
+both; the difference between them is the point.
+
+part / setup               ver   flushed  5+ flushes  median  traces
+io_colour-0_1072x1448      old     6/6         2/6         2     696
+io_colour-0_1072x1448      new     6/6         5/6         7    1530
+io_grey-0_1072x1448        old     5/6         0/6         1     511
+io_grey-0_1072x1448        new     6/6         3/6         6    1300
+ui_colour-0_1072x1448      old     6/6         2/6         4    1953
+ui_colour-0_1072x1448      new     6/6         6/6        16    3510
+ui_grey-0_1072x1448        old     6/6         4/6         7    2522
+ui_grey-0_1072x1448        new     6/6         6/6        16    3708
+
+Traces compiled per run with the tuned settings (no flushes), median of 10 rounds. The new
+version's io part also runs the library, overview and folder scenarios, so only the ui rows
+compare like for like:
+  io_colour-0_1072x1448      old   473   new   900
+  io_grey-0_1072x1448        old   396   new   675
+  io_grey-0_1860x2480        old   391   new   695
+  io_grey-1_1072x1448        old   459   new   772
+  ui_colour-0_1072x1448      old  1093   new  1294
+  ui_grey-0_1072x1448        old  1124   new  1264
+  ui_grey-0_1860x2480        old  1158   new  1205
+  ui_grey-1_1072x1448        old  1173   new  1379

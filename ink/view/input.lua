@@ -1,6 +1,7 @@
 --[[
 Touch and pen input that bypasses KOReader's gesture detector: palm rejection
-through the stylus callback, and raw finger tracking for the drawing tools.
+through the stylus callback (handing the pen back to the detector when it works
+the UI), and raw finger tracking for the drawing tools.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -33,6 +34,18 @@ local RAW_HANDOFF_CANCEL_PX = 24
 -- handwriting is never joined up by straight connectors.
 local RAW_BRIDGE_MS = 40
 local timevMs = Stylus.timevMs
+
+-- A raw finger's stroke is drawn once the finger has moved RAW_START_SLOP
+-- (scaled px, about a millimetre) or rested RAW_START_MS, or lifts. Until then
+-- nothing is on screen, so the first finger of a two-finger tap (undo) or a pinch
+-- leaves no dot to clear away. The stroke then starts where the finger landed and
+-- takes every point it passed, so none of it is lost.
+local RAW_START_SLOP = 6
+local RAW_START_MS = 90
+
+-- How far (screen px) a gesture may sit from where the stylus hook last saw the
+-- pen and still count as the pen's own, while it works the UI.
+local PEN_UI_SLOP = 3
 
 local InkAwayView = {}
 
@@ -184,17 +197,97 @@ function InkAwayView:resetPenState()
     self._stylus_input = nil
     self._pen_hold_at = nil
     UIManager:unschedule(self._pen_hold_cb)
+    self._pen_ui_contact, self._pen_ui = false, nil
+    UIManager:unschedule(self._pen_ui_end)
 end
 
 -- True while finger input must be ignored: the pen or a palm is physically down,
 -- the pen hovers in range, or the short grace after everything lifts
 -- (_reject_finger). Latching on physical presence, not the timer alone, means a
 -- stray palm frame's timer can never drop rejection mid-stroke and let a line
--- appear between palm and pen. Pen-fed events set _pen_feeding to pass through.
-function InkAwayView:fingerRejected()
+-- appear between palm and pen. Pen-fed events set _pen_feeding to pass through,
+-- and so does a gesture at `pos` that is the pen itself working the UI.
+function InkAwayView:fingerRejected(pos)
     if self._pen_feeding then return false end
+    if pos and self._pen_ui and self:penUiGesture(pos) then return false end
     return self._pen_state.down or self._palm_count > 0 or self._reject_finger
         or self:penInRange()
+end
+
+------------------------------------------------------------------------------
+-- Fingers that navigate, and page swipes
+------------------------------------------------------------------------------
+
+-- What a finger touch on the page does instead of using the tool: "navigate" or
+-- "nothing", from the Finger on the page setting, or nil when it uses the tool.
+-- With palm rejection on the pen does the writing and a finger never draws: a
+-- hand resting on the page while the pen is away is a finger too.
+function InkAwayView:fingerOnPage()
+    if self._pen_feeding or not self.palm_reject then return nil end
+    return self.finger_mode == "nothing" and "nothing" or "navigate"
+end
+
+-- Is the page zoomed in past where it starts (filling the drawing area)?
+function InkAwayView:zoomedIn()
+    return self.view.zoom > (self.zoom_min or 0) * 1.001
+end
+
+-- Is the page zoomed in wider than the drawing area, so it can pan sideways?
+function InkAwayView:sidewaysRoom()
+    local v = self.view
+    return v.canvas_w * v.zoom > v.area_w + 1
+end
+
+-- Do sideways swipes turn pages? On a notebook page, unless it is zoomed in so
+-- far that sideways moves pan it.
+function InkAwayView:pageSwipes()
+    return self.notebook ~= nil and not self:sidewaysRoom()
+end
+
+-- Turn the page for a swipe that moved (dx, dy) screen px, if it was sideways
+-- enough and far enough: to the left for the next page, as in the reader.
+-- Returns whether it turned.
+function InkAwayView:swipeTurn(dx, dy)
+    if not self:pageSwipes() then return false end
+    if math.abs(dx) < self.view.area_w / 8 or math.abs(dx) <= 1.5 * math.abs(dy) then return false end
+    self:nbGo(dx < 0 and 1 or -1)
+    return true
+end
+
+-- A navigating finger moved to `pos`: pan by the step, unless it is a sideways
+-- swipe on a page that cannot pan sideways (it turns the page at the lift).
+function InkAwayView:fingerNavPan(pos)
+    local n = self._finger_nav
+    if n.mode ~= "navigate" or not pos then return true end
+    local dx, dy = pos.x - n.lx, pos.y - n.ly
+    n.lx, n.ly = pos.x, pos.y
+    if self:pageSwipes() and math.abs(pos.x - n.x) > math.abs(pos.y - n.y) then return true end
+    self:panByScreen(dx, dy)
+    return true
+end
+
+-- A navigating finger lifted at `pos`, or flicked `dir`: a long enough sideways
+-- drag or a sideways flick turns the page.
+function InkAwayView:fingerNavEnd(pos, dir)
+    local n = self._finger_nav
+    self._finger_nav = nil
+    if n.mode ~= "navigate" or not self:pageSwipes() then return true end
+    if dir == "west" or dir == "east" then
+        self:nbGo(dir == "west" and 1 or -1)
+    elseif pos then
+        local dx, dy = pos.x - n.x, pos.y - n.y
+        if math.abs(dx) >= self.view.area_w / 6 and math.abs(dx) > 2 * math.abs(dy) then
+            self:nbGo(dx < 0 and 1 or -1)
+        end
+    end
+    return true
+end
+
+-- A hold at `pos` by a navigating finger: open the picture's or shape's menu
+-- there (duplicate, delete, flip...), as a hold does with the Move tool.
+function InkAwayView:holdMenuAt(pos)
+    local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+    if hit and self:selectOps({ hit.idx }, "pan") then self:openSelectionMenu() end
 end
 
 -- Is the pen hovering over (or on) the screen? On a Wacom device KOReader keeps
@@ -324,6 +417,16 @@ function InkAwayView:onStylusSlot(inp, slot)
     -- to 0) keep drawing once its slotted frames arrive.
     local is_pen_slot = (self._learned_pen_slot ~= nil and sn == self._learned_pen_slot)
                      or (input and input.pen_slot ~= nil and sn == input.pen_slot)
+    -- A pen contact working the UI stays with the gesture detector until it lifts
+    -- or leaves range (see penUiStart). Another pen-like contact meanwhile is a palm.
+    if self._pen_ui_contact then
+        if (sn == self._pen_ui.slot or is_pen_slot)
+                and (role == Stylus.ROLE_PEN or role == Stylus.ROLE_PEN_OUT) then
+            return self:penUiFrame(slot, role == Stylus.ROLE_PEN_OUT)
+        elseif role == Stylus.ROLE_PEN then
+            role = Stylus.ROLE_PALM
+        end
+    end
     if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner
             and not is_pen_slot then
         role = Stylus.ROLE_PALM
@@ -343,7 +446,14 @@ function InkAwayView:onStylusSlot(inp, slot)
     end
     -- ROLE_PEN: a trusted pen drives our own touch, pan and release. Palms are
     -- filtered out above, so an eraser tool here is the pen's own rear eraser or a
-    -- held barrel button.
+    -- held barrel button. When the pen may tap the UI (pen_ui), a contact that
+    -- lands on it is handed to the gesture detector instead, decided on its first
+    -- point.
+    if self.pen_ui and not self._pen_started and slot.id ~= nil and slot.id >= 0
+            and slot.x and slot.y then
+        local x, y = self:penScreenXY(slot)
+        if self:penOnUI(x, y) then return self:penUiStart(sn, x, y) end
+    end
     local action = Stylus.step(self._pen_state, slot.id)
     if action == "down" then
         self._pen_owner = sn        -- this slot owns the stroke until it lifts
@@ -376,13 +486,14 @@ function InkAwayView:penDropFingerOps()
         UIManager:unschedule(self._finalize)
         self.pending_lift = nil
         self.capturing = false
+        if self._wipe then self:wipeCancel() end
         self.canvas:cancelStroke()
         self.last_cx, self.last_cy = nil, nil
         self:recompose()
     end
     self:cancelShape()      -- drop a half-drawn shape
     self.pan_last = nil
-    self.lassoing, self.lasso_scr, self.sel_press = false, nil, nil
+    self.lassoing, self.lasso_scr = false, nil
 end
 
 function InkAwayView:penDown(slot, facts)
@@ -469,6 +580,86 @@ function InkAwayView:penUp()
 end
 
 ------------------------------------------------------------------------------
+-- The pen on the UI (Pen taps menus and buttons)
+--
+-- A pen contact that lands on the toolbar, a floating control, the notebook bar,
+-- or anything shown over the canvas (a menu, a dialog, the keyboard) is left to
+-- KOReader's gesture detector, which treats it as a finger until it lifts. The
+-- choice is made on the contact's first point, so a stroke that starts on the
+-- canvas keeps drawing wherever it goes.
+------------------------------------------------------------------------------
+
+-- The widget a touch reaches first: the topmost one shown, passing over toasts
+-- and messages that close by themselves, which never hold on to a touch.
+function InkAwayView:touchTarget()
+    local stack = UIManager._window_stack
+    if type(stack) ~= "table" then
+        return UIManager.getTopmostVisibleWidget and UIManager:getTopmostVisibleWidget()
+    end
+    for i = #stack, 1, -1 do
+        local w = stack[i] and stack[i].widget
+        if w and not w.invisible and not w.toast and not w.timeout then return w end
+    end
+end
+
+-- Does a pen contact landing at screen (x, y) go to the UI rather than the canvas?
+function InkAwayView:penOnUI(x, y)
+    local top = self:touchTarget()
+    if top and top ~= self then return true end
+    return not self:inArea(x, y) or self:fabHit(x, y) ~= nil
+end
+
+-- Start a UI contact: leave it to the gesture detector and remember where the pen
+-- is, so its own gestures get past the finger rejection while a palm elsewhere is
+-- still kept out (see penUiGesture).
+function InkAwayView:penUiStart(sn, x, y)
+    -- a first frame without coordinates may already have opened a pen stroke; it
+    -- drew nothing, so forget it
+    if self._pen_state.down then
+        self._pen_state = Stylus.new()
+        self._pen_owner, self._pen_kin = nil, nil
+        if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    end
+    self._pen_ui_contact = true
+    self._pen_ui = { slot = sn, x0 = x, y0 = y, x = x, y = y }
+    UIManager:unschedule(self._pen_ui_end)
+    self._reject_finger = true
+    UIManager:unschedule(self._pen_clear)
+    return false
+end
+
+-- One frame of a UI contact, passed on to the gesture detector. The contact ends
+-- on the lift or when the pen leaves range (given a lift there if it never came).
+-- Its tap or release is dispatched after this frame, so the pass-through for its
+-- gestures lasts until the next tick.
+function InkAwayView:penUiFrame(slot, leaving)
+    if slot.id ~= nil and slot.id >= 0 then
+        if not leaving then
+            if slot.x and slot.y then
+                local u = self._pen_ui
+                u.x, u.y = self:penScreenXY(slot)
+            end
+            return false
+        end
+        slot.id = -1
+    end
+    self._pen_ui_contact = false
+    UIManager:nextTick(self._pen_ui_end)
+    UIManager:unschedule(self._pen_clear)
+    UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+    return false
+end
+
+-- Is a gesture at `pos` the pen's own UI contact? The detector reports the pen
+-- where the stylus hook last saw it, or for a swipe where it landed.
+function InkAwayView:penUiGesture(pos)
+    local u = self._pen_ui
+    if not (u and pos.x and pos.y) then return false end
+    return (math.abs(pos.x - u.x) <= PEN_UI_SLOP and math.abs(pos.y - u.y) <= PEN_UI_SLOP)
+        or (math.abs(pos.x - u.x0) <= PEN_UI_SLOP and math.abs(pos.y - u.y0) <= PEN_UI_SLOP)
+end
+
+------------------------------------------------------------------------------
 -- Raw finger tracking
 --
 -- KOReader's GestureDetector emits nothing for a contact until it has moved
@@ -505,7 +696,10 @@ function InkAwayView:installRawFinger()
     end
     self._raw_gd, self._raw_own = gd, rawget(gd, "feedEvent")
     self._raw_wrapper, self._raw_installed = wrapper, wrapper
-    self._raw = { kept = {} }
+    self._raw = { kept = {}, buf = {} }
+    self._raw_start_cb = self._raw_start_cb or function()
+        if self._raw and self._raw.wait then self:rawStart() end
+    end
     gd.feedEvent = wrapper
     return true
 end
@@ -514,6 +708,7 @@ function InkAwayView:uninstallRawFinger()
     if not self._raw_installed then return end
     local gd = self._raw_gd
     if self._raw and self._raw.slot ~= nil then pcall(self.rawRelease, self, false) end
+    if self._raw_start_cb then UIManager:unschedule(self._raw_start_cb) end
     if gd and rawget(gd, "feedEvent") == self._raw_installed then
         gd.feedEvent = self._raw_own       -- nil falls back to the class method
     end                                    -- else a wrapper chained on top: ours stays transparent
@@ -528,22 +723,48 @@ function InkAwayView:rawCanOwn(gd, x, y)
     if self._raw.ignore_slot ~= nil then return false end  -- our handed-off finger is still down
     if self:fingerRejected() then return false end
     if not self:inArea(x, y) or self:fabHit(x, y) then return false end
-    if self.selecting_crop or self.rotating or self.image_rotating or self.active_image then
-        return false
-    end
+    if self.selecting_crop or self.selection then return false end
     local top = UIManager.getTopmostVisibleWidget and UIManager:getTopmostVisibleWidget()
     if top and top ~= self then return false end
     return true
 end
 
+-- Draw the owned contact's stroke, held back until now (see RAW_START_SLOP): from
+-- where the finger landed through every point it has passed since.
+function InkAwayView:rawStart()
+    local r = self._raw
+    if not (r and r.wait) then return end
+    r.wait = false
+    UIManager:unschedule(self._raw_start_cb)
+    self:feedPen("down", r.x0, r.y0)
+    local buf = r.buf
+    for i = 1, #buf, 2 do self:feedPen("move", buf[i], buf[i + 1]) end
+    for i = #buf, 1, -1 do buf[i] = nil end
+end
+
+-- Forget a stroke that was never drawn.
+function InkAwayView:rawDropWaiting()
+    local r = self._raw
+    if not (r and r.wait) then return end
+    r.wait = false
+    UIManager:unschedule(self._raw_start_cb)
+    for i = #r.buf, 1, -1 do r.buf[i] = nil end
+end
+
 -- End the owned contact: a lift, or a hand-off because a second finger landed.
 -- A hand-off of a stroke that barely started (the first finger of a two-finger
--- pan or pinch) is cancelled rather than committed as a stray dot.
+-- tap, pan or pinch) is cancelled rather than committed as a stray dot; one not
+-- yet drawn just goes.
 function InkAwayView:rawRelease(handoff, tev)
     local r = self._raw
     if r.slot == nil then return end
     r.ignore_slot, r.ignore_id = r.slot, r.id
     r.slot, r.id = nil, nil
+    if handoff and r.wait then
+        self:rawDropWaiting()
+        return
+    end
+    if r.wait then self:rawStart() end   -- a lift before the stroke was drawn: a dot
     if handoff then
         local now = tev and timevMs(tev.timev)
         local young = now and r.t0 and (now - r.t0) < RAW_HANDOFF_CANCEL_MS
@@ -563,9 +784,13 @@ end
 -- The frame's changed slots, before the detector sees them. Returns a copy
 -- without the owned slot, or nil to pass the frame through untouched. The tev
 -- tables are Input's persistent per-slot records, so values are copied out.
+-- When a second finger lands, the first one's record goes to the detector in
+-- that same frame, so it sees both fingers from then on: a resting first finger
+-- sends no frames of its own, and without this a two-finger tap would reach it as
+-- a one-finger tap.
 function InkAwayView:onRawFrame(gd, tevs)
     local r = self._raw
-    local strip
+    local strip, handoff_tev
     for i = 1, #tevs do
         local tev = tevs[i]
         local slot, id = tev.slot or 0, tev.id
@@ -579,7 +804,14 @@ function InkAwayView:onRawFrame(gd, tevs)
                     if x ~= r.x or y ~= r.y then
                         r.len = r.len + math.abs(x - r.x) + math.abs(y - r.y)
                         r.x, r.y = x, y
-                        self:feedPen("move", x, y)
+                        if r.wait then
+                            local buf = r.buf
+                            buf[#buf + 1], buf[#buf + 2] = x, y
+                            local slop = Screen:scaleBySize(RAW_START_SLOP)
+                            if math.abs(x - r.x0) > slop or math.abs(y - r.y0) > slop then self:rawStart() end
+                        else
+                            self:feedPen("move", x, y)
+                        end
                     end
                 end
                 strip = strip or {}; strip[i] = true
@@ -588,6 +820,7 @@ function InkAwayView:onRawFrame(gd, tevs)
                 if not down then strip = strip or {}; strip[i] = true end
             end
         elseif r.slot ~= nil and down and not gd:getContact(slot) then
+            handoff_tev = r.tev
             self:rawRelease(true, tev)         -- second finger: multi-touch goes to gestures
         end
         if r.ignore_slot == slot and (not down or id ~= r.ignore_id) then
@@ -603,10 +836,26 @@ function InkAwayView:onRawFrame(gd, tevs)
                     self:flushPending()       -- a real lift: never bridge to the next letter
                 end
                 r.slot, r.id, r.x, r.y, r.len = slot, id, x, y, 0
-                r.t0 = t
-                self:feedPen("down", x, y)
+                r.t0, r.tev, r.x0, r.y0 = t, tev, x, y
+                r.wait = true              -- drawn once it moves or rests (see rawStart)
+                UIManager:unschedule(self._raw_start_cb)
+                UIManager:scheduleIn(RAW_START_MS / 1000, self._raw_start_cb)
                 strip = strip or {}; strip[i] = true
             end
+        end
+    end
+    if handoff_tev then
+        local present = false
+        for i = 1, #tevs do
+            if tevs[i] == handoff_tev then present = true; if strip then strip[i] = nil end end
+        end
+        if not present then
+            strip = strip or {}
+            local kept = r.kept
+            for k = #kept, 1, -1 do kept[k] = nil end
+            kept[1] = handoff_tev
+            for i = 1, #tevs do if not strip[i] then kept[#kept + 1] = tevs[i] end end
+            return kept
         end
     end
     if not strip then return nil end

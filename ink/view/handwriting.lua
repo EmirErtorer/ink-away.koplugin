@@ -1,178 +1,149 @@
 --[[
-Handwriting to text (unfinished, hidden unless show_handwriting is set): printed
-pen strokes are recognised after a pause and replaced by a text box. The matcher
-is ink/hwr.lua; its templates come from the font's own glyphs.
+Handwriting to text: lasso some printed writing, then "Convert to text" in the
+selection's menu. The strokes are split into lines, words and characters
+(ink/hwr.lua), each character read by the small network in ink/hwrnet.lua,
+each word checked against the English word list (ink/hwrwords.lua), and the
+writing replaced by one text box in the current text style, in one undo step.
+Everything runs on the reader; nothing is sent anywhere.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Font = require("ui/font")
+local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
-local Notebook = require("ink/notebook")
+local logger = require("logger")
+local _ = require("gettext")
+local Hwr = require("ink/hwr")
 local Text = require("ink/text")
-
-local HWR_PAUSE = 1.1   -- idle seconds after the last pen stroke before recognising
 
 local InkAwayView = {}
 
--- Sample the outline of a rendered glyph into a point cloud. The outline (inked
--- pixels next to blank ones) is a thin curve like a handwritten stroke, which
--- the matcher tells apart far better than solid fills.
-function InkAwayView:hwrGlyphCloud(face, charcode)
-    local RenderText = require("ui/rendertext")
-    local ok, glyph = pcall(function() return RenderText:getGlyph(face, charcode) end)
-    if not ok or not glyph or not glyph.bb then return nil end
-    local bb = glyph.bb
-    local w, h = bb:getWidth(), bb:getHeight()
-    if w < 3 or h < 3 then return nil end
-    -- scan the glyph into a boolean ink map once
-    local map = {}
-    for y = 0, h - 1 do
-        local row = {}
-        for x = 0, w - 1 do
-            local okp, v = pcall(function()
-                local c = bb:getPixel(x, y)
-                if c and c.getColor8 then return c:getColor8().a end
-                return 0
-            end)
-            row[x] = (okp and v and v > 128) and true or false
-        end
-        map[y] = row
+-- The model and the word list, loaded on first use and kept until Ink Away
+-- closes (see freeHandwriting). Returns net, words, or nil and a message.
+function InkAwayView:hwrModels()
+    if self._hwr_net and self._hwr_words then return self._hwr_net, self._hwr_words end
+    local dir = self:pluginDir() .. "ink/data/"
+    local HwrNet = require("ink/hwrnet")
+    local net, err = HwrNet.load(dir .. "hwr_en.bin")
+    if not net then
+        logger.warn("InkAway: handwriting model:", err)
+        return nil, _("The handwriting model could not be loaded.")
     end
-    -- keep inked pixels that touch a blank pixel (or the bitmap edge): the outline
-    local pts = {}
-    for y = 0, h - 1 do
-        for x = 0, w - 1 do
-            if map[y][x] then
-                local edge = x == 0 or x == w - 1 or y == 0 or y == h - 1
-                    or not map[y][x - 1] or not map[y][x + 1]
-                    or not map[y - 1][x] or not map[y + 1][x]
-                if edge then pts[#pts + 1] = { x = x, y = y } end
-            end
-        end
+    local Words = require("ink/hwrwords")
+    local words, werr = Words.load(dir .. "hwr_words_en.txt", net.classes)
+    if not words then
+        logger.warn("InkAway: word list:", werr)
+        return nil, _("The word list could not be loaded.")
     end
-    return pts
+    self._hwr_net, self._hwr_words = net, words
+    return net, words
 end
 
--- Build the recogniser from font glyphs for the given character list. Cached.
-function InkAwayView:hwrRecognizer(chars)
-    if self._hwr_rec then return self._hwr_rec end
-    local Hwr = require("ink/hwr")
-    local rec = Hwr.Recognizer.new()
-    local ok = pcall(function()
-        local face = Font:getFace("cfont", 48)
-        chars = chars or "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        for ch in chars:gmatch(".") do
-            local pts = self:hwrGlyphCloud(face, string.byte(ch))
-            if pts and #pts >= 8 then rec:add(ch, Hwr.normalizeCloud(pts), true) end
-        end
-    end)
-    if ok and rec:count() > 0 then self._hwr_rec = rec end
-    return self._hwr_rec
+function InkAwayView:freeHandwriting()
+    self._hwr_net, self._hwr_words = nil, nil
 end
 
--- Buffer a just-committed pen stroke and restart the pause timer; when the pen
--- rests for HWR_PAUSE, hwrRecognizePending runs.
-function InkAwayView:hwrCapture(op)
-    self._hwr_ops = self._hwr_ops or {}
-    self._hwr_ops[#self._hwr_ops + 1] = op
-    if not self._hwr_cb then self._hwr_cb = function() self:hwrRecognizePending() end end
-    UIManager:unschedule(self._hwr_cb)
-    UIManager:scheduleIn(HWR_PAUSE, self._hwr_cb)
-end
-
--- Drop any pending handwriting (timer and buffer), when the feature is turned
--- off, the tool changes or the view closes.
-function InkAwayView:hwrCancel()
-    if self._hwr_cb then UIManager:unschedule(self._hwr_cb) end
-    self._hwr_ops = nil
-end
-
--- The pause fired: recognise the buffered pen strokes and turn them into text.
-function InkAwayView:hwrRecognizePending()
-    local buf = self._hwr_ops
-    self._hwr_ops = nil
-    if not buf or #buf == 0 then return end
-    if self.editing_text or self.capturing then return end   -- not during an open box or a live stroke
-    local Hwr = require("ink/hwr")
-    local rec = self:hwrRecognizer()
-    if not rec then return end
-    -- keep only buffered ops still on the canvas (not undone, same page)
-    local present = {}
-    for i = 1, #self.canvas.ops do present[self.canvas.ops[i]] = true end
-    local strokes, live_ops = {}, {}
-    for _, op in ipairs(buf) do
-        if present[op] and op.kind == "ink" and op.pts and #op.pts >= 2 then
-            local s = {}
-            for i = 1, #op.pts, 2 do s[#s + 1] = { x = op.pts[i], y = op.pts[i + 1] } end
-            strokes[#strokes + 1] = s
-            live_ops[#live_ops + 1] = op
+-- The strokes of the ops at `idxs` that can be read as writing: pen ink, and the
+-- lines a hold to straighten may have made of single strokes. Returns the strokes (flat
+-- point lists, in writing order) and their ops.
+function InkAwayView:writingOf(idxs)
+    local sorted = {}
+    for i, idx in ipairs(idxs) do sorted[i] = idx end
+    table.sort(sorted)
+    local strokes, ops = {}, {}
+    for _, idx in ipairs(sorted) do
+        local op = self.canvas.ops[idx]
+        if op and op.pts and #op.pts >= 2
+                and (op.kind == "ink" or (op.kind == "shape" and op.shape == "line")) then
+            strokes[#strokes + 1] = op.pts
+            ops[#ops + 1] = op
         end
     end
-    if #strokes == 0 then return end
-    local out = {}
-    for _, tk in ipairs(Hwr.segment(strokes)) do
-        if tk.kind == "space" then out[#out + 1] = " "
-        elseif tk.kind == "newline" then out[#out + 1] = "\n"
-        elseif tk.kind == "char" then out[#out + 1] = rec:recognize(tk.strokes) or "" end
-    end
-    local text = table.concat(out)
-    if text:gsub("%s", "") == "" then return end   -- nothing recognised; leave the ink alone
-    local minx, miny, maxx, maxy = math.huge, math.huge, -math.huge, -math.huge
-    for _, s in ipairs(strokes) do
-        for _, p in ipairs(s) do
-            if p.x < minx then minx = p.x end
-            if p.x > maxx then maxx = p.x end
-            if p.y < miny then miny = p.y end
-            if p.y > maxy then maxy = p.y end
-        end
-    end
-    self:hwrInsertText(text, live_ops, minx, miny, maxx, maxy)
+    return strokes, ops
 end
 
--- Replace the recognised ink with a text box, in one undoable step. Writing just
--- below or beside the last recognised box is appended to it, so line after line
--- stays in one box. Uses the current text font, size and grid snap.
-function InkAwayView:hwrInsertText(text, ink_ops, minx, miny, maxx, maxy)
+-- Does the selection hold anything that could be writing?
+function InkAwayView:selectionHasWriting()
+    if not self.selection then return false end
+    local strokes = self:writingOf(self.selection.idxs)
+    return #strokes > 0
+end
+
+-- Read `strokes` (flat point lists in writing order). Returns the text: words
+-- joined by spaces, lines by new lines.
+function InkAwayView:readWriting(strokes, net, words)
+    return Hwr.read(strokes, net, words)
+end
+
+-- Convert the selected writing to text. Shows a message when there is none, or
+-- when something fails, rather than letting an error reach KOReader.
+function InkAwayView:convertSelectionToText()
+    local ok, err = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
+    if not ok then
+        logger.warn("InkAway: converting handwriting failed:", err)
+        UIManager:show(InfoMessage:new{ text = _("Something went wrong reading the writing.") })
+    end
+end
+
+function InkAwayView:convertSelectionToTextNow()
+    if not self.selection then return end
+    local strokes, ops = self:writingOf(self.selection.idxs)
+    if #strokes == 0 then
+        UIManager:show(InfoMessage:new{ text = _("There is no handwriting in the selection."), timeout = 2 })
+        return
+    end
+    local net, words = self:hwrModels()
+    if not net then
+        UIManager:show(InfoMessage:new{ text = words })
+        return
+    end
+    -- a few lines take a second or two on a reader: say so first
+    local note
+    if #strokes > 12 then
+        note = InfoMessage:new{ text = _("Reading the writing\u{2026}") }
+        UIManager:show(note)
+        if UIManager.forceRePaint then UIManager:forceRePaint() end
+    end
+    local ok, text = pcall(self.readWriting, self, strokes, net, words)
+    if note then UIManager:close(note) end
+    if not ok then
+        logger.warn("InkAway: reading handwriting failed:", text)
+        UIManager:show(InfoMessage:new{ text = _("Something went wrong reading the writing.") })
+        return
+    end
+    if text:gsub("%s", "") == "" then
+        UIManager:show(InfoMessage:new{ text = _("No writing could be read there."), timeout = 2 })
+        return
+    end
+    local x0, y0 = math.huge, math.huge
+    for _, pts in ipairs(strokes) do
+        for i = 1, #pts - 1, 2 do
+            if pts[i] < x0 then x0 = pts[i] end
+            if pts[i + 1] < y0 then y0 = pts[i + 1] end
+        end
+    end
+    self:resetLasso()
+    self:replaceWithText(text, ops, x0, y0)
+end
+
+-- Replace the ops `ink_ops` with one text box holding `text`, its top left at
+-- canvas (x, y), in the current text style. One undo step.
+function InkAwayView:replaceWithText(text, ink_ops, x, y)
     self.canvas:pushHistory()
-    -- remove the recognised ink ops (highest index first)
-    local idxs = {}
-    for _, op in ipairs(ink_ops) do
-        for i = #self.canvas.ops, 1, -1 do
-            if self.canvas.ops[i] == op then idxs[#idxs + 1] = i; break end
-        end
+    local gone = {}
+    for _, op in ipairs(ink_ops) do gone[op] = true end
+    for i = #self.canvas.ops, 1, -1 do
+        if gone[self.canvas.ops[i]] then table.remove(self.canvas.ops, i) end
     end
-    table.sort(idxs, function(a, b) return a > b end)
-    for _, i in ipairs(idxs) do table.remove(self.canvas.ops, i) end
-
     local v = self.view
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
-    -- reuse the previous box if it is still there and the new writing is within
-    -- about a line of it (cloned, so the history snapshot is untouched)
-    local last = self._hwr_last
-    local reuse_idx
-    if last and last.op and miny >= last.top - size and miny <= last.bottom + 1.6 * size then
-        for i = 1, #self.canvas.ops do if self.canvas.ops[i] == last.op then reuse_idx = i; break end end
-    end
-    if reuse_idx then
-        local op = self.canvas.ops[reuse_idx]
-        local nop = self.canvas:cloneOp(op)
-        nop.paras = Notebook.deepcopy(op.paras)
-        local cp = #nop.paras
-        local join = (miny > last.bottom + 0.4 * size) and "\n" or " "
-        Text.insert(nop, { p = cp, o = Text.paraLen(nop.paras[cp]) }, join .. text, nil)
-        self.canvas.ops[reuse_idx] = nop
-        self._hwr_last = { op = nop, top = last.top, bottom = math.max(last.bottom, maxy) }
-    else
-        local margin = math.max(6, math.floor(v.canvas_w * 0.02))
-        local x = math.max(margin, math.min(math.floor(minx), v.canvas_w - margin - 10))
-        local op = Text.new{ x = x, y = math.floor(miny), w = v.canvas_w - x - margin,
-            size = size, font = self.text_font, align = "left", grid_snap = self.text_grid_snap }
-        if self.text_grid_snap then self:snapTextBoxToGrid(op) end
-        Text.insert(op, { p = 1, o = 0 }, text, nil)
-        self.canvas.ops[#self.canvas.ops + 1] = op
-        self._hwr_last = { op = op, top = miny, bottom = maxy }
-    end
-    self.dirty = true
+    local margin = math.max(6, math.floor(v.canvas_w * 0.02))
+    x = math.max(margin, math.min(math.floor(x), v.canvas_w - margin - 10))
+    local op = Text.new{ x = x, y = math.floor(y), w = v.canvas_w - x - margin,
+        size = size, font = self.text_font, align = "left", grid_snap = self.text_grid_snap }
+    if self.text_grid_snap then self:snapTextBoxToGrid(op) end
+    Text.insert(op, { p = 1, o = 0 }, text, nil)
+    self.canvas.ops[#self.canvas.ops + 1] = op
+    self:markDirty()
     self:composeCanvas(); self:renderView()
     self:refresh(self, "ui", self:areaScreenRect())
 end

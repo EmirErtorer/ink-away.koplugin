@@ -17,6 +17,7 @@ Plain Lua, so the headless tests drive it directly.
 ]]
 
 local Geom = require("ink/geom")
+local Shapes = require("ink/shapes")
 
 local pointInPoly = Geom.pointInPoly
 
@@ -37,6 +38,7 @@ function Canvas.new(w, h)
         live = nil,        -- stroke currently being drawn
         undo_stack = {},   -- past ops-list snapshots (shallow)
         redo_stack = {},
+        rev = 0,           -- counts every change to the ops, so a save can tell what changed
     }, Canvas)
 end
 
@@ -54,6 +56,7 @@ end
 -- history instead of a copy of the whole list, which would make a long drawing
 -- slower as it fills.
 local function pushEntry(self, entry)
+    self.rev = self.rev + 1
     local u = self.undo_stack
     u[#u + 1] = entry
     if #u > HISTORY_MAX then table.remove(u, 1) end
@@ -164,6 +167,7 @@ end
 function Canvas:undo()
     local entry = table.remove(self.undo_stack)
     if not entry then return false end
+    self.rev = self.rev + 1
     if entry.snap ~= nil then
         self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self) }
         self.ops = entry.snap
@@ -178,6 +182,7 @@ end
 function Canvas:redo()
     local entry = table.remove(self.redo_stack)
     if not entry then return false end
+    self.rev = self.rev + 1
     if entry.snap ~= nil then
         self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self) }
         self.ops = entry.snap
@@ -197,6 +202,7 @@ end
 
 -- Replace all ops (used when loading a project). Clears history.
 function Canvas:setOps(ops)
+    self.rev = self.rev + 1
     self.ops = ops or {}
     self.live = nil
     self.undo_stack = {}
@@ -238,6 +244,37 @@ function Canvas:opRect(op, extra)
     }
 end
 
+-- The box x0, y0, x1, y1 (canvas px) around everything an op draws, before any
+-- symmetry copies, or nil when it draws nothing (or is text not laid out yet).
+function Canvas.opBox(op)
+    local k = op.kind
+    if k == "link" then
+        return op.x, op.y, op.x + (op.w or 0), op.y + (op.h or 0)
+    elseif k == "text" then
+        if not ((op.h or 0) > 0) then return nil end
+        return op.x, op.y, op.x + (op.w or 0), op.y + op.h
+    elseif k == "image" then
+        -- a turned picture stays inside the circle around its box
+        local h = math.sqrt(op.w * op.w + op.h * op.h) / 2 + 1
+        local cx, cy = op.x + op.w / 2, op.y + op.h / 2
+        return cx - h, cy - h, cx + h, cy + h
+    elseif k == "fill" then
+        local r = op.runs
+        if not r or #r < 3 then return nil end
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for i = 1, #r - 2, 3 do
+            x0, x1 = math.min(x0, r[i]), math.max(x1, r[i] + r[i + 2])
+            y0, y1 = math.min(y0, r[i + 1]), math.max(y1, r[i + 1] + 1)
+        end
+        return x0, y0, x1, y1
+    end
+    if not op.pts or #op.pts < 2 or (k == "shape" and #op.pts < 4) then return nil end
+    local x0, y0, x1, y1
+    if k == "shape" then x0, y0, x1, y1 = Shapes.bounds(op) else x0, y0, x1, y1 = Geom.bounds(op.pts) end
+    local pad = (op.width or 1) * 0.75 + 2   -- half the width, and room for a brush's grain
+    return x0 - pad, y0 - pad, x1 + pad, y1 + pad
+end
+
 -- Average point of an op's geometry (canvas coords), or nil if it has none.
 local function opCentroid(op)
     local sx, sy, n = 0, 0, 0
@@ -250,15 +287,39 @@ local function opCentroid(op)
     return sx / n, sy / n
 end
 
--- Is an op picked by a lasso polygon (canvas coords)? It is when a good share of
--- its points lie inside (sampled, so a dense stroke stays cheap), or its centre
--- does (a big shape looped around its middle). The point test matters for ink: a
--- curved stroke's average point can lie outside a loop that clearly holds it.
-local function opInPoly(op, poly)
-    local inside, total = 0, 0
+-- Is an op picked by a lasso loop (canvas coords)? A point counts as inside when
+-- the loop goes round it (by winding, so a loop that overlaps its own start
+-- still holds what it wraps twice) or lies within `slop` of the loop's line, so
+-- writing the lasso grazes is still taken. The op is picked when a good share
+-- of its points are inside (sampled, so a dense stroke stays cheap), or its
+-- centre is (a big shape looped around its middle); a shape by its outline. A
+-- text box or a picture, which have no points, are picked by a grid over their
+-- box.
+local function opInPoly(op, poly, slop)
+    -- a shape is judged by its outline as drawn (its defining points can lie
+    -- off it: an ellipse's box corners, a turned rectangle's unturned ones)
+    if op.kind == "shape" and op.pts and #op.pts >= 4 then
+        op = { pts = (Shapes.outline(op)) }
+    end
+    local d2 = (slop or 0) * (slop or 0)
+    local function inside(x, y)
+        return Geom.windingInPoly(x, y, poly) or (d2 > 0 and Geom.nearPath(x, y, poly, d2))
+    end
+    if not (op.pts or op.runs) then
+        local x0, y0, x1, y1 = Canvas.opBox(op)
+        if not x0 then return false end
+        local hit = 0
+        for gy = 0, 2 do
+            for gx = 0, 2 do
+                if inside(x0 + (x1 - x0) * (gx + 0.5) / 3, y0 + (y1 - y0) * (gy + 0.5) / 3) then hit = hit + 1 end
+            end
+        end
+        return hit >= 5
+    end
+    local n_in, total = 0, 0
     local function sample(x, y)
         total = total + 1
-        if pointInPoly(x, y, poly) then inside = inside + 1 end
+        if inside(x, y) then n_in = n_in + 1 end
     end
     if op.pts then
         local pairs_n = #op.pts / 2
@@ -276,9 +337,9 @@ local function opInPoly(op, poly)
         end
     end
     if total == 0 then return false end
-    if inside / total >= 0.3 then return true end             -- a good chunk is inside
+    if n_in / total >= 0.3 then return true end             -- a good chunk is inside
     local cx, cy = opCentroid(op)
-    if cx and pointInPoly(cx, cy, poly) then return true end   -- centre of mass is inside
+    if cx and Geom.windingInPoly(cx, cy, poly) then return true end   -- centre of mass is inside
     -- bounding-box centre is inside (stable for long strokes)
     local x0, y0, x1, y1
     local function ext(x, y)
@@ -289,11 +350,10 @@ local function opInPoly(op, poly)
     end
     if op.pts then for i = 1, #op.pts, 2 do ext(op.pts[i], op.pts[i + 1]) end
     elseif op.runs then for i = 1, #op.runs, 3 do ext(op.runs[i], op.runs[i + 1]) end end
-    if x0 then return pointInPoly((x0 + x1) / 2, (y0 + y1) / 2, poly) end
+    if x0 then return Geom.windingInPoly((x0 + x1) / 2, (y0 + y1) / 2, poly) end
     return false
 end
 
--- Grow x0, y0, x1, y1 (canvas coords) by an op's bounds and return the four.
 local function accumBounds(op, x0, y0, x1, y1)
     local function acc(x, y)
         if not x0 or x < x0 then x0 = x end
@@ -303,6 +363,10 @@ local function accumBounds(op, x0, y0, x1, y1)
     end
     if op.pts then for i = 1, #op.pts, 2 do acc(op.pts[i], op.pts[i + 1]) end end
     if op.runs then for i = 1, #op.runs, 3 do acc(op.runs[i], op.runs[i + 1]); acc(op.runs[i] + op.runs[i + 2], op.runs[i + 1]) end end
+    if not (op.pts or op.runs) and (op.kind == "text" or op.kind == "image") then   -- by their box
+        local bx0, by0, bx1, by1 = Canvas.opBox(op)
+        if bx0 then acc(bx0, by0); acc(bx1, by1) end
+    end
     return x0, y0, x1, y1
 end
 

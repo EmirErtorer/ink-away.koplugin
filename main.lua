@@ -1,6 +1,6 @@
 --[[
 Ink Away, a drawing canvas and notebook for e-ink readers. This file only plugs
-it into KOReader (the Tools menu entry and a gesture action) and opens the view;
+it into KOReader (the Tools menu entry and two gesture actions) and opens the view;
 everything else lives under ink/.
 ]]
 
@@ -19,6 +19,12 @@ function InkAway:onDispatcherRegisterActions()
         category = "none",
         event = "InkAwayOpen",
         title = _("Open Ink Away"),
+        general = true,
+    })
+    Dispatcher:registerAction("inkaway_library", {
+        category = "none",
+        event = "InkAwayLibrary",
+        title = _("Ink Away library"),
         general = true,
     })
 end
@@ -43,13 +49,19 @@ function InkAway:addToMainMenu(menu_items)
     }
 end
 
--- The gesture action, when a gesture is mapped to Ink Away.
+-- The gesture actions, when a gesture is mapped to Ink Away or its library.
 function InkAway:onInkAwayOpen()
     self:openCanvas()
     return true
 end
 
-function InkAway:openCanvas()
+function InkAway:onInkAwayLibrary()
+    self:openCanvas(true)
+    return true
+end
+
+-- Open the canvas, with the library on top when `library` is set.
+function InkAway:openCanvas(library)
     -- Close any Ink Away view still open before opening a fresh one: a buried
     -- copy would keep painting and running its timers, and a reopen should start
     -- clean even if one got stuck. The stack is copied, as close() changes it.
@@ -61,7 +73,7 @@ function InkAway:openCanvas()
     end
     for _, w in ipairs(existing) do UIManager:close(w) end
     local InkAwayView = require("ink/view")
-    UIManager:show(InkAwayView:new{})
+    UIManager:show(InkAwayView:new{ show_library = library or nil })
 end
 
 return InkAway
