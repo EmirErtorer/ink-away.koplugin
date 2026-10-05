@@ -911,9 +911,10 @@ function InkAwayView:paintTo(bb, x, y)
     -- refresh (areaScreenRect) never covers the toolbar or the notebook bar, so
     -- both skip the chrome; on a software-rotated screen redrawing it is slow.
     local br = self._blit_rect
-    if self._full_blit then br = nil end   -- the area was rebuilt since the last full blit
-    local paint_chrome = not br and not self._area_only
-    self._area_only = false
+    -- the area was rebuilt since the last full blit, or a sheet over it went away
+    if self._full_blit or self._paint_all then br = nil end
+    local paint_chrome = not br and (self._paint_all or not self._area_only)
+    self._area_only, self._paint_all = false, false
     if paint_chrome then
         -- white around the drawing area (the area itself is blitted below)
         local ay0, ay1 = v.area_y, v.area_y + v.area_h

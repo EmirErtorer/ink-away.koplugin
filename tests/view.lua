@@ -4529,6 +4529,60 @@ for _, wh in ipairs(SIZES) do
 end
 UIManager.reset()
 
+-- ---- a sheet that goes away is painted over in full -----------------------
+-- Closing the selection menu (or any sheet) repaints what it covered, the
+-- bottom bar or the toolbar included, even when dropping the selection or a
+-- drag asks for an area-only or region paint in the same moment.
+for _, nb in ipairs({ false, true }) do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    if nb then view:startNotebook({ style = "lines", size = 40 }) end
+    local tag = nb and " (notebook)" or " (drawing)"
+    view.canvas:setOps({ { kind = "ink", width = 6, alpha = 255, pts = { 100, 300, 400, 340 } } })
+    view:composeCanvas(); view:renderView()
+    view:paintTo(Screen.bb, 0, 0)
+    local chrome, full = 0, 0
+    local tb = view.toolbar.paintTo
+    view.toolbar.paintTo = function(...) chrome = chrome + 1; return tb(...) end
+    local bf = view.blitAreaFull
+    view.blitAreaFull = function(...) full = full + 1; return bf(...) end
+    local function paintCounts()
+        chrome, full = 0, 0
+        view:paintTo(Screen.bb, 0, 0)
+        return chrome, full
+    end
+    -- the menu closed by a tap away, which drops the selection (an area-only refresh)
+    view:setTool("lasso")
+    view:selectOps({ 1 }, "lasso"); view:openSelectionMenu()
+    local m = view._sel_dialog
+    view:paintTo(Screen.bb, 0, 0)
+    m.tap_pos = { x = 900, y = 1300 }
+    m:onCloseMenu()
+    ok(view.selection == nil and view._area_only, "uncover: the tap away dropped the selection" .. tag)
+    local c, f = paintCounts()
+    ok(c == 1 and f == 1, "uncover: and the next paint covers the bars and the whole area" .. tag)
+    c, f = paintCounts()
+    ok(f == 1, "uncover: (once: later paints are as asked)" .. tag)
+    -- closed while a region paint is pending (a drag's first move)
+    view:selectOps({ 1 }, "lasso"); view:openSelectionMenu()
+    view:paintTo(Screen.bb, 0, 0)
+    view:closeSelectionMenu()
+    view._blit_rect = { x0 = 10, y0 = 10, x1 = 40, y1 = 40 }
+    c, f = paintCounts()
+    ok(c == 1 and f == 1, "uncover: a pending region paint is widened to the whole" .. tag)
+    -- any sheet
+    view:dropSelection(); view:paintTo(Screen.bb, 0, 0)
+    view:showSheet("_test_sheet", function() return require("ui/widget/verticalspan"):new{ width = 10 } end)
+    view:closeSheet("_test_sheet")
+    view._area_only = true
+    c, f = paintCounts()
+    ok(c == 1 and f == 1, "uncover: other sheets too" .. tag)
+    UIManager:close(view)
+end
+UIManager.reset()
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

@@ -200,10 +200,11 @@ for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
         view.canvas:setOps(page())
         view:composeCanvas(); view:renderView()
         local sb = Device.screen.bb
-        -- (the drawing area only: the stand-in toolbar buttons cannot paint here)
+        -- (the drawing area only: the stand-in toolbar buttons cannot paint here,
+        -- even for the whole paint that follows the menu going away)
         local function paint(full)
             if full then view._full_blit = true end
-            view._area_only = true
+            view._area_only, view._paint_all = true, false
             view:paintTo(sb, 0, 0)
         end
         paint(true)

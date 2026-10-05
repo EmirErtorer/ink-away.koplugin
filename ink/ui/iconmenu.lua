@@ -44,6 +44,9 @@ local IconMenu = InputContainer:extend{
                                -- screen rect (above it when there is room, else
                                -- below, else at the foot of the screen), `gap` away
     tap_pos = nil,             -- where the tap that closed it landed, if one did
+    on_uncover = nil,          -- function(): the sheet left part of the screen to be
+                               -- painted again under it (it closed, or a rebuild
+                               -- shrank or moved it)
 }
 
 -- If the sheet is taller than the space it has (a long sheet, or any sheet in a
@@ -108,6 +111,7 @@ end
 function IconMenu:onCloseWidget()
     local region = self.movable and self.movable.dimen
     UIManager:setDirty(nil, function() return "ui", region end)
+    if self.on_uncover then self.on_uncover() end
     if self.movable and self.movable.free then self.movable:free() end
 end
 
@@ -136,6 +140,7 @@ function IconMenu:rebuild()
         local region = (old and new) and old:combine(new) or new
         local mode = self.flash and "flashui" or "ui"
         UIManager:setDirty("all", function() return mode, region end)
+        if self.on_uncover then self.on_uncover() end
     end
 end
 

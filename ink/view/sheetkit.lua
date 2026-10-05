@@ -101,6 +101,7 @@ function InkAwayView:showSheet(field, build, opts)
     opts = opts or {}
     self[field] = IconMenu:new{ build = build, flash = not self:colourPanel(),
         top_y = not opts.bottom_y and self:sheetTopY() or nil, bottom_y = opts.bottom_y,
+        on_uncover = function() self:uncovered() end,
         on_close = function()
             self[field] = nil
             if opts.on_close then opts.on_close() end

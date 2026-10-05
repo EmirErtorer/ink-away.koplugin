@@ -268,12 +268,15 @@ function InkAwayView:selPan(pos)
     d.x, d.y = pos.x, pos.y
     if not d.began then
         if math.abs(pos.x - d.sx) + math.abs(pos.y - d.sy) < S(3) then return true end
+        -- where the frame stood: the first move repaints it too, as the lift
+        -- takes the selection off the page there
+        self._sel_last_rect = self:selDragRect()
         d.began = true
         -- the menu goes while it moves (it comes back beside the new place), or
-        -- every frame would repaint it too; the one paint after it is a full one
+        -- every frame would repaint it too; the paint after it is a whole one
+        -- (see uncovered)
         self:closeSelectionMenu()
         if d.kind ~= "turn" then self:liftSelection() end
-        self._area_only, self._full_blit = false, true
     end
     if d.kind == "resize" then
         local px, py = InkGeom.toCanvas(self.view, pos.x, pos.y)
@@ -783,6 +786,7 @@ function InkAwayView:openSelectionMenu(panel)
     menu = IconMenu:new{
         build = build,
         flash = false,   -- small, and opened often: no flash
+        on_uncover = function() self:uncovered() end,
         anchor = function()
             local f = self:selFrame()
             if not f then return nil end

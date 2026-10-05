@@ -246,6 +246,14 @@ function InkAwayView:areaScreenRect()
     return GeomUI:new{ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }
 end
 
+-- A sheet over the view closed or shrank: the next paint must be a whole one
+-- (toolbar, bars and all of the area), even if a stroke, a drag or an
+-- area-only refresh asked for less in the same moment, or the sheet's pixels
+-- would stay on the bars.
+function InkAwayView:uncovered()
+    self._paint_all = true
+end
+
 -- Refresh the drawing area.
 function InkAwayView:refreshArea()
     UIManager:setDirty(self, "ui", self:areaScreenRect())
