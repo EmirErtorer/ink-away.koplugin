@@ -1,5 +1,5 @@
 <p><img src="assets/ink-away-title.svg" alt="Ink Away"><br>
-<img src="assets/readme-divider.svg" width="100%" height="4" alt=""></p>
+<img src="assets/readme-divider.svg" width="100%" alt=""></p>
 
 [![GitHub Release](https://img.shields.io/github/v/release/EmirErtorer/ink-away.koplugin?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMyAzaDguNUwyMSAxMi41IDEyLjUgMjEgMyAxMS41ek03LjUgNS41YTIgMiAwIDEgMCAwIDQgMiAyIDAgMCAwIDAtNHoiLz48L3N2Zz4%3D&label=Latest%20Release&labelColor=rgb(159%2C%20214%2C%20101)&color=rgb(255%2C255%2C255))](https://github.com/EmirErtorer/ink-away.koplugin/releases/latest)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/EmirErtorer/ink-away.koplugin/total?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI%2BPHBhdGggZD0iTTExIDNoMnY5LjE3bDMuNTktMy41OEwxOCAxMGwtNiA2LTYtNiAxLjQxLTEuNDFMMTEgMTIuMTd6TTQgMTVoMnYzaDEydi0zaDJ2NUg0eiIvPjwvc3ZnPg%3D%3D&label=Total%20Downloads&labelColor=rgb(159%2C%20214%2C%20101)&color=rgb(255%2C255%2C255))](https://github.com/EmirErtorer/ink-away.koplugin/releases)
