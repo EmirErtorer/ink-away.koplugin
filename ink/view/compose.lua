@@ -8,6 +8,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Paint = require("ink/paint")
+local Smudge = require("ink/smudge")
 local Wash = require("ink/wash")
 local Symmetry = require("ink/symmetry")
 
@@ -58,6 +59,8 @@ end
 function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare, region)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local found = Canvas.scanOps(ops)
+    -- a smudge reads the page around it, so a page with one is always built whole
+    if found.smudge then region = nil end
     local page_copy, owns_bare = nil, false
     if region then
         local rw, rh = region.x1 - region.x0, region.y1 - region.y0
@@ -111,6 +114,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         self:stampOps(reveal_text, ops, "text")
         owns_rt = true
     end
+    -- the page without ink, for a smudge to tell ink from paper (see ink/smudge.lua)
+    local smudge_base
+    if found.smudge then smudge_base = self:smudgeBase(dst, ops) end
     local refx, refy = Symmetry.canvasRefs(W, H)
     -- a selection being moved or resized is lifted off the page (it follows the
     -- finger on its own card, see view/selection.lua)
@@ -126,6 +132,10 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                 self:blitImageInto(dst, op, region)   -- placed picture, alpha-blended (z-order)
             elseif wash then
                 self:washInto(dst, op, wst, region)   -- see-through pen, blended (z-order)
+            elseif op.kind == "smudge" then
+                if smudge_base then
+                    Smudge.apply(Smudge.surfaceOf(dst), Smudge.surfaceOf(smudge_base), op, W, H)
+                end
             else
                 local put, fill_put
                 if op.kind == "erase" and op.spare_text and reveal_text then
@@ -146,10 +156,22 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
             end
         end
     end
+    if smudge_base then smudge_base:free() end
     if owns_rt then reveal_text:free() end
     if owns_rp then reveal_pic:free() end
     if page_copy then page_copy:free() end
     if owns_bare then bare:free() end
+end
+
+-- The page without ink (its paper, ruling and background as dst holds them now,
+-- then the pictures and text of `ops`), which a smudge never picks up.
+function InkAwayView:smudgeBase(dst, ops)
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local b = Blitbuffer.new(W, H, dst:getType())
+    b:blitFrom(dst, 0, 0, 0, 0, W, H)
+    self:stampOps(b, ops, "image")
+    self:stampOps(b, ops, "text")
+    return b
 end
 
 -- Blend a see-through pen's stroke into dst (a canvas-sized bitmap), within
@@ -280,6 +302,7 @@ function InkAwayView:composeRegion(x0, y0, x1, y1)
     x1, y1 = math.min(W, math.ceil(x1)), math.min(H, math.ceil(y1))
     if x1 <= x0 or y1 <= y0 then return end
     local base, bare = self.bg_bb, nil
+    if Canvas.scanOps(self.canvas.ops).smudge then return self:composeCanvas() end
     if self.notebook then
         if not self._paper_bb then return self:composeCanvas() end
         base = self._paper_bb
@@ -300,6 +323,7 @@ function InkAwayView:stampOpIntoCanvas(op)
         self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
         return
     end
+    if op.kind == "smudge" then return self:composeCanvas() end   -- it reads the page around it
     local wash, wst = Wash.isWash(op)
     if wash then
         self:washInto(self.canvas_bb, op, wst)

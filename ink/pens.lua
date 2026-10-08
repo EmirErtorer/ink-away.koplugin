@@ -28,6 +28,9 @@ Pens.STYLES = {
     fountain    = { engine = "var", solid = true, pressure = true, minf = 0.3, sim = true, nib45 = true },
     calligraphy = { engine = "nib", solid = true, pressure = true, minf = 0.5, thin = 0.16 },
 }
+-- The smudge is chosen like a pen but draws nothing of its own: it moves the ink
+-- under it (ink/smudge.lua, op kind "smudge").
+Pens.STYLES.smudge = { engine = "smudge", solid = true }
 for k, st in pairs(Pens.STYLES) do Raster.STYLES[k] = st end
 -- Pencil keeps its grain; pressed harder it draws wider.
 Raster.STYLES.pencil.pressure = true

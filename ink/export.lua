@@ -19,6 +19,7 @@ local Canvas = require("ink/canvas")
 local Fill = require("ink/fill")
 local Pdf = require("ink/pdf")
 local Pens = require("ink/pens")
+local Smudge = require("ink/smudge")
 local Wash = require("ink/wash")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
@@ -105,7 +106,7 @@ end
 -- Each op's writer is wrapped for its own symmetry mode. The RGBA and RGB
 -- builders and the fill's grey buffer all replay through here, so they match the
 -- rasterizer pixel for pixel.
-local function replay(canvas, ink_put, erase_put_for, text_put, image_put, wash_put)
+local function replay(canvas, ink_put, erase_put_for, text_put, image_put, wash_put, smudge_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
@@ -123,6 +124,9 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put, wash_
         elseif Wash.isWash(op) then
             -- a see-through pen blends with what is under it (ink/wash.lua)
             if wash_put and not op.hidden then wash_put(op) end
+        elseif op.kind == "smudge" then
+            -- moves the ink under it (ink/smudge.lua)
+            if smudge_put and not op.hidden then smudge_put(op) end
         else
             local put, fill_put
             if op.kind == "erase" then
@@ -280,6 +284,28 @@ local function revealSources(canvas, buf, n, ow, bpp, clip, putImage)
     return base, text
 end
 
+-- The page without ink, for a smudge: a copy of the buffer as it is now (paper,
+-- ruling) with the pictures and text laid on it. nil without a smudge.
+local function smudgeBase(canvas, buf, n, ow, bpp, clip, putImage)
+    if not Canvas.scanOps(canvas.ops).smudge then return nil end
+    local base = ffi.new("uint8_t[?]", n)
+    ffi.copy(base, buf, n)
+    local px = textPixel(base, ow, bpp, clip)
+    for _, op in ipairs(canvas.ops) do
+        if not op.hidden and op.kind == "image" then putImage(base, op)
+        elseif not op.hidden and op.kind == "text" then Export.eachTextPixel(op, px) end
+    end
+    return base
+end
+
+-- A smudge op replayed on a packed export buffer.
+local function smudger(canvas, buf, base, ow, oh, bpp, offx, offy)
+    if not base then return nil end
+    local s = Smudge.surfaceOfBuffer(buf, ow, oh, bpp, bpp == 4)
+    local b = Smudge.surfaceOfBuffer(base, ow, oh, bpp, bpp == 4)
+    return function(op) Smudge.apply(s, b, op, canvas.w, canvas.h, offx, offy) end
+end
+
 -- Build a packed RGBA buffer (ow*oh*4 bytes), transparent where there is no ink.
 -- `rect` optionally crops to {x,y,w,h}. The optional `clear_mask` (ow*oh bytes)
 -- gets 1 wherever a hard erase (op.ebg) clears, so the background composite
@@ -323,6 +349,7 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
     -- a soft erase reveals the page so far; a hard one (op.ebg) clears to fully
     -- transparent and marks the background to be dropped too
     local base_buf, text_buf = revealSources(canvas, buf, n, ow, 4, clip, putImage)
+    local smudge_base = smudgeBase(canvas, buf, n, ow, 4, clip, putImage)
     local function hard_erase(x, y, len)
         local cx, cy, clen = clip(x, y, len)
         if not cx then return end
@@ -348,7 +375,8 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
         end,
         function(op) Export.eachTextPixel(op, text_px) end,
         function(op) putImage(buf, op) end,
-        function(op) Export.washInto(buf, ow, oh, 4, offx, offy, canvas, op) end)
+        function(op) Export.washInto(buf, ow, oh, 4, offx, offy, canvas, op) end,
+        smudger(canvas, buf, smudge_base, ow, oh, 4, offx, offy))
     return buf, n, ow, oh
 end
 
@@ -403,6 +431,7 @@ function Export.buildRGB(canvas, rect, template)
             fillRun(buf, ow, 3, clip, g, g, g))
     end
     local base_buf, text_buf = revealSources(canvas, buf, n, ow, 3, clip, putImage)
+    local smudge_base = smudgeBase(canvas, buf, n, ow, 3, clip, putImage)
     local plain_erase = base_buf and copyRun(buf, base_buf, ow, 3, clip)
     local spare_erase = text_buf and copyRun(buf, text_buf, ow, 3, clip) or plain_erase
     local paper_erase = fillRun(buf, ow, 3, clip, pr, pg, pb)
@@ -420,7 +449,8 @@ function Export.buildRGB(canvas, rect, template)
         end,
         function(op) Export.eachTextPixel(op, text_px) end,
         function(op) putImage(buf, op) end,
-        function(op) Export.washInto(buf, ow, oh, 3, offx, offy, canvas, op) end)
+        function(op) Export.washInto(buf, ow, oh, 3, offx, offy, canvas, op) end,
+        smudger(canvas, buf, smudge_base, ow, oh, 3, offx, offy))
     return buf, n, ow, oh
 end
 

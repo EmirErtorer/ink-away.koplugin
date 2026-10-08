@@ -136,10 +136,14 @@ function Canvas:finishStroke()
     local live = self.live
     self.live = nil
     if not live or #live.pts == 0 then return nil end
-    local pts, pr = Geom.dropClose(live.pts, MIN_SPACING, live.pr)
-    -- a pressure step of 255 can change the radius by up to half the width
-    pts, pr = Geom.rdp(pts, RDP_TOL, pr, (live.width or 1) * 0.5 / 255)
-    live.pts, live.pr = pts, pr
+    -- a smudge keeps its points as drawn: replaying it must retrace the live
+    -- stroke exactly (see ink/smudge.lua)
+    if live.kind ~= "smudge" then
+        local pts, pr = Geom.dropClose(live.pts, MIN_SPACING, live.pr)
+        -- a pressure step of 255 can change the radius by up to half the width
+        pts, pr = Geom.rdp(pts, RDP_TOL, pr, (live.width or 1) * 0.5 / 255)
+        live.pts, live.pr = pts, pr
+    end
     self.ops[#self.ops + 1] = live
     self:recordAppend()
     return live
@@ -232,6 +236,8 @@ function Canvas.scanOps(ops)
                 f.text = true
             elseif kind == "image" then
                 f.image = true
+            elseif kind == "smudge" then
+                f.smudge = true
             end
         end
     end

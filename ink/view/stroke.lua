@@ -157,8 +157,10 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
         else reveal = self:eraseRevealBB() end
         if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
-    -- a see-through pen blends its whole stroke so far (see view/wash.lua)
+    -- a see-through pen blends its whole stroke so far (see view/wash.lua), and
+    -- the smudge moves the ink under it (view/smudge.lua)
     if self._wl then return self:washPoint(cx, cy, fresh, p) end
+    if self._sm then return self:smudgePoint(cx, cy, fresh) end
     -- rebuild the writers if they are missing or a buffer was reallocated
     if not self._lw_stroke or self._lw_area_bb ~= self.area_bb
             or self._lw_canvas_bb ~= self.canvas_bb then
@@ -281,7 +283,9 @@ function InkAwayView:beginStroke(sx, sy)
     self._live_pressured = (not is_erase) and self.pen_pressure ~= false and Pens.usesPressure(style) or false
     self._live_sim = self._live_pressured and st and st.sim and self._pen_raw_pressure == nil or false
     self._live_p, self._lp_at = nil, nil
-    self.canvas:startStroke(is_erase and "erase" or "ink",
+    local smudge = (not is_erase) and style == "smudge"
+    if smudge and not self:colourPanel() then self._live_mode = "ui" end   -- smudged ink is grey
+    self.canvas:startStroke(is_erase and "erase" or (smudge and "smudge" or "ink"),
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed, self._live_pressured)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
     -- a "hard" erase also removes pictures; the soft default leaves them
@@ -296,9 +300,10 @@ function InkAwayView:beginStroke(sx, sy)
         self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
     end
     self:setupLiveWriters()
-    self._wl = nil
+    self._wl, self._sm = nil, nil
     local wst = (not is_erase) and self:washStyle(style)
     if wst then self:washBegin(wst) end
+    if smudge then self:smudgeBegin() end
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -453,6 +458,7 @@ function InkAwayView:finalizeStroke()
     end
     local committed = self.canvas:finishStroke()
     if self._wl then self:washEnd() end   -- the page under it is drawn again from the op below
+    if self._sm then self:smudgeEnd() end
     -- An erase records whether text was protected when it was made, so changing
     -- the setting later never erases or restores text retroactively.
     if committed and committed.kind == "erase" then

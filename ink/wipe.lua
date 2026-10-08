@@ -52,7 +52,7 @@ function Wipe.boxes(ops, W, H)
     local out = {}
     for _, op in ipairs(ops) do
         local k = op.kind
-        if (k == "ink" or k == "shape" or k == "fill") and not op.hidden then
+        if (k == "ink" or k == "shape" or k == "fill" or k == "smudge") and not op.hidden then
             local x0, y0, x1, y1 = Canvas.opBox(op)
             if x0 then
                 if op.sym and op.sym ~= "off" then x0, y0, x1, y1 = 0, 0, W, H end
@@ -70,7 +70,7 @@ function Wipe.hits(op, s, r, W, H, rows)
     for _, f in ipairs(Symmetry.flips(op.sym)) do
         local p = Symmetry.flipPoints(s, f, W, H)
         local k = op.kind
-        if k == "ink" then
+        if k == "ink" or k == "smudge" then
             if nearStroke(op.pts, p, r + (op.width or 1) / 2) then return true, false end
         elseif k == "shape" and op.fill then
             if Shapes.reachedBy(op, p, r) then return false, true end

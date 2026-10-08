@@ -38,7 +38,7 @@ function InkAwayView:computeSelection(poly)
     local idxs = {}
     local slop = self:lassoSlop()
     for i, op in ipairs(self.canvas.ops) do
-        if op.kind ~= "erase" and opInPoly(op, poly, slop) then idxs[#idxs + 1] = i end
+        if op.kind ~= "erase" and op.kind ~= "smudge" and opInPoly(op, poly, slop) then idxs[#idxs + 1] = i end
     end
     return self:selectOps(idxs, "lasso")
 end
