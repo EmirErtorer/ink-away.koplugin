@@ -1227,22 +1227,25 @@ do
         end
         return walk(root)
     end
-    view:openPenSettings()
-    local tg = findToggle(view._pen_dialog, "Pen taps menus and buttons")
-    ok(tg ~= nil and tg.is_on == true, "pen ui: the pen sheet has the toggle, on")
+    view:openPenInput()
+    local tg = findToggle(view._peninput_dialog, "Pen taps menus and buttons")
+    ok(tg ~= nil and tg.is_on == true, "pen ui: the Pen and input sheet has the toggle, on")
     if tg then tg:onTap() end
     ok(view.pen_ui == false and _G.G_reader_settings.data.inkaway_pen_ui == false,
         "pen ui: the toggle turns it off and saves it")
     if tg then tg:onTap() end
     ok(view.pen_ui == true, "pen ui: and back on")
-    view:closeSheet("_pen_dialog")
+    view:closeSheet("_peninput_dialog")
     -- a narrow sheet still lays them all out
     local sw = view.sheetWidth
     view.sheetWidth = function() return 120, 12, 27 end
-    view:openPenSettings()
-    ok(findToggle(view._pen_dialog, "Pen taps menus and buttons") ~= nil
-        and findToggle(view._pen_dialog, "Palm rejection") ~= nil,
+    view:openPenInput()
+    ok(findToggle(view._peninput_dialog, "Pen taps menus and buttons") ~= nil
+        and findToggle(view._peninput_dialog, "Palm rejection") ~= nil,
         "pen ui: a narrow sheet still has every toggle")
+    view:closeSheet("_peninput_dialog")
+    view:openPenSettings()
+    ok(view._pen_dialog ~= nil, "pen ui: a narrow pen case still opens")
     view:closeSheet("_pen_dialog")
     view.sheetWidth = sw
 
@@ -1647,6 +1650,43 @@ do
     local op3 = view.canvas.ops[#view.canvas.ops]
     ok(#view.canvas.ops == n0 + 1 and op3.pr ~= nil, "pressure: a finger with the fountain pen gets a simulated pressure")
     view:onCloseWidget()
+end
+
+-- ---- the pen case: saved pens, kinds that remember, sizes that persist -------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    _G.G_reader_settings.data.inkaway_pens = nil
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    ok(view.pen_style == "solid" and view.pen_width >= 2 and view.pen_width <= 8,
+        "pen case: a new reader starts with a fine pen (" .. view.pen_width .. " px)")
+    view:openPenSettings()
+    ok(view._pen_dialog ~= nil and view._pen_strip ~= nil, "pen case: opens with its true-size preview")
+    view:closeSheet("_pen_dialog")
+    view:choosePenType("highlighter")
+    ok(view.pen_style == "highlighter" and view.pen_width > 30, "pen case: the highlighter is wide")
+    view.pen_width = 70; view:penChanged("width", 70)
+    view:choosePenType("solid")
+    view.pen_width = 9; view:penChanged("width", 9)
+    view:choosePenType("highlighter")
+    ok(view.pen_width == 70, "pen case: the highlighter kept its own size")
+    ok(view:swapPen() and view.pen_style == "solid" and view.pen_width == 9, "pen case: swap back to the fineliner")
+    view:onCloseWidget()
+    -- a restart: the pen in hand comes back as it was
+    local view2 = InkAwayView:new{}
+    ok(view2.pen_style == "solid" and view2.pen_width == 9, "pen case: the size survives closing Ink Away")
+    for _, p in ipairs(view2:penset().favs) do if p.style == "highlighter" then view2:usePen(p) end end
+    ok(view2.pen_style == "highlighter", "pen case: a saved pen is one tap")
+    view2:onCloseWidget()
+    -- 4.0's setting
+    _G.G_reader_settings.data.inkaway_pens = nil
+    _G.G_reader_settings.data.inkaway_pen_style = "pencil"
+    local view3 = InkAwayView:new{}
+    ok(view3.pen_style == "pencil", "pen case: 4.0's pen style is kept")
+    view3:onCloseWidget()
+    _G.G_reader_settings.data.inkaway_pens = nil
+    _G.G_reader_settings.data.inkaway_pen_style = nil
 end
 
 -- ---- lifecycle leak: landscape<->portrait cycles + close leave nothing behind --
@@ -3574,6 +3614,8 @@ do
     sweep("page", "_page_dialog", function() view:openPageMenu() end)
     sweep("settings", "_settings_dialog", function() view:openSettings() end)
     sweep("pen", "_pen_dialog", function() view:openPenSettings() end)
+    sweep("pen input", "_peninput_dialog", function() view:openPenInput() end)
+    sweep("pen types", "_pentypes_dialog", function() view:openPenTypes() end)
     sweep("eraser", "_eraser_dialog", function() view:openEraserSettings() end)
     sweep("shapes", "_shape_dialog", function() view:openShapePicker() end)
     sweep("text", "_text_settings", function() view:openTextSettings() end)
@@ -4731,10 +4773,11 @@ do
     UIManager.reset()
     local view = dofile("ink/view.lua"):new{}
     UIManager:show(view)
-    view:openPenSettings()
-    ok(find(view._pen_dialog or UIManager.shown, labelled("Shape assist")) == nil
-        and find(view._pen_dialog or UIManager.shown, labelled("Palm rejection")) ~= nil,
-        "pen sheet: no Shape assist toggle (hold to straighten does it), Palm rejection stays")
+    view:openPenInput()
+    ok(find(view._peninput_dialog or UIManager.shown, labelled("Shape assist")) == nil
+        and find(view._peninput_dialog or UIManager.shown, labelled("Palm rejection")) ~= nil,
+        "pen input: no Shape assist toggle (hold to straighten does it), Palm rejection stays")
+    view:closeSheet("_peninput_dialog")
     ok(view.shape_assist == nil, "pen sheet: and no shape assist setting is read")
     view:closeSheet("_pen_dialog")
     view:openSettings()

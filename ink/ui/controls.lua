@@ -111,7 +111,7 @@ end
 -- the middle, and the value on the right. Tap or drag the track to set it; the
 -- value flips in place. `parent` is the shown widget used as the repaint target.
 local SliderRow = InputContainer:extend{
-    label = "", value = 0, width = nil, on_set = nil, parent = nil,
+    label = "", value = 0, width = nil, on_set = nil, parent = nil, on_release = nil,
     min = 0, max = 100, step = 1, format = nil,   -- format(v) -> value text (default "N%")
 }
 function SliderRow:_fmt(v) return self.format and self.format(v) or string.format("%d%%", v) end
@@ -142,8 +142,11 @@ function SliderRow:_build()
         face = Font:getFace("cfont", 16), bold = true }
     -- a fixed width for the value (measured at the max), so the track stays put
     -- as the digits change
-    local wmax = TextWidget:new{ text = self:_fmt(self.max), face = Font:getFace("cfont", 16), bold = true }
-    local val_w = math.max(wmax:getSize().w, Screen:scaleBySize(40)); wmax:free()
+    local val_w = Screen:scaleBySize(40)
+    for _i, v in ipairs({ self.max, self.min, self.value }) do
+        local t = TextWidget:new{ text = self:_fmt(v), face = Font:getFace("cfont", 16), bold = true }
+        val_w = math.max(val_w, t:getSize().w + Screen:scaleBySize(2)); t:free()
+    end
     local track_w = self.width - labelw:getSize().w - val_w - 2 * gap
     self._track_w = track_w
     self._track_dx = labelw:getSize().w + gap
@@ -198,7 +201,10 @@ function SliderRow:_setFromX(x, mode)
         UIManager:setDirty(self.parent or self, mode or "ui", band)
     end
 end
-function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x, "ui"); return true end
+function SliderRow:_released()
+    if self.on_release then self.on_release(self.value) end
+end
+function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x, "ui"); self:_released(); return true end
 function SliderRow:onSlPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
 function SliderRow:onSlHold(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
 function SliderRow:onSlHoldPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
@@ -208,11 +214,12 @@ function SliderRow:onSlSwipe(_, ges)
     local p = ges and (ges.end_pos or ges.pos)
     if p then self:_setFromX(p.x, "ui") end
     UIManager:setDirty(self.parent or self, "ui", self.dimen)
+    self:_released()
     return true
 end
 SliderRow.onSlMultiSwipe = SliderRow.onSlSwipe
 function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX(ges.pos.x, "ui")
-    else UIManager:setDirty(self.parent or self, "ui", self.dimen) end; return true end
+    else UIManager:setDirty(self.parent or self, "ui", self.dimen) end; self:_released(); return true end
 function SliderRow:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     InputContainer.paintTo(self, bb, x, y)

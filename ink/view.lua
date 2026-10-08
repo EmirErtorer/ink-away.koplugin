@@ -21,7 +21,6 @@ local Brushes = require("ink/brushes")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local InkGeom = require("ink/geom")
-local Raster = require("ink/raster")
 local Stylus = require("ink/stylus")
 
 local Screen = Device.screen
@@ -152,8 +151,8 @@ function InkAwayView:init()
     -- Saved preferences. The reader's own brushes are registered first, so strokes
     -- drawn with them resolve.
     Brushes.loadAll(function(k) return self:getSetting(k) end)
-    self.pen_style   = self:getSetting("inkaway_pen_style", "solid")
-    if not Raster.STYLES[self.pen_style] then self.pen_style = "solid" end
+    -- the pen in hand, as the reader left it (see ink/penset.lua)
+    self:applyPen(self:penset().cur)
     self.stabilizer  = self:getSetting("inkaway_stabilizer", 40)       -- 0..100
     self.pen_pressure = self:getSetting("inkaway_pen_pressure", true) ~= false
     self.pressure_curve = self:getSetting("inkaway_pressure_curve", "medium")   -- soft | medium | firm
@@ -979,7 +978,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

@@ -6,16 +6,12 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
-local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
-local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local InfoMessage = require("ui/widget/infomessage")
 local OverlapGroup = require("ui/widget/overlapgroup")
-local Size = require("ui/size")
 local SpinWidget = require("ui/widget/spinwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -38,8 +34,6 @@ local sameColor = Palette.sameColor
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 local function pxfmt(v) return v .. _(" px") end
-
-local PEN_CUSTOM_CAP = 12   -- how many made brushes a reader may keep
 
 local InkAwayView = {}
 
@@ -71,180 +65,15 @@ end
 function InkAwayView:openColorPicker()
     local ok, ColorPicker = pcall(require, "ink/ui/colorpicker")
     if not ok then return end
-    local function apply(rgb) self.pen_color = { rgb[1], rgb[2], rgb[3] } end
+    local function apply(rgb)
+        self.pen_color = { rgb[1], rgb[2], rgb[3] }
+        self:penChanged("color", self.pen_color)
+    end
     UIManager:show(ColorPicker:new{
         color = self.pen_color,
         on_pick = function(rgb) apply(rgb); self:openPenSettings() end,
         on_save = function(rgb) apply(rgb); self:addCustomColor(rgb); self:openPenSettings() end,
     })
-end
-
--- The pen sheet: size and opacity sliders, brush tiles with a create (+) tile,
--- colour swatch rows and the stroke aids. Rebuilt whenever something changes.
-function InkAwayView:openPenSettings()
-    if self:rebuildSheet("_pen_dialog") then return end
-    self:ensureUserIcons()
-    local content_w, gap = self:sheetWidth()
-    local function closeSelf() self:closeSheet("_pen_dialog") end
-
-    local build = function(menu)
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-
-        add(self:sheetTitle(_("Pen"), content_w, _("Done"), closeSelf))
-        add(vspan(12))
-        add(SliderRow:new{ label = _("Size"), value = self.pen_width, min = 1, max = 60,
-            width = content_w, parent = menu, format = pxfmt,
-            on_set = function(v) self.pen_width = math.max(1, v) end })
-        add(vspan(10))
-        add(SliderRow:new{ label = _("Opacity"), value = math.floor(self.pen_alpha / 255 * 100 + 0.5),
-            width = content_w, parent = menu,
-            on_set = function(v) self.pen_alpha = math.max(1, math.floor(v / 100 * 255 + 0.5)) end })
-        add(vspan(12))
-
-        -- brush styles: wave tiles (four per row, wrapping), then a create (+) tile
-        local styleMenu = Brushes.menu(function(k) return self:getSetting(k) end)
-        local ncustom = 0
-        for _, s in ipairs(styleMenu) do if s.custom then ncustom = ncustom + 1 end end
-        local per = 4
-        local swtile = math.floor((content_w - (per - 1) * gap) / per)
-        local wave_h = Screen:scaleBySize(46)
-        local tiles = {}
-        for _, s in ipairs(styleMenu) do
-            local sel = (self.pen_style == s.key)
-            tiles[#tiles + 1] = self:brushWaveTile(s.key, swtile, wave_h, sel, function()
-                self.pen_style = s.key; self:setSetting("inkaway_pen_style", s.key); self:openPenSettings()
-            end, s.custom and function() self:confirmDeleteBrush(s.key, s.label) end or nil)
-        end
-        if ncustom < PEN_CUSTOM_CAP then
-            tiles[#tiles + 1] = Button:new{ text = "+", text_font_size = 26, text_font_bold = true,
-                width = swtile, height = wave_h, bordersize = 0, radius = Screen:scaleBySize(12),
-                background = TILE_BG, margin = 0, padding = 0, show_parent = self,
-                callback = function() closeSelf(); self:openBrushMaker() end }
-        end
-        for i = 1, #tiles, per do
-            local row = HorizontalGroup:new{ align = "center" }
-            for j = i, math.min(i + per - 1, #tiles) do
-                if j > i then table.insert(row, HorizontalSpan:new{ width = gap }) end
-                table.insert(row, tiles[j])
-            end
-            add(row)
-            if i + per <= #tiles then add(vspan(gap)) end
-        end
-        add(vspan(12))
-
-        -- The stroke aids (toggles and stabilizer) end the sheet and must never be
-        -- pushed off screen, so they are built and measured first and the custom
-        -- colour rows are capped to the space left (see the colour section).
-        local tail = VerticalGroup:new{ align = "left" }
-        local palm = ToggleRow:new{ label = _("Palm rejection"), is_on = self.palm_reject,
-            width = content_w, parent = menu, callback = function(on)
-            self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
-            self:openPenSettings()   -- show or hide the options that need it
-            if on and not self:penCapable() then
-                UIManager:show(InfoMessage:new{ text = _(
-                    "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
-            end
-        end }
-        table.insert(tail, palm)
-        table.insert(tail, vspan(10))
-        table.insert(tail, ToggleRow:new{ label = _("Hold still to straighten"), is_on = self.hold_straighten,
-            width = content_w, parent = menu,
-            callback = function(on) self.hold_straighten = on; self:setSetting("inkaway_hold_straighten", on) end })
-        table.insert(tail, vspan(10))
-        table.insert(tail, ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
-            width = content_w, parent = menu,
-            callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
-        -- with palm rejection on, the pen writes and fingers can be kept for moving
-        -- around: scrolling, turning pages, holding a picture or shape for its menu
-        if self.palm_reject then
-            table.insert(tail, vspan(10))
-            table.insert(tail, self:sheetLabel(_("Finger on the page")))
-            table.insert(tail, vspan(6))
-            table.insert(tail, self:segmentedRow({ { "navigate", _("Navigate") }, { "nothing", _("Nothing") } },
-                    self.finger_mode, content_w,
-                function(m)
-                    self.finger_mode = m; self:setSetting("inkaway_finger_mode", m)
-                    self:openPenSettings()
-                end))
-        end
-        table.insert(tail, vspan(12))
-        table.insert(tail, SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
-            width = content_w, parent = menu, format = function(v) return tostring(v) end,
-            on_set = function(v) self.stabilizer = v; self:setSetting("inkaway_stabilizer", v) end })
-        table.insert(tail, vspan(4))
-        table.insert(tail, self:sheetHint(
-            _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."), content_w))
-
-        -- Colour swatches: the shades, then on a colour screen the colours and
-        -- saved ones, and always the "+" tile for the colour wheel. Six tiles fill
-        -- each row; short rows are centred. Tile height is capped on large high-DPI
-        -- colour screens, so the colour rows never overflow the sheet.
-        local sw = math.floor((content_w - 5 * gap) / 6)
-        local swh = math.min(sw, Screen:scaleBySize(58))
-        local function swatch(rgb, custom)
-            return self:swatchTile(rgb, sameColor(self.pen_color, rgb), sw,
-                function() self.pen_color = { rgb[1], rgb[2], rgb[3] }; self:openPenSettings() end,
-                custom and function() self:removeCustomColor(rgb); self:openPenSettings() end or nil, swh)
-        end
-        local function pickerTile()
-            local inner = sw - Screen:scaleBySize(8)
-            local inner_h = swh - Screen:scaleBySize(8)
-            local b = Button:new{ text = "+", text_font_size = 24, text_font_bold = true,
-                width = inner, height = inner_h, background = TILE_BG,
-                radius = Screen:scaleBySize(11), bordersize = 0, margin = 0, padding = 0,
-                show_parent = self, callback = function() closeSelf(); self:openColorPicker() end }
-            return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = BLACK,
-                radius = Screen:scaleBySize(14), padding = Screen:scaleBySize(3), margin = 0, b }
-        end
-        local function centeredRow(list)
-            local hg = HorizontalGroup:new{ align = "center" }
-            for i, t in ipairs(list) do
-                if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
-                table.insert(hg, t)
-            end
-            return CenterContainer:new{ dimen = GeomUI:new{ w = content_w, h = hg:getSize().h }, hg }
-        end
-
-        -- the rows are real widgets, so the custom rows are capped by their
-        -- measured height, keeping the stroke aids on screen
-        local rowWidgets = {}
-        local shadeTiles = {}
-        for _, e in ipairs(SHADES) do shadeTiles[#shadeTiles + 1] = swatch(e.rgb) end
-        rowWidgets[#rowWidgets + 1] = centeredRow(shadeTiles)
-        if self:colorScreen() then
-            -- five preset colours and the "+" tile: one row of six
-            local colorTiles = {}
-            for i = 1, 5 do colorTiles[#colorTiles + 1] = swatch(COLORS[i].rgb) end
-            colorTiles[#colorTiles + 1] = pickerTile()
-            rowWidgets[#rowWidgets + 1] = centeredRow(colorTiles)
-
-            -- saved colours go on rows below, as many as fit in the height left
-            local head_h = content:getSize().h   -- head = title..brushes
-            content._size = nil                  -- invalidate (VerticalGroup caches offsets)
-            local fixed_h = head_h + tail:getSize().h + Screen:scaleBySize(16)
-            for _, w in ipairs(rowWidgets) do fixed_h = fixed_h + w:getSize().h + gap end
-            local per_row = rowWidgets[1]:getSize().h + gap
-            local budget = Screen:getHeight() - self:sheetTopY() - Screen:scaleBySize(4)
-                - Screen:scaleBySize(8) - 2 * Screen:scaleBySize(18) - 2 * Size.border.window
-            local ncustrows = math.max(0, math.floor((budget - fixed_h) / per_row))
-            local customs = self:getCustomColors()
-            local shown = math.min(#customs, ncustrows * 6)
-            for i = 1, shown, 6 do
-                local chunk = {}
-                for j = i, math.min(i + 5, shown) do chunk[#chunk + 1] = swatch(customs[j], true) end
-                rowWidgets[#rowWidgets + 1] = centeredRow(chunk)
-            end
-        end
-        for i, w in ipairs(rowWidgets) do
-            if i > 1 then add(vspan(gap)) end
-            add(w)
-        end
-        add(vspan(16))
-        for _, w in ipairs(tail) do add(w) end
-        return content
-    end
-    self:showSheet("_pen_dialog", build)
 end
 
 -- Open the brush maker. A saved brush becomes the current pen and stays in the
@@ -259,8 +88,7 @@ function InkAwayView:openBrushMaker()
                 function(k) return self:getSetting(k) end,
                 function(k, val) self:setSetting(k, val) end,
                 name, params)
-            self.pen_style = key
-            self:setSetting("inkaway_pen_style", key)
+            self:choosePenType(key)
             self:openPenSettings()
         end,
     }
@@ -275,10 +103,13 @@ function InkAwayView:confirmDeleteBrush(key, label)
             local name = key:gsub("^user:", "")
             Brushes.remove(function(k) return self:getSetting(k) end,
                            function(k, v) self:setSetting(k, v) end, name)
-            if self.pen_style == key then
-                self.pen_style = "solid"
-                self:setSetting("inkaway_pen_style", "solid")
+            if self.pen_style == key then self:choosePenType("solid") end
+            local case = self:penset()
+            case.types[key] = nil
+            for i = #case.favs, 1, -1 do
+                if case.favs[i].style == key then table.remove(case.favs, i) end
             end
+            self:savePens()
             self:openPenSettings()
         end,
     })
