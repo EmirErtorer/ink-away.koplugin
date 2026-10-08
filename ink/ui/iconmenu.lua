@@ -147,7 +147,7 @@ end
 -- Paint the sheet centred horizontally and, with top_y or bottom_y, pinned there
 -- and clamped to the screen. MovableContainer sets its .dimen from where it is
 -- painted, which is used for hit tests and refresh regions.
-function IconMenu:paintTo(bb, x, y)
+function IconMenu:paintTo(bb, _x, _y)
     local sz = self.movable:getSize()
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)

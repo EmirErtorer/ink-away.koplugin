@@ -202,7 +202,7 @@ end
 -- Default size and width for a new box on this page.
 function InkAwayView:newTextAt(pos)
     local v = self.view
-    local cx, cy = self:toCanvasClamped(pos.x, pos.y)
+    local _cx, cy = self:toCanvasClamped(pos.x, pos.y)
     -- span the full page (the grid runs edge to edge) with only a small margin
     local margin = math.max(6, math.floor(v.canvas_w * 0.02))
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))

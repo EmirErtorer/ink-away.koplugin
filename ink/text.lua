@@ -585,7 +585,7 @@ function Text.caret(op, layout, cur, ctx)
 end
 
 -- Hit test: op-local (lx, ly) -> nearest cursor {p, o}.
-function Text.hit(op, layout, lx, ly, ctx)
+function Text.hit(_op, layout, lx, ly, ctx)
     local pick
     for _, ln in ipairs(layout.lines) do
         if ly < ln.top + ln.height then pick = ln; break end
@@ -619,7 +619,7 @@ end
 -- the face; italic uses an italic face when rctx.face provides one.
 ------------------------------------------------------------------------------
 
-function Text.render(op, layout, bb, ox, oy, ctx, rctx)
+function Text.render(_op, layout, bb, ox, oy, ctx, rctx)
     local RenderText = require("ui/rendertext")
     local Blitbuffer = require("ffi/blitbuffer")
     local fg = rctx.color or Blitbuffer.COLOR_BLACK

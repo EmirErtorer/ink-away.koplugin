@@ -110,7 +110,7 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
-        if op.kind == "link" then
+        if op.kind == "link" then   -- luacheck: ignore 542
             -- a link draws nothing (it becomes a PDF link annotation)
         elseif op.kind == "text" then
             -- text comes from a rasteriser the view injects (Export.text_raster),
@@ -667,7 +667,7 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
         if not ok then return fail(e) end
         -- release this page's buffers now (several MB each), not whenever the GC
         -- gets round to it, so a long export never piles them up
-        page_bg, c, jopts = nil, nil, nil
+        page_bg, c, jopts = nil, nil, nil   -- luacheck: ignore 311
         collectgarbage("collect")
         return "page", i, job.n
     end

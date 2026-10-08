@@ -374,7 +374,7 @@ function InkAwayView:openShapePicker()
         -- the caret stays on top
         local og = OverlapGroup:new{ dimen = { w = tileW, h = tileW },
             allow_mirroring = false, caret_btn, select_btn }
-        function og:paintTo(bb, x, y)
+        function og:paintTo(bb, x, y)   -- luacheck: ignore 432
             for i = #self, 1, -1 do
                 local w = self[i]
                 if w.overlap_offset then

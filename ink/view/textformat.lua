@@ -26,7 +26,6 @@ local InkGeom = require("ink/geom")
 local Text = require("ink/text")
 
 local Screen = Device.screen
-local WHITE = Blitbuffer.COLOR_WHITE
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 

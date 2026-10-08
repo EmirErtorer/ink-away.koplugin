@@ -19,8 +19,6 @@ Plain Lua, so the headless tests drive it directly.
 local Geom = require("ink/geom")
 local Shapes = require("ink/shapes")
 
-local pointInPoly = Geom.pointInPoly
-
 local Canvas = {}
 Canvas.__index = Canvas
 
@@ -251,7 +249,7 @@ function Canvas.opBox(op)
     if k == "link" then
         return op.x, op.y, op.x + (op.w or 0), op.y + (op.h or 0)
     elseif k == "text" then
-        if not ((op.h or 0) > 0) then return nil end
+        if not ((op.h or 0) > 0) then return nil end   -- luacheck: ignore 581 (also catches NaN)
         return op.x, op.y, op.x + (op.w or 0), op.y + op.h
     elseif k == "image" then
         -- a turned picture stays inside the circle around its box

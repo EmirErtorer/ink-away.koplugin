@@ -147,8 +147,8 @@ function BrushMaker:paintTo(bb, x, y)
 
     -- sliders: a pill track, black fill and round white knob, like the sheets
     for i, f in ipairs(Brushes.FIELDS) do
-        local tx, cy, tw, ry, w, rx = self:trackRect(i)
-        tx = tx + x; cy = cy + y; ry = ry + y; rx = rx + x
+        local tx, cy, tw, _ry, _w, rx = self:trackRect(i)
+        tx = tx + x; cy = cy + y; rx = rx + x
         local lbl = TextWidget:new{ text = _(f.label), face = Font:getFace("cfont", 17), fgcolor = BLACK }
         lbl:paintTo(bb, rx, cy - math.floor(lbl:getSize().h / 2))
         lbl:free()
