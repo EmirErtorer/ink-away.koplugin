@@ -127,6 +127,11 @@ function SliderRow:init()
             SlPanRelease = { GestureRange:new{ ges = "pan_release", range = range } },
             SlHold = { GestureRange:new{ ges = "hold", range = range } },
             SlHoldPan = { GestureRange:new{ ges = "hold_pan", range = range } },
+            -- KOReader ends any drag lifted within ~0.9 s as a swipe (or a
+            -- multiswipe if it changed direction) instead of a pan release.
+            -- Unclaimed, the sheet's MovableContainer moves the whole sheet on it.
+            SlSwipe = { GestureRange:new{ ges = "swipe", range = range } },
+            SlMultiSwipe = { GestureRange:new{ ges = "multiswipe", range = range } },
         }
     end
 end
@@ -197,6 +202,15 @@ function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x, "ui"); return true 
 function SliderRow:onSlPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
 function SliderRow:onSlHold(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
 function SliderRow:onSlHoldPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
+-- A swipe's pos is where it started (on the slider); the value comes from where
+-- it lifted.
+function SliderRow:onSlSwipe(_, ges)
+    local p = ges and (ges.end_pos or ges.pos)
+    if p then self:_setFromX(p.x, "ui") end
+    UIManager:setDirty(self.parent or self, "ui", self.dimen)
+    return true
+end
+SliderRow.onSlMultiSwipe = SliderRow.onSlSwipe
 function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX(ges.pos.x, "ui")
     else UIManager:setDirty(self.parent or self, "ui", self.dimen) end; return true end
 function SliderRow:paintTo(bb, x, y)

@@ -1274,6 +1274,15 @@ do
     sr:onSlPan(nil, { pos = { x = sr.dimen.x + sr._track_dx - 50, y = sr.dimen.y + 5 } })
     ok(sr.value == 0, "slider: drag past the left end -> min value")
     ok(sr._valw.text == sr:_fmt(0), "slider: value text updated to min in place")
+    -- a quick drag ends as a swipe (pos = start, end_pos = lift): the slider
+    -- claims it, so the sheet around it does not move
+    ok(sr.ges_events.SlSwipe ~= nil and sr.ges_events.SlMultiSwipe ~= nil,
+        "slider: listens for swipes and multiswipes")
+    local mid = sr.dimen.x + sr._track_dx + math.floor(sr._track_w / 2)
+    local taken = sr:onSlSwipe(nil, { pos = { x = sr.dimen.x + sr._track_dx + 2, y = sr.dimen.y + 5 },
+        end_pos = { x = mid, y = sr.dimen.y + 5 }, direction = "east", distance = 100 })
+    ok(taken == true, "slider: a swipe starting on it is consumed")
+    ok(sr.value == 50, "slider: a swipe sets the value from where it lifted")
 end
 
 -- ---- straightening rebuilds the master over the footprint only ------------
