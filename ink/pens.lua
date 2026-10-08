@@ -87,6 +87,13 @@ function Pens.paint(op, put)
         return Raster.pathVar(op.pts, Pens.radii(op, st, 1), put)
     elseif st.engine == "nib" then
         return Pens.nib(op.pts, op.pr, op.width, st, put)
+    elseif st.engine == "wash" then
+        -- see-through pens blend in ink/wash.lua; here only their footprint, for
+        -- the hit tests that ask what a stroke covers
+        if st.tip == "chisel" then
+            return Raster.pathNib(op.pts, op.width, math.max(1, op.width * 0.35), math.pi / 2, put)
+        end
+        return Raster.path(op.pts, op.width / 2, put)
     end
     if op.pr and st.pressure then
         return Raster.pathTexVar(op.pts, Pens.radii(op, st, 1), put, st, op.seed or 0)

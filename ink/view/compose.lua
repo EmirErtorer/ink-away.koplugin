@@ -8,6 +8,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Paint = require("ink/paint")
+local Wash = require("ink/wash")
 local Symmetry = require("ink/symmetry")
 
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -118,10 +119,13 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
         if op.kind == "link" then   -- luacheck: ignore 542
             -- a link draws nothing into the page (see ink/links.lua)
         elseif not op.hidden and not (lifted and lifted[op]) and (not region or meets(op, region)) then
+            local wash, wst = Wash.isWash(op)
             if op.kind == "text" then
                 self:stampTextInto(dst, op, region)   -- glyphs, drawn straight into dst (z-order)
             elseif op.kind == "image" then
                 self:blitImageInto(dst, op, region)   -- placed picture, alpha-blended (z-order)
+            elseif wash then
+                self:washInto(dst, op, wst, region)   -- see-through pen, blended (z-order)
             else
                 local put, fill_put
                 if op.kind == "erase" and op.spare_text and reveal_text then
@@ -146,6 +150,19 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     if owns_rp then reveal_pic:free() end
     if page_copy then page_copy:free() end
     if owns_bare then bare:free() end
+end
+
+-- Blend a see-through pen's stroke into dst (a canvas-sized bitmap), within
+-- `region` when given. The mask scratch is kept for the next stroke.
+function InkAwayView:washInto(dst, op, st, region)
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local m = Wash.buildMask(op, st, W, H, self._wash_scratch)
+    if not m then return end
+    if not self._wash_scratch or m.w * m.h > self._wash_scratch.w * self._wash_scratch.h then
+        self._wash_scratch = m
+    end
+    if region then Wash.blendBB(dst, m, op, st, region.x0, region.y0, region.x1, region.y1)
+    else Wash.blendBB(dst, m, op, st) end
 end
 
 -- The buffer the eraser reveals under the ink. In a notebook that is the paper
@@ -281,6 +298,14 @@ function InkAwayView:stampOpIntoCanvas(op)
         -- glyph blits do not report a span bbox; resync the whole mirror (text is
         -- committed rarely, so the one full copy on the next render is cheap)
         self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
+        return
+    end
+    local wash, wst = Wash.isWash(op)
+    if wash then
+        self:washInto(self.canvas_bb, op, wst)
+        local x0, y0, x1, y1 = Wash.box(op)
+        if op.sym and op.sym ~= "off" then x0, y0, x1, y1 = 0, 0, self.view.canvas_w, self.view.canvas_h end
+        self:markCanvasDirty(math.max(0, x0), math.max(0, y0), x1, y1)
         return
     end
     -- one acc grows over every span written (base and symmetry mirrors), so the

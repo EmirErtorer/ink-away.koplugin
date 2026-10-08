@@ -482,6 +482,7 @@ function InkAwayView:penDropFingerOps()
         self.pending_lift = nil
         self.capturing = false
         if self._wipe then self:wipeCancel() end
+        if self._wl then self:washEnd() end
         self.canvas:cancelStroke()
         self.last_cx, self.last_cy = nil, nil
         self:recompose()

@@ -19,6 +19,7 @@ local Canvas = require("ink/canvas")
 local Fill = require("ink/fill")
 local Pdf = require("ink/pdf")
 local Pens = require("ink/pens")
+local Wash = require("ink/wash")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
@@ -104,7 +105,7 @@ end
 -- Each op's writer is wrapped for its own symmetry mode. The RGBA and RGB
 -- builders and the fill's grey buffer all replay through here, so they match the
 -- rasterizer pixel for pixel.
-local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
+local function replay(canvas, ink_put, erase_put_for, text_put, image_put, wash_put)
     local W, H = canvas.w, canvas.h
     local refx, refy = Symmetry.canvasRefs(W, H)
     for _, op in ipairs(canvas.ops) do
@@ -119,6 +120,9 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put)
             -- a placed picture, from the RGBA buffer the view injects
             -- (Export.image_raster), in z-order
             if image_put and not op.hidden then image_put(op) end
+        elseif Wash.isWash(op) then
+            -- a see-through pen blends with what is under it (ink/wash.lua)
+            if wash_put and not op.hidden then wash_put(op) end
         else
             local put, fill_put
             if op.kind == "erase" then
@@ -343,8 +347,19 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             return plain_erase or hard_erase
         end,
         function(op) Export.eachTextPixel(op, text_px) end,
-        function(op) putImage(buf, op) end)
+        function(op) putImage(buf, op) end,
+        function(op) Export.washInto(buf, ow, oh, 4, offx, offy, canvas, op) end)
     return buf, n, ow, oh
+end
+
+-- Blend a see-through pen's stroke into a packed export buffer.
+local wash_scratch
+function Export.washInto(buf, ow, oh, bpp, offx, offy, canvas, op)
+    local _w, st = Wash.isWash(op)
+    local m = Wash.buildMask(op, st, canvas.w, canvas.h, wash_scratch)
+    if not m then return end
+    if not wash_scratch or m.w * m.h > wash_scratch.w * wash_scratch.h then wash_scratch = m end
+    Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st)
 end
 
 -- Build a packed RGB buffer (ow*oh*3 bytes) with the ink over white, for JPEG.
@@ -404,7 +419,8 @@ function Export.buildRGB(canvas, rect, template)
             return plain_erase or paper_erase
         end,
         function(op) Export.eachTextPixel(op, text_px) end,
-        function(op) putImage(buf, op) end)
+        function(op) putImage(buf, op) end,
+        function(op) Export.washInto(buf, ow, oh, 3, offx, offy, canvas, op) end)
     return buf, n, ow, oh
 end
 

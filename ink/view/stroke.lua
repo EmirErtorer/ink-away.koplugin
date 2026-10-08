@@ -157,6 +157,8 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
         else reveal = self:eraseRevealBB() end
         if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
+    -- a see-through pen blends its whole stroke so far (see view/wash.lua)
+    if self._wl then return self:washPoint(cx, cy, fresh, p) end
     -- rebuild the writers if they are missing or a buffer was reallocated
     if not self._lw_stroke or self._lw_area_bb ~= self.area_bb
             or self._lw_canvas_bb ~= self.canvas_bb then
@@ -294,6 +296,9 @@ function InkAwayView:beginStroke(sx, sy)
         self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
     end
     self:setupLiveWriters()
+    self._wl = nil
+    local wst = (not is_erase) and self:washStyle(style)
+    if wst then self:washBegin(wst) end
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -447,6 +452,7 @@ function InkAwayView:finalizeStroke()
         for i = 1, #lp do raw[i] = lp[i] end
     end
     local committed = self.canvas:finishStroke()
+    if self._wl then self:washEnd() end   -- the page under it is drawn again from the op below
     -- An erase records whether text was protected when it was made, so changing
     -- the setting later never erases or restores text retroactively.
     if committed and committed.kind == "erase" then
