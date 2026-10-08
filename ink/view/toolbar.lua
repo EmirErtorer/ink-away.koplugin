@@ -229,7 +229,8 @@ function InkAwayView:ensureUserIcons()
                                 "undo", "redo", "menu", "library", "file", "exit",
                                 "sh_line", "sh_rect", "sh_ellipse", "sh_triangle",
                                 "sh_curve", "sh_arrow", "sh_darrow", "sh_carrow", "sh_cdarrow",
-                                "bucket", "lasso", "caret", "highlighter", "booknotes", "nav_prev", "nav_next" }) do
+                                "bucket", "lasso", "caret", "highlighter", "booknotes", "nav_prev", "nav_next",
+                                "newpage", "fullscreen" }) do
             local src = src_dir .. name .. ".svg"
             local dst = dst_dir .. "/inkaway." .. name .. ".svg"
             local sa, da = lfs.attributes(src), lfs.attributes(dst)

@@ -351,5 +351,30 @@ do
     ok(r and m2 == m and c:canUndo(), "mark: and so does redo")
 end
 
+-- ---- book notes: a page per chapter, in the book's order -------------------------------
+do
+    local BookNotes = require("ink/reader/booknotes")
+    ok(BookNotes.fileName('A/B: "C"?') == "A B C", "notes: a title made a file name")
+    ok(BookNotes.fileName("  ...  ") == "Book", "notes: an empty title still names the file")
+    local blank = { { ops = {} } }
+    ok(BookNotes.placeFor(blank, 3).claim, "notes: a new notebook's blank page takes the first chapter")
+    local pages = {
+        { ops = { 1 }, book = { toc = 2 } },        -- chapter 2
+        { ops = { 1 } },                             -- added by hand after it
+        { ops = { 1 }, book = { toc = 5 } },        -- chapter 5
+    }
+    ok(BookNotes.placeFor(pages, 2).index == 2, "notes: a chapter opens on its last page (one added by hand)")
+    ok(BookNotes.placeFor(pages, 5).index == 3, "notes: and another chapter on its own")
+    ok(BookNotes.placeFor(pages, 3).insert == 3, "notes: a new chapter goes between the ones around it")
+    ok(BookNotes.placeFor(pages, 1).insert == 1, "notes: an earlier chapter goes first")
+    ok(BookNotes.placeFor(pages, 9).insert == 4, "notes: a later one last")
+    ok(BookNotes.placeFor(pages, nil).index == 3, "notes: a book without contents opens the last page")
+    ok(BookNotes.otherBook({ { book = { toc = 1, md5 = "a" } } }, "b"), "notes: another book's notebook of the same name is told apart")
+    ok(not BookNotes.otherBook({ { ops = {} } }, "b"), "notes: a notebook with no chapter pages is not another book's")
+    local Notebook = require("ink/notebook")
+    local nb = Notebook.fromData({ w = 10, h = 10, pages = { { id = 1, ops = {}, title = "One", book = { toc = 4, md5 = "x" } } } })
+    ok(nb.pages[1].book and nb.pages[1].book.toc == 4, "notes: a page keeps its chapter through saving")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

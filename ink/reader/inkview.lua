@@ -17,29 +17,26 @@ timers and input hooks.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local Button = require("ui/widget/button")
 local Device = require("device")
-local FrameContainer = require("ui/widget/container/framecontainer")
-local IconWidget = require("ui/widget/iconwidget")
-local ImageWidget = require("ui/widget/imagewidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("gettext")
-local Accent = require("ink/accent")
 local Canvas = require("ink/canvas")
 local InkAwayView = require("ink/view")
-local Paint = require("ink/paint")
 local ToggleRow = require("ink/ui/controls").ToggleRow
+local VBar = require("ink/reader/vbar")
 
 local Screen = Device.screen
 
 local ReaderInkView = InkAwayView:extend{
     name = "inkaway_reader_view",
     reader_mode = true,
+    over_book = true,    -- opened over a book: the reader keeps its orientation
     book = nil,          -- ink/reader/book.lua
 }
+VBar.into(ReaderInkView)
 
 ------------------------------------------------------------------------------
 -- Start and layout
@@ -261,71 +258,13 @@ function ReaderInkView:buildToolbar()
         { id = "menu", icon = "menu", cb = function() self:openReaderSettings() end },
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
     }
-    self:ensureUserIcons()
-    local H = Screen:getHeight()
-    local n = #specs
-    local btn_h = math.floor(H / n)
-    local bar_w = math.max(Screen:scaleBySize(36), math.min(Screen:scaleBySize(50), math.floor(btn_h * 1.15)))
-    local isz = math.max(18, math.min(math.floor(bar_w * 0.6), math.floor(btn_h * 0.62)))
-    self._btn_h, self._bar_w, self._icon_sz = btn_h, bar_w, isz
-    self.tool_buttons, self._toolbar_icons = {}, {}
-    local col = VerticalGroup:new{ align = "center" }
-    for i, s in ipairs(specs) do
-        local h = (i == n) and (H - btn_h * (n - 1)) or btn_h
-        local raw = s.cb
-        local b = Button:new{ icon = "inkaway." .. s.icon, icon_width = isz, icon_height = isz,
-            callback = function()
-                local ok, err = xpcall(raw, debug.traceback)
-                if not ok then logger.warn("Ink Away book toolbar '" .. s.id .. "' failed: " .. tostring(err)) end
-            end,
-            width = bar_w, height = h, bordersize = 0, radius = 0, background = nil,
-            margin = 0, padding = 0, show_parent = self }
-        local path = self:pluginDir() .. "ink/icons/" .. s.icon .. ".svg"
-        local ok_icon, icon = pcall(function() return IconWidget:new{ file = path, width = isz, height = isz } end)
-        if ok_icon and icon then self:setButtonLabel(b, icon) end
-        if b.frame then b.frame.background = nil end
-        if s.tool then self.tool_buttons[s.id] = { button = b } end
-        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true,
-            icon = ok_icon and icon or nil, path = path, size = isz }
-        table.insert(col, b)
-    end
-    self.toolbar = FrameContainer:new{ background = nil, bordersize = 0, padding = 0, margin = 0, col }
-    self._bar_h = nil        -- the canvas's horizontal-bar measures do not apply
-    self:updateToolbarActive()
+    self:buildVBar(specs, Screen:getHeight())
 end
 
-function ReaderInkView:updateToolbarActive()
-    if not self._toolbar_icons then return end
-    local active = (self.tool == "fill") and "shape" or self.tool
-    if self:highlighterActive() then active = "highlight" end
-    self._active_btn_idx = nil
-    for i, e in ipairs(self._toolbar_icons) do
-        if e.tool and e.button then
-            local on = (e.id == active)
-            if on then self._active_btn_idx = i end
-            local tinted = on and e.path and Accent.icon(e.path, e.size)
-            if tinted then
-                self:setButtonLabel(e.button, ImageWidget:new{ image = tinted, width = e.size, height = e.size,
-                    image_disposable = false })
-            elseif e.icon then
-                if e.button.label_widget ~= e.icon then self:setButtonLabel(e.button, e.icon) end
-                e.icon.invert = on
-            end
-        end
-    end
-end
-
-function ReaderInkView:drawActiveToolPill(bb, ox, oy)
-    if not (self._active_btn_idx and self._btn_h and self._bar_w) then return end
-    local m = Screen:scaleBySize(5)
-    local cy = oy + self._btn_h * (self._active_btn_idx - 1)
-    Accent.paintRounded(bb, ox + m, cy + m, self._bar_w - 2 * m, self._btn_h - 2 * m, Screen:scaleBySize(9))
-end
-
--- The hairline between the toolbar and the page.
-function ReaderInkView:drawToolbarIcons(bb)
-    if not self._bar_w then return end
-    bb:paintRect(self._bar_w - 1, 0, 1, self.screen_h, Paint.HAIRLINE)
+-- The highlighter has its own button here.
+function ReaderInkView:vbarActive()
+    if self:highlighterActive() then return "highlight" end
+    return VBar.vbarActive(self)
 end
 
 ------------------------------------------------------------------------------

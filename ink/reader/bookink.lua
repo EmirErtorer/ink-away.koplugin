@@ -2,8 +2,9 @@
 A book's ink, kept as inkaway.lua in the book's own KOReader folder: the same
 ".sdr" folder as the reader's settings for the book, wherever the "Book metadata
 location" setting puts it (next to the book, in KOReader's docsettings folder,
-or by the book's hash). { version, items = { { op, a }, ... } } (see
-ink/reader/place.lua for the items).
+or by the book's hash). { version, items = { { op, a }, ... }, notes } (see
+ink/reader/place.lua for the items; notes is the path of the book's notebook,
+see ink/reader/booknotes.lua).
 
 The folder is KOReader's. Ink Away only adds its own file to it and never
 touches the reader's files, so a book that already has a folder keeps
@@ -100,18 +101,18 @@ function BookInk.load(sidecar_dir)
     return BookInk.new()
 end
 
--- Keep it. An empty one removes the files, so a book with no ink leaves none.
--- Returns whether it is kept.
+-- Keep it. One with no ink and no book notes removes the files, so such a book
+-- leaves none. Returns whether it is kept.
 function BookInk.save(sidecar_dir, data)
     local p = BookInk.path(sidecar_dir)
     if not p or data.read_only then return false end
-    if #data.items == 0 then
+    if #data.items == 0 and not data.notes then
         os.remove(p)
         os.remove(p .. ".old")
         return true
     end
     if not makePath(sidecar_dir) then return false end
-    local stored = { version = BookInk.VERSION, items = data.items }
+    local stored = { version = BookInk.VERSION, items = data.items, notes = data.notes }
     if isFile(p) then
         os.remove(p .. ".old")
         os.rename(p, p .. ".old")

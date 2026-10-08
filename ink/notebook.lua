@@ -1,7 +1,8 @@
 --[[
 The notebook model: an ordered list of pages of one size, plus the ruling
 template they share. A page is { id, ops, src, created, modified }, and may have
-a title, a star and its own paper style: its ops work like a drawing's, `src`
+a title, a star, its own paper style and the book chapter it is about (book
+notes, see ink/reader/booknotes.lua): its ops work like a drawing's, `src`
 keeps it tied to its page of an imported PDF through inserts, duplicates, moves
 and deletes (a blank inserted page has none), and the rest stays with the page
 wherever it moves. The view keeps the current
@@ -57,7 +58,7 @@ function Notebook.forPdf(w, h, template, count)
 end
 
 -- The fields a page keeps besides its ops.
-local PAGE_FIELDS = { "id", "src", "created", "modified", "title", "star", "paper" }
+local PAGE_FIELDS = { "id", "src", "created", "modified", "title", "star", "paper", "book" }
 
 -- Normalise a loaded page: older files store a page as a bare ops array, newer
 -- ones as { ops = ..., src = ... }, and only the newest carry ids and times.

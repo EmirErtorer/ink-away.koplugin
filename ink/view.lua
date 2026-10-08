@@ -307,7 +307,7 @@ function InkAwayView:init()
     self:renderView()
     -- the library or the notebooks on top, when asked for (the library's gesture)
     -- or chosen in the settings; they open as the canvas is shown (see onShow)
-    if not self.reader_mode then
+    if not self.over_book then
         local start = self:getSetting("inkaway_start")
         self._library_on_show = self.show_library or start == "library"
         self._overview_on_show = not self._library_on_show and start == "notebooks"
@@ -457,7 +457,7 @@ function InkAwayView:onCloseWidget()
     UIManager:scheduleIn(0.5, deferredCollect)
     -- Remember the orientation for next time and give the reader back its own
     -- (over a book, the reader's orientation is the book's: nothing to keep).
-    if self:orientationSupported() and not self.reader_mode then
+    if self:orientationSupported() and not self.over_book then
         self:setSetting("inkaway_orientation", self:orientationClass())
         if self.orig_rotation ~= nil and self:currentRotation() ~= self.orig_rotation then
             pcall(function() Screen:setRotationMode(self.orig_rotation) end)
@@ -465,7 +465,7 @@ function InkAwayView:onCloseWidget()
     end
     -- Leave the screen clean (refresh avoids the slow full flash on colour panels);
     -- over a book the reader repaints its page, with the ink, under a plain one.
-    if self.reader_mode then UIManager:setDirty("all", "ui") else self:refresh(nil, "full") end
+    if self.over_book then UIManager:setDirty("all", "ui") else self:refresh(nil, "full") end
 end
 
 function InkAwayView:onIaClose()
@@ -879,18 +879,14 @@ function InkAwayView:paintTo(bb, x, y)
     local paint_chrome = not br and (self._paint_all or not self._area_only)
     self._area_only, self._paint_all = false, false
     if paint_chrome then
-        -- white around the drawing area (the area itself is blitted below)
-        local ay0, ay1 = v.area_y, v.area_y + v.area_h
-        local ax0, ax1 = v.area_x, v.area_x + v.area_w
-        if ay0 > 0 then bb:paintRect(x, y, self.screen_w, ay0, WHITE) end
-        if ay1 < self.screen_h then bb:paintRect(x, y + ay1, self.screen_w, self.screen_h - ay1, WHITE) end
-        if ax0 > 0 then bb:paintRect(x, y + ay0, ax0, ay1 - ay0, WHITE) end
-        if ax1 < self.screen_w then bb:paintRect(x + ax1, y + ay0, self.screen_w - ax1, ay1 - ay0, WHITE) end
-        -- the toolbar and its hairline, unless collapsed
+        self:paintSurround(bb, x, y)
+        -- the toolbar and its hairline, unless collapsed (it sits at the top left,
+        -- or where a mode puts it)
         if not self._toolbar_hidden then
-            self:drawActiveToolPill(bb, x, y)   -- black pill behind the active tool
-            self.toolbar:paintTo(bb, x, y)
-            self:drawToolbarIcons(bb)
+            local tx, ty = x + (self._bar_x or 0), y + (self._bar_y or 0)
+            self:drawActiveToolPill(bb, tx, ty)   -- black pill behind the active tool
+            self.toolbar:paintTo(bb, tx, ty)
+            self:drawToolbarIcons(bb, tx, ty)
         end
     end
     -- the drawing area
@@ -934,6 +930,18 @@ function InkAwayView:paintTo(bb, x, y)
 
     -- the floating controls, on top (a region blit paints the ones it reaches)
     self:drawFabs(bb, x, y, br)
+end
+
+-- White around the drawing area (the area itself is blitted over it). A mode
+-- shown as a window over something else paints that instead.
+function InkAwayView:paintSurround(bb, x, y)
+    local v = self.view
+    local ay0, ay1 = v.area_y, v.area_y + v.area_h
+    local ax0, ax1 = v.area_x, v.area_x + v.area_w
+    if ay0 > 0 then bb:paintRect(x, y, self.screen_w, ay0, WHITE) end
+    if ay1 < self.screen_h then bb:paintRect(x, y + ay1, self.screen_w, self.screen_h - ay1, WHITE) end
+    if ax0 > 0 then bb:paintRect(x, y + ay0, ax0, ay1 - ay0, WHITE) end
+    if ax1 < self.screen_w then bb:paintRect(x + ax1, y + ay0, self.screen_w - ax1, ay1 - ay0, WHITE) end
 end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.

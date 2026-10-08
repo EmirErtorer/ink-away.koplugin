@@ -65,7 +65,7 @@ function Book:save()
                 text = _("Ink Away could not save this book's ink: its folder can't be written to.") })
         end
     end
-    self.has_file = kept ~= nil and #data.items > 0
+    self.has_file = kept ~= nil and (#data.items > 0 or data.notes ~= nil)
     return kept ~= nil
 end
 
@@ -371,7 +371,8 @@ end
 -- The book is closing: close the annotation mode (keeping its ink) and let go.
 function Book:close()
     if self._view then pcall(function() self._view:closeCanvas() end) end
-    self._view = nil
+    if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
+    self._view, self._notes_view = nil, nil
     self._placed, self._index, self._painter = nil, nil, nil
     require("ink/wash").clearCache()
 end
@@ -382,13 +383,69 @@ function Book:turn(dir)
     self.ui:handleEvent(Event:new("GotoViewRel", dir))
 end
 
--- Paint the page shown into `bb` (screen-sized), without the ink.
-function Book:snapshot(bb)
+-- Paint the page shown into `bb` (screen-sized), without the ink unless
+-- `with_ink`.
+function Book:snapshot(bb, with_ink)
     local ov = self:overlay()
-    ov.hidden = true
+    ov.hidden = not with_ink
     local ok, err = pcall(self.ui.view.paintTo, self.ui.view, bb, 0, 0)
     ov.hidden = false
     if not ok then logger.warn("Ink Away: could not draw the page:", err) end
+end
+
+------------------------------------------------------------------------------
+-- Book notes (ink/reader/notesview.lua)
+------------------------------------------------------------------------------
+
+-- What the notes need to know: the book's title and author, its checksum, and
+-- the chapter shown ({ key = its place in the contents, chapter = its title }).
+function Book:notesInfo()
+    local ui = self.ui
+    local props = ui.doc_props or {}
+    local file = ui.document and ui.document.file or ""
+    local title = props.display_title or props.title
+    if not title or title == "" then title = file:match("([^/]+)%.[^./]*$") or file:match("[^/]+$") or "Book" end
+    local md5
+    pcall(function() md5 = ui.doc_settings:readSetting("partial_md5_checksum") end)
+    local info = { title = title, author = props.authors, md5 = md5 }
+    local toc = ui.toc
+    if toc and toc.getTocIndexByPage then
+        local pos = ui.rolling and ui.document:getXPointer() or self:currentPage()
+        local ok, idx = pcall(toc.getTocIndexByPage, toc, pos, toc.toc_chapter_title_bind_to_ticks)
+        if ok and idx and toc.toc and toc.toc[idx] then
+            info.key = idx
+            local t = toc.toc[idx].title
+            info.chapter = toc.cleanUpTocTitle and toc:cleanUpTocTitle(t) or t
+        end
+    end
+    return info
+end
+
+-- The book's notebook, as last saved (nil before it has one).
+function Book:notesPath()
+    return self:data().notes
+end
+
+function Book:setNotesPath(path)
+    local data = self:data()
+    if data.notes == path or data.read_only then return end
+    data.notes = path
+    self:save()
+end
+
+-- Open the book's notes in a window over the page (once: a second call while
+-- they are open does nothing).
+function Book:openNotes()
+    if self._notes_view then return end
+    local ok, NotesView = pcall(require, "ink/reader/notesview")
+    if not ok then logger.warn("Ink Away: book notes unavailable:", NotesView); return end
+    -- the page as it is, to show around the window
+    local Blitbuffer = require("ffi/blitbuffer")
+    local behind = Blitbuffer.new(Screen:getWidth(), Screen:getHeight(), Screen.bb:getType())
+    self:snapshot(behind, true)
+    local view = NotesView:new{ book = self, behind_bb = behind }
+    self._notes_view = view
+    UIManager:show(view)
 end
 
 -- Repaint the reader (after the ink changed).
