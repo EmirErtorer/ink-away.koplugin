@@ -15,6 +15,7 @@ local Device = require("device")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local BookInk = require("ink/reader/bookink")
+local Canvas = require("ink/canvas")
 local Place = require("ink/reader/place")
 
 local Screen = Device.screen
@@ -85,11 +86,25 @@ function Book:doc()
             local zoom = view.state and view.state.zoom or 1
             return pos.page, pos.x, pos.y, zoom
         end
+        -- the page's place on the screen, as the reader draws it (its own
+        -- transform gives nothing for a point just off the screen, which
+        -- would hide a stroke that starts above the visible part)
         function d.toScreen(_, page, px, py)
-            local Geom = require("ui/geometry")
-            local ok, r = pcall(view.pageToScreenTransform, view, page, Geom:new{ x = px, y = py, w = 1, h = 1 })
-            if not ok or not r then return nil end
-            return r.x, r.y, view.state and view.state.zoom or 1
+            if view.page_scroll then
+                local y = 0
+                for _i, st in ipairs(view.page_states or {}) do
+                    if st.page == page then
+                        return st.offset.x + px * st.zoom - st.visible_area.x,
+                            y + st.offset.y + py * st.zoom - st.visible_area.y, st.zoom
+                    end
+                    y = y + st.visible_area.h + (view.page_gap and view.page_gap.height or 0)
+                end
+                return nil
+            end
+            local st = view.state
+            if not (st and st.page == page and view.visible_area) then return nil end
+            return st.offset.x + px * st.zoom - view.visible_area.x,
+                st.offset.y + py * st.zoom - view.visible_area.y, st.zoom
         end
     else
         d.kind = "rolling"
@@ -117,7 +132,7 @@ function Book:doc()
     return d
 end
 
--- The page shown now.
+-- The page shown now (the first, when more than one is).
 function Book:currentPage()
     local ui = self.ui
     if ui.paging then return ui.view.state and ui.view.state.page or ui.paging.current_page end
@@ -125,77 +140,112 @@ function Book:currentPage()
     return ok and p or nil
 end
 
+-- Every page on the screen: one, or two side by side, or the pages a
+-- continuous scroll shows.
+function Book:visiblePages()
+    local ui = self.ui
+    if ui.paging then
+        local view = ui.view
+        if view.page_scroll and view.page_states and #view.page_states > 0 then
+            local pages = {}
+            for _i, st in ipairs(view.page_states) do pages[#pages + 1] = st.page end
+            return pages
+        end
+        return { self:currentPage() }
+    end
+    local p = self:currentPage()
+    if not p then return {} end
+    local doc = ui.document
+    local two = (ui.view and ui.view.view_mode == "scroll")
+        or (doc.getVisiblePageCount and doc:getVisiblePageCount() == 2)
+    if two and p < (doc:getPageCount() or p) then return { p, p + 1 } end
+    return { p }
+end
+
 -- What changes where a page's ink goes: for a reflowing book its layout (font,
 -- margins, size...), for a fixed-page one its zoom and position on the screen.
 function Book:layoutKey()
     local ui = self.ui
     if ui.paging then
-        local s = ui.view.state or {}
-        local va = ui.view.visible_area or {}
-        return table.concat({ "p", s.page or 0, s.zoom or 0, s.rotation or 0, va.x or 0, va.y or 0,
-            Screen:getWidth(), Screen:getHeight() }, "|")
+        local view = ui.view
+        local parts = { "p", Screen:getWidth(), Screen:getHeight() }
+        local states = view.page_scroll and view.page_states or { view.state or {} }
+        for _i, st in ipairs(states) do
+            local va = view.page_scroll and st.visible_area or view.visible_area or {}
+            local off = st.offset or {}
+            parts[#parts + 1] = table.concat({ st.page or 0, st.zoom or 0, st.rotation or 0,
+                va.x or 0, va.y or 0, off.x or 0, off.y or 0 }, ",")
+        end
+        return table.concat(parts, "|")
     end
     local ok, hash = pcall(ui.document.getDocumentRenderingHash, ui.document, false)
+    local top = ui.view and ui.view.view_mode == "scroll" and ui.document:getCurrentPos() or ""
     return table.concat({ "r", ok and tostring(hash) or "", ui.document:getPageCount() or 0,
-        Screen:getWidth(), Screen:getHeight() }, "|")
+        Screen:getWidth(), Screen:getHeight(), top }, "|")
 end
 
--- The items on the page shown, as screen ops with the item each came from:
+-- The items on the pages shown, as screen ops with the item each came from:
 -- { ops = {...}, items = {...} }. Cached until the page, the layout or the ink
 -- changes.
 function Book:pageOps()
     if not self:hasInk() then return nil end
     local data = self:data()
-    local page = self:currentPage()
+    local pages = self:visiblePages()
     local layout = self:layoutKey()
-    local key = table.concat({ page or "", layout, self.rev }, "#")
+    local key = table.concat({ table.concat(pages, ","), layout, self.rev }, "#")
     local c = self._placed
     if c and c.key == key then return c end
     local doc = self:doc()
     -- the page index is built once per layout (for a fixed-page book it is just
     -- the page numbers, so it does not depend on the zoom)
-    local ikey = (doc.kind == "paging" and "paging" or layout) .. "#" .. self.rev
+    local ikey = (doc.kind == "paging" and "paging" or layout:gsub("|[^|]*$", "")) .. "#" .. self.rev
     if not (self._index and self._index_key == ikey) then
         self._index = Place.index(data.items, doc)
         self._index_key = ikey
     end
-    local out = { key = key, page = page, ops = {}, items = {} }
-    for _i, idx in ipairs(self._index[page] or {}) do
-        local item = data.items[idx]
-        local ok, op = pcall(Place.place, item, doc)
-        if ok and op then
-            out.ops[#out.ops + 1] = op
-            out.items[#out.items + 1] = item
+    local out = { key = key, pages = pages, ops = {}, items = {} }
+    local W, H = Screen:getWidth(), Screen:getHeight()
+    for _p, page in ipairs(pages) do
+        for _i, idx in ipairs(self._index[page] or {}) do
+            local item = data.items[idx]
+            local ok, op = pcall(Place.place, item, doc)
+            -- only what reaches the screen (a page scrolled half away keeps
+            -- the rest of its ink out of the way, untouched)
+            local x0, y0, x1, y1
+            if ok and op then x0, y0, x1, y1 = Canvas.opBox(op) end
+            if x0 and x1 >= 0 and y1 >= 0 and x0 < W and y0 < H then
+                out.ops[#out.ops + 1] = op
+                out.items[#out.items + 1] = item
+            end
         end
     end
     self._placed = out
     return out
 end
 
--- Replace the ink of the page shown with `ops` (screen ops, from the
--- annotation mode). An op that came back unchanged keeps its item (and its
--- anchor), so ink never drifts from being opened and closed again. Returns the
--- item of each op, for the next time the page is saved.
-function Book:setPageOps(ops, came_from)
+-- Replace the ink shown (`shown`, the items the annotation mode was given) with
+-- `ops` (screen ops). An op that came back unchanged keeps its item (and its
+-- anchor), so ink never drifts from being opened and closed again; ink that
+-- was not shown is never touched. Returns the item of each op and the items
+-- now shown, for the next time the page is saved.
+function Book:setPageOps(ops, came_from, shown)
     local data = self:data()
     local doc = self:doc()
-    local page = self:currentPage()
     local keep, map = {}, {}
     for _i, op in ipairs(ops) do
         local item = came_from and came_from[op]
         if not item then item = Place.anchor(op, doc) end
         if item then keep[#keep + 1] = item; map[op] = item end
     end
-    -- drop the page's old items, then add these
     local old = {}
-    for _i, idx in ipairs((self._index or Place.index(data.items, doc))[page] or {}) do old[data.items[idx]] = true end
+    for _i, item in ipairs(shown or {}) do old[item] = true end
     local items = {}
     for _i, item in ipairs(data.items) do if not old[item] then items[#items + 1] = item end end
     for _i, item in ipairs(keep) do items[#items + 1] = item end
     data.items = items
     self.rev = self.rev + 1
     self._placed, self._index = nil, nil
-    return map
+    return map, keep
 end
 
 ------------------------------------------------------------------------------

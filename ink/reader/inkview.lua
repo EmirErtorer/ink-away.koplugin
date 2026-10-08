@@ -91,6 +91,7 @@ function ReaderInkView:loadBookPage()
         from[c] = placed.items[i]
     end
     self._came_from = from
+    self._shown = placed and placed.items or {}
     self.canvas:setOps(ops)
     self._committed_rev = self.canvas.rev
     self.dirty = false
@@ -107,7 +108,7 @@ end
 function ReaderInkView:saveDocument()
     if not (self.book and self.canvas) or not self:docChanged() then return true end
     local ok, err = pcall(function()
-        self._came_from = self.book:setPageOps(self.canvas.ops, self._came_from)
+        self._came_from, self._shown = self.book:setPageOps(self.canvas.ops, self._came_from, self._shown)
         self.book:save()
     end)
     if not ok then logger.warn("Ink Away: could not keep the page's ink:", err) end

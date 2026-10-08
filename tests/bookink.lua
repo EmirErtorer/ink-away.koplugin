@@ -286,5 +286,36 @@ do
     sh("rm -rf '" .. root .. "'")
 end
 
+-- ---- several pages on the screen; only the ink shown is replaced ------------------------
+do
+    local Book = require("ink/reader/book")
+    local doc = { kind = "paging", zoom = 1 }
+    function doc:toPage(x, y) if y < 400 then return 5, x, y, 1 end return 6, x, y - 400, 1 end
+    function doc:toScreen(page, px, py) if page == 5 then return px, py, 1 end if page == 6 then return px, py + 400, 1 end end
+    local states = { { page = 5 }, { page = 6 } }
+    local ui = { paging = true, view = { page_scroll = true, page_states = states, state = { page = 5 } } }
+    local b = setmetatable({ ui = ui, rev = 0, has_file = true }, Book)
+    b._doc = doc
+    b.layoutKey = function() return "L" end
+    local function ink(x, y) return { kind = "ink", width = 2, alpha = 255, pts = { x, y, x + 20, y } } end
+    local a5, a6 = Place.anchor(ink(10, 100), doc), Place.anchor(ink(10, 500), doc)
+    local hidden = Place.anchor(ink(10, 120), doc)            -- on page 5, but not shown (say, unplaceable)
+    b._data = { version = 1, items = { a5, a6, hidden, Place.anchor(ink(10, 100), { kind = "paging",
+        toPage = function() return 9, 10, 100, 1 end }) } }
+    local pages = b:visiblePages()
+    ok(#pages == 2 and pages[1] == 5 and pages[2] == 6, "pages: a continuous scroll shows pages 5 and 6")
+    local placed = b:pageOps()
+    ok(#placed.ops == 4 - 1, "pages: the ink of both pages is placed (page 9's is not)")
+    -- the view drops page 6's stroke and draws a new one; page 5's comes back unchanged
+    local shown = { a5, a6 }
+    local from = { [placed.ops[1]] = a5 }
+    local map, now = b:setPageOps({ placed.ops[1], ink(50, 450) }, from, shown)
+    ok(map[placed.ops[1]] == a5 and #now == 2, "save: the unchanged stroke keeps its item")
+    local has = {}
+    for _, it in ipairs(b._data.items) do has[it] = true end
+    ok(has[a5] and not has[a6] and has[hidden] and #b._data.items == 4,
+        "save: the erased stroke is gone, ink that was not shown is kept")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
