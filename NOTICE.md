@@ -15,8 +15,9 @@ Those libraries are provided by KOReader and are not bundled with this plugin.
 The pen slot handling in `ink/penbridge.lua` follows the approach of
 [Notebook](https://github.com/pierspad/notebook.koplugin) by pierspad (MIT
 License), which showed that giving the Wacom pen and the touch panel their own
-slot cursors is what keeps palm rejection reliable on the Kindle Scribe. The code
-here is written independently.
+slot cursors is what keeps palm rejection reliable on the Kindle Scribe, and that
+the digitizer's current pressure can be read directly (an EVIOCGABS ioctl) on
+firmwares that send no pressure events. The code here is written independently.
 
 ## Handwriting recognition
 

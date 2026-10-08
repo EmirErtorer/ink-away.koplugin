@@ -204,12 +204,14 @@ end
 ------------------------------------------------------------------------------
 
 -- Drop points closer than `min_spacing` to the previously kept point, keeping the
--- first and last. Takes and returns flat {x,y,...} lists.
-function Geom.dropClose(pts, min_spacing)
+-- first and last. Takes and returns flat {x,y,...} lists. An optional `aux`, one
+-- value per point (pen pressure), is thinned the same way and returned second.
+function Geom.dropClose(pts, min_spacing, aux)
     local n = math.floor(#pts / 2)
-    if n <= 2 then return copyList(pts) end
+    if n <= 2 then return copyList(pts), aux and copyList(aux) end
     local ms2 = min_spacing * min_spacing
     local out = { pts[1], pts[2] }
+    local oaux = aux and { aux[1] }
     local lx, ly = pts[1], pts[2]
     for i = 2, n - 1 do
         local x, y = pts[2 * i - 1], pts[2 * i]
@@ -217,20 +219,25 @@ function Geom.dropClose(pts, min_spacing)
         if dx * dx + dy * dy >= ms2 then
             out[#out + 1] = x
             out[#out + 1] = y
+            if oaux then oaux[#oaux + 1] = aux[i] end
             lx, ly = x, y
         end
     end
     out[#out + 1] = pts[2 * n - 1]
     out[#out + 1] = pts[2 * n]
-    return out
+    if oaux then oaux[#oaux + 1] = aux[n] end
+    return out, oaux
 end
 
 -- Ramer-Douglas-Peucker simplification of a flat point list. Returns the points
 -- it keeps; `tol` is how far a point may sit from the line before it is kept, in
--- the units of pts.
-function Geom.rdp(pts, tol)
+-- the units of pts. With `aux` (one value per point, pen pressure) a point is
+-- also kept where its value strays from the straight-line blend of the ends by
+-- more than tol / aux_scale, so a stroke keeps its swell; the kept values are
+-- returned second.
+function Geom.rdp(pts, tol, aux, aux_scale)
     local n = math.floor(#pts / 2)
-    if n <= 2 then return copyList(pts) end
+    if n <= 2 then return copyList(pts), aux and copyList(aux) end
     local keep = {}
     for i = 1, n do keep[i] = false end
     keep[1], keep[n] = true, true
@@ -257,6 +264,12 @@ function Geom.rdp(pts, tol)
                 else
                     d = math.sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay))
                 end
+                if aux then
+                    -- the value's distance from its blend along a..b, in px
+                    local t = (b > a) and (j - a) / (b - a) or 0
+                    local da = math.abs(aux[j] - (aux[a] + (aux[b] - aux[a]) * t)) * (aux_scale or 1)
+                    if da > d then d = da end
+                end
                 if d > maxd then maxd, split = d, j end
             end
             if split > 0 then
@@ -266,14 +279,15 @@ function Geom.rdp(pts, tol)
             end
         end
     end
-    local out = {}
+    local out, oaux = {}, aux and {}
     for i = 1, n do
         if keep[i] then
             out[#out + 1] = pts[2 * i - 1]
             out[#out + 1] = pts[2 * i]
+            if oaux then oaux[#oaux + 1] = aux[i] end
         end
     end
-    return out
+    return out, oaux
 end
 
 ------------------------------------------------------------------------------

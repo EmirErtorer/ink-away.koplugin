@@ -87,6 +87,9 @@ function Canvas:cloneOp(op)
     if op.runs then
         local r = {}; for i = 1, #op.runs do r[i] = op.runs[i] end; c.runs = r
     end
+    if op.pr then
+        local r = {}; for i = 1, #op.pr do r[i] = op.pr[i] end; c.pr = r
+    end
     return c
 end
 
@@ -103,22 +106,28 @@ end
 
 -- Begin a new stroke. `kind` is "ink" or "erase"; `alpha` (0-255, opaque by
 -- default) is the ink opacity, ignored by an erase, which always clears fully;
--- `color` is an optional {r,g,b} (black by default).
-function Canvas:startStroke(kind, width, alpha, color, style, seed)
+-- `color` is an optional {r,g,b} (black by default). With `pressured` the stroke
+-- keeps a pen pressure (0-255) per point in op.pr.
+function Canvas:startStroke(kind, width, alpha, color, style, seed, pressured)
     self.live = { kind = kind, width = width, alpha = alpha or 255, color = color,
-                  style = style, seed = seed, pts = {} }
+                  style = style, seed = seed, pts = {}, pr = pressured and {} or nil }
 end
 
--- Add a raw point, in canvas coordinates, to the live stroke. Repeated points are
--- dropped so a stationary finger does not bloat the point list.
-function Canvas:addPoint(cx, cy)
+-- Add a raw point, in canvas coordinates, to the live stroke, with its pressure
+-- `p` (0-255) on a pressured stroke. A repeated point is not added again; it only
+-- takes the newer pressure, as a pen pressed harder in place.
+function Canvas:addPoint(cx, cy, p)
     local live = self.live
     if not live then return end
-    local pts = live.pts
+    local pts, pr = live.pts, live.pr
     local n = #pts
-    if n >= 2 and pts[n - 1] == cx and pts[n] == cy then return end
+    if n >= 2 and pts[n - 1] == cx and pts[n] == cy then
+        if pr and p then pr[#pr] = p end
+        return
+    end
     pts[n + 1] = cx
     pts[n + 2] = cy
+    if pr then pr[#pr + 1] = p or 255 end
 end
 
 -- Finish the live stroke, simplify it and commit it. Returns the committed op,
@@ -127,9 +136,10 @@ function Canvas:finishStroke()
     local live = self.live
     self.live = nil
     if not live or #live.pts == 0 then return nil end
-    local pts = Geom.dropClose(live.pts, MIN_SPACING)
-    pts = Geom.rdp(pts, RDP_TOL)
-    live.pts = pts
+    local pts, pr = Geom.dropClose(live.pts, MIN_SPACING, live.pr)
+    -- a pressure step of 255 can change the radius by up to half the width
+    pts, pr = Geom.rdp(pts, RDP_TOL, pr, (live.width or 1) * 0.5 / 255)
+    live.pts, live.pr = pts, pr
     self.ops[#self.ops + 1] = live
     self:recordAppend()
     return live

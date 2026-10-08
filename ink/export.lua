@@ -18,6 +18,7 @@ local bit = require("bit")
 local Canvas = require("ink/canvas")
 local Fill = require("ink/fill")
 local Pdf = require("ink/pdf")
+local Pens = require("ink/pens")
 local Raster = require("ink/raster")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
@@ -82,13 +83,10 @@ local function paintGeom(op, put, fill_put)
         Shapes.render(op, put)
     elseif op.kind == "fill" then
         Fill.render(op, put)
+    elseif op.kind == "ink" then
+        Pens.paint(op, put)          -- the pen's own rasterizer (see ink/pens.lua)
     else
-        local st = op.kind == "ink" and op.style and Raster.STYLES[op.style]
-        if st and not st.solid then
-            Raster.pathTex(op.pts, op.width / 2, put, st, op.seed or 0)
-        else
-            Raster.path(op.pts, op.width / 2, put)
-        end
+        Raster.path(op.pts, op.width / 2, put)
     end
 end
 Export.paintGeom = paintGeom

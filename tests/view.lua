@@ -1602,6 +1602,53 @@ do
     view:onCloseWidget()
 end
 
+-- ---- pen pressure: from the pen's frames into the stroke, and off on request ---
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    view.palm_reject = true
+    view:applyPalmReject()
+    view:setTool("pen")
+    view.pen_style, view.pen_width = "ballpoint", 12
+    view._pressure_probe = { lo = 0, hi = 4095 }
+    local v = view.view
+    local function penStroke(pressures)
+        local id = math.random(100, 100000)
+        for i, p in ipairs(pressures) do
+            view:onStylusSlot(Device.input, { slot = 4, id = id, tool = 1, x = 200 + i * 25, y = v.area_y + 400,
+                pressure = p, timev = i * 8000 })
+        end
+        view:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, x = 200, y = v.area_y + 400, timev = 999999 })
+        UIManager.fireScheduled()
+    end
+    penStroke({ 400, 900, 1600, 2400, 3200, 4000, 4000, 4000 })
+    local op = view.canvas.ops[#view.canvas.ops]
+    ok(op and op.style == "ballpoint" and op.pr ~= nil, "pressure: a ballpoint stroke keeps the pen's pressure")
+    ok(op and op.pr and op.pr[1] < op.pr[#op.pr], "pressure: harder at the end than the start")
+    view.pen_pressure = false
+    penStroke({ 400, 4000, 400, 4000 })
+    local op2 = view.canvas.ops[#view.canvas.ops]
+    ok(op2 ~= op and op2.pr == nil, "pressure: off in the pen settings, strokes keep none")
+    view.pen_pressure = true
+    view.pen_style = "solid"
+    penStroke({ 400, 4000 })
+    ok(view.canvas.ops[#view.canvas.ops].pr == nil, "pressure: a fineliner ignores pressure")
+    -- a finger (no sensor): the fountain pen simulates it from speed
+    view.palm_reject = false
+    view:applyPalmReject()
+    view.pen_style = "fountain"
+    local n0 = #view.canvas.ops
+    view:feedPen("down", 300, v.area_y + 600)
+    for i = 1, 10 do view:feedPen("move", 300 + i * 30, v.area_y + 600 + i * 5) end
+    view:feedPen("up", 600, v.area_y + 650)
+    UIManager.fireScheduled()
+    local op3 = view.canvas.ops[#view.canvas.ops]
+    ok(#view.canvas.ops == n0 + 1 and op3.pr ~= nil, "pressure: a finger with the fountain pen gets a simulated pressure")
+    view:onCloseWidget()
+end
+
 -- ---- lifecycle leak: landscape<->portrait cycles + close leave nothing behind --
 -- The reported "only a full KOReader restart fixes it" slowdown is a leak that
 -- outlives the plugin instance: a view left in UIManager's window stack, or a

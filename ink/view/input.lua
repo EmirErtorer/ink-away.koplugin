@@ -12,6 +12,7 @@ local logger = require("logger")
 local _ = require("gettext")
 local PenBridge = require("ink/penbridge")
 local PenTest = require("ink/pentest")
+local Pressure = require("ink/pressure")
 local Stylus = require("ink/stylus")
 
 local Screen = Device.screen
@@ -86,6 +87,7 @@ function InkAwayView:applyPalmReject()
             local ok, h = pcall(PenBridge.install, Device.input)
             self._pen_bridge = ok and h or nil
         end
+        self:installPressure()
     else
         self:removePenBridge()
         if self._stylus_cb then
@@ -96,7 +98,58 @@ function InkAwayView:applyPalmReject()
     end
 end
 
+-- Keep the pen's pressure where KOReader drops it (a Kobo stylus); on a Wacom
+-- pen the bridge above already keeps it. See ink/pressure.lua.
+function InkAwayView:installPressure()
+    if self._pressure_hook or self.closing or self.pen_pressure == false then return end
+    local inp = Device.input
+    if inp and not inp.wacom_protocol then
+        local ok, h = pcall(Pressure.install, inp)
+        self._pressure_hook = ok and h or nil
+    end
+end
+
+function InkAwayView:removePressure()
+    if self._pressure_hook then pcall(Pressure.uninstall, self._pressure_hook); self._pressure_hook = nil end
+    if self._pressure_sensor then self._pressure_sensor:close(); self._pressure_sensor = nil end
+end
+
+-- The pressure range's top, from the kernel when it says, else the largest value
+-- seen so far (at least 255).
+function InkAwayView:pressureMax()
+    local p = self._pressure_probe
+    if p == nil then
+        local ok, r = pcall(Pressure.probe)
+        p = ok and r or {}
+        self._pressure_probe = p
+    end
+    if p.hi then return p.hi - (p.lo or 0) end
+    return math.max(255, self._pressure_seen or 0)
+end
+
+-- A pen slot's raw pressure above the range's bottom, or nil when the pen gives
+-- none. A Wacom firmware that sends no pressure events is asked directly.
+function InkAwayView:slotPressure(slot)
+    if self.pen_pressure == false then return nil end
+    local raw = slot.pressure
+    if type(raw) ~= "number" then
+        local inp = self._stylus_input or Device.input
+        if not (inp and inp.wacom_protocol) then return nil end
+        if self._pressure_sensor == nil then
+            local ok, s = pcall(Pressure.openSensor)
+            self._pressure_sensor = (ok and s) or false
+        end
+        raw = self._pressure_sensor and self._pressure_sensor:read()
+        if type(raw) ~= "number" then return nil end
+    end
+    local lo = (self._pressure_probe and self._pressure_probe.lo) or 0
+    raw = raw - lo
+    if raw > (self._pressure_seen or 0) then self._pressure_seen = raw end
+    return raw
+end
+
 function InkAwayView:removePenBridge()
+    self:removePressure()
     if self._pen_bridge then
         pcall(PenBridge.uninstall, self._pen_bridge)
         self._pen_bridge = nil
@@ -483,6 +536,7 @@ function InkAwayView:penMove(slot)
         end
     end
     self._pen_last_x, self._pen_last_y = x, y
+    self._pen_raw_pressure = self:slotPressure(slot)
     -- Some pen protocols announce the contact one frame before the first
     -- coordinates, so the stroke is opened by whichever frame first has a point.
     if not self._pen_started then
@@ -506,6 +560,7 @@ function InkAwayView:penMove(slot)
 end
 
 function InkAwayView:penUp()
+    self._pen_raw_pressure = nil
     if self._pen_hold_at then
         self._pen_hold_at = nil
         UIManager:unschedule(self._pen_hold_cb)

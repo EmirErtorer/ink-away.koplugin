@@ -155,6 +155,8 @@ function InkAwayView:init()
     self.pen_style   = self:getSetting("inkaway_pen_style", "solid")
     if not Raster.STYLES[self.pen_style] then self.pen_style = "solid" end
     self.stabilizer  = self:getSetting("inkaway_stabilizer", 40)       -- 0..100
+    self.pen_pressure = self:getSetting("inkaway_pen_pressure", true) ~= false
+    self.pressure_curve = self:getSetting("inkaway_pressure_curve", "medium")   -- soft | medium | firm
     self.grid_on     = self:getSetting("inkaway_grid", false)
     self.grid_style  = self:getSetting("inkaway_grid_style", "square")  -- square | dots | lines | iso | thirds
     self.grid_size   = self:getSetting("inkaway_grid_size", math.max(24, math.floor(W / 16)))
