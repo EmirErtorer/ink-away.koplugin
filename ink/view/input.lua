@@ -6,7 +6,6 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
@@ -100,78 +99,6 @@ function InkAwayView:removePenBridge()
         pcall(PenBridge.uninstall, self._pen_bridge)
         self._pen_bridge = nil
     end
-end
-
-------------------------------------------------------------------------------
--- Pen input test (debug tool, hidden unless show_pen_test is set)
---
--- Palm rejection needs KOReader to hand the pen over as a stylus, which it does
--- only when the kernel tags the slot with a pen tool (BTN_TOOL_PEN or
--- ABS_MT_TOOL_TYPE). Where the pen arrives as an ordinary finger it cannot be
--- told from a palm. This records a few seconds of what the device sends and shows
--- a summary a tester can screenshot.
-------------------------------------------------------------------------------
-
-function InkAwayView:penCaptureRecord(slot)
-    local cap = self._pen_capture
-    if not cap then return end
-    cap.styl = cap.styl + 1
-    local key = "tool=" .. tostring(slot.tool) .. " slot=" .. tostring(slot.slot)
-    cap.combos[key] = (cap.combos[key] or 0) + 1
-    if slot.timev ~= nil then cap.has_timev = true end
-end
-
-function InkAwayView:startPenInputTest()
-    if self._pen_capture then return end   -- already running
-    -- register the stylus hook even with palm rejection off, so the test sees
-    -- what the device sends either way
-    self._pen_test_temp_cb = false
-    if self:penCapable() and not self._stylus_cb then
-        self._stylus_cb = function(inp, slot) return self:onStylusSlot(inp, slot) end
-        pcall(function() Device.input:registerStylusCallback(self._stylus_cb) end)
-        self._pen_test_temp_cb = true
-    end
-    self._pen_capture = { combos = {}, styl = 0, fingers = 0, has_timev = false }
-    self._pen_test_stop = self._pen_test_stop or function() self:finishPenInputTest() end
-    UIManager:show(InfoMessage:new{ text = _(
-        "Pen input test (about 6 seconds):\n\nDraw a few lines with your PEN, and rest your PALM on the screen while you do. A result will appear when it finishes."),
-        timeout = 5 })
-    UIManager:scheduleIn(6, self._pen_test_stop)
-end
-
-function InkAwayView:finishPenInputTest()
-    if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
-    local cap = self._pen_capture
-    self._pen_capture = nil
-    if self._pen_test_temp_cb then
-        pcall(function() Device.input:unregisterStylusCallback() end)
-        self._stylus_cb = nil
-        self._pen_test_temp_cb = false
-        self:applyPalmReject()   -- put the real hook back if palm rejection is on
-    end
-    if not cap then return end
-    local f = self:stylusFacts()
-    local lines = {
-        string.format("Stylus events: %d    Finger touches: %d", cap.styl, cap.fingers),
-        string.format("wacom=%s  pen_slot=%s  timev=%s  bridge=%s",
-            tostring(f.wacom), tostring(f.pen_slot), tostring(cap.has_timev),
-            self._pen_bridge and "on" or "off"),
-    }
-    if cap.styl > 0 then
-        lines[#lines + 1] = "Seen (tool / slot):"
-        for k, n in pairs(cap.combos) do lines[#lines + 1] = "  " .. k .. "   x" .. n end
-    end
-    lines[#lines + 1] = ""
-    if cap.styl == 0 and cap.fingers > 0 then
-        lines[#lines + 1] = "Your pen is arriving as an ordinary finger, so a palm can't be told apart from it. This needs pen support at the KOReader level for this device -- the plugin can't separate them on its own."
-    elseif cap.styl > 0 then
-        lines[#lines + 1] = "The pen IS seen as a stylus. Please screenshot this and send it, so the tool/slot values can be checked."
-    else
-        lines[#lines + 1] = "No input was captured. Please run it again and make sure you draw during the test."
-    end
-    local msg = table.concat(lines, "\n")
-    logger.info("Ink Away pen input test:\n" .. msg)
-    UIManager:show(InfoMessage:new{ text = msg })
 end
 
 ------------------------------------------------------------------------------
@@ -393,7 +320,6 @@ end
 -- slot; that includes a resting palm (MT_TOOL_PALM == ERASER == 2), so slots are
 -- classified first and only a trusted pen drives the drawing.
 function InkAwayView:onStylusSlot(inp, slot)
-    if self._pen_capture then self:penCaptureRecord(slot) end
     if not self.palm_reject or self.closing then return false end
     local input = inp or Device.input
     self._stylus_input = input

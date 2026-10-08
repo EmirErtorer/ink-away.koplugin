@@ -1503,28 +1503,34 @@ do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
 end
 
--- ---- pen input diagnostic runs cleanly and captures what it sees -------------
--- The on-device test (for palm-rejection debugging on stylus devices we can't
--- reproduce) must arm a capture, count stylus events vs finger touches, and finish
--- without error whether or not palm rejection is on.
+-- ---- the pen and touch test takes the pen and fingers, and gives them back ----
+-- Settings > Test pen and touch opens a full-screen test that owns the stylus
+-- callback and watches finger frames while it is open; closing it puts the
+-- canvas's own callback and finger tracking back.
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
     UIManager.reset()
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
-    view.palm_reject = false
-    local ok1 = pcall(function() view:startPenInputTest() end)
-    ok(ok1 and view._pen_capture ~= nil, "pentest: starts and arms the capture")
-    -- one stylus event and one finger touch land during the window
-    view:onStylusSlot(Device.input, { slot = 4, id = 7, tool = 1, x = 100, y = 100, timev = 1 })
-    view:onIaTouch(nil, pos(100, 300))
-    ok(view._pen_capture.styl >= 1, "pentest: captured the stylus event")
-    ok(view._pen_capture.fingers >= 1, "pentest: counted the finger touch")
-    local ok2 = pcall(function() view:finishPenInputTest() end)
-    ok(ok2, "pentest: finishes without error")
-    ok(view._pen_capture == nil, "pentest: clears the capture when done")
+    view.palm_reject = true
+    view:applyPalmReject()
+    local mine = Device.input.stylus_callback
+    ok(mine ~= nil, "pentest: palm rejection registered the canvas's callback")
+    local okc = pcall(function() view:openPenTest() end)
+    ok(okc, "pentest: opens from the canvas")
+    local screen = UIManager.shown
+    ok(screen ~= nil and screen.st ~= nil, "pentest: the test screen is shown")
+    if screen then
+        ok(Device.input.stylus_callback ~= mine, "pentest: the test owns the stylus callback")
+        Device.input.stylus_callback(Device.input, { slot = 4, id = 7, tool = 1, x = 100, y = 100, pressure = 50 })
+        ok(screen.st.pen == 1 and #screen.dots == 1, "pentest: a pen frame is counted and dotted")
+        ok(#view.canvas.ops == 0 and not view._pen_started, "pentest: the canvas did not draw")
+        local okp = pcall(function() screen:paintTo(BB.new(1072, 1448), 0, 0) end)
+        ok(okp, "pentest: paints")
+        screen:onCloseWidget()
+        ok(Device.input.stylus_callback == mine, "pentest: the canvas's callback is back after closing")
+    end
     view:onCloseWidget()
-    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
 end
 
 -- ---- lifecycle leak: landscape<->portrait cycles + close leave nothing behind --

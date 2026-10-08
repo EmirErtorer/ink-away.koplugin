@@ -80,8 +80,6 @@ local InkAwayView = InputContainer:extend{
     -- UIManager:close recomputes Input.disable_double_tap from the open widgets;
     -- keeping it off stops two quick strokes from merging into a double tap.
     disable_double_tap = true,
-    -- Hidden features kept for development. Set to true to show them in the pen menu.
-    show_pen_test = false,      -- debug: the pen input test (startPenInputTest)
 }
 
 ------------------------------------------------------------------------------
@@ -424,8 +422,6 @@ function InkAwayView:onCloseWidget()
         self._clip_widget = nil
     end
     self:cancelFabs()
-    if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
-    self._pen_capture = nil
     if self.editing_text then self:finishTextEdit(true) end   -- bake an open text box
     self:resetLasso()                                           -- drop any selection
     self:hideTextKeyboard()
@@ -483,8 +479,6 @@ end
 -- Touch down: start a stroke, a pan or the active tool's action, or continue a
 -- stroke whose contact the panel dropped for a moment.
 function InkAwayView:onIaTouch(_, ges)
-    -- pen input test: count finger touches
-    if self._pen_capture then self._pen_capture.fingers = self._pen_capture.fingers + 1 end
     -- a pen or palm is down: keep fingers out until it lifts
     if self:fingerRejected(ges and ges.pos) then self:holdReject(); return true end
     -- a multi-touch that began as a raw stroke: its per-finger touches never draw

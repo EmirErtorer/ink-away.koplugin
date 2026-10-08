@@ -338,9 +338,26 @@ function InkAwayView:openSettings()
                 { "notebooks", _("Notebooks") } },
             self:getSetting("inkaway_start", "last"), content_w,
             function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
+        add(vspan(16))
+        add(self:sheetLabel(_("Help"), true))
+        add(vspan(6))
+        add(act(_("Test pen and touch"), content_w, function() self:openPenTest() end))
         return content
     end
     self:showSheet("_settings_dialog", build)
+end
+
+-- The pen and touch test, full screen. The canvas stops drawing from fingers
+-- while it is open (the test watches them itself), and gets its pen back after.
+function InkAwayView:openPenTest()
+    self:closeSheet("_settings_dialog")
+    local PenTestScreen = require("ink/ui/pentestscreen")
+    local raw = self._raw_installed
+    if raw then self:uninstallRawFinger() end
+    UIManager:show(PenTestScreen:new{ on_close = function()
+        if raw and not self.closing then self:installRawFinger() end
+        self:applyPalmReject()
+    end })
 end
 
 return InkAwayView

@@ -168,12 +168,6 @@ function InkAwayView:openPenSettings()
                     self:openPenSettings()
                 end))
         end
-        -- Debug: the pen input test, hidden unless show_pen_test is set.
-        if self.show_pen_test and self:penCapable() then
-            table.insert(tail, vspan(10))
-            table.insert(tail, self:actionButton(_("Test pen input"), content_w,
-                function() closeSelf(); self:startPenInputTest() end))
-        end
         table.insert(tail, vspan(12))
         table.insert(tail, SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
             width = content_w, parent = menu, format = function(v) return tostring(v) end,
