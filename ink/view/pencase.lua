@@ -343,7 +343,12 @@ function InkAwayView:openPenTypes()
             add(self:sheetLabel(_(g.label)))
             add(vspan(6))
             local tiles = {}
-            for _j, style in ipairs(g.types) do tiles[#tiles + 1] = kindTile(style, Penset.LABELS[style]) end
+            for _j, style in ipairs(g.types) do
+                -- the smudge needs the page under the ink, which a book's ink does not keep
+                if not (self.reader_mode and style == "smudge") then
+                    tiles[#tiles + 1] = kindTile(style, Penset.LABELS[style])
+                end
+            end
             add(rows(tiles, cols, gap))
         end
         local mine = Brushes.userList(function(k) return self:getSetting(k) end)

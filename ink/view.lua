@@ -266,21 +266,7 @@ function InkAwayView:init()
     Export.text_raster = function(op) return self:exportTextRaster(op) end
     Export.image_raster = function(op) return self:exportImageRaster(op) end
 
-    self:buildToolbar()
-    local th = self.toolbar:getSize().h
-    self.view = {
-        area_x = 0, area_y = th, area_w = W, area_h = H - th - self.nb_bar_h,
-        canvas_w = W, canvas_h = H,
-        zoom = 1, pan_x = 0, pan_y = 0,
-    }
-    self.zoom_min = InkGeom.coverZoom(self.view)
-    -- Start with the page covering the drawing area, which is also as far as it
-    -- zooms out (zoom_min): further out would only add margins at the sides.
-    self.view.zoom = self.zoom_min
-    InkGeom.clampPan(self.view)
-
-    -- The toolbar is the child that receives taps; paintTo does all the painting.
-    self[1] = self.toolbar
+    self:initLayout(W, H)
 
     if Device:isTouchDevice() then
         local full = self.dimen
@@ -321,9 +307,11 @@ function InkAwayView:init()
     self:renderView()
     -- the library or the notebooks on top, when asked for (the library's gesture)
     -- or chosen in the settings; they open as the canvas is shown (see onShow)
-    local start = self:getSetting("inkaway_start")
-    self._library_on_show = self.show_library or start == "library"
-    self._overview_on_show = not self._library_on_show and start == "notebooks"
+    if not self.reader_mode then
+        local start = self:getSetting("inkaway_start")
+        self._library_on_show = self.show_library or start == "library"
+        self._overview_on_show = not self._library_on_show and start == "notebooks"
+    end
     self:applyPalmReject()   -- hook the pen if palm rejection is on and supported
     -- Emulator hooks for scripted screenshots; the variables are never set on a
     -- device. INKAWAY_AUTOORIENT opens in an orientation, INKAWAY_AUTOSHEET opens a
@@ -340,6 +328,25 @@ function InkAwayView:init()
     if autoshot then
         UIManager:scheduleIn(1.7, function() pcall(function() Screen:shot(autoshot) end) end)
     end
+end
+
+-- The toolbar across the top and the drawing area under it, the page covering
+-- the area: as far as it zooms out (zoom_min), since further out would only add
+-- margins at the sides. The annotation mode over a book lays out its own (see
+-- ink/reader/inkview.lua).
+function InkAwayView:initLayout(W, H)
+    self:buildToolbar()
+    local th = self.toolbar:getSize().h
+    self.view = {
+        area_x = 0, area_y = th, area_w = W, area_h = H - th - self.nb_bar_h,
+        canvas_w = W, canvas_h = H,
+        zoom = 1, pan_x = 0, pan_y = 0,
+    }
+    self.zoom_min = InkGeom.coverZoom(self.view)
+    self.view.zoom = self.zoom_min
+    InkGeom.clampPan(self.view)
+    -- The toolbar is the child that receives taps; paintTo does all the painting.
+    self[1] = self.toolbar
 end
 
 function InkAwayView:free()
@@ -434,7 +441,8 @@ function InkAwayView:onCloseWidget()
     self:saveDocument()
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
-    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_paste_dialog", "_search_sheet", "_trash_sheet", "_trash_item", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview" }) do
+    for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_paste_dialog", "_search_sheet", "_trash_sheet", "_trash_item", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview",
+            "_peninput_dialog", "_pentypes_dialog", "_gestures_dialog", "_gesture_pick", "_penfav_menu" }) do
         self:closeSheet(key)
     end
     -- Release the large buffers and drop references so the GC can reclaim them.
@@ -447,15 +455,17 @@ function InkAwayView:onCloseWidget()
     -- Collect just after closing rather than during it: with a big drawing the
     -- collection is a noticeable pause.
     UIManager:scheduleIn(0.5, deferredCollect)
-    -- Remember the orientation for next time and give the reader back its own.
-    if self:orientationSupported() then
+    -- Remember the orientation for next time and give the reader back its own
+    -- (over a book, the reader's orientation is the book's: nothing to keep).
+    if self:orientationSupported() and not self.reader_mode then
         self:setSetting("inkaway_orientation", self:orientationClass())
         if self.orig_rotation ~= nil and self:currentRotation() ~= self.orig_rotation then
             pcall(function() Screen:setRotationMode(self.orig_rotation) end)
         end
     end
-    -- Leave the screen clean (refresh avoids the slow full flash on colour panels).
-    self:refresh(nil, "full")
+    -- Leave the screen clean (refresh avoids the slow full flash on colour panels);
+    -- over a book the reader repaints its page, with the ink, under a plain one.
+    if self.reader_mode then UIManager:setDirty("all", "ui") else self:refresh(nil, "full") end
 end
 
 function InkAwayView:onIaClose()
