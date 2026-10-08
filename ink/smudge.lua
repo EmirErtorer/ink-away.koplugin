@@ -38,12 +38,14 @@ function Smudge.surfaceOf(bb)
     local bpp = (t == BB.TYPE_BB8 and 1) or (t == BB.TYPE_BBRGB32 and 4) or nil
     if not bpp then return nil end
     return { ptr = ffi.cast("uint8_t*", bb.data), stride = tonumber(bb.stride), bpp = bpp,
-             w = bb:getWidth(), h = bb:getHeight() }
+             w = bb:getWidth(), h = bb:getHeight(), keep = bb }
 end
 
--- A surface over a packed export buffer (RGB or RGBA).
+-- A surface over a packed export buffer (RGB or RGBA). It keeps the buffer
+-- alive for as long as the surface is used (`keep`).
 function Smudge.surfaceOfBuffer(buf, w, h, bpp, alpha)
-    return { ptr = ffi.cast("uint8_t*", buf), stride = w * bpp, bpp = bpp, w = w, h = h, alpha = alpha }
+    return { ptr = ffi.cast("uint8_t*", buf), stride = w * bpp, bpp = bpp, w = w, h = h, alpha = alpha,
+             keep = buf }
 end
 
 -- A fresh brush for a stroke of radius r: its patch and how far it has come.

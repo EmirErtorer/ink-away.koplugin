@@ -1,9 +1,49 @@
 # Performance tests
 
 Scripts that time two versions of the plugin against each other
-(`run.sh`, `bench.lua`), the newer features on their own (`features.lua`), and
-the results of past runs. Like the rest of `tests/`, none of this ships with the
+(`run.sh`, `bench.lua`), the newer features on their own (`features.lua`), each
+pen (`pens.sh`, `pens.lua`), and the results of past runs. Like the rest of `tests/`, none of this ships with the
 plugin.
+
+## Results, 8 October 2026: every pen
+
+`pens.sh` (`pens.lua`) times each pen on KOReader's real blitter, headless, on a
+grey Kindle-size screen, a Kobo-size colour screen and a grey Scribe-size one
+(5 rounds; tables in [`results/2026-10-08-pens/`](results/2026-10-08-pens/)).
+Apple M3: expect about ten times as long on a Paperwhite. A "page" is a dense
+worst case: 150 strokes of that one pen (for the smudge, 150 smudges over 150
+strokes of ink).
+
+| Pen | Live sample (us) | Commit (ms) | Page, first (ms) | Page, again (ms) | Export (ms) |
+|---|---|---|---|---|---|
+| Fineliner | 4.2 / 4.6 / 4.5 | 0.1 | 2.3 / 3.0 / 3.4 | same | 2.8 / 3.1 / 4.9 |
+| Ballpoint | 5.0 / 5.4 / 5.5 | 0.2-0.5 | 2.5 / 3.1 / 3.3 | same | 2.8 / 3.2 / 4.6 |
+| Fountain | 6.4 / 6.5 / 6.1 | 0.3-0.5 | 3.7 / 4.1 / 4.7 | same | 4.2 / 4.2 / 5.9 |
+| Calligraphy | 8.3 / 8.4 / 7.9 | 0.4-0.6 | 7.5 / 7.9 / 7.2 | same | 7.8 / 8.1 / 8.6 |
+| Pencil | 27 / 28 / 34 | 1.6-2.2 | 30 / 35 / 51 | same | 29 / 34 / 50 |
+| Acrylic (3.x) | 90 / 96 / 118 | 0.3-0.4 | 96 / 130 / 199 | same | 94 / 128 / 195 |
+| Highlighter | 15 / 16 / 16 | 0.8-1.2 | 22 / 26 / 30 | 7.5 / 10 / 12 | 26 / 27 / 36 |
+| Marker | 12 / 13 / 13 | 0.6-0.9 | 12 / 15 / 20 | 2.3 / 3.3 / 3.5 | 18 / 22 / 32 |
+| Watercolor | 61 / 66 / 64 | 3.6-4.8 | 147 / 156 / 175 | 4.8 / 6.6 / 7.5 | 163 / 178 / 203 |
+| Smudge | 37 / 39 / 46 | 0.1 | 84 / 114 / 139 | same | 96 / 111 / 159 |
+
+- **The new writing pens cost what plain ink costs.** Ballpoint, Fountain and
+  Calligraphy draw a live sample in 5-8 us, against Fineliner's 4-5 us.
+- **Every new pen draws a live sample faster than Acrylic** (90-118 us), the
+  slowest pen already shipped.
+- **Highlighter, Marker and Watercolor** blend in KOReader's C code. Each
+  stroke's mask is kept, so building a page again (an undo, a page turn back, a
+  selection dropped) only blends: Watercolor goes from 147-175 ms the first time
+  to 5-7.5 ms after.
+- **Watercolor was 489 ms for its page at first.** Working out each pixel's
+  strength from its distance to the stroke, once per segment, instead of
+  stamping overlapping soft discs brought it to 147 ms.
+- **The smudge cannot be kept** (it depends on everything under it), so a page
+  full of smudges replays them each time: 84-139 ms for 150. Real pages hold a
+  few.
+- **The first run showed the smudge export at 3.2 s.** That came from a
+  surface whose buffer could be freed while in use; the surface now holds its
+  buffer.
 
 ## Results, 4 October 2026: search, trash, selection, links, straightening
 

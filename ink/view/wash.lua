@@ -137,7 +137,7 @@ function InkAwayView:washFree()
     self._wl = nil
     self._wash_live_mask = nil
     if self._wash_under then self._wash_under:free(); self._wash_under = nil end
-    self._wash_scratch = nil
+    Wash.clearCache()
 end
 
 -- Is the pen being set up a see-through one? Its style, or nil.

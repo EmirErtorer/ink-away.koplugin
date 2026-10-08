@@ -175,14 +175,11 @@ function InkAwayView:smudgeBase(dst, ops)
 end
 
 -- Blend a see-through pen's stroke into dst (a canvas-sized bitmap), within
--- `region` when given. The mask scratch is kept for the next stroke.
+-- `region` when given. Its mask comes from the cache (see Wash.cachedMask).
 function InkAwayView:washInto(dst, op, st, region)
     local W, H = self.view.canvas_w, self.view.canvas_h
-    local m = Wash.buildMask(op, st, W, H, self._wash_scratch)
+    local m = Wash.cachedMask(op, st, W, H)
     if not m then return end
-    if not self._wash_scratch or m.w * m.h > self._wash_scratch.w * self._wash_scratch.h then
-        self._wash_scratch = m
-    end
     if region then Wash.blendBB(dst, m, op, st, region.x0, region.y0, region.x1, region.y1)
     else Wash.blendBB(dst, m, op, st) end
 end

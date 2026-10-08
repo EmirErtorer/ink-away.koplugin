@@ -25,6 +25,7 @@ local Symmetry = require("ink/symmetry")
 local Wash = {}
 
 local floor, ceil, sqrt, max, min = math.floor, math.ceil, math.sqrt, math.max, math.min
+local band, rshift = require("bit").band, require("bit").rshift
 local hash01 = Raster.hash01
 
 -- The C blitter's rounding of v / 255, for the export to match the screen.
@@ -94,41 +95,93 @@ end
 -- One soft round stamp: strength falls off over the outer `soft` share of the
 -- radius, a wet rim pools a little darker just inside the edge, and paper grain
 -- breaks it up. Raises the mask to `alpha` times that.
-local function softStamp(m, cx, cy, r, st, seed, alpha, flip, W, H)
-    if flip and flip > 0 then
-        if flip % 2 == 1 then cx = W - 1 - cx end
-        if flip >= 2 then cy = H - 1 - cy end
+--
+-- The stamp's shape is worked out once per radius (to a quarter pixel) and per
+-- style, and the grain comes from a fixed noise table, so a stamp costs a table
+-- read and a multiply per pixel.
+local GRAIN_N = 256
+local grain_tab
+local function grainTable()
+    if grain_tab then return grain_tab end
+    grain_tab = ffi.new("float[?]", GRAIN_N * GRAIN_N)
+    for y = 0, GRAIN_N - 1 do
+        for x = 0, GRAIN_N - 1 do grain_tab[y * GRAIN_N + x] = hash01(x, y, 4242) end
     end
-    local buf, w, h, ox, oy = m.buf, m.w, m.h, m.ox, m.oy
-    local soft, wet, grain, cell = st.soft or 0.6, st.wet or 0, st.grain or 0, st.cell or 1
+    return grain_tab
+end
+
+-- The soft tip's strength across its radius, sampled in 1024 steps of the
+-- squared distance (t^2 = (distance / radius)^2 in [0, 1)), per style, so the
+-- inner loop needs no square root.
+local PROF_N = 1024
+local profiles = {}
+local function profile(st)
+    local key = floor((st.soft or 0.6) * 100) * 10 + floor((st.wet or 0) * 9)
+    local p = profiles[key]
+    if p then return p end
+    p = ffi.new("float[?]", PROF_N + 1)
+    local soft, wet = st.soft or 0.6, st.wet or 0
     local inner = 1 - soft
-    local ir = ceil(r)
-    local icx, icy = floor(cx + 0.5), floor(cy + 0.5)
-    local inv_r = 1 / r
-    for dy = -ir, ir do
-        local y = icy + dy
-        local my = y - oy
-        if my >= 0 and my < h then
-            for dx = -ir, ir do
-                local t = sqrt(dx * dx + dy * dy) * inv_r
-                if t < 1 then
-                    local x = icx + dx
-                    local mx = x - ox
-                    if mx >= 0 and mx < w then
-                        local s = 1
-                        if t > inner then s = (1 - t) / soft end              -- soft fall-off
-                        if wet > 0 and t > 0.7 then                          -- the dried rim
-                            local k = (t - 0.7) / 0.3
-                            s = s * (1 + wet * 4 * k * (1 - k))
-                        end
-                        if grain > 0 then
-                            s = s * (1 - grain + grain * 2 * hash01(floor(x / cell), floor(y / cell), seed))
-                        end
-                        local v = floor(alpha * (s > 1 and 1 or s) + 0.5)
-                        local o = my * w + mx
-                        if buf[o] < v then buf[o] = v end
-                    end
-                end
+    for i = 0, PROF_N do
+        local t = sqrt(i / PROF_N)
+        local s = 1
+        if t > inner then s = (1 - t) / soft end
+        if wet > 0 and t > 0.7 then
+            local kk = (t - 0.7) / 0.3
+            s = s * (1 + wet * 4 * kk * (1 - kk))
+        end
+        if s > 1 then s = 1 elseif s < 0 then s = 0 end
+        p[i] = s
+    end
+    profiles[key] = p
+    return p
+end
+
+-- One piece of a soft stroke, from (x0, y0) at radius r0 to (x1, y1) at r1:
+-- every pixel within reach takes the strength for its distance from the
+-- segment, once (the overlap with the next piece is settled by the max).
+local function softSegment(m, x0, y0, r0, x1, y1, r1, st, seed, alpha)
+    local buf, w, h, ox, oy = m.buf, m.w, m.h, m.ox, m.oy
+    local prof = profile(st)
+    local grain, cell = st.grain or 0, st.cell or 1
+    local cshift = (cell >= 4 and 2) or (cell >= 2 and 1) or 0
+    local g = grainTable()
+    local sx, sy = seed % GRAIN_N, floor(seed / GRAIN_N) % GRAIN_N
+    local g0, g1 = 1 - grain, 2 * grain
+    local same_r = r0 == r1
+    local inv_r2 = 1 / (r0 * r0)
+    local dx, dy = x1 - x0, y1 - y0
+    local len2 = dx * dx + dy * dy
+    local inv = len2 > 0 and 1 / len2 or 0
+    local rmax = r0 > r1 and r0 or r1
+    local bx0, by0 = floor(min(x0, x1) - rmax), floor(min(y0, y1) - rmax)
+    local bx1, by1 = ceil(max(x0, x1) + rmax), ceil(max(y0, y1) + rmax)
+    if bx0 < ox then bx0 = ox end
+    if by0 < oy then by0 = oy end
+    if bx1 > ox + w - 1 then bx1 = ox + w - 1 end
+    if by1 > oy + h - 1 then by1 = oy + h - 1 end
+    for y = by0, by1 do
+        local py = y - y0
+        local mrow = (y - oy) * w - ox
+        local grow = band(rshift(y, cshift) + sy, GRAIN_N - 1) * GRAIN_N
+        for x = bx0, bx1 do
+            local px = x - x0
+            local u = (px * dx + py * dy) * inv
+            if u < 0 then u = 0 elseif u > 1 then u = 1 end
+            local ex, ey = px - dx * u, py - dy * u
+            local t2 = ex * ex + ey * ey
+            if same_r then
+                t2 = t2 * inv_r2
+            else
+                local r = r0 + (r1 - r0) * u
+                t2 = t2 / (r * r)
+            end
+            if t2 < 1 then
+                local s = prof[floor(t2 * PROF_N)]
+                if grain > 0 then s = s * (g0 + g1 * g[grow + band(rshift(x, cshift) + sx, GRAIN_N - 1)]) end
+                local v = floor(alpha * (s > 1 and 1 or s) + 0.5)
+                local o = mrow + x
+                if buf[o] < v then buf[o] = v end
             end
         end
     end
@@ -143,22 +196,14 @@ function Wash.stamp(m, st, pts, pr, r, alpha, seed, sym, W, H)
     if st.tip == "soft" then
         local flips = Symmetry.flips(sym)
         for _i, f in ipairs(flips) do
-            local px, py = pts[1], pts[2]
-            local pp = pr and pr[1]
-            softStamp(m, px, py, radiusAt(st, r, pp), st, seed, alpha, f, W, H)
+            local p = Symmetry.flipPoints(pts, f, W or 0, H or 0)
+            if n == 1 then
+                local rr = radiusAt(st, r, pr and pr[1])
+                softSegment(m, p[1], p[2], rr, p[1], p[2], rr, st, seed, alpha)
+            end
             for i = 2, n do
-                local nx, ny = pts[2 * i - 1], pts[2 * i]
-                local np = pr and pr[i]
-                local dx, dy = nx - px, ny - py
-                local dist = sqrt(dx * dx + dy * dy)
-                local step = max(1, r * 0.25)
-                local steps = max(1, ceil(dist / step))
-                for s = 1, steps do
-                    local k = s / steps
-                    local p = pp and np and (pp + (np - pp) * k) or nil
-                    softStamp(m, px + dx * k, py + dy * k, radiusAt(st, r, p), st, seed, alpha, f, W, H)
-                end
-                px, py, pp = nx, ny, np
+                softSegment(m, p[2 * i - 3], p[2 * i - 2], radiusAt(st, r, pr and pr[i - 1]),
+                    p[2 * i - 1], p[2 * i], radiusAt(st, r, pr and pr[i]), st, seed, alpha)
             end
         end
         return
@@ -230,6 +275,43 @@ function Wash.buildMask(op, st, W, H, scratch)
     end
     Wash.stamp(m, st, op.pts, op.pr, (op.width or 1) / 2, strength(op, st), op.seed or 0, op.sym, W, H)
     return m, x0, y0, x1, y1
+end
+
+-- Masks kept for the screen: a page is composed again often (undo, a page turn
+-- back, a selection lifted and dropped), and a saved stroke never changes (an
+-- edit replaces it with a copy), so its mask is built once. Bounded by size;
+-- the oldest go first.
+local CACHE_MAX = 12 * 1024 * 1024
+local cache, cache_order, cache_bytes = {}, {}, 0
+
+local function signature(op, W, H)
+    local pts = op.pts
+    return table.concat({ #pts, pts[1] or 0, pts[2] or 0, pts[#pts] or 0, op.width or 0, op.alpha or 255,
+        op.sym or "", op.seed or 0, op.style or "", op.pr and #op.pr or 0, W, H }, "|")
+end
+
+function Wash.cachedMask(op, st, W, H)
+    local sig = signature(op, W, H)
+    local e = cache[op]
+    if e and e.sig == sig then return e.m end
+    local m = Wash.buildMask(op, st, W, H)
+    if not m then return nil end
+    local bytes = m.w * m.h
+    if bytes > CACHE_MAX / 4 then return m end   -- a page-wide symmetric stroke: not kept
+    while cache_bytes + bytes > CACHE_MAX and #cache_order > 0 do
+        local old = table.remove(cache_order, 1)
+        local oe = cache[old]
+        if oe then cache_bytes = cache_bytes - oe.bytes; cache[old] = nil end
+    end
+    if e then cache_bytes = cache_bytes - e.bytes end
+    cache[op] = { m = m, sig = sig, bytes = bytes }
+    cache_order[#cache_order + 1] = op
+    cache_bytes = cache_bytes + bytes
+    return m
+end
+
+function Wash.clearCache()
+    cache, cache_order, cache_bytes = {}, {}, 0
 end
 
 ------------------------------------------------------------------------------
