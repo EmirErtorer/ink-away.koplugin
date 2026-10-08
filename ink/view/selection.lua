@@ -768,7 +768,7 @@ function InkAwayView:openSelectionMenu(panel)
                               if idx then self:followLink(self.canvas.ops[idx]) end
                           end),
                           act(_("Remove link"), function() self:selUnlink() end) }))
-            else
+            elseif not self.reader_mode then   -- over a book there are no pages to link to
                 add(self:actionButton(_("Link to page\u{2026}"), content_w, function() self:selLink() end,
                     false, "small"))
             end
