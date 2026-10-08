@@ -17,6 +17,7 @@ local logger = require("logger")
 local BookInk = require("ink/reader/bookink")
 local Canvas = require("ink/canvas")
 local Place = require("ink/reader/place")
+local Snap = require("ink/reader/snap")
 
 local Screen = Device.screen
 
@@ -246,6 +247,80 @@ function Book:setPageOps(ops, came_from, shown)
     self.rev = self.rev + 1
     self._placed, self._index = nil, nil
     return map, keep
+end
+
+------------------------------------------------------------------------------
+-- The smart highlighter: the reader's own highlights
+------------------------------------------------------------------------------
+
+-- A highlighter stroke along a line of text, made the reader's own highlight of
+-- that text (in the reader's highlight style, in the colour nearest the pen's).
+-- Returns the highlight, or nil when it is not along text (it stays ink).
+function Book:highlight(op)
+    local ui = self.ui
+    local hl, document = ui.highlight, ui.document
+    if not (hl and hl.saveHighlight and ui.annotation and document.getTextFromPositions) then return nil end
+    local line = Snap.lineOf(op)
+    if not line then return nil end
+    local sel, boxes
+    if ui.paging then
+        -- the text is found on the page, in page units
+        local a = ui.view:screenToPageTransform({ x = line.x0, y = line.y })
+        local b = ui.view:screenToPageTransform({ x = line.x1, y = line.y })
+        if not (a and b and a.page and a.page == b.page) then return nil end
+        local ok, r = pcall(document.getTextFromPositions, document, a, b)
+        sel = ok and r or nil
+        boxes = sel and sel.pboxes
+        line = { x0 = a.x, x1 = b.x, y = a.y, h = line.h / (a.zoom or 1) }
+    else
+        local ok, r = pcall(document.getTextFromPositions, document,
+            { x = line.x0, y = line.y }, { x = line.x1, y = line.y }, true)
+        sel = ok and r or nil
+        boxes = sel and sel.sboxes
+    end
+    if not (sel and sel.pos0 and sel.pos1 and type(sel.text) == "string" and sel.text:match("%S")) then return nil end
+    if not Snap.covers(boxes, line) then return nil end
+    local hv = ui.view.highlight or {}
+    local Blitbuffer = require("ffi/blitbuffer")
+    return self:addHighlight({
+        text = sel.text, pos0 = sel.pos0, pos1 = sel.pos1, pboxes = sel.pboxes, ext = sel.ext,
+        drawer = hv.saved_drawer,
+        color = Snap.colourName(op.color, hv.saved_color, Blitbuffer.HIGHLIGHT_COLORS),
+    })
+end
+
+-- Save a highlight as the reader does (in its list, written into a PDF when the
+-- reader is set to): `sel` is the selection. Returns the highlight.
+function Book:addHighlight(sel)
+    local ui = self.ui
+    local hl = ui.highlight
+    hl.selected_text = sel
+    local ok, index = pcall(hl.saveHighlight, hl)
+    hl.selected_text = nil
+    if ui.rolling then pcall(ui.document.clearSelection, ui.document) end
+    if not (ok and index) then
+        if not ok then logger.warn("Ink Away: could not save the highlight:", index) end
+        return nil
+    end
+    return ui.annotation.annotations[index]
+end
+
+-- Take a highlight away again (undo).
+function Book:removeHighlight(item)
+    local ui = self.ui
+    for i, it in ipairs(ui.annotation and ui.annotation.annotations or {}) do
+        if it == item then
+            pcall(ui.highlight.deleteHighlight, ui.highlight, i)
+            return true
+        end
+    end
+    return false
+end
+
+-- Put a removed highlight back (redo). Returns it as saved now.
+function Book:restoreHighlight(item)
+    return self:addHighlight({ text = item.text, pos0 = item.pos0, pos1 = item.pos1, pboxes = item.pboxes,
+        ext = item.ext, drawer = item.drawer, color = item.color, note = item.note })
 end
 
 ------------------------------------------------------------------------------

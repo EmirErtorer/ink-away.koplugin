@@ -459,6 +459,12 @@ function InkAwayView:finalizeStroke()
     local committed = self.canvas:finishStroke()
     if self._wl then self:washEnd() end   -- the page under it is drawn again from the op below
     if self._sm then self:smudgeEnd() end
+    -- a mode may take the stroke over (the annotation mode makes a highlighter
+    -- stroke along a line of text the reader's own highlight)
+    if committed and self.takeStroke and self:takeStroke(committed) then
+        self._stroke_rect = nil
+        return
+    end
     -- An erase records whether text was protected when it was made, so changing
     -- the setting later never erases or restores text retroactively.
     if committed and committed.kind == "erase" then

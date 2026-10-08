@@ -823,10 +823,12 @@ function InkAwayView:undo()
     self._peel_op = nil   -- leaving any text-peel sequence
     self:flushPending()
     self:resetLasso()   -- a selection's indices do not survive the change
-    if not self.canvas:undo() then
+    local undone, mark = self.canvas:undo()
+    if not undone then
         UIManager:show(InfoMessage:new{ text = _("Nothing to undo."), timeout = 1 })
         return false
     end
+    if mark ~= nil and self.undoMark then self:undoMark(mark) end
     self:markDirty()
     self:recompose()   -- rebuild the master from the restored ops
     return true
@@ -844,10 +846,12 @@ function InkAwayView:redo()
     self._peel_op = nil
     self:flushPending()
     self:resetLasso()
-    if not self.canvas:redo() then
+    local redone, mark = self.canvas:redo()
+    if not redone then
         UIManager:show(InfoMessage:new{ text = _("Nothing to redo."), timeout = 1 })
         return
     end
+    if mark ~= nil and self.redoMark then self:redoMark(mark) end
     self:markDirty()
     self:recompose()
 end

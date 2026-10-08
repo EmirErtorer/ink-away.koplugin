@@ -118,6 +118,48 @@ function ReaderInkView:saveDocument()
 end
 
 ------------------------------------------------------------------------------
+-- The smart highlighter
+------------------------------------------------------------------------------
+
+-- A highlighter stroke along a line of text becomes the reader's own highlight
+-- (unless the setting is off): the stroke goes, the highlight shows, and undo
+-- and redo take it away and put it back like any stroke.
+function ReaderInkView:takeStroke(op)
+    if not (op.kind == "ink" and op.style == "highlighter") then return false end
+    if self:getSetting("inkaway_snap_text", true) == false then return false end
+    local ok, item = pcall(self.book.highlight, self.book, op)
+    if not (ok and item) then
+        if not ok then logger.warn("Ink Away: highlight failed:", item) end
+        return false
+    end
+    -- the stroke, out of the history as if never drawn; the highlight in its place
+    self.canvas:undo()
+    self.canvas.redo_stack = {}
+    self.canvas:pushMark({ item = item })
+    self:pageChanged()
+    return true
+end
+
+function ReaderInkView:undoMark(mark)
+    if mark.item and self.book:removeHighlight(mark.item) then self:pageChanged() end
+end
+
+function ReaderInkView:redoMark(mark)
+    if not mark.item then return end
+    local item = self.book:restoreHighlight(mark.item)
+    if item then mark.item = item; self:pageChanged() end
+end
+
+-- The book's page changed under the ink (a highlight added or taken away):
+-- draw it again, and the canvas over it.
+function ReaderInkView:pageChanged()
+    self.book:snapshot(self.bg_bb)
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui")
+end
+
+------------------------------------------------------------------------------
 -- Turning the book's pages
 ------------------------------------------------------------------------------
 
@@ -368,7 +410,7 @@ function ReaderInkView:openReaderSettings()
             width = content_w, parent = menu,
             callback = function(on) self:setSetting("inkaway_snap_text", on) end })
         add(VerticalSpan:new{ width = Screen:scaleBySize(4) })
-        add(self:sheetHint(_("A highlighter stroke along lines of text becomes a highlight of that text, which stays with it at any font size."), content_w))
+        add(self:sheetHint(_("A highlighter stroke along a line of text becomes the reader's own highlight of that text: in your highlights list, and with the text at any font size."), content_w))
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
         add(self:actionButton(_("Pen and input"), content_w, function() closeSelf(); self:openPenInput() end))
         add(VerticalSpan:new{ width = Screen:scaleBySize(8) })

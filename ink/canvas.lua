@@ -50,6 +50,9 @@ end
 --   { snap = <ops array> }  restore this whole list (an edit of existing ops:
 --                           colour, size, move, delete, order, clear, load)
 --   { add = true }          the last op was appended; undo drops it
+--   { mark = <any> }        a change made outside the ops (the annotation mode's
+--                           reader highlights): undo and redo hand it back to
+--                           the view to undo or redo
 -- Appending is by far the most common action, so a committed stroke costs O(1)
 -- history instead of a copy of the whole list, which would make a long drawing
 -- slower as it fills.
@@ -70,6 +73,11 @@ end
 -- whatever is last, so it does not matter that the op is recorded by position.
 function Canvas:recordAppend()
     pushEntry(self, { add = true })
+end
+
+-- A change made outside the ops, for the view to undo and redo itself.
+function Canvas:pushMark(m)
+    pushEntry(self, { mark = m })
 end
 
 function Canvas:canUndo() return #self.undo_stack > 0 end
@@ -180,7 +188,10 @@ function Canvas:undo()
     local entry = table.remove(self.undo_stack)
     if not entry then return false end
     self.rev = self.rev + 1
-    if entry.snap ~= nil then
+    if entry.mark ~= nil then
+        self.redo_stack[#self.redo_stack + 1] = entry
+        return true, entry.mark
+    elseif entry.snap ~= nil then
         self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self) }
         self.ops = entry.snap
     else   -- an appended op: drop the last one, remember it so redo can re-add it
@@ -195,7 +206,10 @@ function Canvas:redo()
     local entry = table.remove(self.redo_stack)
     if not entry then return false end
     self.rev = self.rev + 1
-    if entry.snap ~= nil then
+    if entry.mark ~= nil then
+        self.undo_stack[#self.undo_stack + 1] = entry
+        return true, entry.mark
+    elseif entry.snap ~= nil then
         self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self) }
         self.ops = entry.snap
     else   -- re-append the op an undo removed

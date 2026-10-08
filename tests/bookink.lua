@@ -317,5 +317,39 @@ do
         "save: the erased stroke is gone, ink that was not shown is kept")
 end
 
+-- ---- the smart highlighter: which strokes are along a line of text ---------------------
+do
+    local Snap = require("ink/reader/snap")
+    local hl = function(pts, w) return { kind = "ink", style = "highlighter", width = w or 30, pts = pts } end
+    local across = Snap.lineOf(hl({ 100, 210, 180, 214, 260, 208 }))
+    ok(across and across.x0 == 100 and across.x1 == 260 and across.h == 6, "snap: a stroke across a line")
+    ok(Snap.lineOf(hl({ 100, 100, 110, 300 })) == nil, "snap: a stroke down the page is not")
+    ok(Snap.lineOf(hl({ 100, 200, 105, 201 })) == nil, "snap: a dab is not")
+    local line = { x0 = 100, x1 = 260, y = 211, h = 6 }
+    local words = { { x = 96, y = 200, w = 70, h = 22 }, { x = 172, y = 200, w = 90, h = 22 } }
+    ok(Snap.covers(words, line), "snap: words under the whole stroke")
+    ok(not Snap.covers({ { x = 96, y = 200, w = 30, h = 22 } }, line), "snap: one short word under a long stroke is not")
+    ok(not Snap.covers({ words[1], { x = 20, y = 230, w = 90, h = 22 } }, line), "snap: text running onto the next line is not")
+    ok(not Snap.covers(words, { x0 = 100, x1 = 260, y = 211, h = 40 }), "snap: a stroke wandering over two lines is not")
+    ok(Snap.colourName({ 255, 235, 59 }, "gray") == "yellow", "snap: the yellow pen highlights in yellow")
+    ok(Snap.colourName({ 0, 102, 255 }, "gray") == "blue", "snap: a blue pen in blue")
+    ok(Snap.colourName({ 200, 200, 200 }, "gray") == "gray", "snap: a grey pen in the reader's own colour")
+end
+
+-- ---- a change outside the ops is undone and redone through the history -----------------
+do
+    local Canvas = require("ink/canvas")
+    local c = Canvas.new(100, 100)
+    c:startStroke("ink", 2, 255, nil, "solid"); c:addPoint(5, 5); c:addPoint(50, 50); c:finishStroke()
+    ok(#c.ops == 1, "mark: a stroke drawn")
+    c:undo(); c.redo_stack = {}                     -- the stroke taken over
+    c:pushMark({ item = "hl" })
+    ok(#c.ops == 0, "mark: the taken stroke is gone")
+    local u, m = c:undo()
+    ok(u and m and m.item == "hl" and #c.ops == 0, "mark: undo hands the mark back")
+    local r, m2 = c:redo()
+    ok(r and m2 == m and c:canUndo(), "mark: and so does redo")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
