@@ -7,11 +7,13 @@ Part of InkAwayView (see ink/view.lua).
 local Device = require("device")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
+local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Accent = require("ink/accent")
+local PenTest = require("ink/pentest")
 local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
@@ -342,9 +344,28 @@ function InkAwayView:openSettings()
         add(self:sheetLabel(_("Help"), true))
         add(vspan(6))
         add(act(_("Test pen and touch"), content_w, function() self:openPenTest() end))
+        if self:onAndroid() then
+            add(vspan(8))
+            add(act(_("Device tips"), content_w, function()
+                self:closeSheet("_settings_dialog"); self:deviceTips(true) end))
+        end
         return content
     end
     self:showSheet("_settings_dialog", build)
+end
+
+-- The faster-drawing tip for Android readers whose panel KOReader can't fully
+-- drive: shown once by itself, or again from Settings (`again`).
+function InkAwayView:deviceTips(again)
+    if not again and self:getSetting("inkaway_device_tip_shown") then return end
+    local ok, facts = pcall(function() return require("ink/ui/pentestscreen").deviceFacts() end)
+    local tip = ok and PenTest.androidTip(facts)
+    if not tip then
+        if again then UIManager:show(InfoMessage:new{ text = _("This reader needs no special settings for Ink Away.") }) end
+        return
+    end
+    self:setSetting("inkaway_device_tip_shown", true)
+    UIManager:show(InfoMessage:new{ text = _(tip) })
 end
 
 -- The pen and touch test, full screen. The canvas stops drawing from fingers

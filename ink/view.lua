@@ -383,6 +383,8 @@ function InkAwayView:onShow()
     if self._note_on_show then   -- shown over the canvas (and the library)
         UIManager:show(InfoMessage:new{ text = self._note_on_show })
         self._note_on_show = nil
+    elseif self:onAndroid() then
+        self:deviceTips(false)   -- once, on readers KOReader can't fully drive
     end
     return true
 end

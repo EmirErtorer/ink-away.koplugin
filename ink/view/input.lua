@@ -6,10 +6,12 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
+local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
 local PenBridge = require("ink/penbridge")
+local PenTest = require("ink/pentest")
 local Stylus = require("ink/stylus")
 
 local Screen = Device.screen
@@ -198,6 +200,7 @@ end
 function InkAwayView:fingerNavEnd(pos, dir)
     local n = self._finger_nav
     self._finger_nav = nil
+    if n.mode == "navigate" and pos then self:noPenDrag(math.abs(pos.x - n.x) + math.abs(pos.y - n.y)) end
     if self._view_stale then self:liveFlush() end   -- show where the pan ended
     if n.mode ~= "navigate" or not self:pageSwipes() then return true end
     if dir == "west" or dir == "east" then
@@ -209,6 +212,17 @@ function InkAwayView:fingerNavEnd(pos, dir)
         end
     end
     return true
+end
+
+-- A finger dragged the page `len` px while palm rejection waited for a pen that
+-- never came. A few such drags in a session and no pen at all mean the pen most
+-- likely arrives as a finger here: say so once per KOReader session.
+function InkAwayView:noPenDrag(len)
+    if self._pen_seen or InkAwayView._no_pen_hinted or len < Screen:scaleBySize(40) then return end
+    self._no_pen_drags = (self._no_pen_drags or 0) + 1
+    if self._no_pen_drags < PenTest.NO_PEN_DRAGS then return end
+    InkAwayView._no_pen_hinted = true
+    UIManager:show(InfoMessage:new{ text = _(PenTest.NO_PEN_HINT) })
 end
 
 -- A hold at `pos` by a navigating finger: open the picture's or shape's menu
@@ -329,6 +343,7 @@ function InkAwayView:onStylusSlot(inp, slot)
     -- and a held barrel button (which report the ambiguous ERASER value) are trusted
     -- on that same slot even when the runtime never set Input.pen_slot. The pen slot
     -- is fixed per device, so once learned it stays until palm rejection is reset.
+    if role == Stylus.ROLE_PEN then self._pen_seen = true end
     if role == Stylus.ROLE_PEN and slot.tool == Stylus.TOOL_PEN and slot.slot ~= nil
             and (self._pen_owner == nil or slot.slot == self._pen_owner) then
         self._learned_pen_slot = slot.slot

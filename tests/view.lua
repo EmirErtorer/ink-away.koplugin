@@ -1533,6 +1533,75 @@ do
     view:onCloseWidget()
 end
 
+-- ---- no pen seen: a hint after a few finger drags, never after a real pen ----
+-- With palm rejection on, a finger moves the page. On a reader whose pen arrives
+-- as a finger, that is all the reader ever sees, so after a few drags without a
+-- single pen frame Ink Away says so, once per KOReader session.
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    InkAwayView._no_pen_hinted = nil
+    local view = InkAwayView:new{}
+    view.palm_reject, view.finger_mode = true, "navigate"
+    local v = view.view
+    local function drag()
+        view:onIaTouch(nil, pos(300, v.area_y + 300))
+        for i = 1, 5 do view:onIaPan(nil, pos(300, v.area_y + 300 + i * 30)) end
+        view:onIaPanRelease(nil, pos(300, v.area_y + 450))
+        UIManager.fireScheduled()
+    end
+    UIManager.shown = nil
+    drag(); drag()
+    ok(UIManager.shown == nil, "no pen: two drags say nothing yet")
+    drag()
+    local msg = UIManager.shown and UIManager.shown.text or ""
+    ok(msg:find("No pen has been seen"), "no pen: the third drag shows the hint")
+    UIManager.shown = nil
+    drag(); drag(); drag()
+    ok(UIManager.shown == nil, "no pen: only once per session")
+    view:onCloseWidget()
+    -- a real pen frame first: never
+    InkAwayView._no_pen_hinted = nil
+    UIManager.reset()
+    local view2 = InkAwayView:new{}
+    view2.palm_reject, view2.finger_mode = true, "navigate"
+    view2:applyPalmReject()
+    view2:onStylusSlot(Device.input, { slot = 4, id = 7, tool = 1, x = 100, y = 900, timev = 1 })
+    view2:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, x = 100, y = 900, timev = 2 })
+    UIManager.fireScheduled()
+    view = view2; v = view2.view
+    UIManager.shown = nil
+    drag(); drag(); drag(); drag()
+    ok(not (UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("No pen")),
+        "no pen: a reader with a working pen never sees it")
+    view2:onCloseWidget()
+end
+
+-- ---- device tips: once by themselves on a Boox-like reader, again on request ----
+do
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    local PTS = require("ink/ui/pentestscreen")
+    local real = PTS.deviceFacts
+    PTS.deviceFacts = function() return { android = true, eink = true, eink_full = false } end
+    view:setSetting("inkaway_device_tip_shown", nil)
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown and UIManager.shown.text:find("Ultrafast"), "tips: shown once by themselves")
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown == nil, "tips: not a second time")
+    view:deviceTips(true)
+    ok(UIManager.shown and UIManager.shown.text:find("Ultrafast"), "tips: again from Settings")
+    PTS.deviceFacts = function() return { android = true, eink = true, eink_full = true } end
+    view:deviceTips(true)
+    ok(UIManager.shown.text:find("needs no special settings"), "tips: a fully driven reader needs none")
+    PTS.deviceFacts = real
+    view:onCloseWidget()
+end
+
 -- ---- lifecycle leak: landscape<->portrait cycles + close leave nothing behind --
 -- The reported "only a full KOReader restart fixes it" slowdown is a leak that
 -- outlives the plugin instance: a view left in UIManager's window stack, or a
