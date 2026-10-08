@@ -796,59 +796,6 @@ function InkAwayView:onIaTwoPanRel()
     return true
 end
 
--- A two-finger tap undoes, with any tool, at once. A second two-finger tap soon
--- after (within TWO_TAP_REDO_MS) makes the pair a redo: it takes that undo back
--- and redoes one step, so the undo never waits to see whether a second tap is
--- coming. A dot the first finger began (with palm rejection off, a drawing
--- finger arrives as gestures) is dropped first, so the undo takes back the last
--- real change and not the dot; any other stroke still open is committed first,
--- so that is what goes.
-local TWO_TAP_REDO_MS = 600
-function InkAwayView:onIaTwoTap()
-    if self:fingerRejected() then return true end   -- the writing hand, not a gesture
-    self._finger_nav = nil
-    if self.capturing and self._finger_dot and self.canvas.live
-            and #self.canvas.live.pts <= 4 then
-        self:penDropFingerOps()
-    end
-    self:flushPending()
-    self:cancelShape()
-    local now = self:nowMs()
-    local last = self._two_tap
-    if last and now - last.at <= TWO_TAP_REDO_MS then
-        self._two_tap = nil
-        if last.undid then self:redo() end   -- take that undo back
-        self:redo()
-        return true
-    end
-    self._two_tap = { at = now, undid = self:undo() }
-    return true
-end
-
--- A two-finger swipe sideways turns a notebook's page: to the left for the
--- next, as in the reader (see pageSwipes for when). A long swipe up, when not
--- zoomed in, opens the notebook's Browse, or the Library from a drawing; a
--- short one stays a scroll.
-function InkAwayView:onIaTwoSwipe(_, ges)
-    if self:fingerRejected() then return true end
-    local start = self.pan_last
-    self.pan_last, self._finger_nav = nil, nil
-    local a, b = ges and ges.pos, ges and ges.end_pos
-    if not (a and b) then return true end
-    local dx, dy = b.x - a.x, b.y - a.y
-    if self:swipeTurn(dx, dy) then return true end
-    if dy < 0 and -dy >= self.view.area_h / 4 and -dy > 1.5 * math.abs(dx) and not self:zoomedIn() then
-        -- the two-finger move panned on its way: put the page back first
-        if start and start.px then
-            self.view.pan_x, self.view.pan_y = start.px, start.py
-            InkGeom.clampPan(self.view)
-            self:renderView()
-        end
-        if self.notebook then self:openOverview() else self:openLibrary() end
-    end
-    return true
-end
-
 ------------------------------------------------------------------------------
 -- Undo and exit
 ------------------------------------------------------------------------------
@@ -978,7 +925,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

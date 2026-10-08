@@ -13,6 +13,8 @@ M.COLOR_WHITE = color(0xFF)
 M.COLOR_GRAY  = color(0xAA)
 M.COLOR_DARK_GRAY = color(0x55)
 function M.ColorRGB32(r, g, b, a) return { r = r, g = g, b = b, alpha = a } end
+function M.ColorRGB24(r, g, b) return { r = r, g = g, b = b } end
+M.TYPE_BB8, M.TYPE_BBRGB32 = 1, 5
 
 -- `data` (4th arg) means a NON-OWNING wrapper over existing memory (real FFI sets
 -- allocated=0 for these), so it must not count toward the live-allocation tally used
@@ -87,6 +89,17 @@ function BB:alphablitFrom(src, x, y, ox, oy, w, h)
     self.paints = self.paints + 1
     checkBounds(self, x, y, w, h)
 end
+
+-- The blends the see-through pens use (ink/wash.lua): bookkeeping only.
+function BB:multiplyRectRGB(x, y, w, h, c)
+    self.paints = self.paints + 1
+    checkBounds(self, x, y, w, h)
+end
+function BB:colorblitFrom(src, x, y, ox, oy, w, h)
+    self.paints = self.paints + 1
+    checkBounds(self, x, y, w, h)
+end
+BB.colorblitFromRGB32 = BB.colorblitFrom
 
 -- Flood the whole buffer with one colour; no bounds concern.
 function BB:fill(c) self.paints = self.paints + 1 end

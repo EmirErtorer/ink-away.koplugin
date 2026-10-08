@@ -1052,18 +1052,34 @@ do
     pen(-1, midx, yy, 2)
     ok(view.tool == prev, "palm: the tool is restored after the eraser-tip stroke")
 
-    -- the primary side (barrel) button is a lasso-select modifier. KOReader routes
-    -- the pen slot with the tool overridden to ERASER (2) AND the eraser latch set;
-    -- that must become lasso select, not erase, and the tool restores on lift.
+    -- the primary side (barrel) button acts while held: by default it highlights.
+    -- KOReader routes the pen slot with the tool overridden to ERASER (2) AND the
+    -- eraser latch set; that must become the button's action, not erase, and the
+    -- pen restores on lift.
     view:setTool("pen")
     local prev_sel = view.tool
+    local prev_style, prev_width = view.pen_style, view.pen_width
     Device.input.stylus_eraser_active = true
     pen(0, midx, yy, 2)                          -- side button held: tool 2 + latch
-    ok(view.tool == "lasso", "palm: the side button switches to lasso select")
+    ok(view.tool == "pen" and view.pen_style == "highlighter",
+        "palm: the side button highlights while held (the default)")
+    pen(0, midx + 60, yy + 4, 2)
+    pen(-1, midx + 60, yy + 4, 2)                -- lift
+    Device.input.stylus_eraser_active = false
+    UIManager.fireScheduled()
+    ok(view.pen_style == prev_style and view.pen_width == prev_width and view.tool == prev_sel,
+        "palm: the pen is back as it was after the side-button stroke")
+    ok(view.canvas.ops[#view.canvas.ops].style == "highlighter", "palm: and the stroke is a highlighter stroke")
+    -- set to Lasso, the button selects instead
+    view:gestureBindings().pen_side = "lasso"
+    Device.input.stylus_eraser_active = true
+    pen(0, midx, yy, 2)
+    ok(view.tool == "lasso", "palm: set to Lasso, the side button switches to lasso select")
     ok(view.lassoing, "palm: the side-button stroke drives the lasso")
     pen(-1, midx, yy, 2)                         -- lift
     Device.input.stylus_eraser_active = false
     ok(view.tool == prev_sel, "palm: the tool is restored after the side-button stroke")
+    view:gestureBindings().pen_side = "highlighter"
     UIManager.fireScheduled()
 
     -- THE REGRESSION: a resting palm is routed to the stylus callback wearing tool
@@ -1687,6 +1703,92 @@ do
     view3:onCloseWidget()
     _G.G_reader_settings.data.inkaway_pens = nil
     _G.G_reader_settings.data.inkaway_pen_style = nil
+end
+
+-- ---- gestures and pen buttons, as the reader set them -------------------------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    _G.G_reader_settings.data.inkaway_gestures = nil
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local v = view.view
+    view:setTool("pen")
+    local b = view:gestureBindings()
+    -- a two-finger tap set to Lasso, with no double tap: at once
+    b.two_tap, b.two_double_tap = "lasso", "nothing"
+    view:onIaTwoTap()
+    ok(view.tool == "lasso", "gestures: a two-finger tap set to Lasso takes the lasso at once")
+    view:onIaTwoTap()
+    ok(view.tool == "pen", "gestures: and again back to the pen")
+    -- with a double tap set too, the single tap waits for a second one
+    b.two_tap, b.two_double_tap = "eraser", "library"
+    local opened = 0
+    local real_lib = view.openLibrary
+    view.openLibrary = function() opened = opened + 1 end
+    view:onIaTwoTap()
+    ok(view.tool == "pen", "gestures: a single tap waits a moment when a double tap is set")
+    UIManager.fireScheduled()
+    ok(view.tool == "erase", "gestures: then does its action")
+    view:setTool("pen")
+    view:onIaTwoTap(); view:onIaTwoTap()
+    UIManager.fireScheduled()
+    ok(opened == 1 and view.tool == "pen", "gestures: two quick taps do the double tap's action only")
+    -- swipes
+    b.two_swipe_up, b.two_swipe_down = "nothing", "library"
+    local cx, top = v.area_x + 300, v.area_y + 100
+    view:onIaTwoSwipe(nil, { pos = { x = cx, y = top }, end_pos = { x = cx, y = top + v.area_h * 0.5 } })
+    ok(opened == 2, "gestures: a long swipe down set to Library opens it")
+    view:onIaTwoSwipe(nil, { pos = { x = cx, y = top + v.area_h * 0.6 }, end_pos = { x = cx, y = top } })
+    ok(opened == 2, "gestures: a long swipe up set to Nothing does nothing")
+    view.openLibrary = real_lib
+    -- the second side button (a Kobo stylus): highlights while held by default
+    view.palm_reject = true
+    view:applyPalmReject()
+    local style0 = view.pen_style
+    Device.input.stylus_highlighter_active = true
+    local function pen(id, x, y, tool)
+        return Device.input.stylus_callback(Device.input,
+            { slot = Device.input.pen_slot, id = id, x = x, y = y, tool = tool or 1 })
+    end
+    pen(0, cx, top + 300, 3)
+    ok(view.pen_style == "highlighter", "pen buttons: the Kobo side button highlights while held")
+    pen(0, cx + 80, top + 300, 3)
+    pen(-1, cx + 80, top + 300, 3)
+    Device.input.stylus_highlighter_active = false
+    UIManager.fireScheduled()
+    ok(view.pen_style == style0, "pen buttons: and the pen is back at the lift")
+    -- the settings sheet, and an overlap asked about
+    view:openGestureSettings()
+    ok(view._gestures_dialog ~= nil, "gestures: the settings sheet opens")
+    view:chooseGestureAction(require("ink/actions").trigger("two_swipe_down"))
+    ok(view._gesture_pick ~= nil and view._gestures_dialog == nil, "gestures: choosing opens the action grid")
+    -- pick Undo for the swipe down: the two-finger tap already undoes, so it asks
+    b.two_tap = "undo"
+    local function findButton(w, text, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return nil end
+        seen[w] = true
+        if type(w.callback) == "function" and (w.text == text
+                or (w.label_widget and w.label_widget.text == text)) then return w end
+        for k, c in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = findButton(c, text, seen); if f then return f end
+            end
+        end
+    end
+    local undo_btn = findButton(view._gesture_pick, "Undo")
+    ok(undo_btn ~= nil, "gestures: the grid offers Undo")
+    UIManager.shown = nil
+    if undo_btn then undo_btn.callback() end
+    local box = UIManager.shown
+    ok(box and box.ok_text == "Only this one" and box.cancel_text == "Both",
+        "gestures: an overlap asks: only this one, or both")
+    if box and box.ok_callback then box.ok_callback() end
+    ok(b.two_swipe_down == "undo" and b.two_tap == "nothing", "gestures: only this one moves it")
+    view:onCloseWidget()
+    _G.G_reader_settings.data.inkaway_gestures = nil
 end
 
 -- ---- lifecycle leak: landscape<->portrait cycles + close leave nothing behind --

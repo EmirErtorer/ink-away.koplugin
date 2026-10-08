@@ -165,7 +165,7 @@ end
 -- so turning it off mid-stroke never leaves the tool stuck on erase or lasso.
 function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_clear)
-    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self:restoreHeld()
     self._pen_state = Stylus.new()
     self._pen_started = false
     self._pen_feeding = false
@@ -495,26 +495,20 @@ end
 
 function InkAwayView:penDown(slot, facts)
     -- restore a tool swapped in for the eraser end or side button if the last lift was lost
-    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self:restoreHeld()
     self._reject_finger = true
     self._pen_started = false      -- the stroke opens on the first point with coordinates
     self._pen_kin = {}             -- fresh kinematic-filter state for this stroke
     self._pen_last_ms = nil
     UIManager:unschedule(self._pen_clear)
     self:penDropFingerOps()
-    -- The rear eraser end erases, the primary side (barrel) button selects with the
-    -- lasso, and anything else draws with the current tool. The tool is swapped in
-    -- for this stroke only and restored on lift, so both act as held modifiers. A
-    -- lasso selection lives in self.selection, so it survives the restore and can
-    -- be moved by holding the side button again.
+    -- The side buttons and the rear eraser end do what the reader chose (by
+    -- default: highlight while a button is held, erase with the eraser end), for
+    -- this stroke only: the tool or pen swapped in is put back at the lift, so
+    -- they act as held modifiers. A lasso selection lives in self.selection, so it
+    -- survives the restore and can be moved by holding the button again.
     local act = Stylus.penAction(slot, facts)
-    if act == Stylus.ACT_SELECT and self.tool ~= "lasso" then
-        self._pen_prev_tool = self.tool
-        self.tool = "lasso"
-    elseif act == Stylus.ACT_ERASE and self.tool ~= "erase" then
-        self._pen_prev_tool = self.tool
-        self.tool = "erase"
-    end
+    if act ~= Stylus.ACT_DRAW then self:holdAction(act) end
     self:penMove(slot)             -- if this frame already carries coordinates, open here
 end
 
@@ -572,7 +566,7 @@ function InkAwayView:penUp()
         self:flushPending()      -- the pen lift is clean; commit now, no coalesce wait
         self._pen_started = false
     end
-    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self:restoreHeld()
     -- keep ignoring fingers briefly: a palm often lifts a moment after the pen
     UIManager:unschedule(self._pen_clear)
     UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
@@ -617,7 +611,7 @@ function InkAwayView:penUiStart(sn, x, y)
     if self._pen_state.down then
         self._pen_state = Stylus.new()
         self._pen_owner, self._pen_kin = nil, nil
-        if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+        self:restoreHeld()
     end
     self._pen_ui_contact = true
     self._pen_ui = { slot = sn, x0 = x, y0 = y, x = x, y = y }

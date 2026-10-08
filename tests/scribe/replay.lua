@@ -408,11 +408,35 @@ end)
 
 -- The side button through KOReader's real input: on a Kindle Scribe it is
 -- BTN_STYLUS, which KOReader keeps as its "eraser" latch and relabels the pen's
--- tool while held. Ink Away takes it as "lasso while held": the stroke selects
--- instead of inking, and the pen goes back to its tool at the lift.
+-- tool while held. By default it highlights while held (B0); set to Lasso the
+-- stroke selects instead of inking (B1). Either way the pen goes back to its
+-- tool and pen at the lift.
+if not ONLY or ONLY == "B0" then
+    local w = H.newWorld({})
+    local v = w.view
+    local ax, ay = strokeA(w, 6)
+    pen.lift(w, 7); pen.leave(w, 40)
+    H.UIManager.fireScheduled()
+    local n0 = v.canvas:opCount()
+    local style0 = v.pen_style
+    pen.enter(w, AX0, AY0 + 200, 300)
+    w.frame(10, { { K, 331, 1 } }, 5, "button-down", "hover")
+    pen.touch(w, AX0, AY0 + 200, 7)
+    local style_during = v.pen_style
+    for i = 1, 10 do pen.move(w, AX0 + i * 20, AY0 + 200, 7) end
+    pen.lift(w, 7)
+    w.frame(10, { { K, 331, 0 } }, 5, "button-up", "hover")
+    pen.leave(w, 40)
+    H.UIManager.fireScheduled()
+    uiok(style_during == "highlighter", "B0: Kindle side button held: the pen highlights (" .. tostring(style_during) .. ")")
+    uiok(v.canvas:opCount() == n0 + 1 and v.canvas.ops[#v.canvas.ops].style == "highlighter",
+        "B0: one highlighter stroke is drawn")
+    uiok(v.pen_style == style0 and v.tool == "pen", "B0: the pen is back as it was after the lift")
+end
 if not ONLY or ONLY == "B1" then
     local w = H.newWorld({})
     local v = w.view
+    v:gestureBindings().pen_side = "lasso"
     local ax, ay = strokeA(w, 6)
     pen.lift(w, 7); pen.leave(w, 40)
     H.UIManager.fireScheduled()
