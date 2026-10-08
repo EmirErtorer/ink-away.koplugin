@@ -406,6 +406,32 @@ uirun("U12", "keyboard up: the pen's taps on the canvas get through, a palm's do
     UI._window_stack = {}
 end)
 
+-- The side button through KOReader's real input: on a Kindle Scribe it is
+-- BTN_STYLUS, which KOReader keeps as its "eraser" latch and relabels the pen's
+-- tool while held. Ink Away takes it as "lasso while held": the stroke selects
+-- instead of inking, and the pen goes back to its tool at the lift.
+if not ONLY or ONLY == "B1" then
+    local w = H.newWorld({})
+    local v = w.view
+    local ax, ay = strokeA(w, 6)
+    pen.lift(w, 7); pen.leave(w, 40)
+    H.UIManager.fireScheduled()
+    local n0 = v.canvas:opCount()
+    pen.enter(w, AX0 - 40, AY0 - 40, 300)
+    w.frame(10, { { K, 331, 1 } }, 5, "button-down", "hover")
+    pen.touch(w, AX0 - 40, AY0 - 40, 7)
+    local tool_during = v.tool
+    for i = 1, 10 do pen.move(w, AX0 - 40 + i * 20, AY0 - 40 + (i % 2) * 90, 7) end
+    pen.move(w, AX0 - 40, AY0 + 80, 7)
+    pen.lift(w, 7)
+    w.frame(10, { { K, 331, 0 } }, 5, "button-up", "hover")
+    pen.leave(w, 40)
+    H.UIManager.fireScheduled()
+    uiok(tool_during == "lasso", "B1: Kindle side button held: the pen lassoes (" .. tostring(tool_during) .. ")")
+    uiok(v.canvas:opCount() == n0, "B1: and draws no ink")
+    uiok(v.tool == "pen", "B1: the pen is back to its tool after the lift")
+end
+
 print()
 print("SUMMARY  id    fedStrokes ops connects palmMarks penPalmLines eraseOps hoverInk panelInk teleports  touchFramesDrawn  endDown endRejected")
 for _, row in ipairs(rows) do
