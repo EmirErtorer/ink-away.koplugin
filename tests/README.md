@@ -13,6 +13,9 @@ From the plugin folder:
 This runs every suite, after first checking the plugin code for accidental
 globals. You can also run one suite on its own, e.g. `luajit tests/view.lua`.
 
+GitHub runs `luacheck` and every suite that needs no KOReader build on each push
+(`.github/workflows/tests.yml`); the result is the Tests badge on the README.
+
 Most suites only need LuaJIT. They run the plugin against small stand-ins for
 KOReader's modules, which live in `tests/mock/`.
 

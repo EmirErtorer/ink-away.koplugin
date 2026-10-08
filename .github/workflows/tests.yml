@@ -1,0 +1,40 @@
+# Runs the linter and the test suite on every push and pull request.
+# The suites that need a KOReader build are skipped here (see tests/README.md).
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LuaJIT and luacheck
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q luajit luarocks
+          sudo luarocks install luacheck 1.2.0
+
+      - name: Lint
+        run: luacheck .
+
+      - name: Run the tests
+        run: |
+          set -o pipefail
+          luajit tests/run.lua | tee test-output.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "| Suite | Checks | Failures |"
+            echo "|---|---:|---:|"
+            awk -F': ' '/ checks, [0-9]+ failures$/ {
+                split($2, n, " "); print "| " $1 " | " n[1] " | " n[3] " |"
+                total += n[1]; failed += n[3] }
+              END { print "| **Total** | **" total "** | **" failed "** |" }' test-output.txt
+          } >> "$GITHUB_STEP_SUMMARY"
