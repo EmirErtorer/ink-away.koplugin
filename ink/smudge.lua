@@ -6,8 +6,10 @@ are never picked up, though smudged ink can be laid over them.
 The brush carries a small patch of colour, the size of the brush. At each step
 along the path it first picks up some of what lies under it (only ink: a pixel
 that differs from the page without ink), then lays the patch back down, so what
-it picked up a step earlier lands a little further on. Colours mix as they
-meet; red pushed into blue turns purple.
+it picked up a step earlier lands a little further on. Colours mix as paint
+does, not as light: each channel is mixed as an amount of pigment (its
+absorbance, -log of the light it lets through), so yellow pushed into blue
+turns green, not grey.
 
 A smudge is an op ({ kind = "smudge", pts, width, alpha = strength }) replayed in
 order like every other, by this one function on every surface: the screen's
@@ -26,6 +28,23 @@ local Smudge = {}
 local floor, ceil, sqrt, max, min = math.floor, math.ceil, math.sqrt, math.max, math.min
 
 local PICKUP = 0.45      -- how much of what lies under the brush it takes each step
+
+-- Paint-like mixing: a channel value as absorbance, and back, through tables.
+local ABS = ffi.new("float[256]")
+for c = 0, 255 do ABS[c] = -math.log((c + 0.5) / 256) end
+local INV_K = 1024                                  -- table steps per unit of absorbance
+local INV_N = ceil(ABS[0] * INV_K) + 2
+local INV = ffi.new("uint8_t[?]", INV_N)
+for i = 0, INV_N - 1 do
+    local c = floor(256 * math.exp(-i / INV_K))
+    INV[i] = c > 255 and 255 or c
+end
+local function toValue(a)
+    local i = floor(a * INV_K + 0.5)
+    if i < 0 then i = 0 elseif i >= INV_N then i = INV_N - 1 end
+    return INV[i]
+end
+Smudge.absorbance, Smudge.fromAbsorbance = function(c) return ABS[c] end, toValue
 
 -- A surface over a KOReader Blitbuffer: 8-bit grey or RGB32 (as the canvas
 -- always is), not rotated. nil for anything else.
@@ -94,31 +113,33 @@ local function step(st, s, b, cx, cy, k)
                     -- how much ink the pixel holds: all of it on an opaque page, its
                     -- alpha in a transparent PNG
                     local load = ink and (alpha_ch and ptr[o + 3] or 255) or 0
+                    -- the brush holds pigment: each channel as absorbance
+                    local a1, a2, a3 = ABS[c1], ABS[c2], ABS[c3]
                     if first then
-                        acc[ai], acc[ai + 1], acc[ai + 2] = c1, c2, c3
+                        acc[ai], acc[ai + 1], acc[ai + 2] = a1, a2, a3
                         acc[ai + 3] = load
                     else
-                        -- pick up: ink brings its colour; paper only thins the load
+                        -- pick up: ink brings its pigment; paper only thins the load
                         if ink then
-                            acc[ai] = acc[ai] + (c1 - acc[ai]) * PICKUP
-                            acc[ai + 1] = acc[ai + 1] + (c2 - acc[ai + 1]) * PICKUP
-                            acc[ai + 2] = acc[ai + 2] + (c3 - acc[ai + 2]) * PICKUP
+                            acc[ai] = acc[ai] + (a1 - acc[ai]) * PICKUP
+                            acc[ai + 1] = acc[ai + 1] + (a2 - acc[ai + 1]) * PICKUP
+                            acc[ai + 2] = acc[ai + 2] + (a3 - acc[ai + 2]) * PICKUP
                             acc[ai + 3] = acc[ai + 3] + (load - acc[ai + 3]) * PICKUP
                         else
                             acc[ai + 3] = acc[ai + 3] * (1 - PICKUP)
                         end
-                        -- lay down, strongest at the centre
+                        -- lay down, strongest at the centre, mixing pigments
                         local t = acc[ai + 3] / 255 * strength * (1 - d2)
                         if t > 0.002 then
                             if alpha_ch and ptr[o + 3] == 0 then
-                                ptr[o], ptr[o + 1], ptr[o + 2] = floor(acc[ai] + 0.5),
-                                    floor(acc[ai + 1] + 0.5), floor(acc[ai + 2] + 0.5)
+                                ptr[o], ptr[o + 1], ptr[o + 2] = toValue(acc[ai]),
+                                    toValue(acc[ai + 1]), toValue(acc[ai + 2])
                                 ptr[o + 3] = floor(255 * t + 0.5)
                             else
-                                ptr[o] = floor(c1 + (acc[ai] - c1) * t + 0.5)
+                                ptr[o] = toValue(a1 + (acc[ai] - a1) * t)
                                 if bpp > 1 then
-                                    ptr[o + 1] = floor(c2 + (acc[ai + 1] - c2) * t + 0.5)
-                                    ptr[o + 2] = floor(c3 + (acc[ai + 2] - c3) * t + 0.5)
+                                    ptr[o + 1] = toValue(a2 + (acc[ai + 1] - a2) * t)
+                                    ptr[o + 2] = toValue(a3 + (acc[ai + 2] - a3) * t)
                                     if alpha_ch then
                                         ptr[o + 3] = floor(ptr[o + 3] + (255 - ptr[o + 3]) * t + 0.5)
                                     end

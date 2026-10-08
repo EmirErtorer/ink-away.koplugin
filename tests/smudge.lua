@@ -52,14 +52,23 @@ do
     ok(lum(after(60, 20)) == lum(before(60, 20)), "drag: the stroke outside the brush is untouched")
 end
 
--- ---- colours mix ---------------------------------------------------------------
+-- ---- colours mix as paint does ------------------------------------------------
 do
-    local red = { kind = "ink", style = "solid", width = 30, alpha = 255, color = { 220, 0, 0 }, pts = { 40, 10, 40, 110 } }
-    local blue = { kind = "ink", style = "solid", width = 30, alpha = 255, color = { 0, 0, 220 }, pts = { 75, 10, 75, 110 } }
-    local px = render({ red, blue, { kind = "smudge", width = 30, alpha = 255,
-        pts = { 30, 60, 40, 60, 50, 60, 60, 60, 70, 60, 80, 60 } } }, 200, 120)
-    local r, _g, b = px(72, 60)
-    ok(r > 40 and b > 40, ("mix: red pushed into blue turns purple (%d, %d)"):format(r, b))
+    local function mixAt(c1, c2)
+        local a = { kind = "ink", style = "solid", width = 30, alpha = 255, color = c1, pts = { 40, 10, 40, 110 } }
+        local b = { kind = "ink", style = "solid", width = 30, alpha = 255, color = c2, pts = { 75, 10, 75, 110 } }
+        local px = render({ a, b, { kind = "smudge", width = 30, alpha = 255,
+            pts = { 30, 60, 40, 60, 50, 60, 60, 60, 70, 60, 80, 60 } } }, 200, 120)
+        return px(72, 60)
+    end
+    local r, g, b = mixAt({ 220, 30, 40 }, { 30, 80, 220 })
+    ok(r > g and b > g, ("mix: red pushed into blue turns purple (%d, %d, %d)"):format(r, g, b))
+    r, g, b = mixAt({ 245, 200, 30 }, { 30, 80, 220 })
+    ok(g > r and g > b, ("mix: yellow pushed into blue turns green, not grey (%d, %d, %d)"):format(r, g, b))
+    local Smudge = require("ink/smudge")
+    local exact = true
+    for c = 0, 255 do if Smudge.fromAbsorbance(Smudge.absorbance(c)) ~= c then exact = false end end
+    ok(exact, "mix: every value survives the trip to absorbance and back")
 end
 
 -- ---- symmetry and the kept points ------------------------------------------------

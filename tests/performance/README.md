@@ -41,6 +41,10 @@ strokes of ink).
 - **The smudge cannot be kept** (it depends on everything under it), so a page
   full of smudges replays them each time: 84-139 ms for 150. Real pages hold a
   few.
+- **The smudge mixes as paint does** (each channel as absorbance, through two
+  lookup tables), so yellow into blue makes green instead of grey: 1.2 times
+  the cost of mixing the screen's colours directly (101 to 121 ms for 150
+  smudges over colour ink).
 - **The first run showed the smudge export at 3.2 s.** That came from a
   surface whose buffer could be freed while in use; the surface now holds its
   buffer.
