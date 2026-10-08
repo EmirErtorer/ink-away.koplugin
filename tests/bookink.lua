@@ -376,5 +376,23 @@ do
     ok(nb.pages[1].book and nb.pages[1].book.toc == 4, "notes: a page keeps its chapter through saving")
 end
 
+-- ---- the book gestures: set where free, never over the reader's own ------------------------
+do
+    local EntryGestures = require("ink/reader/entrygestures")
+    local data = { gesture_fm = {}, gesture_reader = { one_finger_swipe_right_edge_down = { toggle_frontlight = true } } }
+    local set, taken = EntryGestures.apply(data)
+    ok(data.gesture_reader.one_finger_swipe_right_edge_up.inkaway_booknotes
+        and data.gesture_fm.one_finger_swipe_right_edge_up.inkaway_booknotes, "gestures: swipe up set in the reader and the file browser")
+    ok(data.gesture_reader.one_finger_swipe_right_edge_down.toggle_frontlight
+        and not data.gesture_reader.one_finger_swipe_right_edge_down.inkaway_annotate, "gestures: one in use is left as it is")
+    ok(#set == 2 and #taken == 1 and taken[1].want.ges == "one_finger_swipe_right_edge_down", "gestures: and listed for the note")
+    ok(data.gesture_fm.one_finger_swipe_right_edge_down == nil, "gestures: swipe down is not set outside a book")
+    local s2, t2 = EntryGestures.apply(data)
+    ok(#s2 == 0 and #t2 == 1, "gestures: running again changes nothing")
+    local d3 = { gesture_reader = { one_finger_swipe_right_edge_up = {} } }
+    EntryGestures.apply(d3)
+    ok(d3.gesture_reader.one_finger_swipe_right_edge_up.inkaway_booknotes, "gestures: an emptied gesture counts as free")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
