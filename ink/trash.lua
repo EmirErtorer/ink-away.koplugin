@@ -18,6 +18,7 @@ the tab back in its place.
   * Trash.list(root)                          the items, newest first
   * Trash.putDocument(root, path) / putFolder(root, path)
   * Trash.putPage(root, nb_path, nb, i)       page i of notebook nb (the caller removes it)
+  * Trash.putBookInk(root, sidecar, info)     a book's annotations (its ink file and pictures)
   * Trash.restore(root, id, insert_page)      put an item back
   * Trash.forget(root, id), Trash.empty(root), Trash.purge(root)
 ]]
@@ -148,6 +149,29 @@ function Trash.putFolder(root, path)
     return putPath(root, path, { kind = "folder", name = Storage.baseName(path) })
 end
 
+-- Move a book's annotations, Ink Away's file and pictures in the book's
+-- KOReader folder `sidecar` (see ink/reader/bookink.lua), to the trash, in a
+-- folder of their own. `info` is { name = the book's title, book = its file },
+-- so they go back to the book wherever it is by then. KOReader's own files stay.
+-- Returns the item, or nil, err.
+function Trash.putBookInk(root, sidecar, info)
+    local BookInk = require("ink/reader/bookink")
+    if not BookInk.exists(sidecar) then return nil, "not there" end
+    if not Storage.ensureDir(dirOf(root)) then return nil, "no trash folder" end
+    local data = load(root)
+    local id = newId(root, data)
+    local stored = Storage.join(dirOf(root), id)
+    if not BookInk.transfer(sidecar, stored, false) then return nil, "it could not be moved" end
+    local item = { id = id, kind = "bookink", from = sidecar, book = info and info.book,
+        name = info and info.name or Storage.baseName(sidecar), when = Trash.now() }
+    data.items[#data.items + 1] = item
+    if not save(root, data) then
+        BookInk.transfer(stored, sidecar, false)   -- back where it was rather than lose track of it
+        return nil, "the trash could not be written"
+    end
+    return item
+end
+
 -- Keep page i of notebook `nb` (whose file is `nb_path`) in the trash, with the
 -- pages either side of it, so it can go back between them. The caller then
 -- removes it from the notebook. Returns the item, or nil, err.
@@ -205,7 +229,9 @@ local function find(data, id)
     for _, it in ipairs(data.items) do if it.id == id then return it end end
 end
 
--- Put item `id` back. A file or folder goes back to its path (a free name
+-- Put item `id` back. A book's annotations go back to the book's folder (where
+-- the book is now, when it is still there), joined with any made since. A file
+-- or folder goes back to its path (a free name
 -- next to it when that is taken), in its place in the binder. A page goes back
 -- into its notebook through insert_page(nb_path, saved, item), which returns
 -- whether it worked (the view does it, as the notebook may be open); a
@@ -215,6 +241,19 @@ function Trash.restore(root, id, insert_page)
     local data = load(root)
     local item = find(data, id)
     if not item then return nil, "not in the trash" end
+    if item.kind == "bookink" then
+        local BookInk = require("ink/reader/bookink")
+        local target = item.from
+        if item.book and Storage.exists(item.book) then
+            local ok, where = pcall(BookInk.locate, item.book)
+            if ok and where and where.dir then target = where.dir end
+        end
+        if not BookInk.transfer(Storage.join(dirOf(root), item.id), target, false) then
+            return nil, "the book's folder could not be written"
+        end
+        drop(root, data, id)
+        return target
+    end
     if item.kind == "page" then
         local saved = Trash.readPage(root, item)
         if not saved then return nil, "the page could not be read" end

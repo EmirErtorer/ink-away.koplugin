@@ -517,6 +517,46 @@ function Book:openNotes()
     UIManager:show(view)
 end
 
+------------------------------------------------------------------------------
+-- Deleting the book's annotations
+------------------------------------------------------------------------------
+
+-- Move the book's annotations (its ink file and pictures) to the trash of the
+-- Ink Away library `root` (see Trash.putBookInk), and show the book without
+-- them at once. The link to the book's notes stays. Returns the trash item, or
+-- nil, err.
+function Book:trashInk(root)
+    local data = self:data()
+    if data.read_only then return nil, "saved by a newer Ink Away" end
+    if #data.items > 0 then self:save() end      -- what is in memory goes too
+    if not (self.sidecar and BookInk.exists(self.sidecar)) then return nil, "no annotations" end
+    local Trash = require("ink/trash")
+    local item, err = Trash.putBookInk(root, self.sidecar,
+        { name = self:notesInfo().title, book = self.ui.document and self.ui.document.file })
+    if not item then return nil, err end
+    local notes = data.notes
+    self._data = BookInk.new()
+    self.has_file = false
+    if notes then
+        self._data.notes = notes
+        self:save()
+    end
+    self:reload(true)
+    return item
+end
+
+-- Read the book's ink again (it came back from the trash), or with `keep` just
+-- show what is in memory now.
+function Book:reload(keep)
+    if not keep then
+        self._data = nil
+        self.has_file = self.sidecar ~= nil and BookInk.exists(self.sidecar)
+    end
+    self.rev = self.rev + 1
+    self._placed, self._index, self._index_key = nil, nil, nil
+    self:repaint()
+end
+
 -- Repaint the reader (after the ink changed).
 function Book:repaint()
     UIManager:setDirty(self.ui.dialog or "all", "ui")

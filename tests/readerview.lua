@@ -38,6 +38,31 @@ local function hasText(w, text)
     return walk(w)
 end
 
+-- The button in a widget tree labelled `text`.
+local function findButton(w, text)
+    local seen = {}
+    local function walk(t)
+        if type(t) ~= "table" or seen[t] then return nil end
+        seen[t] = true
+        if type(t.callback) == "function" and hasText(t, text) then
+            for k, v in pairs(t) do
+                if k ~= "show_parent" and k ~= "parent" and k ~= "callback" then
+                    local inner = walk(v)
+                    if inner then return inner end
+                end
+            end
+            return t
+        end
+        for k, v in pairs(t) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = walk(v)
+                if f then return f end
+            end
+        end
+    end
+    return walk(w)
+end
+
 -- A stand-in book: one page with two strokes, recording what it is asked.
 local function standInBook()
     local s1 = { kind = "ink", style = "solid", width = 4, alpha = 255, color = { 0, 0, 0 }, pts = { 200, 200, 400, 200 } }
@@ -58,6 +83,12 @@ local function standInBook()
     function book:save() self.saved = self.saved + 1 end
     function book:turn() end
     function book:repaint() self.repainted = true end
+    function book:hasInk() return not self.trashed end
+    function book:trashInk(root)
+        self.trashed, self.trash_root = true, root
+        self.pageOps = function() return { ops = {}, items = {} } end
+        return { id = "t1", kind = "bookink" }
+    end
     function book:highlight(op) local it = { hl = #self.highlights + 1 }; self.highlights[#self.highlights + 1] = it; return it end
     function book:removeHighlight() self.removed = self.removed + 1; return true end
     function book:restoreHighlight(it) self.restored = self.restored + 1; return it end
@@ -175,6 +206,32 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
         ok(BB.out_of_bounds == 0, tag .. " " .. side .. ": painted within the screen")
     end
     ok(view:sheetLeftX() == view._vb_thick, tag .. ": sheets open right of a left toolbar")
+
+    -- deleting every annotation on the book: two confirmations, then gone at
+    -- once into the trash, with nothing left to undo
+    view:openReaderSettings()
+    local del = findButton(view._settings_dialog, "Delete all annotations on this book\u{2026}")
+    ok(del ~= nil, tag .. ": Book ink offers to delete the book's annotations")
+    del.callback()
+    ok(view._delete_ink and hasText(view._delete_ink, "Delete all annotations?"), tag .. ": first it asks")
+    findButton(view._delete_ink, "Continue").callback()
+    ok(view._delete_ink and hasText(view._delete_ink, "Are you sure?") and not book.trashed, tag .. ": then asks again")
+    findButton(view._delete_ink, "Delete").callback()
+    ok(book.trashed and book.trash_root == view:libraryDir(), tag .. ": then the annotations go to the trash")
+    ok(#view.canvas.ops == 0 and not view.canvas:canUndo(), tag .. ": gone from the page at once, nothing to undo")
+    ok(view._delete_ink and hasText(view._delete_ink, "Moved to the trash"), tag .. ": and it says where they are")
+    view:closeSheet("_delete_ink")
+    view:openReaderSettings()
+    ok(findButton(view._settings_dialog, "Delete all annotations on this book\u{2026}") == nil,
+        tag .. ": with no annotations left, nothing to delete")
+    view:closeSheet("_settings_dialog")
+    -- and the page takes new ink after it
+    view:setTool("pen")
+    view:onIaTouch(nil, pos(tw + 60, H - 120))
+    for i = 1, 4 do view:onIaPan(nil, pos(tw + 60 + i * 20, H - 120)) end
+    view:onIaPanRelease(nil, pos(tw + 140, H - 120))
+    view:flushPending()
+    ok(#view.canvas.ops == 1, tag .. ": new ink after the delete")
 
     -- painting stays on the screen, and closing saves and repaints the book
     view:paintTo(Screen.bb, 0, 0)

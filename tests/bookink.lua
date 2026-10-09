@@ -540,5 +540,50 @@ do
     os.execute("rm -rf '" .. root .. "'")
 end
 
+-- ---- a book's annotations to the trash and back ------------------------------------------------
+do
+    local Trash = require("ink/trash")
+    local root = os.tmpname(); os.remove(root)
+    os.execute("mkdir -p '" .. root .. "/lib' '" .. root .. "/book.sdr' '" .. root .. "/pics'")
+    local lib, sdr = root .. "/lib", root .. "/book.sdr"
+    local function exists(p) local f = io.open(p, "rb"); if f then f:close() end; return f ~= nil end
+    local ko = sdr .. "/metadata.epub.lua"
+    local k = io.open(ko, "wb"); k:write("return {}"); k:close()
+    local pic = root .. "/pics/p.png"
+    local f = io.open(pic, "wb"); f:write("png"); f:close()
+    local ref = BookInk.keepPicture(sdr, pic)
+    local stroke = { a = { page = 1, x = 1, y = 1 }, op = { kind = "ink", width = 2, alpha = 255, pts = { 1, 1, 5, 5 } } }
+    local image = { a = { page = 1, x = 1, y = 1 }, op = { kind = "image", path = ref, x = 0, y = 0, w = 10, h = 10 } }
+    BookInk.save(sdr, { version = 1, items = { stroke, image } })
+    BookInk.save(sdr, { version = 1, items = { stroke, image } })   -- leaves a .old as well
+    ok(exists(BookInk.path(sdr) .. ".old"), "trash: a backup to go too")
+
+    local item = Trash.putBookInk(lib, sdr, { name = "The Book", book = root .. "/book.epub" })
+    ok(item and item.kind == "bookink" and item.name == "The Book", "trash: the book's annotations are in")
+    ok(not BookInk.exists(sdr) and not exists(BookInk.path(sdr) .. ".old"), "trash: its ink file and backup left the book")
+    ok(not exists(BookInk.picturePath(sdr, ref)), "trash: its pictures too")
+    ok(exists(ko), "trash: KOReader's own file stays")
+    ok(BookInk.load(sdr).items[1] == nil, "trash: the book reads as having no ink")
+    ok(#Trash.list(lib) == 1 and Trash.list(lib)[1].id == item.id, "trash: listed")
+
+    -- ink made since is kept when they come back, the two put together
+    local fresh = { a = { page = 2, x = 3, y = 3 }, op = { kind = "ink", width = 2, alpha = 255, pts = { 3, 3, 9, 9 } } }
+    BookInk.save(sdr, { version = 1, items = { fresh }, notes = "/notes.inkn" })
+    local back = Trash.restore(lib, item.id)
+    ok(back == sdr, "restore: back in the book's folder (the book file is gone, so its old folder)")
+    local data = BookInk.load(sdr)
+    ok(#data.items == 3 and data.notes == "/notes.inkn", ("restore: joined with what was made since (%d items)"):format(#data.items))
+    ok(exists(BookInk.picturePath(sdr, ref)), "restore: the pictures are back")
+    ok(#Trash.list(lib) == 0, "restore: gone from the trash")
+
+    -- deleted for good
+    item = Trash.putBookInk(lib, sdr, { name = "The Book" })
+    ok(item ~= nil, "forget: in again")
+    Trash.forget(lib, item.id)
+    ok(#Trash.list(lib) == 0 and not exists(lib .. "/" .. Trash.DIR .. "/" .. item.id), "forget: gone for good")
+    ok(Trash.putBookInk(lib, sdr, { name = "x" }) == nil, "trash: nothing to move, nothing done")
+    os.execute("rm -rf '" .. root .. "'")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

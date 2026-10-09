@@ -422,6 +422,41 @@ function InkAwayView:openActionSheet(field, title, note, rows)
     self:showSheet(field, build)
 end
 
+-- Ask before something that can't simply be undone: a title, the question in
+-- full under it, and Cancel beside the action (`ok_label`), which runs `on_ok`.
+-- Either closes the sheet first.
+function InkAwayView:confirmSheet(field, title, text, ok_label, on_ok)
+    self:closeSheet(field)
+    local content_w, gap = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local build = function()
+        local w = math.floor((content_w - gap) / 2)
+        return VerticalGroup:new{ align = "left",
+            self:sheetTitle(title, content_w, _("Cancel"), closeSelf),
+            VerticalSpan:new{ width = Screen:scaleBySize(10) },
+            TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) },
+            VerticalSpan:new{ width = Screen:scaleBySize(18) },
+            HorizontalGroup:new{ align = "center",
+                self:actionButton(_("Cancel"), w, closeSelf),
+                HorizontalSpan:new{ width = gap },
+                self:actionButton(ok_label, w, function() closeSelf(); on_ok() end, true) } }
+    end
+    self:showSheet(field, build)
+end
+
+-- Say something that needs reading, in a sheet with an OK pill.
+function InkAwayView:noticeSheet(field, title, text)
+    self:closeSheet(field)
+    local content_w = self:sheetWidth()
+    local build = function()
+        return VerticalGroup:new{ align = "left",
+            self:sheetTitle(title, content_w, _("OK"), function() self:closeSheet(field) end),
+            VerticalSpan:new{ width = Screen:scaleBySize(10) },
+            TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) } }
+    end
+    self:showSheet(field, build)
+end
+
 -- A row of equal buttons across `width`, one per { value, label } option, with
 -- the current one filled black. A tap calls onpick(value).
 function InkAwayView:segmentedRow(options, current, width, onpick)

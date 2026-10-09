@@ -20,6 +20,7 @@ timers and input hooks.
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -490,9 +491,48 @@ function ReaderInkView:openReaderSettings()
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
         add(self:actionButton(_("Gestures and pen buttons"), content_w, function()
             closeSelf(); self:openGestureSettings() end))
+        if self.book and self.book:hasInk() then
+            add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
+            add(self:actionButton(_("Delete all annotations on this book\u{2026}"), content_w, function()
+                closeSelf(); self:confirmDeleteBookInk() end))
+        end
         return content
     end
     self:showSheet("_settings_dialog", build)
+end
+
+-- Deleting every annotation on the book takes two confirmations; they then
+-- wait in Ink Away's trash for 30 days.
+function ReaderInkView:confirmDeleteBookInk()
+    self:confirmSheet("_delete_ink", _("Delete all annotations?"),
+        _("Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."),
+        _("Continue"), function()
+            self:confirmSheet("_delete_ink", _("Are you sure?"),
+                _("All of this book's annotations will be deleted now. They wait in Ink Away's trash for 30 days in case you want them back."),
+                _("Delete"), function() self:deleteBookInk() end)
+        end)
+end
+
+-- Move the book's annotations to the trash and show the page without them; the
+-- annotation mode stays open on the empty page, with nothing to undo.
+function ReaderInkView:deleteBookInk()
+    self:flushPending()
+    self:cancelShape()
+    if self.editing_text then self:finishTextEdit(true) end
+    self:resetLasso()
+    self:saveDocument()
+    local item, err = self.book:trashInk(self:libraryDir())
+    if not item then
+        UIManager:show(InfoMessage:new{ text = _("Could not delete the annotations.\n") .. tostring(err) })
+        return
+    end
+    self:loadBookPage()
+    self._anchored_rev = self.canvas.rev
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui")
+    self:noticeSheet("_delete_ink", _("Moved to the trash"),
+        _("This book's annotations wait in Ink Away's trash for 30 days. To put them back: Ink Away's library, its menu, Trash."))
 end
 
 -- The gear in the canvas's sheets opens these over a book.
