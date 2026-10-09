@@ -34,6 +34,7 @@ local Palette = require("ink/palette")
 local Raster = require("ink/raster")
 local Storage = require("ink/storage")
 local IconMenu = require("ink/ui/iconmenu")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -159,7 +160,7 @@ function InkAwayView:accentButton(w, h, radius, content, cb, hold_cb)
         ImageWidget:new{ image = Accent.shape(w, h, radius), width = w, height = h, alpha = true,
             image_disposable = false },
         CenterContainer:new{ dimen = dimen, content } })
-    return b
+    return Theme.keep(b, radius)   -- the theme colour stays itself in dark
 end
 
 -- Path of a bundled icon.
@@ -256,7 +257,7 @@ function InkAwayView:paperTile(style, label, w, h, sel, cb)
     -- fgcolor is set for the tap highlight, which inverts it on a text button
     -- (see imageLabel); the group itself draws nothing with it
     local vg = VerticalGroup:new{ align = "center", fgcolor = sel and a.text or BLACK }
-    if ok and page then table.insert(vg, imageLabel(page, pw, ph)) end
+    if ok and page then table.insert(vg, Theme.keep(imageLabel(page, pw, ph))) end   -- the paper itself
     table.insert(vg, vspan(4))
     table.insert(vg, TextWidget:new{ text = label, face = Font:getFace("cfont", 15), bold = true,
         fgcolor = sel and a.text or BLACK })
@@ -288,18 +289,30 @@ function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_siz
     local a = Accent.get()
     local pill_w = Screen:scaleBySize(84)
     local pill_h = Screen:scaleBySize(34)
-    -- `extra` { label, cb }: a plain grey pill before the main one (the guide)
-    local extra_b
-    if extra then
-        extra_b = Button:new{ text = "", width = pill_w, height = pill_h, bordersize = 0,
-            radius = Screen:scaleBySize(11), background = TILE_BG, margin = 0, padding = 0,
-            callback = extra.cb, show_parent = self }
-        self:setButtonLabel(extra_b, TextWidget:new{ text = extra.label, face = Font:getFace("cfont", 15),
-            bold = true, fgcolor = BLACK })
-    end
     local gap = Screen:scaleBySize(8)
+    -- `extra`: plain grey pills before the main one, each { label = , cb = } or
+    -- { icon = , cb = } (a small square one): the guide, the appearance
+    local extras, extras_w = {}, 0
+    if extra then
+        for _i, e in ipairs(extra[1] and extra or { extra }) do
+            local w = e.icon and pill_h or pill_w
+            local b = Button:new{ text = "", width = w, height = pill_h, bordersize = 0,
+                radius = Screen:scaleBySize(11), background = TILE_BG, margin = 0, padding = 0,
+                callback = e.cb, show_parent = self }
+            local lbl = e.icon and self:tileIcon(e.icon, math.floor(pill_h * 0.62))
+            if lbl then
+                -- fgcolor is set for the tap highlight, which inverts a text button's label
+                self:setButtonLabel(b, CenterContainer:new{ dimen = Geom:new{ w = w, h = pill_h }, fgcolor = BLACK, lbl })
+            else
+                self:setButtonLabel(b, TextWidget:new{ text = e.label or "", face = Font:getFace("cfont", 15),
+                    bold = true, fgcolor = BLACK })
+            end
+            extras[#extras + 1] = b
+            extras_w = extras_w + w + gap
+        end
+    end
     local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true,
-        max_width = content_w - pill_w - gap - (extra_b and pill_w + gap or 0) }
+        max_width = content_w - pill_w - gap - extras_w }
     local text = TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
         bold = true, fgcolor = a.text }
     local pill
@@ -311,11 +324,11 @@ function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_siz
             callback = pill_cb, show_parent = self }
         self:setButtonLabel(pill, text)
     end
-    local g = content_w - titleW:getSize().w - pill:getSize().w - (extra_b and pill_w + gap or 0)
+    local g = content_w - titleW:getSize().w - pill:getSize().w - extras_w
     local row = HorizontalGroup:new{ align = "center",
         titleW, HorizontalSpan:new{ width = math.max(gap, g) } }
-    if extra_b then
-        row[#row + 1] = extra_b
+    for _i, b in ipairs(extras) do
+        row[#row + 1] = b
         row[#row + 1] = HorizontalSpan:new{ width = gap }
     end
     row[#row + 1] = pill
@@ -496,10 +509,11 @@ end
 -- reused for every later paint.
 function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     local fill = uiFill(rgb)
+    -- a swatch is the colour it gives, in dark too
     if not isChromatic(fill) then
-        return Button:new{ text = "", width = w, height = h, background = fill,
+        return Theme.keep(Button:new{ text = "", width = w, height = h, background = fill,
             radius = radius, bordersize = 0, margin = 0, padding = 0,
-            callback = cb, hold_callback = hold_cb, show_parent = self }
+            callback = cb, hold_callback = hold_cb, show_parent = self }, radius)
     end
     -- white Color8 frame behind the image: the tap highlight inverts it (a nil
     -- background would crash the highlight)
@@ -512,7 +526,7 @@ function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     else
         b.frame.background = fill   -- fall back to the plain (slow) colour fill
     end
-    return b
+    return Theme.keep(b, radius)
 end
 
 function InkAwayView:cachedColourTile(rgb, w, h, radius)
@@ -561,6 +575,7 @@ function InkAwayView:wheelTile(w, h, cb)
         return bb
     end)
     if ok and wheel then self:setButtonLabel(b, imageLabel(wheel, d, d)) end
+    Theme.keep(b, radius)
     return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = BLACK, radius = Screen:scaleBySize(14),
         padding = Screen:scaleBySize(3), margin = 0, b }
 end

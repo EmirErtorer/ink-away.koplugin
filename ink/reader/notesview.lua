@@ -23,6 +23,7 @@ local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local BookNotes = require("ink/reader/booknotes")
 local InkAwayView = require("ink/view")
+local Theme = require("ink/ui/theme")
 local InkGeom = require("ink/geom")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
@@ -213,6 +214,7 @@ function NotesView:paintSurround(bb, x, y)
         tw:paintTo(bb, x + s.x + Screen:scaleBySize(8), y + s.y + math.floor((s.h - sz.h) / 2))
     end
     bb:paintRect(x + s.x, y + s.y + s.h - 1, s.w, 1, Blitbuffer.COLOR_GRAY_9)
+    if Theme.invert() then bb:invertRect(x + s.x, y + s.y, s.w, s.h) end   -- dark: the strip is a control
 end
 
 -- "Chapter · 2/5", made again only when it changes.

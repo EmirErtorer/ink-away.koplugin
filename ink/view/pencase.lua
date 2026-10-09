@@ -38,6 +38,7 @@ local Penset = require("ink/penset")
 local Raster = require("ink/raster")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 local BLACK = Blitbuffer.COLOR_BLACK
@@ -108,6 +109,7 @@ function InkAwayView:paintPenMark(bb, x, y, w, h)
     local my = y + math.floor((h + isz) / 2) + math.max(1, Screen:scaleBySize(1))
     if my + mh > y + h - 1 then my = y + h - 1 - mh end
     bb:paintRect(mx, my, mw, mh, Paint.displayColor(self.pen_color, 255))
+    self._pen_mark_rect = { x = mx, y = my, w = mw, h = mh }   -- kept in dark
     local c = self.pen_color or { 0, 0, 0 }
     if c[1] + c[2] + c[3] > 600 then   -- a light colour gets an edge, to show on white
         bb:paintBorder(mx, my, mw, mh, 1, HAIRLINE)
@@ -197,7 +199,7 @@ function InkAwayView:imageTile(bb, w, h, cb, hold_cb)
         self:setButtonLabel(b, ImageWidget:new{ image = bb, width = w, height = h,
             image_disposable = false, fgcolor = BLACK })
     end
-    return b
+    return Theme.keep(b, Screen:scaleBySize(10))   -- a pen as it draws, in dark too
 end
 
 -- A small label under a tile.
@@ -226,6 +228,7 @@ end
 local Strip = InputContainer:extend{ w = 0, h = 0, bb = nil, on_tap = nil, note = nil }
 function Strip:init()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.w, h = self.h }
+    Theme.keep(self)   -- the pen at its size and colour, in dark too
     if Device:isTouchDevice() then
         self.ges_events = { StripTap = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } } }
     end

@@ -18,6 +18,7 @@ local Device = require("device")
 local _ = require("gettext")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -211,14 +212,8 @@ function ColorPicker:paintTo(bb, x, y)
     local wx, wy, D = self:wheelRect()
     wx, wy = wx + x, wy + y
     bb:blitFrom(self.wheel_bb, wx, wy, 0, 0, D, D)
-    local R = D / 2
-    local mx = wx + R + cos(self.h * 2 * pi) * self.s * R
-    local my = wy + R + sin(self.h * 2 * pi) * self.s * R
-    local mr = Screen:scaleBySize(7)
-    bb:paintBorder(floor(mx - mr), floor(my - mr), mr * 2, mr * 2, 2, BLACK)
-    bb:paintBorder(floor(mx - mr) + 2, floor(my - mr) + 2, mr * 2 - 4, mr * 2 - 4, 1, WHITE)
 
-    -- brightness slider: a gradient from black to the full colour, plus a knob
+    -- brightness slider: a gradient from black to the full colour
     local sx, cy, sw = self:sliderRect()
     sx, cy = sx + x, cy + y
     local th = Screen:scaleBySize(10)
@@ -226,8 +221,6 @@ function ColorPicker:paintTo(bb, x, y)
         local r, g, b = hsv2rgb(self.h, self.s, i / (sw - 1))
         fillColor(bb, sx + i, cy - floor(th / 2), 1, th, r, g, b)
     end
-    local kx = sx + floor(self.v * (sw - 1))
-    bb:paintBorder(kx - Screen:scaleBySize(4), cy - floor(th / 2) - 3, Screen:scaleBySize(8), th + 6, 2, BLACK)
 
     -- preview swatch and RGB readout
     local pr = self:previewRect()
@@ -250,6 +243,26 @@ function ColorPicker:paintTo(bb, x, y)
         t:paintTo(bb, rx + floor((rr.w - t:getSize().w) / 2), ry + floor((rr.h - t:getSize().h) / 2))
         t:free()
     end
+
+    -- dark (see ink/ui/theme.lua): the panel inverted, the colours kept
+    local dark = Theme.invert()
+    if dark then
+        bb:invertRect(bx, by, self.box_w, self.box_h)
+        Theme.invertRounded(bb, wx, wy, D, D, floor(D / 2))
+        bb:invertRect(sx, cy - floor(th / 2), sw, th)
+        bb:invertRect(px + 1, py + 1, sww - 2, pr.h - 2)
+    end
+
+    -- the wheel's selection marker and the slider's knob, over the colours
+    local R = D / 2
+    local mx = wx + R + cos(self.h * 2 * pi) * self.s * R
+    local my = wy + R + sin(self.h * 2 * pi) * self.s * R
+    local mr = Screen:scaleBySize(7)
+    bb:paintBorder(floor(mx - mr), floor(my - mr), mr * 2, mr * 2, 2, BLACK)
+    bb:paintBorder(floor(mx - mr) + 2, floor(my - mr) + 2, mr * 2 - 4, mr * 2 - 4, 1, WHITE)
+    local kx = sx + floor(self.v * (sw - 1))
+    bb:paintBorder(kx - Screen:scaleBySize(4), cy - floor(th / 2) - 3, Screen:scaleBySize(8), th + 6, 2,
+        dark and WHITE or BLACK)
 end
 
 function ColorPicker:refresh()

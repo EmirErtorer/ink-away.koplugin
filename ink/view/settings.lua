@@ -14,6 +14,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Accent = require("ink/accent")
 local PenTest = require("ink/pentest")
+local Theme = require("ink/ui/theme")
 local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
@@ -247,8 +248,9 @@ function InkAwayView:openSettings()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
 
-        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil,
-            { label = _("Guide"), cb = function() self:openGuide() end }))
+        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "appearance", cb = function() self:openAppearance() end },
+            { label = _("Guide"), cb = function() self:openGuide() end } }))
         add(vspan(16))
 
         -- orientation: picking one closes the sheet, as the screen size changes
@@ -352,6 +354,30 @@ function InkAwayView:openSettings()
         return content
     end
     self:showSheet("_settings_dialog", build)
+end
+
+-- Light, dark or as KOReader's night mode: Ink Away's own controls (see
+-- ink/ui/theme.lua). The page is never changed.
+function InkAwayView:openAppearance()
+    self:closeSheet("_settings_dialog")
+    local content_w = self:sheetWidth()
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Appearance"), content_w, _("Done"), function() self:closeSheet("_appearance") end))
+        add(vspan(12))
+        add(self:segmentedRow({ { "light", _("Light") }, { "dark", _("Dark") }, { "system", _("System") } },
+            Theme.mode(), content_w, function(m)
+                self:setSetting(Theme.SETTING, m)
+                self._paint_all = true
+                self:rebuildSheet("_appearance")
+                UIManager:setDirty("all", "ui")
+            end))
+        add(vspan(6))
+        add(self:sheetHint(_("Dark turns Ink Away's toolbars and menus dark; the page stays as it is. System follows KOReader's night mode."), content_w))
+        return content
+    end
+    self:showSheet("_appearance", build)
 end
 
 -- The faster-drawing tip for this reader, or nil: none where KOReader drives

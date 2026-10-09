@@ -18,6 +18,7 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local Accent = require("ink/accent")
+local Theme = require("ink/ui/theme")
 local Paint = require("ink/paint")
 
 local Screen = Device.screen
@@ -36,6 +37,7 @@ end
 local AccentPill = WidgetContainer:extend{ bar = false }
 function AccentPill:getSize() return self.dimen end
 function AccentPill:paintTo(bb, x, y)
+    self.dimen.x, self.dimen.y = x, y     -- where it is, for dark (see Theme.restore)
     local w, h = self.dimen.w, self.dimen.h
     if self.bar then Accent.paintBar(bb, x, y, w, h)
     else Accent.paintRounded(bb, x, y, w, h, math.floor(h / 2)) end
@@ -44,7 +46,8 @@ end
 -- A bar in the accent: black by default, as before.
 local function accentPill(w, h, bar)
     if not Accent.get().custom then return pill(w, h, Blitbuffer.COLOR_BLACK) end
-    return AccentPill:new{ dimen = GeomUI:new{ w = w, h = h }, bar = bar }
+    -- a theme colour stays itself in dark
+    return Theme.keep(AccentPill:new{ dimen = GeomUI:new{ w = w, h = h }, bar = bar }, bar and 0 or math.floor(h / 2))
 end
 
 -- The round white knob of diameter d, with a thin grey rim.

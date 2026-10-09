@@ -19,6 +19,7 @@ local _ = require("gettext")
 local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
 local Accent = require("ink/accent")
+local Theme = require("ink/ui/theme")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 
@@ -194,7 +195,9 @@ function InkAwayView:drawActiveToolPill(bb, ox, oy)
     if self._toolbar_hidden or not self._active_btn_idx or not self._btn_w or not self._bar_h then return end
     local m = Screen:scaleBySize(7)
     local cx = ox + self._btn_w * (self._active_btn_idx - 1)
-    Accent.paintRounded(bb, cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m, Screen:scaleBySize(9))
+    local r = Screen:scaleBySize(9)
+    Accent.paintRounded(bb, cx + m, oy + m, self._btn_w - 2 * m, self._bar_h - 2 * m, r)
+    self._pill_rect = { x = cx + m, y = oy + m, w = self._btn_w - 2 * m, h = self._bar_h - 2 * m, r = r }
 end
 
 -- Show the current tool as active: the toolbar, and the Pan button when Pan
@@ -254,6 +257,7 @@ end
 -- Paint the hairline that separates the toolbar from the canvas, after the
 -- icons, and the pen in hand's colour under the Pen button.
 function InkAwayView:drawToolbarIcons(bb, ox, oy)
+    self._pen_mark_rect = nil
     if not self._bar_h then return end
     ox, oy = ox or 0, oy or 0
     local y = (self.dimen and self.dimen.y or 0) + self._bar_h - 1
@@ -592,14 +596,18 @@ function InkAwayView:drawPenStrip(bb, ox, oy, r)
         end
         self._strip_samples, self._strip_key, self._strip_cache = samples, key, self._wave_cache
     end
+    local dark = Theme.invert()
+    if dark then Theme.invertRounded(bb, ox + r.x, oy + r.y, r.w, r.h, math.floor(math.min(r.w, r.h) / 2)) end
     for i = 1, r.n do
         local x = ox + r.x + r.pad + (i - 1) * (r.slot + r.pad)
         local y = oy + r.y + r.pad
         local sample = self._strip_samples[i]
+        -- (blitted after the dark inversion: each pen shows as it draws)
         if sample then bb:blitFrom(sample, x + inset, y + inset, 0, 0, tw, th) end
         if case.sel == i then
             local uh = math.max(3, Screen:scaleBySize(3))
             Accent.paintRounded(bb, x + inset, y + r.sh - uh, tw, uh, math.floor(uh / 2))
+            if dark and not Accent.get().custom then bb:invertRect(x + inset, y + r.sh - uh, tw, uh) end
         end
     end
 end
@@ -619,10 +627,15 @@ function InkAwayView:drawFabs(bb, ox, oy, br)
     local function stamp(name, r)
         bb:alphablitFrom(self:fabSprite(name, r.w, r.h), ox + r.x, oy + r.y, 0, 0, r.w, r.h)
     end
+    -- dark (see ink/ui/theme.lua): a round control inverted within its shape
+    local dark = Theme.invert()
+    local function darken(r)
+        if dark then Theme.invertRounded(bb, ox + r.x, oy + r.y, r.w, r.h, math.floor(math.min(r.w, r.h) / 2)) end
+    end
     -- zoom pill (+ over -), stamped from the cached sprite
     if not self._zoom_hidden then
         local r = self:fabRect("zoom")
-        if reached(r) then stamp("zoom", r) end
+        if reached(r) then stamp("zoom", r); darken(r) end
     end
     -- the Pan button above it, lit while Pan is the tool
     if not self._pan_hidden then
@@ -630,6 +643,7 @@ function InkAwayView:drawFabs(bb, ox, oy, br)
         if reached(r) then
             self._pan_fab_on = self.tool == "pan"
             self:drawPanFab(bb, ox + r.x, oy + r.y, r.w, self._pan_fab_on)
+            if not (self._pan_fab_on and Accent.get().custom) then darken(r) end
         end
     end
     -- toolbar toggle: a bare chevron, up to collapse and down to expand; hidden
@@ -659,6 +673,7 @@ function InkAwayView:drawFabs(bb, ox, oy, br)
             local sz = t:getSize()
             t:paintTo(bb, ox + r.x + math.floor((r.w - sz.w) / 2), oy + r.y + math.floor((r.h - sz.h) / 2))
             t:free()
+            if not Accent.get().custom then darken(r) end
         end
     end
 end

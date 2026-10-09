@@ -111,12 +111,15 @@ function VBar:drawActiveToolPill(bb, ox, oy)
     if not (self._active_btn_idx and self._btn_h and self._bar_w) then return end
     local m = Screen:scaleBySize(5)
     local x, y, w, h = self:vbarCell(self._active_btn_idx, ox, oy)
-    Accent.paintRounded(bb, x + m, y + m, w - 2 * m, h - 2 * m, Screen:scaleBySize(9))
+    local r = Screen:scaleBySize(9)
+    Accent.paintRounded(bb, x + m, y + m, w - 2 * m, h - 2 * m, r)
+    self._pill_rect = { x = x + m, y = y + m, w = w - 2 * m, h = h - 2 * m, r = r }   -- for dark
 end
 
 -- The hairline between the bar and the page, and the pen in hand's colour
 -- under its button (the highlighter's, when it is the highlighter).
 function VBar:drawToolbarIcons(bb, ox, oy)
+    self._pen_mark_rect = nil
     if not self._bar_w then return end
     ox, oy = ox or 0, oy or 0
     local side, thick, len = self._vb_side or "left", self._vb_thick or self._bar_w, self._vbar_h or self.screen_h

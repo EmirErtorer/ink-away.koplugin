@@ -19,6 +19,7 @@ local Brushes = require("ink/brushes")
 local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
+local Theme = require("ink/ui/theme")
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -37,6 +38,7 @@ local GREY  = Blitbuffer.COLOR_GRAY
 local TILE  = Paint.TILE_BG     -- secondary button fill
 local TRACK = Paint.TRACK_BG
 local KNOB  = Paint.KNOB_EDGE
+local KNOB_DARK = Blitbuffer.Color8(0xFF - KNOB.a)   -- the rim as dark shows it
 
 function BrushMaker:init()
     self.params = self.params or Brushes.defaults()
@@ -145,6 +147,12 @@ function BrushMaker:paintTo(bb, x, y)
     bb:paintBorder(bx + self.pad, by + self.title_h, self.preview_bb:getWidth(),
         self.preview_bb:getHeight(), 1, GREY, pv_r)
 
+    -- what keeps its colours in dark (the preview, a theme colour), and the
+    -- knobs, drawn last over the fills
+    local custom = Accent.get().custom
+    local keeps = { { bx + self.pad, by + self.title_h, self.preview_bb:getWidth(), self.preview_bb:getHeight(), pv_r } }
+    local knobs = {}
+
     -- sliders: a pill track, black fill and round white knob, like the sheets
     for i, f in ipairs(Brushes.FIELDS) do
         local tx, cy, tw, _ry, _w, rx = self:trackRect(i)
@@ -159,11 +167,13 @@ function BrushMaker:paintTo(bb, x, y)
         local frac = (val - f.min) / (f.max - f.min)
         if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
         local fillw = math.floor(tw * frac)
-        if fillw > 0 then Accent.paintBar(bb, tx, cy - tr, math.max(th, fillw), th) end
+        if fillw > 0 then
+            Accent.paintBar(bb, tx, cy - tr, math.max(th, fillw), th)
+            if custom then keeps[#keeps + 1] = { tx, cy - tr, math.max(th, fillw), th, tr } end
+        end
         local kd = Screen:scaleBySize(24)
         local kx = math.max(tx, math.min(tx + tw - kd, tx + fillw - math.floor(kd / 2)))
-        bb:paintRoundedRect(kx, cy - math.floor(kd / 2), kd, kd, WHITE, math.floor(kd / 2))
-        bb:paintBorder(kx, cy - math.floor(kd / 2), kd, kd, Screen:scaleBySize(1), KNOB, math.floor(kd / 2))
+        knobs[#knobs + 1] = { kx, cy - math.floor(kd / 2), kd }
         local shown = f.step and tostring(math.floor(val + 0.5))
                               or tostring(math.floor(frac * 100 + 0.5))
         local vw = TextWidget:new{ text = shown, face = Font:getFace("cfont", 15), bold = true, fgcolor = BLACK }
@@ -176,13 +186,27 @@ function BrushMaker:paintTo(bb, x, y)
     local br = Screen:scaleBySize(14)
     for _, b in ipairs({ { save, _("Save brush"), true }, { cancel, _("Cancel"), false } }) do
         local r, label = b[1], b[2]
-        if b[3] then Accent.paintRounded(bb, r.x + x, r.y + y, r.w, r.h, br)
+        if b[3] then
+            Accent.paintRounded(bb, r.x + x, r.y + y, r.w, r.h, br)
+            if custom then keeps[#keeps + 1] = { r.x + x, r.y + y, r.w, r.h, br } end
         else bb:paintRoundedRect(r.x + x, r.y + y, r.w, r.h, TILE, br) end
         local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 18), bold = true,
             fgcolor = b[3] and Accent.get().text or BLACK }
         t:paintTo(bb, r.x + x + math.floor((r.w - t:getSize().w) / 2),
                       r.y + y + math.floor((r.h - t:getSize().h) / 2))
         t:free()
+    end
+
+    -- dark (see ink/ui/theme.lua): the panel inverted, the kept parts back
+    local dark = Theme.invert()
+    if dark then
+        Theme.invertRounded(bb, bx, by, bw, bh, radius)
+        for _i, k in ipairs(keeps) do Theme.invertRounded(bb, k[1], k[2], k[3], k[4], k[5]) end
+    end
+    for _i, k in ipairs(knobs) do
+        local kx, ky, kd = k[1], k[2], k[3]
+        bb:paintRoundedRect(kx, ky, kd, kd, dark and BLACK or WHITE, math.floor(kd / 2))
+        bb:paintBorder(kx, ky, kd, kd, Screen:scaleBySize(1), dark and KNOB_DARK or KNOB, math.floor(kd / 2))
     end
 end
 

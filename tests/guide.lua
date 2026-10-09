@@ -15,6 +15,7 @@ local function exists(p) local f = io.open(p, "rb"); if f then f:close() end; re
 
 -- what ink/view/guide.lua's guideAction can open
 local SHOWS = { pens = true, pen_input = true, eraser = true, shapes = true, gestures = true, device_tips = true,
+    appearance = true,
     library = true, trash = true, export = true, pen_test = true, book_ink = true }
 local FEATURES = { annotate = true, booknotes = true }
 

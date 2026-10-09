@@ -71,6 +71,7 @@ function InkAwayView:guideAction(id)
         shapes = function() self:openShapePicker() end,
         gestures = function() self:openGestureSettings() end,
         device_tips = function() self:deviceTips(true) end,
+        appearance = function() self:openAppearance() end,
         library = not book and function() self:openLibrary() end or nil,
         trash = not book and function() self:openTrash() end or nil,
         export = not book and function() self:openExport() end or nil,

@@ -159,6 +159,8 @@ Guide.TOPICS = {
           text = "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too." },
         { glyph = "ges_tap", title = "Test pen and touch", when = { "canvas", "pen_capable" }, show = "pen_test",
           text = "Shows how your pen, its buttons and your hand arrive. Handy in a bug report." },
+        { icon = "appearance", title = "Dark mode", show = "appearance",
+          text = "Settings, the round button by Guide: light, dark, or as KOReader's night mode. The page keeps its colours." },
         { icon = "menu", title = "Colour", when = "colour",
           text = "Settings: the theme colour, and Colour while drawing." },
         { icon = "menu", title = "Ghosting", when = "canvas",

@@ -22,6 +22,7 @@ local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local InkGeom = require("ink/geom")
 local Stylus = require("ink/stylus")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -904,6 +905,7 @@ function InkAwayView:paintTo(bb, x, y)
             self:drawActiveToolPill(bb, tx, ty)   -- black pill behind the active tool
             self.toolbar:paintTo(bb, tx, ty)
             self:drawToolbarIcons(bb, tx, ty)
+            self:darkToolbar(bb, tx, ty)
         end
     end
     -- the drawing area
@@ -943,7 +945,12 @@ function InkAwayView:paintTo(bb, x, y)
 
     -- the notebook's bottom bar is chrome, so it is skipped on region blits and
     -- area-only paints like the toolbar
-    if paint_chrome and self.notebook and self.nb_bar_h > 0 then self:paintNotebookBar(bb, x, y) end
+    if paint_chrome and self.notebook and self.nb_bar_h > 0 then
+        self:paintNotebookBar(bb, x, y)
+        if Theme.invert() then
+            bb:invertRect(x, y + v.area_y + v.area_h, self.screen_w, self.nb_bar_h)
+        end
+    end
 
     -- the floating controls, on top (a region blit paints the ones it reaches)
     self:drawFabs(bb, x, y, br)
@@ -955,10 +962,26 @@ function InkAwayView:paintSurround(bb, x, y)
     local v = self.view
     local ay0, ay1 = v.area_y, v.area_y + v.area_h
     local ax0, ax1 = v.area_x, v.area_x + v.area_w
+    -- white as in light: the toolbar and bars painted over it are inverted for
+    -- dark, these bands with them (see darkToolbar)
     if ay0 > 0 then bb:paintRect(x, y, self.screen_w, ay0, WHITE) end
     if ay1 < self.screen_h then bb:paintRect(x, y + ay1, self.screen_w, self.screen_h - ay1, WHITE) end
     if ax0 > 0 then bb:paintRect(x, y + ay0, ax0, ay1 - ay0, WHITE) end
     if ax1 < self.screen_w then bb:paintRect(x + ax1, y + ay0, self.screen_w - ax1, ay1 - ay0, WHITE) end
+end
+
+-- Dark (see ink/ui/theme.lua): the toolbar at (tx, ty) inverted, the pen in
+-- hand's colour and an active tool in a theme colour given back.
+function InkAwayView:darkToolbar(bb, tx, ty)
+    if not (Theme.invert() and self.toolbar) then return end
+    local sz = self.toolbar:getSize()
+    local w = self._vb_side and sz.w or self.screen_w
+    local x = self._vb_side and tx or 0
+    bb:invertRect(x, ty, w, sz.h)
+    local m = self._pen_mark_rect
+    if m then bb:invertRect(m.x, m.y, m.w, m.h) end
+    local p = self._pill_rect
+    if p and Accent.get().custom then Theme.invertRounded(bb, p.x, p.y, p.w, p.h, p.r) end
 end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.

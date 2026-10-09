@@ -13,6 +13,7 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local MovableContainer = require("ui/widget/container/movablecontainer")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 
@@ -182,6 +183,9 @@ function IconMenu:paintTo(bb, _x, _y)
     end
     self.movable:paintTo(bb, px, py)
     self.dimen = self.movable.dimen
+    -- dark: the panel inverted, round its corners, its colours given back
+    local d = self.dimen
+    if d and self.frame then Theme.apply(bb, self.frame, d.x, d.y, d.w, d.h, self.frame.radius or 0) end
 end
 
 function IconMenu:onTapClose(_, ges)
