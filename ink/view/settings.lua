@@ -253,6 +253,11 @@ function InkAwayView:openSettings()
             { icon = "appearance", cb = function() self:openAppearance() end },
             { label = _("Guide"), cb = function() self:openGuide() end } }))
         add(vspan(16))
+        -- news from the update check, on top (where a long sheet never hides it)
+        if self:updateNews() then
+            add(self:updatesButton(content_w, closeSelf))
+            add(vspan(16))
+        end
 
         -- orientation: picking one closes the sheet, as the screen size changes
         if self:orientationSupported() then
@@ -356,8 +361,12 @@ function InkAwayView:openSettings()
         -- (palm rejection, the stabilizer and the pen test are in the Pen
         -- sheet's Pen and input, set from where the pen is)
         add(vspan(16))
-        add(act(_("Gestures and pen buttons"), content_w, function()
-            self:closeSheet("_settings_dialog"); self:openGestureSettings() end))
+        -- the gestures, and beside them Updates (what is new, when there is news)
+        add(HorizontalGroup:new{ align = "center",
+            act(_("Gestures and pen buttons"), half, function()
+                self:closeSheet("_settings_dialog"); self:openGestureSettings() end),
+            HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+            self:actionButton(_("Updates"), half, function() closeSelf(); self:openUpdates() end) })
         return content
     end
     self:showSheet("_settings_dialog", build)

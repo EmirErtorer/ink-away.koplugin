@@ -73,6 +73,7 @@ function InkAwayView:guideAction(id)
         device_tips = function() self:deviceTips(true) end,
         appearance = function() self:openAppearance() end,
         paper_colour = not book and function() self:openPaperColour() end or nil,
+        updates = not book and function() self:openUpdates() end or nil,
         library = not book and function() self:openLibrary() end or nil,
         trash = not book and function() self:openTrash() end or nil,
         export = not book and function() self:openExport() end or nil,

@@ -165,6 +165,8 @@ Guide.TOPICS = {
           text = "Settings, the round button by Guide: light, dark, or as KOReader's night mode. The page keeps its colours." },
         { icon = "menu", title = "Colour", when = "colour",
           text = "Settings: the theme colour, and Colour while drawing." },
+        { icon = "menu", title = "Updates", when = "canvas", show = "updates",
+          text = "Settings, Updates: the latest release, and prereleases apart. Once a day, opening on Wi-Fi, Ink Away looks; a dot on Settings means news." },
         { icon = "menu", title = "Ghosting", when = "canvas",
           text = "Settings, Ghosting: a full refresh every few strokes clears the faint marks fast drawing leaves." },
         { icon = "pen", title = "Fast refresh on a Boox", when = "boox", show = "pen_input",

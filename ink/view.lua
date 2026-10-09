@@ -403,6 +403,7 @@ function InkAwayView:onShow()
     elseif self:onAndroid() then
         self:deviceTips(false)   -- once, on readers that still need it
     end
+    self:updatesOnOpen()         -- the once-a-day update check, when due
     return true
 end
 
@@ -413,6 +414,7 @@ end
 
 function InkAwayView:onCloseWidget()
     self.closing = true
+    self:updatesOnClose()
     self:uninstallRawFinger()
     self:stopEinkDrive()
     self:removePenBridge()
@@ -983,13 +985,15 @@ function InkAwayView:darkToolbar(bb, tx, ty)
     if m then bb:invertRect(m.x, m.y, m.w, m.h) end
     local p = self._pill_rect
     if p and Accent.get().custom then Theme.invertRounded(bb, p.x, p.y, p.w, p.h, p.r) end
+    local d = self._update_dot_rect
+    if d and Accent.get().custom then Theme.invertRounded(bb, d.x, d.y, d.w, d.h, d.r) end
 end
 
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
-    "paper" }
+    "paper", "updates" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

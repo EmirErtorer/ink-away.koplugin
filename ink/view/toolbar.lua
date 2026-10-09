@@ -263,6 +263,7 @@ function InkAwayView:drawToolbarIcons(bb, ox, oy)
     local y = (self.dimen and self.dimen.y or 0) + self._bar_h - 1
     bb:paintRect(0, y, self.screen_w, 1, HAIRLINE)
     if self._btn_w then self:paintPenMark(bb, ox, oy, self._btn_w, self._bar_h) end
+    self:paintUpdateDot(bb, ox, oy)   -- news from the update check, on the Settings button
 end
 
 function InkAwayView:setTool(tool)
