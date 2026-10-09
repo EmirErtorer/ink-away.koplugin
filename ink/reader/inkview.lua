@@ -482,7 +482,7 @@ function ReaderInkView:openReaderSettings()
             width = content_w, parent = menu,
             callback = function(on) self:setSetting("inkaway_snap_text", on) end })
         add(VerticalSpan:new{ width = Screen:scaleBySize(4) })
-        add(self:sheetHint(_("A highlighter stroke along a line of text becomes the reader's own highlight of that text: in your highlights list, and with the text at any font size."), content_w))
+        add(self:sheetHint(_("A highlighter stroke over text becomes the reader's own highlight of it, in the pen's colour: in your highlights list, and with the text at any font size. Over empty space it stays ink."), content_w))
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
         add(self:sheetLabel(_("Toolbar")))
         add(VerticalSpan:new{ width = Screen:scaleBySize(6) })

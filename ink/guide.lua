@@ -131,7 +131,7 @@ Guide.TOPICS = {
         { gesture_of = "annotate", icon = "pen", title = "Annotate the book",
           text = "Ink stays with the words when the font changes. Also in the reader menu: Tools, Ink Away." },
         { icon = "highlighter", title = "The highlighter",
-          text = "A highlighter stroke along a line of text becomes the reader's own highlight of it." },
+          text = "A highlighter stroke over text becomes the reader's own highlight, from the first word it touches to the last. Over empty space it stays ink." },
         { gesture_of = "booknotes", icon = "booknotes", title = "Book notes",
           text = "Quick notes for the book, in a window over the page, a page for each chapter. Fullscreen gives more room." },
         { icon = "menu", title = "Toolbar side", show = "book_ink",

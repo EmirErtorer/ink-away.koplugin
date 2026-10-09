@@ -312,44 +312,86 @@ end
 -- The smart highlighter: the reader's own highlights
 ------------------------------------------------------------------------------
 
--- A highlighter stroke along a line of text, made the reader's own highlight of
--- that text (in the reader's highlight style, in the colour nearest the pen's).
--- Returns the highlight, or nil when it is not along text (it stays ink).
+-- A highlighter stroke over text, made the reader's own highlight of that text
+-- (in the reader's highlight style, in the pen's colour as the reader names it).
+-- Returns the highlight, or nil when it is not over text (it stays ink).
 function Book:highlight(op)
     local ui = self.ui
     local hl, document = ui.highlight, ui.document
     if not (hl and hl.saveHighlight and ui.annotation and document.getTextFromPositions) then return nil end
-    local line = Snap.lineOf(op)
-    if not line then return nil end
-    local sel, boxes
-    if ui.paging then
-        -- the text is found on the page, in page units
-        local a = ui.view:screenToPageTransform({ x = line.x0, y = line.y })
-        local b = ui.view:screenToPageTransform({ x = line.x1, y = line.y })
-        if not (a and b and a.page and a.page == b.page) then return nil end
-        local ok, r = pcall(document.getTextFromPositions, document, a, b)
-        sel = ok and r or nil
-        boxes = sel and sel.pboxes
-        line = { x0 = a.x, x1 = b.x, y = a.y, h = line.h / (a.zoom or 1) }
-    else
-        local ok, r = pcall(document.getTextFromPositions, document,
-            { x = line.x0, y = line.y }, { x = line.x1, y = line.y }, true)
-        sel = ok and r or nil
-        boxes = sel and sel.sboxes
-    end
-    if not (sel and sel.pos0 and sel.pos1 and type(sel.text) == "string" and sel.text:match("%S")) then return nil end
-    if not Snap.covers(boxes, line) then return nil end
+    if not (op and op.kind == "ink" and op.pts) then return nil end
+    -- a word just above or below the stroke's centre counts: the highlighter is thick
+    local reach = math.max(4, (op.width or 8) * 0.5)
+    local sel
+    if ui.paging then sel = self:pageSelection(op, reach) else sel = self:flowSelection(op, reach) end
+    if not sel then return nil end
     local hv = ui.view.highlight or {}
     local Blitbuffer = require("ffi/blitbuffer")
-    return self:addHighlight({
-        text = sel.text, pos0 = sel.pos0, pos1 = sel.pos1, pboxes = sel.pboxes, ext = sel.ext,
-        drawer = hv.saved_drawer,
-        color = Snap.colourName(op.color, hv.saved_color, Blitbuffer.HIGHLIGHT_COLORS),
-    })
+    sel.drawer = hv.saved_drawer
+    sel.color = Snap.colourName(op.color, hv.saved_color, Blitbuffer.HIGHLIGHT_COLORS)
+    return self:addHighlight(sel)
 end
 
--- Save a highlight as the reader does (in its list, written into a PDF when the
--- reader is set to): `sel` is the selection. Returns the highlight.
+-- The text a highlighter stroke snaps to in a reflowing book (see
+-- ink/reader/snap.lua): { text, pos0, pos1 } from the first word it ran over to
+-- the last, or nil.
+function Book:flowSelection(op, reach)
+    local document = self.ui.document
+    local doc = self:doc()
+    local words, share = Snap.hits(op, function(x, y) return doc:wordAt(x, y) end, reach,
+        function(w) return w.xp0 end)
+    if not Snap.snaps(words, share) then return nil end
+    local first, last = Snap.ends(words, function(a, b)
+        local ok, c = pcall(document.compareXPointers, document, a.xp0, b.xp0)
+        return ok and c == 1
+    end)
+    local ok, text = pcall(document.getTextFromXPointers, document, first.xp0, last.xp1)
+    if ok and type(text) == "string" and text:match("%S") then
+        return { text = text, pos0 = first.xp0, pos1 = last.xp1 }
+    end
+    -- else the text between the two words' boxes
+    local a, b = first.box, last.box
+    local ok2, r = pcall(document.getTextFromPositions, document, { x = a.x + 1, y = a.y + a.h / 2 },
+        { x = b.x + b.w - 1, y = b.y + b.h / 2 }, true)
+    if ok2 and r and r.pos0 and r.pos1 and type(r.text) == "string" and r.text:match("%S") then
+        return { text = r.text, pos0 = r.pos0, pos1 = r.pos1 }
+    end
+end
+
+-- The same on a fixed page (a PDF): { text, pos0, pos1, pboxes, ext } on the
+-- page most of the stroke's words are on, or nil. The reader gives the nearest
+-- word to any point, so a word only counts where the stroke is on it.
+function Book:pageSelection(op, reach)
+    local document, view = self.ui.document, self.ui.view
+    local doc = self:doc()
+    local function wordAt(x, y)
+        local pos = view:screenToPageTransform({ x = x, y = y })
+        if not (pos and pos.page) then return nil end
+        local ok, w = pcall(document.getWordFromPosition, document, pos)
+        local pb = ok and w and w.pbox
+        if not (pb and type(w.word) == "string" and w.word:match("%S")) then return nil end
+        local sx, sy, zoom = doc:toScreen(pos.page, pb.x, pb.y)
+        if not sx then return nil end
+        return { page = pos.page, pbox = pb, box = { x = sx, y = sy, w = pb.w * zoom, h = pb.h * zoom } }
+    end
+    local words, share = Snap.hits(op, wordAt, reach,
+        function(w) return w.page .. ":" .. w.pbox.x .. ":" .. w.pbox.y end)
+    if not Snap.snaps(words, share) then return nil end
+    local count, page = {}, nil
+    for _i, w in ipairs(words) do
+        count[w.page] = (count[w.page] or 0) + 1
+        if not page or count[w.page] > count[page] then page = w.page end
+    end
+    local on = {}
+    for _i, w in ipairs(words) do if w.page == page then on[#on + 1] = w end end
+    local first, last = Snap.ends(on, Snap.pageBefore)
+    local a = { page = page, x = first.pbox.x + 1, y = first.pbox.y + first.pbox.h / 2 }
+    local b = { page = page, x = last.pbox.x + last.pbox.w - 1, y = last.pbox.y + last.pbox.h / 2 }
+    local ok, sel = pcall(document.getTextFromPositions, document, a, b)
+    if not (ok and sel and sel.pos0 and sel.pos1 and type(sel.text) == "string" and sel.text:match("%S")) then return nil end
+    return { text = sel.text, pos0 = sel.pos0, pos1 = sel.pos1, pboxes = sel.pboxes, ext = sel.ext }
+end
+
 function Book:addHighlight(sel)
     local ui = self.ui
     local hl = ui.highlight
