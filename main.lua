@@ -164,6 +164,12 @@ function InkAway:onInkAwayBookNotes()
     return true
 end
 
+-- The screen turned (or was resized) under the book: what Ink Away had open
+-- over it was laid out for the old size, so it closes, keeping everything.
+function InkAway:onSetDimensions()
+    if self.book then self.book:closeViews() end
+end
+
 -- The book is closing: leave nothing of ours open over it.
 function InkAway:onCloseDocument()
     if self.book then self.book:close() end

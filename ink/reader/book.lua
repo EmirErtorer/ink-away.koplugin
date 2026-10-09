@@ -390,6 +390,13 @@ function Book:annotate()
     UIManager:show(view)
 end
 
+-- Close what Ink Away has open over the book (keeping everything): the screen
+-- turned, and they were laid out for the old one.
+function Book:closeViews()
+    if self._view then pcall(function() self._view:closeCanvas() end) end
+    if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
+end
+
 -- The book is closing: close the annotation mode (keeping its ink) and let go.
 function Book:close()
     if self._view then pcall(function() self._view:closeCanvas() end) end

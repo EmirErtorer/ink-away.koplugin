@@ -105,6 +105,18 @@ function ReaderInkView:docChanged()
     return self.canvas ~= nil and self.canvas.rev ~= self._committed_rev
 end
 
+-- Every change is anchored to the book at once (in memory; the file is written
+-- by the autosave): anchoring reads the book's layout, which a turned screen
+-- changes before anything here hears of it.
+function ReaderInkView:markDirty()
+    InkAwayView.markDirty(self)
+    if self.book and self.canvas and self.canvas.rev ~= self._anchored_rev then
+        local ok, map, shown = pcall(self.book.setPageOps, self.book, self.canvas.ops, self._came_from, self._shown)
+        if ok then self._came_from, self._shown = map, shown end
+        self._anchored_rev = self.canvas.rev
+    end
+end
+
 function ReaderInkView:saveDocument()
     if not (self.book and self.canvas) or not self:docChanged() then return true end
     local ok, err = pcall(function()
