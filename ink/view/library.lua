@@ -17,6 +17,7 @@ local ImageProc = require("ink/imageproc")
 local Folder = require("ink/folder")
 local Library = require("ink/library")
 local Notebook = require("ink/notebook")
+local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
 local ThumbGrid = require("ink/ui/thumbgrid")
@@ -348,6 +349,8 @@ function InkAwayView:renderDocThumb(path, maxw, maxh)
         end
     else
         ops = data.ops
+        -- a drawing on its paper (a template draws it, as for a notebook page)
+        template = { style = "blank", paper = Palette.paperRGB(data.paper) }
         if type(data.bg) == "string" and Storage.exists(data.bg) then
             local ok, img = pcall(function() return RenderImage:renderImageFile(data.bg, false) end)
             if ok and img then bg = fitIntoCanvasBB(img, W, H) end

@@ -635,7 +635,8 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     local lay, ctx = self:editTextLayout()
     local r = self:textBoxScreenRect()   -- area-relative screen rect
     local ox, oy = r.x + x, r.y + y      -- add the widget's paint origin
-    local BLACKC = Blitbuffer.COLOR_BLACK
+    local BLACKC = self:textInk()        -- black, white on a dark paper
+    local on_dark = BLACKC == Blitbuffer.COLOR_WHITE
     -- selection highlight (behind the glyphs)
     if self.text_sel and not Text.selEmpty(self.text_sel) then
         local a, b = Text.orderSel(self.text_sel)
@@ -647,13 +648,14 @@ function InkAwayView:paintTextOverlay(bb, x, y)
                 local xb = (ln.para == b.p) and Text.caretX(ln, b.o, ctx) or (ln.text_x + Text.lineContentWidth(ln))
                 if xb > xa then
                     bb:paintRect(math.floor(ox + xa), math.floor(oy + ln.top),
-                        math.ceil(xb - xa), math.ceil(ln.height), Blitbuffer.COLOR_LIGHT_GRAY)
+                        math.ceil(xb - xa), math.ceil(ln.height),
+                        on_dark and Blitbuffer.Color8(0x55) or Blitbuffer.COLOR_LIGHT_GRAY)
                 end
             end
         end
     end
     -- the glyphs
-    Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC })
+    Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
     -- the frame
     local fx, fy, fw, fh = math.floor(ox), math.floor(oy), math.ceil(r.w), math.ceil(r.h)
     Paint.outline(bb, fx, fy, fw, fh, BLACKC)

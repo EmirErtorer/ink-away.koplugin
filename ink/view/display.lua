@@ -19,7 +19,6 @@ local Template = require("ink/template")
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local FRAME = Blitbuffer.COLOR_GRAY
-local strengthToLevel = Paint.strengthToLevel
 local growRect = InkGeom.growRect
 
 -- A w x h buffer stored in the panel's pixel order: physically turned by `rot`
@@ -648,9 +647,11 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
     local aw, ah = v.area_w, v.area_h
     local g = self.grid_size
     local style = self.grid_style or "square"
-    -- strength 1..100 maps to a grey, from a faint guide to as dark as ink
-    local lvl = strengthToLevel(self.grid_strength)
-    local col = Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF)
+    -- strength 1..100 maps to a shade of the paper, from a faint guide to as
+    -- dark as ink (as light as chalk on a dark paper)
+    local rc = Paint.rulingRGB(self:paperRGB(), self.grid_strength)
+    local col = Blitbuffer.ColorRGB32(rc[1], rc[2], rc[3], 0xFF)
+    local chromatic = Paint.isChromatic(col)
     -- clip box in area coords (the whole area without a clip)
     local bx0 = clip and math.max(0, math.floor(clip.x0)) or 0
     local by0 = clip and math.max(0, math.floor(clip.y0)) or 0
@@ -663,7 +664,7 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
     local function rect(px, py, w, h, c)
         local x0 = math.max(px, bx0); local y0 = math.max(py, by0)
         local x1 = math.min(px + w, bx1); local y1 = math.min(py + h, by1)
-        if x1 > x0 and y1 > y0 then bb:paintRect(ox + x0, oy + y0, x1 - x0, y1 - y0, c) end
+        if x1 > x0 and y1 > y0 then Paint.fillRect(bb, ox + x0, oy + y0, x1 - x0, y1 - y0, c, chromatic) end
     end
     -- the canvas span behind the clip box, so the loops below visit only the lines
     -- that can land inside it

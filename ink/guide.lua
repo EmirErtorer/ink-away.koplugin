@@ -111,6 +111,8 @@ Guide.TOPICS = {
           text = "Tap the page number: go to a page, rename, star, insert, duplicate, move, paper, templates, paste or delete." },
         { icon = "notebook", title = "Papers and planners",
           text = "Lined, grid, dotted, Cornell, daily, weekly, monthly, a habit tracker and more, for each page." },
+        { icon = "notebook", title = "Paper colour", show = "paper_colour",
+          text = "Settings, beside the paper or the grid: cream, sandpaper, kraft, chalkboard and more (white or black on grey). On a dark one black ink shows white." },
         { icon = "overview", title = "A contents page",
           text = "The page menu, Make a contents page: every titled page becomes a link to it." },
         { icon = "file", title = "PDFs",

@@ -17,6 +17,7 @@ local logger = require("logger")
 local _ = require("gettext")
 local Folder = require("ink/folder")
 local Library = require("ink/library")
+local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
 
@@ -137,7 +138,7 @@ function InkAwayView:saveDocument(force)
     if self.notebook then
         ok, err = Project.saveNotebook(self.notebook, path, self._page_cache, { export = self.export_opts })
     else
-        ok, err = Project.save(self.canvas, path, { bg = self.bg_path, export = self.export_opts })
+        ok, err = Project.save(self.canvas, path, { bg = self.bg_path, export = self.export_opts, paper = self.paper })
     end
     if not ok then
         logger.warn("InkAway: saving failed:", path, err)
@@ -243,6 +244,7 @@ function InkAwayView:openDocument(path)
     else
         self:exitNotebook()
         self:clearBackground()
+        self.paper = Palette.paperRGB(data.paper)
         self:loadProjectData(data)
         if type(data.bg) == "string" then self:restoreBackground(data.bg) end
         self:composeCanvas(); self:renderView()
@@ -319,6 +321,7 @@ function InkAwayView:newDrawing(dir)
     self:beginDocument("drawing", nil, function()
         self:exitNotebook()
         self:clearBackground()
+        self.paper = self:defaultPaper()
         self:loadOps({})
         self:composeCanvas(); self:renderView()
         self:resetTransientMemory()     -- reclaim the previous document's memory now
@@ -334,7 +337,8 @@ function InkAwayView:newNotebook(style, dir)
     self:beginDocument("notebook", nil, function()
         self:startNotebook({ style = style,
             size = self.nb_size or self.grid_size or 40,
-            strength = self.nb_strength or self.grid_strength or 45 })
+            strength = self.nb_strength or self.grid_strength or 45,
+            paper = self:defaultPaper() })
     end, dir)
 end
 
@@ -349,6 +353,7 @@ function InkAwayView:newFromImage(dir)
         self:beginDocument("drawing", Storage.stem(path), function()
             self:exitNotebook()
             self:clearBackground()
+            self.paper = self:defaultPaper()
             self:loadOps({})
             self:loadBackground(path)
             self:resetTransientMemory()

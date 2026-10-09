@@ -272,11 +272,14 @@ end
 function InkAwayView:cachedPaperPreview(style, w, h)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
-    local id = table.concat({ "paper", style, w, h, Screen.bb:getType() }, "|")
+    -- on the notebook's paper colour (a new one's when there is none open)
+    local paper = (self.notebook and self:paperRGB() or self:defaultPaper()) or { 255, 255, 255 }
+    local id = table.concat({ "paper", style, w, h, Screen.bb:getType(), paper[1], paper[2], paper[3] }, "|")
     local e = cache[id]
     if e then return e.bb end
     local bb = Blitbuffer.new(w, h, Screen.bb:getType())
-    Paint.paintPaper(bb, w, h, { style = style, size = math.max(6, math.floor(h / 9)), strength = 70 }, nil)
+    Paint.paintPaper(bb, w, h, { style = style, size = math.max(6, math.floor(h / 9)), strength = 70,
+        paper = Palette.paperRGB(paper) }, nil)
     Paint.outline(bb, 0, 0, w, h, HINT, 1)
     cache[id] = { bb = bb }
     return bb

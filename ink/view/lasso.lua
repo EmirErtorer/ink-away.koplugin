@@ -6,7 +6,6 @@ ink/view/selection.lua: its frame, handles and menu.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Blitbuffer = require("ffi/blitbuffer")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
@@ -155,7 +154,7 @@ function InkAwayView:paintLassoLoop(bb, x, y)
     local v = self.view
     local pts = self.lasso_scr
     if not pts then return end
-    local BLACKC = Blitbuffer.COLOR_BLACK
+    local BLACKC = self:textInk()   -- black, white on a dark paper
     local ax0, ay0 = x + v.area_x, y + v.area_y
     local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
     local function dot(px, py)

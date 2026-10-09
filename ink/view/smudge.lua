@@ -20,11 +20,11 @@ function InkAwayView:smudgeBegin()
     local W, H = self.view.canvas_w, self.view.canvas_h
     -- the page without ink: what composeCanvas starts from, with pictures and text
     local base = Blitbuffer.new(W, H, self.canvas_bb:getType())
-    if self.notebook and self._paper_bb then
-        base:blitFrom(self._paper_bb, 0, 0, 0, 0, W, H)
+    local page = (self.notebook and self._paper_bb) or self.bg_bb or self:plainPaperBB()
+    if page then
+        base:blitFrom(page, 0, 0, 0, 0, W, H)
     else
         base:fill(Blitbuffer.COLOR_WHITE)
-        if self.bg_bb then base:blitFrom(self.bg_bb, 0, 0, 0, 0, W, H) end
     end
     self:stampOps(base, self.canvas.ops, "image")
     self:stampOps(base, self.canvas.ops, "text")

@@ -2746,7 +2746,7 @@ do
     eo.fmt, eo.transparent = "png", false
     ok(view:pngOptions().template and view:pngOptions().template.style == "grid", "export: and in a PNG on white")
     eo.transparent = true
-    ok(view:pngOptions().template == nil, "export: a transparent PNG never has the grid")
+    ok(view:pngOptions().template.style == "blank", "export: a transparent PNG never has the grid")
     eo.transparent = false
     view.grid_style = "thirds"
     ok(view:pngOptions().template.style == "thirds", "export: the thirds guide can be included too")
@@ -2770,7 +2770,7 @@ do
     ok(not sheetHas("Include the grid"), "export: but not for a transparent PNG")
     eo.transparent = false
     view.grid_on = false
-    ok(view:pngOptions().template == nil, "export: no grid shown, none exported")
+    ok(view:pngOptions().template.style == "blank", "export: no grid shown, none exported")
     eo.include_grid, eo.fmt = nil, "pdf"
     do
         local n = 0
@@ -3911,6 +3911,47 @@ do
     sweep("page paper", "_chooser_dialog", function() view:nbPagePaper() end)
     sweep("page", "_page_dialog", function() view:openPageMenu() end)
     sweep("settings", "_settings_dialog", function() view:openSettings() end)
+    sweep("paper colour", "_paper_colour", function() view:openPaperColour() end)
+    -- the paper colour sheet: the papers this screen offers, a tap puts the page on one
+    do
+        local Palette = require("ink/palette")
+        local colour = view:colorScreen()
+        view:openPaperColour()
+        local tiles = buttons(view._paper_colour, {}, {})
+        ok(#tiles == #Palette.papers(colour) + 1, ("paper: a tile for each paper and Done (%d)"):format(#tiles))
+        local black
+        for _, p in ipairs(Palette.papers(colour)) do if p.key == "black" then black = p.rgb end end
+        local found
+        for _, b in ipairs(tiles) do
+            local seen, hit = {}, false
+            local function has(w)
+                if type(w) ~= "table" or seen[w] then return end
+                seen[w] = true
+                if w.text == "Black" then hit = true end
+                for k, v in pairs(w) do if k ~= "show_parent" and k ~= "parent" then has(v) end end
+            end
+            has(b)
+            if hit then found = b end
+        end
+        ok(found ~= nil, "paper: Black is offered")
+        if found then found.callback() end
+        ok(Palette.sameColor(view:paperRGB(), black), "paper: a tap puts the notebook on it")
+        ok(view._paper_colour ~= nil, "paper: the sheet stays to try another")
+        view:closeSheet("_paper_colour")
+        view:openSettings()
+        local seen, label = {}, nil
+        local function find(w)
+            if type(w) ~= "table" or seen[w] then return end
+            seen[w] = true
+            if type(w.text) == "string" and w.text:match("^Colour: ") then label = w.text end
+            for k, v in pairs(w) do if k ~= "show_parent" and k ~= "parent" then find(v) end end
+        end
+        find(view._settings_dialog)
+        ok(label == "Colour: Black", "paper: Settings names it beside the paper (" .. tostring(label) .. ")")
+        view:closeSheet("_settings_dialog")
+        view:setPaper(nil)
+        ok(view:paperRGB() == nil, "paper: and back to white")
+    end
     sweep("pen", "_pen_dialog", function() view:openPenSettings() end)
     sweep("pen input", "_peninput_dialog", function() view:openPenInput() end)
     sweep("pen types", "_pentypes_dialog", function() view:openPenTypes() end)
@@ -4024,7 +4065,8 @@ do
             { "_new_dialog", function() view:openNotebookPaper() end },
             { "_shape_dialog", function() view:openShapePicker() end },
             { "_eraser_dialog", function() view:openEraserSettings() end },
-            { "_grid_dialog", function() view:openGridSettings() end } }) do
+            { "_grid_dialog", function() view:openGridSettings() end },
+            { "_paper_colour", function() view:openPaperColour() end } }) do
         s[2]()
         for _, btn in ipairs(buttons(view[s[1]], {}, {})) do if not btn:highlightSafe() then bad = bad + 1 end end
         view:closeSheet(s[1])

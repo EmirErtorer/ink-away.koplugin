@@ -287,7 +287,8 @@ function InkAwayView:doFill(pos)
         self:afterCommit()
         return
     end
-    local gray = Export.buildGray(self.canvas)
+    local paper = self:paperRGB()
+    local gray = Export.buildGray(self.canvas, paper and Paint.lum(paper), Paint.darkPaper(paper))
     local runs = Fill.compute(gray, self.view.canvas_w, self.view.canvas_h,
         math.floor(cx), math.floor(cy), 40)
     if not runs or #runs == 0 then return end
@@ -372,9 +373,9 @@ function InkAwayView:paintShapePreview(bb, x, y)
     end
     local sp = self.shape_preview
     if sp.fill_color and not sp.fill then
-        Shapes.fill(sp, makePut(displayColor(sp.fill_color, sp.fill_alpha)))
+        Shapes.fill(sp, makePut(displayColor(Paint.inkOnPaper(sp.fill_color, self:paperRGB()), sp.fill_alpha)))
     end
-    Shapes.render(sp, makePut(displayColor(sp.color, sp.alpha)))
+    Shapes.render(sp, makePut(displayColor(Paint.inkOnPaper(sp.color, self:paperRGB()), sp.alpha)))
 end
 
 return InkAwayView

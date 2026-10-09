@@ -364,6 +364,7 @@ function InkAwayView:free()
     self._bg_src = nil
     if self._paper_bb then self._paper_bb:free(); self._paper_bb = nil end
     if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
+    self:freePlainPaper()
     self:freeWaveCache()
     self:freePageThumbs()
     self:freeHandwriting()
@@ -987,7 +988,8 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
+    "paper" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

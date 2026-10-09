@@ -40,7 +40,7 @@ local InkAwayView = {}
 -- Current live ink colour and width, from the active tool.
 function InkAwayView:liveColor()
     if self.tool == "erase" then return WHITE end
-    return displayColor(self.pen_color, self.pen_alpha)
+    return displayColor(Paint.inkOnPaper(self.pen_color, self:paperRGB()), self.pen_alpha)
 end
 function InkAwayView:liveWidth()
     return (self.tool == "erase") and self.eraser_width or self.pen_width
@@ -155,10 +155,10 @@ end
 -- new segment with no line back.
 function InkAwayView:stampLive(cx, cy, fresh, p)
     if self.tool == "erase" then
-        -- a soft erase reveals the page; in a notebook even a hard erase reveals the
-        -- bare paper, so the ruling can never be rubbed out
+        -- a soft erase reveals the page; a hard erase the bare paper (in a notebook
+        -- with its ruling, so the ruling can never be rubbed out), or white
         local reveal
-        if self.erase_bg then reveal = self.notebook and self:barePaperBB() or nil
+        if self.erase_bg then reveal = self:barePaperBB()
         else reveal = self:eraseRevealBB() end
         if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
@@ -284,7 +284,7 @@ function InkAwayView:beginStroke(sx, sy)
     if is_erase then
         -- fast can only show white, so it suits erasing to a blank page; over a
         -- notebook ruling or a picture the erased path needs the grey-capable "ui"
-        local reveal = self.erase_bg and (self.notebook and self:barePaperBB()) or self:eraseRevealBB()
+        local reveal = (self.erase_bg and self:barePaperBB()) or self:eraseRevealBB()
         self._live_mode = (reveal and not self:einkDriven()) and "ui" or "fast"
     else
         -- on a colour panel every pen draws with "fast", and on a grey Boox Ink

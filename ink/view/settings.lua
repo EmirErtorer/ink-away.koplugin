@@ -15,6 +15,7 @@ local _ = require("gettext")
 local Accent = require("ink/accent")
 local PenTest = require("ink/pentest")
 local Theme = require("ink/ui/theme")
+local Palette = require("ink/palette")
 local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
@@ -277,15 +278,20 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
-        -- grid (canvas) or paper (notebook)
+        -- grid (canvas) or paper (notebook), and beside it the paper's colour
+        local half = math.floor((content_w - Screen:scaleBySize(12)) / 2)
+        local paper_name = Palette.paperName(self:paperRGB())
         if self.notebook then
             local t = self.notebook.template
-            add(act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), content_w, function()
-                self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
-                    t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
-                    self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
-                end }
-            end))
+            add(HorizontalGroup:new{ align = "center",
+                act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), half, function()
+                    self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
+                        t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
+                        self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
+                    end }
+                end),
+                HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+                self:paperColourButton(_("Colour: ") .. paper_name, half, function() self:openPaperColour() end) })
             add(vspan(12))
             add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
                 width = content_w, parent = menu, format = pxfmt,
@@ -305,8 +311,10 @@ function InkAwayView:openSettings()
                 daily = _("Daily"), weekcols = _("Week columns"), meeting = _("Meeting notes"),
                 habits = _("Habit tracker"), cornell = _("Cornell") }
             local cur = self.grid_on and self.grid_style or "off"
-            add(act(_("Grid: ") .. (GRID_LABEL[cur] or cur), content_w, function()
-                self:openGridSettings() end))
+            add(HorizontalGroup:new{ align = "center",
+                act(_("Grid: ") .. (GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end),
+                HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+                self:paperColourButton(_("Paper: ") .. paper_name, half, function() self:openPaperColour() end) })
         end
         add(vspan(16))
 
@@ -332,7 +340,6 @@ function InkAwayView:openSettings()
         add(self:sheetLabel(_("Files"), true))
         add(vspan(6))
         -- the library and export folders side by side, each named for its folder
-        local half = math.floor((content_w - Screen:scaleBySize(12)) / 2)
         add(HorizontalGroup:new{ align = "center",
             act(_("Library: ") .. Storage.baseName(self:libraryDir()), half,
                 function() self:chooseLibraryRoot() end),
