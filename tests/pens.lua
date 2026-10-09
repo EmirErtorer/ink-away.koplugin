@@ -112,7 +112,7 @@ do
     local st = Pens.STYLES.fountain
     local a1 = Pens.segRadii(st, 10, 255, 255, 1, -1)    -- "/"
     local a2 = Pens.segRadii(st, 10, 255, 255, 1, 1)     -- "\"
-    ok(a1 < a2 * 0.5 and a1 >= 3.4, "fountain: along the nib is a hairline, not gone")
+    ok(a1 < a2 * 0.3 and a1 >= 2.1, "fountain: along the nib is a hairline (22%), not gone")
     local lo = Pens.segRadii(st, 10, 0, 0, 1, 1)
     ok(math.abs(lo - 10 * 0.3) < 1e-6, "fountain: no pressure gives minf of the width")
 end
@@ -162,6 +162,29 @@ do
     local s2 = cover(function(put) Pens.paint({ kind = "ink", style = "pencil", width = 16, seed = 3,
         pts = { 20, 50, 220, 50 } }, put) end)
     ok(next(s2) ~= nil, "pencil: without pressure as before")
+end
+
+-- ---- tapers tell the pens apart: ballpoint and fountain thin at their ends ------
+do
+    local function line(style, n)
+        local pts = {}
+        for i = 0, n do pts[#pts + 1] = 100 + i * 10; pts[#pts + 1] = 200 end
+        return { kind = "ink", style = style, width = 10, alpha = 255, pts = pts }
+    end
+    local bp = line("ballpoint", 12)                   -- 12 widths long
+    local rs = Pens.radii(bp, Pens.STYLES.ballpoint, 1)
+    ok(rs[1] < 0.4 * rs[12] and rs[#rs] < 0.4 * rs[12], ("ballpoint: thin at both ends (%.1f / %.1f / %.1f)"):format(rs[1], rs[12], rs[#rs]))
+    local fp = line("fountain", 12)
+    local fr = Pens.radii(fp, Pens.STYLES.fountain, 1)
+    ok(fr[#fr] < fr[12] * 0.5 and fr[3] > fr[#fr], "fountain: a long taper out, a short one in")
+    local dot = { kind = "ink", style = "ballpoint", width = 10, alpha = 255, pts = { 100, 100, 105, 100 } }
+    local dr = Pens.radii(dot, Pens.STYLES.ballpoint, 1)
+    ok(dr[1] == 5 and dr[2] == 5, "ballpoint: a dot keeps its full width")
+    -- live, the start of the taper is drawn as the finished stroke draws it
+    local st = Pens.STYLES.ballpoint
+    local live = Pens.taper(st, 1.0)
+    ok(math.abs(live - Pens.taper(st, 1.0, 11, 12)) < 1e-9, "ballpoint: the live start matches the finished stroke")
+    ok(Pens.taper(Raster.STYLES.solid or {}, 0, 0, 12) == 1, "fineliner: no taper, even throughout")
 end
 
 print(("pens: %d checks, %d failures"):format(checks, failures))

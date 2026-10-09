@@ -58,7 +58,7 @@ function InkAwayView:setupLiveWriters()
     local seed = self.live_seed or 0
     if st and (st.engine or (st.pressure and self._live_pressured)) then
         -- a pen whose width changes: each segment with its two pressures
-        self._lw_stroke = function(seg, r, put, p0, p1) Pens.segment(st, seg, r, p0, p1, put, seed) end
+        self._lw_stroke = function(seg, r, put, p0, p1, t0, t1) Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1) end
     else
         self._lw_stroke = function(seg, r, put)
             if textured then Raster.pathTex(seg, r, put, st, seed) else Raster.path(seg, r, put) end
@@ -169,13 +169,22 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
     local width = self:liveWidth()
     local strokeFn = self._lw_stroke
     local p0 = (not fresh) and self._live_p or nil
+    -- how far along the stroke this piece is, in widths (a tapered pen thins at
+    -- its start)
+    local t0 = (not fresh) and self._live_t or 0
+    local t1 = t0
+    if self.last_cx and not fresh then
+        local dx, dy = cx - self.last_cx, cy - self.last_cy
+        t1 = t0 + math.sqrt(dx * dx + dy * dy) / math.max(1, width)
+    end
+    self._live_t = t1
 
     -- master, at 1:1
     if self.canvas_bb then
         if self.last_cx and not fresh then
             local seg = self._lw_seg_c
             seg[1], seg[2], seg[3], seg[4] = self.last_cx, self.last_cy, cx, cy
-            strokeFn(seg, width / 2, self._lw_cput, p0, p)
+            strokeFn(seg, width / 2, self._lw_cput, p0, p, t0, t1)
         else
             strokeFn({ cx, cy }, width / 2, self._lw_cput, p, p)
         end
@@ -190,7 +199,7 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
     if self.last_ax and not fresh then
         local seg = self._lw_seg_a
         seg[1], seg[2], seg[3], seg[4] = self.last_ax, self.last_ay, ax, ay
-        strokeFn(seg, (width * self.view.zoom) / 2, self._lw_aput, p0, p)
+        strokeFn(seg, (width * self.view.zoom) / 2, self._lw_aput, p0, p, t0, t1)
     else
         strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput, p, p)
     end

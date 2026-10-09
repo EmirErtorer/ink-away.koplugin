@@ -21,11 +21,16 @@ local floor, sqrt, abs, sin, atan2, exp = math.floor, math.sqrt, math.abs, math.
 local NIB = -math.pi / 4   -- a right-handed nib's edge, lower left to upper right ("/")
 
 -- The new pens' styles, registered with the rasterizer so ops find them.
--- minf: the width at no pressure, as a share of the full width
--- sim:  without real pressure, thin the stroke when drawn fast
+-- minf:  the width at no pressure, as a share of the full width
+-- sim:   without real pressure, thin the stroke when drawn fast
+-- taper: the stroke thins toward its start (a) and end (b), over that many
+--        widths, down to `min` of its width: what tells the pens apart even
+--        without pressure (the fineliner has none and stays even)
 Pens.STYLES = {
-    ballpoint   = { engine = "var", solid = true, pressure = true, minf = 0.6, sim = true },
-    fountain    = { engine = "var", solid = true, pressure = true, minf = 0.3, sim = true, nib45 = true },
+    ballpoint   = { engine = "var", solid = true, pressure = true, minf = 0.5, sim = true,
+                    taper = { a = 3.0, b = 3.0, min = 0.3 } },
+    fountain    = { engine = "var", solid = true, pressure = true, minf = 0.3, sim = true, nib45 = true,
+                    taper = { a = 0.6, b = 2.2, min = 0.3 } },
     calligraphy = { engine = "nib", solid = true, pressure = true, minf = 0.5, thin = 0.16 },
 }
 -- The smudge is chosen like a pen but draws nothing of its own: it moves the ink
@@ -51,10 +56,39 @@ end
 Pens.factor = factor
 
 -- A fountain nib's width along direction (dx, dy): broad across the nib, a
--- hairline (35%) along it.
+-- hairline (22%) along it.
 local function nibFactor(dx, dy)
     if dx == 0 and dy == 0 then return 0.7 end
-    return 0.35 + 0.65 * abs(sin(atan2(dy, dx) - NIB))
+    return 0.22 + 0.78 * abs(sin(atan2(dy, dx) - NIB))
+end
+
+-- How much of its width a tapered stroke has at `t` widths from its start and
+-- `e` from its end (e nil while it is still being drawn): a smooth ramp at
+-- each end. A stroke too short for both ramps has them shortened to fit, and
+-- a dot keeps its full width.
+local function ramp(t, len, min)
+    if len <= 0 or t >= len then return 1 end
+    local u = t / len
+    u = u * u * (3 - 2 * u)
+    return min + (1 - min) * u
+end
+function Pens.taper(st, t, e, total)
+    local tp = st.taper
+    if not tp then return 1 end
+    local a, b = tp.a, tp.b
+    if total then
+        if total < 1.2 then return 1 end
+        if total < a + b then
+            local k = total / (a + b) * 0.8
+            a, b = a * k, b * k
+        end
+    end
+    local f = ramp(t, a, tp.min)
+    if e then
+        local g = ramp(e, b, tp.min)
+        if g < f then f = g end
+    end
+    return f
 end
 
 -- The radii of one segment from pressure p0 to p1, moving (dx, dy), for a pen of
@@ -65,16 +99,30 @@ function Pens.segRadii(st, r, p0, p1, dx, dy)
 end
 
 -- Per-segment radii for a whole op at `scale` (1 for the page, the zoom on
--- screen), as Raster.pathVar takes them.
+-- screen), as Raster.pathVar takes them: pressure, the nib, and the taper.
 function Pens.radii(op, st, scale)
     local pts, pr = op.pts, op.pr
     local r = (op.width or 1) / 2 * (scale or 1)
     local n = floor(#pts / 2)
     local rs = {}
     if n == 1 then rs[1] = r * factor(st, pr and pr[1]); return rs end
+    -- each point's distance from the start, in widths, for the taper
+    local d
+    if st.taper then
+        d = { 0 }
+        local w = op.width or 1
+        for i = 2, n do
+            d[i] = d[i - 1] + sqrt((pts[2 * i - 1] - pts[2 * i - 3]) ^ 2 + (pts[2 * i] - pts[2 * i - 2]) ^ 2) / w
+        end
+    end
     for i = 2, n do
         local r0, r1 = Pens.segRadii(st, r, pr and pr[i - 1], pr and pr[i],
             pts[2 * i - 1] - pts[2 * i - 3], pts[2 * i] - pts[2 * i - 2])
+        if d then
+            local total = d[n]
+            r0 = r0 * Pens.taper(st, d[i - 1], total - d[i - 1], total)
+            r1 = r1 * Pens.taper(st, d[i], total - d[i], total)
+        end
         rs[2 * i - 3], rs[2 * i - 2] = r0, r1
     end
     return rs
@@ -117,9 +165,11 @@ function Pens.nib(pts, pr, width, st, put)
 end
 
 -- One live segment from (x0, y0, p0) to (x1, y1, p1) at full radius r (already
--- scaled to the target), or a dot when x0 is nil. Draws exactly what Pens.paint
--- draws for that piece of the stroke.
-function Pens.segment(st, seg, r, p0, p1, put, seed)
+-- scaled to the target), or a dot when x0 is nil; t0 and t1 are its ends'
+-- distances from the stroke's start, in widths (for the start of the taper; the
+-- end's is drawn when the stroke is finished). Draws what Pens.paint draws for
+-- that piece of the stroke.
+function Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1)
     local single = #seg == 2
     if st.engine == "nib" then
         local w = 2 * r
@@ -130,6 +180,7 @@ function Pens.segment(st, seg, r, p0, p1, put, seed)
         rs = { r * factor(st, p1) }
     else
         local a, b = Pens.segRadii(st, r, p0, p1, seg[3] - seg[1], seg[4] - seg[2])
+        if st.taper and t0 then a, b = a * Pens.taper(st, t0), b * Pens.taper(st, t1) end
         rs = { a, b }
     end
     if st.engine == "var" then return Raster.pathVar(seg, rs, put) end
