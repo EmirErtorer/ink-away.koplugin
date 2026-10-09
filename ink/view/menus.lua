@@ -135,17 +135,12 @@ function InkAwayView:openEraserSettings()
         local pictures = ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
             compact = true, parent = menu,
             callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end }
-        if self.reader_mode then
-            -- over a book the eraser always takes whole strokes (see ink/reader/inkview.lua)
-            add(pictures)
-        else
-            local whole = ToggleRow:new{ label = _("Erase whole strokes"), is_on = self.erase_whole,
-                compact = true, parent = menu,
-                callback = function(on) self.erase_whole = on; self:setSetting("inkaway_erase_whole", on) end }
-            add(HorizontalGroup:new{ align = "center", pictures,
-                HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
-                whole })
-        end
+        local whole = ToggleRow:new{ label = _("Erase whole strokes"), is_on = self.erase_whole,
+            compact = true, parent = menu,
+            callback = function(on) self.erase_whole = on; self:setSetting("inkaway_erase_whole", on) end }
+        add(HorizontalGroup:new{ align = "center", pictures,
+            HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
+            whole })
         return content
     end
     self:showSheet("_eraser_dialog", build)

@@ -233,9 +233,25 @@ function Book:setPageOps(ops, came_from, shown)
     local data = self:data()
     local doc = self:doc()
     local keep, map = {}, {}
+    local shape_anchor = {}   -- a cut shape's anchor, shared by its pieces
     for _i, op in ipairs(ops) do
+        -- (an eraser stroke, a link or a smudge is never kept over a book: the
+        -- eraser cuts strokes instead, see ink/cut.lua)
+        local k = op.kind
+        local src = op.cut_of
+        if src then op.cut_of = nil end   -- a passing note, never saved
         local item = came_from and came_from[op]
-        if not item then item = Place.anchor(op, doc) end
+        if not item and (k == "erase" or k == "link" or k == "smudge") then item = false end
+        if item == nil and src then
+            local a = shape_anchor[src]
+            if not a then
+                local base = (came_from and came_from[src]) or Place.anchor(src, doc)
+                a = base and base.a or false
+                shape_anchor[src] = a
+            end
+            if a then item = Place.anchorWith(op, doc, a) end
+        end
+        if item == nil then item = Place.anchor(op, doc) end
         if item then keep[#keep + 1] = item; map[op] = item end
     end
     local old = {}

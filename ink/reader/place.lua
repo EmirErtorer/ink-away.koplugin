@@ -21,8 +21,11 @@ headless tests drive it with a stand-in.
 
 An item is { op = <op in anchor space>, a = <anchor> }:
   rolling, word:  a = { xp0, xp1, dx, dy }        dx, dy from the word's box;
-                  ml or mr instead of dx for ink in the left or right margin: its
-                  distance from that screen edge, so it stays in the margin
+                  dyb instead of dy for ink below the word's middle (an
+                  underline): from the box's bottom, so it stays under the word
+                  when a bigger font makes the word taller; ml or mr instead of
+                  dx for ink in the left or right margin: its distance from that
+                  screen edge, so it stays in the margin
   rolling, page:  a = { pxp, dx, dy }              dx, dy on the screen
   paging:         a = { page, x, y }               page units
 ]]
@@ -72,7 +75,8 @@ function Place.anchor(op, doc)
         or doc:nearestWord(cx, cy)
     local local_op = Place.moved(op, -x0, -y0)
     if w and w.box then
-        local a = { xp0 = w.xp0, xp1 = w.xp1, dx = x0 - w.box.x, dy = y0 - w.box.y }
+        local a = { xp0 = w.xp0, xp1 = w.xp1, dx = x0 - w.box.x }
+        Place.setDy(a, y0, w.box)
         -- ink in a side margin stays in it: kept by its distance from that edge
         local W = doc.width and doc:width()
         if W then
@@ -82,6 +86,36 @@ function Place.anchor(op, doc)
         return { op = local_op, a = a }
     end
     return { op = local_op, a = { pxp = doc:pageTop(), dx = x0, dy = y0 } }
+end
+
+-- The op's height against its word's box: from the top, or for ink below the
+-- word's middle (an underline) from the bottom.
+function Place.setDy(a, y0, box)
+    if box.h and y0 > box.y + box.h / 2 then a.dyb, a.dy = y0 - (box.y + box.h), nil
+    else a.dy, a.dyb = y0 - box.y, nil end
+end
+
+-- Where an anchored op's top goes against its word's box now.
+local function yOf(a, box)
+    if a.dyb then return box.y + (box.h or 0) + a.dyb end
+    return box.y + (a.dy or 0)
+end
+
+-- Anchor a screen op where anchor `a` is (what is left of a shape the eraser
+-- cut keeps the shape's anchor, so its pieces stay together in any layout).
+-- Falls back to the op's own anchor where `a` cannot be found.
+function Place.anchorWith(op, doc, a)
+    local x0, y0 = origin(op)
+    if not x0 then return nil end
+    if doc.kind == "paging" or not (a and a.xp0) then return Place.anchor(op, doc) end
+    local box = doc:boxOf(a.xp0, a.xp1)
+    if not box then return Place.anchor(op, doc) end
+    local na = { xp0 = a.xp0, xp1 = a.xp1 }
+    Place.setDy(na, y0, box)
+    if a.mr then na.mr = (doc.width and doc:width() or 0) - x0
+    elseif a.ml then na.ml = x0
+    else na.dx = x0 - box.x end
+    return { op = Place.moved(op, -x0, -y0), a = na }
 end
 
 -- Which page an item is on, for this layout (nil if it cannot be placed).
@@ -108,7 +142,7 @@ function Place.place(item, doc)
         if a.mr then x = (doc.width and doc:width() or 0) - a.mr
         elseif a.ml then x = a.ml
         else x = box.x + (a.dx or 0) end
-        return Place.moved(item.op, x, box.y + a.dy)
+        return Place.moved(item.op, x, yOf(a, box))
     end
     if a.pxp then return Place.moved(item.op, a.dx, a.dy) end
     return nil

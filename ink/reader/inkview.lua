@@ -8,8 +8,10 @@ rejection, gestures), started lean and laid out for a book:
   * a narrow toolbar runs down the left side, with the highlighter as a tool of
     its own and the book's page turns;
   * no zoom or pan: the book's own zoom is used;
-  * the eraser takes whole strokes away (ink on a book is kept as separate
-    strokes anchored to its words, so there is nothing under it to rub out to);
+  * the eraser takes whole strokes away, or (Erase whole strokes off) cuts the
+    strokes it crosses into the parts left outside it (ink/cut.lua): ink on a
+    book is kept as separate strokes anchored to its words, so a rubbed-out part
+    cannot be a mask that would stay put while its stroke follows its word;
   * saving puts the page's ink back into the book, anchored (the canvas's
     autosave does it every few seconds of rest, a page turn and closing too).
 Closing it leaves nothing running: the canvas's own close frees its buffers,
@@ -68,7 +70,6 @@ end
 
 -- What the canvas would open (the last document) is the book's page here.
 function ReaderInkView:openStartDocument()
-    self.erase_whole = true      -- see the file comment
     self.symmetry = "off"
     self.grid_on = false
     self.snap_grid = false       -- no grid over a book (for this visit; the canvas keeps its setting)
@@ -123,6 +124,7 @@ end
 -- (unless the setting is off): the stroke goes, the highlight shows, and undo
 -- and redo take it away and put it back like any stroke.
 function ReaderInkView:takeStroke(op)
+    if op.kind == "erase" then return self:cutWithEraser(op) end
     if not (op.kind == "ink" and op.style == "highlighter") then return false end
     if self:getSetting("inkaway_snap_text", true) == false then return false end
     local ok, item = pcall(self.book.highlight, self.book, op)
@@ -135,6 +137,25 @@ function ReaderInkView:takeStroke(op)
     self.canvas.redo_stack = {}
     self.canvas:pushMark({ item = item })
     self:pageChanged()
+    return true
+end
+
+-- A stroke of the eraser (not taking whole strokes): the strokes it crosses are
+-- cut into the parts outside it, each anchored on its own when saved. One undo
+-- step, as the stroke was.
+function ReaderInkView:cutWithEraser(op)
+    local Cut = require("ink/cut")
+    self.canvas:undo()            -- the eraser's own stroke, as if never drawn
+    self.canvas.redo_stack = {}
+    local ops, changed = Cut.ops(self.canvas.ops, op.pts, (op.width or 1) / 2,
+        { text = not self.text_erase_protect, pictures = self.erase_bg })
+    if changed then
+        self.canvas:pushHistory()
+        self.canvas.ops = ops
+    end
+    self:composeCanvas()
+    self:renderView()
+    UIManager:setDirty(self, "ui")
     return true
 end
 

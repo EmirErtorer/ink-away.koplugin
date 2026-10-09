@@ -72,7 +72,8 @@ do
     doc.page = 4
     local moved = Place.place(item, doc)
     local mx, my = bbox(moved)
-    ok(math.abs(mx - (40 + (ox - 100))) < 1 and math.abs(my - (520 + (oy - 200))) < 1,
+    -- (an underline keeps its distance from the bottom of its word: 20 px tall then, 30 now)
+    ok(math.abs(mx - (40 + (ox - 100))) < 1 and math.abs(my - (520 + 30 + (oy - 220))) < 1,
         "rolling: on page 4 it sits under its word again")
 end
 
@@ -392,6 +393,36 @@ do
     local d3 = { gesture_reader = { one_finger_swipe_right_edge_up = {} } }
     EntryGestures.apply(d3)
     ok(d3.gesture_reader.one_finger_swipe_right_edge_up.inkaway_booknotes, "gestures: an emptied gesture counts as free")
+end
+
+-- ---- what the eraser leaves of a shape stays together -------------------------------
+do
+    local doc = rollingDoc()
+    local shape = { kind = "shape", shape = "rect", width = 4, alpha = 255, pts = { 90, 190, 400, 430 } }
+    local base = Place.anchor(shape, doc)
+    local left = { kind = "ink", width = 4, alpha = 255, pts = { 90, 190, 180, 190 } }
+    local right = { kind = "ink", width = 4, alpha = 255, pts = { 320, 430, 400, 430 } }
+    local a, b = Place.anchorWith(left, doc, base.a), Place.anchorWith(right, doc, base.a)
+    ok(a.a.xp0 == base.a.xp0 and b.a.xp0 == base.a.xp0, "cut shape: both pieces keep the shape's word")
+    local w = doc.words[base.a.xp0]
+    w.box = { x = w.box.x + 50, y = w.box.y + 300, w = w.box.w, h = w.box.h }   -- laid out again
+    local pa, pb = Place.place(a, doc), Place.place(b, doc)
+    ok(pa.pts[1] == 140 and pa.pts[2] == 490 and pb.pts[1] == 370 and pb.pts[2] == 730,
+        "cut shape: they move together, as the shape would")
+end
+
+-- ---- an underline stays under its word when the word gets taller ----------------------
+do
+    local doc = rollingDoc()
+    local ul = { kind = "ink", width = 3, alpha = 255, pts = { 100, 224, 160, 224 } }   -- under w1 (200..220)
+    local item = Place.anchor(ul, doc)
+    ok(item.a.dyb ~= nil and item.a.dy == nil, "underline: kept from the bottom of its word")
+    doc.words.w1.box = { x = 100, y = 200, w = 90, h = 40 }                      -- a bigger font
+    local placed = Place.place(item, doc)
+    local _x, y = bbox(placed)
+    ok(y > 239, ("underline: still under the taller word (top %.1f)"):format(y))
+    local circle = { kind = "ink", width = 3, alpha = 255, pts = { 95, 195, 165, 195, 165, 225, 95, 225 } }
+    ok(Place.anchor(circle, rollingDoc()).a.dy ~= nil, "a circle around a word keeps its top offset")
 end
 
 print(("bookink: %d checks, %d failures"):format(checks, failures))

@@ -147,6 +147,22 @@ local function arrowSegs(op, poly)
     return segs
 end
 
+-- The shape as drawn, as open polylines (flat {x,y,...}): its outline (a closed
+-- one ends where it starts) and each arrowhead barb. The eraser that cuts
+-- strokes cuts a shape's outline as these (see ink/cut.lua).
+function Shapes.outlines(op)
+    local poly, closed = boundary(op)
+    local out = {}
+    if #poly >= 2 then
+        local line = {}
+        for i = 1, #poly do line[i] = poly[i] end
+        if closed and #poly >= 4 then line[#line + 1] = poly[1]; line[#line + 1] = poly[2] end
+        out[1] = line
+    end
+    for _, sg in ipairs(arrowSegs(op, poly)) do out[#out + 1] = { sg[1], sg[2], sg[3], sg[4] } end
+    return out
+end
+
 -- Render a shape op with the given span writer.
 function Shapes.render(op, put)
     local poly, closed = boundary(op)
