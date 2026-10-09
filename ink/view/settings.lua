@@ -340,20 +340,17 @@ function InkAwayView:openSettings()
                 { "notebooks", _("Notebooks") } },
             self:getSetting("inkaway_start", "last"), content_w,
             function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
+        -- (palm rejection, the stabilizer and the pen test are in the Pen
+        -- sheet's Pen and input, set from where the pen is)
         add(vspan(16))
-        add(self:sheetLabel(_("Pen and input"), true))
+        add(self:sheetLabel(_("Gestures"), true))
         add(vspan(6))
-        add(act(_("Palm rejection, stabilizer, fingers"), content_w, function()
-            self:closeSheet("_settings_dialog"); self:openPenInput() end))
-        add(vspan(8))
         add(act(_("Gestures and pen buttons"), content_w, function()
             self:closeSheet("_settings_dialog"); self:openGestureSettings() end))
-        add(vspan(16))
-        add(self:sheetLabel(_("Help"), true))
-        add(vspan(6))
-        add(act(_("Test pen and touch"), content_w, function() self:openPenTest() end))
         if self:onAndroid() then
-            add(vspan(8))
+            add(vspan(16))
+            add(self:sheetLabel(_("Help"), true))
+            add(vspan(6))
             add(act(_("Device tips"), content_w, function()
                 self:closeSheet("_settings_dialog"); self:deviceTips(true) end))
         end

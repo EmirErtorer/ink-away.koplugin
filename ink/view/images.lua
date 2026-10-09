@@ -390,7 +390,7 @@ function InkAwayView:openBackground()
             function() closeSelf(); self:chooseBackground() end))
         if self.bg_bb then
             add(vspan(8))
-            add(self:actionButton(_("Remove background"), content_w,
+            add(self:actionButton(_("Remove the background picture"), content_w,
                 function() closeSelf(); self:removeBackground() end, true))
         end
         add(vspan(12))

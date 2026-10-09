@@ -178,7 +178,6 @@ function InkAwayView:openShapePicker()
     -- four square tiles fill a row with equal gaps; the content width comes from
     -- the tile size so everything lines up with the panel padding
     local content_w, gap, tileW = self:sheetWidth()
-    local halfW = math.floor((content_w - gap) / 2)
     local isz = math.floor(tileW * 0.60)   -- big icon inside the tile
     local closeSelf = function() self:closeSheet("_shape_dialog") end
 
@@ -237,23 +236,14 @@ function InkAwayView:openShapePicker()
             shapeTile("sh_ellipse", "ellipse"), HorizontalSpan:new{ width = gap },
             shapeTile("sh_triangle", "triangle"),
         }
-        -- tools row: paint bucket and lasso, smaller tiles with a label
-        local toolH = Screen:scaleBySize(96)
+        -- the paint bucket, a wide tile with a label (the lasso has its own
+        -- toolbar button)
+        local toolH = Screen:scaleBySize(80)
         local toolIsz = Screen:scaleBySize(36)
-        local toolRow = HorizontalGroup:new{ align = "center",
-            self:makeTile("bucket", halfW, toolH, toolIsz, self.tool == "fill", function()
+        local toolRow = self:makeTile("bucket", content_w, toolH, toolIsz, self.tool == "fill", function()
                 self:flushShape(); self.tool = "fill"; self:refreshToolLabels()
                 closeSelf()
-            end, _("Paint bucket"), _("hold to pick colour"), function() self:openFillColor() end),
-            HorizontalSpan:new{ width = gap },
-            self:makeTile("lasso", halfW, toolH, toolIsz, self.tool == "lasso", function()
-                self:flushPending(); self:flushShape()
-                if self.selection or self.lassoing then self:clearSelection() end
-                self.tool = "lasso"; self:refreshToolLabels()
-                closeSelf()
-                self:composeCanvas(); self:renderView(); self:refresh("all", "full")
-            end, _("Lasso select")),
-        }
+            end, _("Paint bucket"), _("hold to pick colour"), function() self:openFillColor() end)
         -- three compact toggles (switch right after its label) spread across one row
         local function toggle(label, on, cb)
             return ToggleRow:new{ label = label, is_on = on, compact = true, parent = menu, callback = cb }
