@@ -82,7 +82,7 @@ function InkAwayView:washPoint(cx, cy, fresh, p)
     end
     self.last_cx, self.last_cy = cx, cy
     self._live_p = p
-    Wash.stamp(wl.mask, st, seg, pr, r, Wash.strength(op, st), op.seed or 0, op.sym, W, H)
+    Wash.stamp(wl.mask, st, seg, pr, r, Wash.strength(op, st), op.sym, W, H)
     -- the segment's box, and its mirror images
     local pad = math.ceil(r) + 2
     local x0, y0 = math.min(seg[1], seg[#seg - 1]) - pad, math.min(seg[2], seg[#seg]) - pad

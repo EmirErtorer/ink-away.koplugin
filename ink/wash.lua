@@ -25,8 +25,6 @@ local Symmetry = require("ink/symmetry")
 local Wash = {}
 
 local floor, ceil, sqrt, max, min = math.floor, math.ceil, math.sqrt, math.max, math.min
-local band, rshift = require("bit").band, require("bit").rshift
-local hash01 = Raster.hash01
 
 -- The C blitter's rounding of v / 255, for the export to match the screen.
 local function div255(v)
@@ -41,7 +39,7 @@ Wash.STYLES = {
     highlighter = { engine = "wash", solid = true, blend = "multiply", tip = "chisel" },
     felttip     = { engine = "wash", solid = true, blend = "over", tip = "round" },
     wash        = { engine = "wash", solid = true, blend = "over", tip = "soft",
-                    soft = 0.35, wet = 0.7, grain = 0.22, cell = 2, pressure = true, minf = 0.6, sim = true },
+                    soft = 0.35, wet = 0.7, pressure = true, minf = 0.6, sim = true },
 }
 for k, st in pairs(Wash.STYLES) do Raster.STYLES[k] = st end
 
@@ -93,23 +91,8 @@ local function radiusAt(st, r, p)
 end
 
 -- One soft round stamp: strength falls off over the outer `soft` share of the
--- radius, a wet rim pools a little darker just inside the edge, and paper grain
--- breaks it up. Raises the mask to `alpha` times that.
---
--- The stamp's shape is worked out once per radius (to a quarter pixel) and per
--- style, and the grain comes from a fixed noise table, so a stamp costs a table
--- read and a multiply per pixel.
-local GRAIN_N = 256
-local grain_tab
-local function grainTable()
-    if grain_tab then return grain_tab end
-    grain_tab = ffi.new("float[?]", GRAIN_N * GRAIN_N)
-    for y = 0, GRAIN_N - 1 do
-        for x = 0, GRAIN_N - 1 do grain_tab[y * GRAIN_N + x] = hash01(x, y, 4242) end
-    end
-    return grain_tab
-end
-
+-- radius, and a wet rim pools a little darker just inside the edge, smooth
+-- throughout. Raises the mask to `alpha` times that.
 -- The soft tip's strength across its radius, sampled in 1024 steps of the
 -- squared distance (t^2 = (distance / radius)^2 in [0, 1)), per style, so the
 -- inner loop needs no square root.
@@ -140,14 +123,9 @@ end
 -- One piece of a soft stroke, from (x0, y0) at radius r0 to (x1, y1) at r1:
 -- every pixel within reach takes the strength for its distance from the
 -- segment, once (the overlap with the next piece is settled by the max).
-local function softSegment(m, x0, y0, r0, x1, y1, r1, st, seed, alpha)
+local function softSegment(m, x0, y0, r0, x1, y1, r1, st, alpha)
     local buf, w, h, ox, oy = m.buf, m.w, m.h, m.ox, m.oy
     local prof = profile(st)
-    local grain, cell = st.grain or 0, st.cell or 1
-    local cshift = (cell >= 4 and 2) or (cell >= 2 and 1) or 0
-    local g = grainTable()
-    local sx, sy = seed % GRAIN_N, floor(seed / GRAIN_N) % GRAIN_N
-    local g0, g1 = 1 - grain, 2 * grain
     local same_r = r0 == r1
     local inv_r2 = 1 / (r0 * r0)
     local dx, dy = x1 - x0, y1 - y0
@@ -163,7 +141,6 @@ local function softSegment(m, x0, y0, r0, x1, y1, r1, st, seed, alpha)
     for y = by0, by1 do
         local py = y - y0
         local mrow = (y - oy) * w - ox
-        local grow = band(rshift(y, cshift) + sy, GRAIN_N - 1) * GRAIN_N
         for x = bx0, bx1 do
             local px = x - x0
             local u = (px * dx + py * dy) * inv
@@ -177,9 +154,7 @@ local function softSegment(m, x0, y0, r0, x1, y1, r1, st, seed, alpha)
                 t2 = t2 / (r * r)
             end
             if t2 < 1 then
-                local s = prof[floor(t2 * PROF_N)]
-                if grain > 0 then s = s * (g0 + g1 * g[grow + band(rshift(x, cshift) + sx, GRAIN_N - 1)]) end
-                local v = floor(alpha * (s > 1 and 1 or s) + 0.5)
+                local v = floor(alpha * prof[floor(t2 * PROF_N)] + 0.5)
                 local o = mrow + x
                 if buf[o] < v then buf[o] = v end
             end
@@ -190,7 +165,7 @@ end
 -- Stamp the stroke (or one piece of it) into mask m. pts and pr are canvas
 -- points and pressures; r the full radius; alpha the strength; sym the stroke's
 -- symmetry on a W x H page.
-function Wash.stamp(m, st, pts, pr, r, alpha, seed, sym, W, H)
+function Wash.stamp(m, st, pts, pr, r, alpha, sym, W, H)
     local n = floor(#pts / 2)
     if n == 0 then return end
     if st.tip == "soft" then
@@ -199,11 +174,11 @@ function Wash.stamp(m, st, pts, pr, r, alpha, seed, sym, W, H)
             local p = Symmetry.flipPoints(pts, f, W or 0, H or 0)
             if n == 1 then
                 local rr = radiusAt(st, r, pr and pr[1])
-                softSegment(m, p[1], p[2], rr, p[1], p[2], rr, st, seed, alpha)
+                softSegment(m, p[1], p[2], rr, p[1], p[2], rr, st, alpha)
             end
             for i = 2, n do
                 softSegment(m, p[2 * i - 3], p[2 * i - 2], radiusAt(st, r, pr and pr[i - 1]),
-                    p[2 * i - 1], p[2 * i], radiusAt(st, r, pr and pr[i]), st, seed, alpha)
+                    p[2 * i - 1], p[2 * i], radiusAt(st, r, pr and pr[i]), st, alpha)
             end
         end
         return
@@ -273,7 +248,7 @@ function Wash.buildMask(op, st, W, H, scratch)
     else
         m = Wash.newMask(w, h, x0, y0)
     end
-    Wash.stamp(m, st, op.pts, op.pr, (op.width or 1) / 2, strength(op, st), op.seed or 0, op.sym, W, H)
+    Wash.stamp(m, st, op.pts, op.pr, (op.width or 1) / 2, strength(op, st), op.sym, W, H)
     return m, x0, y0, x1, y1
 end
 
@@ -287,7 +262,7 @@ local cache, cache_order, cache_bytes = {}, {}, 0
 local function signature(op, W, H)
     local pts = op.pts
     return table.concat({ #pts, pts[1] or 0, pts[2] or 0, pts[#pts] or 0, op.width or 0, op.alpha or 255,
-        op.sym or "", op.seed or 0, op.style or "", op.pr and #op.pr or 0, W, H }, "|")
+        op.sym or "", op.style or "", op.pr and #op.pr or 0, W, H }, "|")
 end
 
 function Wash.cachedMask(op, st, W, H)

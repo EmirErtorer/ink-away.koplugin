@@ -43,7 +43,7 @@ for _i, style in ipairs({ "highlighter", "felttip", "wash" }) do
     ok(maxv <= want and maxv > 0, style .. ": strength is the opacity (" .. maxv .. ")")
 end
 
--- ---- watercolour: soft edge, wet rim, grain ----------------------------------
+-- ---- watercolour: soft edge, wet rim, smooth along the stroke --------------------
 do
     local st = Raster.STYLES.wash
     local op = { kind = "ink", style = "wash", width = 60, alpha = 200, seed = 1, pts = { 100, 100, 300, 100 } }
@@ -54,7 +54,7 @@ do
     for x = 150, 250 do vals[at(m, x, 100)] = true end
     local n = 0
     for _k in pairs(vals) do n = n + 1 end
-    ok(n > 3, "wash: paper grain varies along the stroke")
+    ok(n == 1, "wash: smooth along the stroke, no grain (" .. n .. " values)")
 end
 
 -- ---- symmetry: the mask gets every copy ---------------------------------------
