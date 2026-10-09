@@ -42,6 +42,7 @@ local NotesView = InkAwayView:extend{
 NotesView.buildVBar = VBar.buildVBar
 NotesView.vbarActive = VBar.vbarActive
 NotesView.vbarHas = VBar.vbarHas
+NotesView.vbarCell = VBar.vbarCell
 for _i, k in ipairs({ "updateToolbarActive", "drawActiveToolPill", "drawToolbarIcons" }) do
     NotesView[k] = function(self, ...)
         if self.floating then return VBar[k](self, ...) end

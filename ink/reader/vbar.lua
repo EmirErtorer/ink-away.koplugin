@@ -1,15 +1,21 @@
 --[[
-The narrow toolbar down the left side that Ink Away uses over a book: in the
-annotation mode (ink/reader/inkview.lua), down the whole screen, and in the
-book notes window (ink/reader/notesview.lua), down the window. Mixed into a
+The narrow toolbar Ink Away uses over a book: in the annotation mode
+(ink/reader/inkview.lua), along a side of the screen the reader chooses (down
+the left by default, the right, or across the top or bottom), and in the book
+notes window (ink/reader/notesview.lua), down the window's left. Mixed into a
 view class with VBar.into(Class); the view gives the buttons (buildVBar) and
-says which tool is active (vbarActive), and paintTo places the column at
+says which tool is active (vbarActive), and paintTo places the bar at
 self._bar_x, self._bar_y.
+
+Its measures: _vb_side (left, right, top or bottom), _vb_cell (a button's size
+along the bar), _vb_thick (the bar's thickness) and _vbar_h (its length); a
+bar down a side also keeps them as _btn_h and _bar_w.
 ]]
 
 local Button = require("ui/widget/button")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -21,26 +27,36 @@ local Screen = Device.screen
 
 local VBar = {}
 
--- The column of buttons, `h` tall: specs are { id, icon, tool, cb }.
-function VBar:buildVBar(specs, h)
+-- The bar of buttons, `len` long, along `side` (left by default): specs are
+-- { id, icon, tool, cb }.
+function VBar:buildVBar(specs, len, side)
     self:ensureUserIcons()
+    side = side or "left"
+    local across = side == "top" or side == "bottom"
     local n = #specs
-    local btn_h = math.floor(h / n)
-    local bar_w = math.max(Screen:scaleBySize(36), math.min(Screen:scaleBySize(50), math.floor(btn_h * 1.15)))
-    local isz = math.max(18, math.min(math.floor(bar_w * 0.6), math.floor(btn_h * 0.62)))
-    self._btn_h, self._bar_w, self._icon_sz, self._vbar_h = btn_h, bar_w, isz, h
+    local cell = math.floor(len / n)
+    local thick, isz
+    if across then
+        thick = math.max(Screen:scaleBySize(32), math.min(Screen:scaleBySize(46), math.floor(cell * 0.9)))
+        isz = math.max(18, math.min(math.floor(thick * 0.62), math.floor(cell * 0.6)))
+    else
+        thick = math.max(Screen:scaleBySize(36), math.min(Screen:scaleBySize(50), math.floor(cell * 1.15)))
+        isz = math.max(18, math.min(math.floor(thick * 0.6), math.floor(cell * 0.62)))
+    end
+    self._vb_side, self._vb_cell, self._vb_thick, self._vbar_h = side, cell, thick, len
+    self._btn_h, self._bar_w, self._icon_sz = cell, thick, isz
     self.tool_buttons, self._toolbar_icons = {}, {}
-    local col = VerticalGroup:new{ align = "center" }
+    local group = across and HorizontalGroup:new{ align = "center" } or VerticalGroup:new{ align = "center" }
     for i, s in ipairs(specs) do
-        local bh = (i == n) and (h - btn_h * (n - 1)) or btn_h
+        local size = (i == n) and (len - cell * (n - 1)) or cell
         local raw = s.cb
         local b = Button:new{ icon = "inkaway." .. s.icon, icon_width = isz, icon_height = isz,
             callback = function()
                 local ok, err = xpcall(raw, debug.traceback)
                 if not ok then logger.warn("Ink Away book toolbar '" .. s.id .. "' failed: " .. tostring(err)) end
             end,
-            width = bar_w, height = bh, bordersize = 0, radius = 0, background = nil,
-            margin = 0, padding = 0, show_parent = self }
+            width = across and size or thick, height = across and thick or size,
+            bordersize = 0, radius = 0, background = nil, margin = 0, padding = 0, show_parent = self }
         local path = self:pluginDir() .. "ink/icons/" .. s.icon .. ".svg"
         local ok_icon, icon = pcall(function() return IconWidget:new{ file = path, width = isz, height = isz } end)
         if ok_icon and icon then self:setButtonLabel(b, icon) end
@@ -48,11 +64,20 @@ function VBar:buildVBar(specs, h)
         if s.tool then self.tool_buttons[s.id] = { button = b } end
         self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true,
             icon = ok_icon and icon or nil, path = path, size = isz }
-        table.insert(col, b)
+        table.insert(group, b)
     end
-    self.toolbar = FrameContainer:new{ background = nil, bordersize = 0, padding = 0, margin = 0, col }
-    self._bar_h = nil        -- the canvas's horizontal-bar measures do not apply
+    self.toolbar = FrameContainer:new{ background = nil, bordersize = 0, padding = 0, margin = 0, group }
+    self._bar_h = nil        -- the canvas's own toolbar measures do not apply
     self:updateToolbarActive()
+end
+
+-- Button i's cell on the screen, the bar's top-left at (ox, oy): x, y, w, h.
+function VBar:vbarCell(i, ox, oy)
+    local cell, thick = self._vb_cell or self._btn_h, self._vb_thick or self._bar_w
+    if self._vb_side == "top" or self._vb_side == "bottom" then
+        return ox + cell * (i - 1), oy, cell, thick
+    end
+    return ox, oy + cell * (i - 1), thick, cell
 end
 
 -- The active tool's button shows it (tinted on a colour screen, inverted on grey).
@@ -81,24 +106,28 @@ function VBar:vbarActive()
     return (self.tool == "fill") and "shape" or self.tool
 end
 
--- The rounded pill behind the active tool; (ox, oy) is the column's top-left.
+-- The rounded pill behind the active tool; (ox, oy) is the bar's top-left.
 function VBar:drawActiveToolPill(bb, ox, oy)
     if not (self._active_btn_idx and self._btn_h and self._bar_w) then return end
     local m = Screen:scaleBySize(5)
-    local cy = oy + self._btn_h * (self._active_btn_idx - 1)
-    Accent.paintRounded(bb, ox + m, cy + m, self._bar_w - 2 * m, self._btn_h - 2 * m, Screen:scaleBySize(9))
+    local x, y, w, h = self:vbarCell(self._active_btn_idx, ox, oy)
+    Accent.paintRounded(bb, x + m, y + m, w - 2 * m, h - 2 * m, Screen:scaleBySize(9))
 end
 
--- The hairline between the column and the page, and the pen in hand's colour
+-- The hairline between the bar and the page, and the pen in hand's colour
 -- under its button (the highlighter's, when it is the highlighter).
 function VBar:drawToolbarIcons(bb, ox, oy)
     if not self._bar_w then return end
     ox, oy = ox or 0, oy or 0
-    bb:paintRect(ox + self._bar_w - 1, oy, 1, self._vbar_h or self.screen_h, Paint.HAIRLINE)
+    local side, thick, len = self._vb_side or "left", self._vb_thick or self._bar_w, self._vbar_h or self.screen_h
+    if side == "right" then bb:paintRect(ox, oy, 1, len, Paint.HAIRLINE)
+    elseif side == "top" then bb:paintRect(ox, oy + thick - 1, len, 1, Paint.HAIRLINE)
+    elseif side == "bottom" then bb:paintRect(ox, oy, len, 1, Paint.HAIRLINE)
+    else bb:paintRect(ox + thick - 1, oy, 1, len, Paint.HAIRLINE) end
     local want = self.pen_style == "highlighter" and "highlight" or "pen"
     for i, e in ipairs(self._toolbar_icons or {}) do
         if e.id == want or (want == "highlight" and e.id == "pen" and not self:vbarHas("highlight")) then
-            self:paintPenMark(bb, ox, oy + self._btn_h * (i - 1), self._bar_w, self._btn_h)
+            self:paintPenMark(bb, self:vbarCell(i, ox, oy))
             break
         end
     end

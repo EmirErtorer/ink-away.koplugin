@@ -48,24 +48,62 @@ VBar.into(ReaderInkView)
 function ReaderInkView:applyStartupOrientation() end
 function ReaderInkView:orientationSupported() return false end
 
--- The toolbar down the left, the area beside it, the page at 1:1 under it: a
--- canvas point is the screen point, so ink lands exactly on the book's words.
+-- The side the toolbar runs along: down the left (the default) or right, or
+-- across the top or bottom.
+local SIDES = { left = true, right = true, top = true, bottom = true }
+function ReaderInkView:toolbarSide()
+    local s = self:getSetting("inkaway_book_toolbar_side", "left")
+    return SIDES[s] and s or "left"
+end
+
+-- The toolbar along its side, the area beside it, the page at 1:1 under them:
+-- a canvas point is the screen point, so ink lands exactly on the book's words.
 function ReaderInkView:initLayout(W, H)
+    self._bar_side = self:toolbarSide()
     self:buildToolbar()
-    local tw = self.toolbar:getSize().w
-    self.view = {
-        area_x = tw, area_y = 0, area_w = W - tw, area_h = H,
-        canvas_w = W, canvas_h = H,
-        zoom = 1, pan_x = tw, pan_y = 0,
-    }
+    self.view = { canvas_w = W, canvas_h = H, zoom = 1 }
     self.zoom_min = 1
-    self[1] = self.toolbar
     -- hidden last time: start hidden
-    if self:getSetting("inkaway_book_toolbar_hidden", false) then
-        self._toolbar_hidden = true
-        self.view.area_x, self.view.area_w, self.view.pan_x = 0, W, 0
-        self[1] = nil
+    self._toolbar_hidden = self:getSetting("inkaway_book_toolbar_hidden", false) and true or false
+    self:placeToolbar()
+end
+
+-- Put the toolbar on its side (unless it is hidden) and the drawing area beside
+-- it; the canvas is panned to the area's corner, so it stays 1:1 with the screen.
+function ReaderInkView:placeToolbar()
+    local v, W, H = self.view, self.screen_w, self.screen_h
+    local side, t = self._bar_side, self._vb_thick or 0
+    v.area_x, v.area_y, v.area_w, v.area_h = 0, 0, W, H
+    self._bar_x, self._bar_y = 0, 0
+    if not self._toolbar_hidden then
+        if side == "left" then v.area_x, v.area_w = t, W - t
+        elseif side == "right" then v.area_w = W - t; self._bar_x = W - t
+        elseif side == "top" then v.area_y, v.area_h = t, H - t
+        else v.area_h = H - t; self._bar_y = H - t end
     end
+    v.pan_x, v.pan_y = v.area_x, v.area_y
+    if self._toolbar_hidden then self[1] = nil else self[1] = self.toolbar end
+end
+
+-- After the toolbar moved or hid: a new on-screen buffer for the area, drawn.
+function ReaderInkView:areaChanged()
+    if self.area_bb then self.area_bb:free() end
+    self.area_bb = self:newAreaBuffer()
+    self:renderView()
+    self._area_only = false
+    self._paint_all = true
+    UIManager:setDirty(self, "ui")
+end
+
+-- Move the toolbar to another side (from the book's settings).
+function ReaderInkView:setToolbarSide(side)
+    if not SIDES[side] or side == self._bar_side then return end
+    self:flushPending()
+    self:setSetting("inkaway_book_toolbar_side", side)
+    self._bar_side = side
+    self:buildToolbar()
+    self:placeToolbar()
+    self:areaChanged()
 end
 
 -- What the canvas would open (the last document) is the book's page here.
@@ -240,10 +278,21 @@ function ReaderInkView:actionOffered(id)
     return id ~= "pan" and id ~= "fit" and id ~= "library"
 end
 
--- Sheets open beside the toolbar, so it stays in reach.
+-- Sheets open beside the toolbar, so it stays in reach: right of it, left of
+-- it, or under it.
 function ReaderInkView:sheetLeftX()
-    if self._toolbar_hidden then return nil end
-    return self._bar_w
+    if self._toolbar_hidden or self._bar_side ~= "left" then return nil end
+    return self._vb_thick
+end
+
+function ReaderInkView:sheetRightX()
+    if self._toolbar_hidden or self._bar_side ~= "right" then return nil end
+    return self.screen_w - (self._vb_thick or 0)
+end
+
+function ReaderInkView:sheetTopY()
+    local t = (not self._toolbar_hidden and self._bar_side == "top") and (self._vb_thick or 0) or 0
+    return t + Screen:scaleBySize(6)
 end
 
 -- A new text box over a book starts where it was tapped (beside the toolbar,
@@ -254,12 +303,12 @@ function ReaderInkView:newTextAt(pos)
     local v = self.view
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     local margin = math.max(6, math.floor(v.canvas_w * 0.02))
-    local left = v.area_x + margin
+    local left, right = v.area_x + margin, v.area_x + v.area_w - margin
     local x = math.max(left, math.floor(cx))
-    local min_w = math.floor((v.canvas_w - left) * 0.45)
-    if v.canvas_w - margin - x < min_w then x = math.max(left, v.canvas_w - margin - min_w) end
+    local min_w = math.floor((right - left) * 0.45)
+    if right - x < min_w then x = math.max(left, right - min_w) end
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
-    local op = Text.new{ x = x, y = cy, w = v.canvas_w - margin - x, size = size,
+    local op = Text.new{ x = x, y = cy, w = right - x, size = size,
         font = self.text_font, align = "left" }
     self:startTextEdit(op, { p = 1, o = 0 }, true, nil)
 end
@@ -329,7 +378,8 @@ function ReaderInkView:buildToolbar()
         { id = "menu", icon = "menu", cb = function() self:openReaderSettings() end },
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
     }
-    self:buildVBar(specs, Screen:getHeight())
+    local across = self._bar_side == "top" or self._bar_side == "bottom"
+    self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side)
 end
 
 -- The highlighter has its own button here.
@@ -343,13 +393,20 @@ end
 ------------------------------------------------------------------------------
 
 -- Over a book the only floating control is the toolbar's tab: a small chevron
--- at the top, beside the toolbar (it slides the toolbar away) or at the left
--- edge once it is hidden (it brings it back). No zoom or Pan buttons.
+-- beside the toolbar (it slides the toolbar away) or at that edge of the
+-- screen once it is hidden (it brings it back): near the top of a side
+-- toolbar, near the right end of one across the top or bottom. No zoom or Pan
+-- buttons.
 function ReaderInkView:fabRect(which)
     if which ~= "bar" or not self.view then return nil end
-    local w, h = Screen:scaleBySize(24), Screen:scaleBySize(40)
-    local x = self._toolbar_hidden and Screen:scaleBySize(2) or (self._bar_w or 0) + Screen:scaleBySize(2)
-    return { x = x, y = Screen:scaleBySize(8), w = w, h = h }
+    local W, H = self.screen_w, self.screen_h
+    local gap, len, wid, inset = Screen:scaleBySize(2), Screen:scaleBySize(40), Screen:scaleBySize(24), Screen:scaleBySize(8)
+    local t = self._toolbar_hidden and 0 or (self._vb_thick or 0)
+    local side = self._bar_side or "left"
+    if side == "right" then return { x = W - t - gap - wid, y = inset, w = wid, h = len } end
+    if side == "top" then return { x = W - inset - len, y = t + gap, w = len, h = wid } end
+    if side == "bottom" then return { x = W - inset - len, y = H - t - gap - wid, w = len, h = wid } end
+    return { x = t + gap, y = inset, w = wid, h = len }
 end
 
 function ReaderInkView:fabHit(px, py)
@@ -368,33 +425,35 @@ function ReaderInkView:drawFabs(bb)
     bb:paintRoundedRect(r.x, r.y, r.w, r.h, edge, Screen:scaleBySize(8))
     local b = Screen:scaleBySize(1)
     bb:paintRoundedRect(r.x + b, r.y + b, r.w - 2 * b, r.h - 2 * b, fill, Screen:scaleBySize(7))
-    -- the chevron: two short strokes, < when shown (hide), > when hidden (show)
+    -- the chevron: two short strokes pointing to the toolbar's side while it is
+    -- shown (hide it there) and away from it once hidden (bring it back)
     local cx, cy = r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2)
     local s = Screen:scaleBySize(6)
     local t = math.max(2, Screen:scaleBySize(2))
-    local dir = self._toolbar_hidden and 1 or -1
+    local side = self._bar_side or "left"
+    local toward = (side == "left" or side == "top") and -1 or 1   -- the toolbar's side: - left/up, + right/down
+    local dir = self._toolbar_hidden and -toward or toward
+    local across = side == "top" or side == "bottom"
     for i = 0, s do
-        local x = cx - dir * math.floor(s / 2) + dir * i
-        bb:paintRect(x, cy - s + i, t, t, Blitbuffer.COLOR_BLACK)
-        bb:paintRect(x, cy + s - i - t + 1, t, t, Blitbuffer.COLOR_BLACK)
+        local a = -dir * math.floor(s / 2) + dir * i
+        if across then
+            bb:paintRect(cx - s + i, cy + a, t, t, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(cx + s - i - t + 1, cy + a, t, t, Blitbuffer.COLOR_BLACK)
+        else
+            bb:paintRect(cx + a, cy - s + i, t, t, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(cx + a, cy + s - i - t + 1, t, t, Blitbuffer.COLOR_BLACK)
+        end
     end
 end
 
--- Slide the toolbar away (or back): the page then fills the screen's width.
+-- Slide the toolbar away (or back): the page then fills the screen.
 function ReaderInkView:setToolbarHidden(hidden)
     if (self._toolbar_hidden or false) == hidden then return end
     self:flushPending()
     self._toolbar_hidden = hidden
     self:setSetting("inkaway_book_toolbar_hidden", hidden)
-    self._area_only = false
-    local v = self.view
-    local tw = hidden and 0 or self.toolbar:getSize().w
-    v.area_x, v.area_w, v.pan_x = tw, self.screen_w - tw, tw
-    if hidden then self[1] = nil else self[1] = self.toolbar end
-    if self.area_bb then self.area_bb:free() end
-    self.area_bb = self:newAreaBuffer()
-    self:renderView()
-    UIManager:setDirty(self, "ui")
+    self:placeToolbar()
+    self:areaChanged()
 end
 
 ------------------------------------------------------------------------------
@@ -421,6 +480,12 @@ function ReaderInkView:openReaderSettings()
             callback = function(on) self:setSetting("inkaway_snap_text", on) end })
         add(VerticalSpan:new{ width = Screen:scaleBySize(4) })
         add(self:sheetHint(_("A highlighter stroke along a line of text becomes the reader's own highlight of that text: in your highlights list, and with the text at any font size."), content_w))
+        add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
+        add(self:sheetLabel(_("Toolbar")))
+        add(VerticalSpan:new{ width = Screen:scaleBySize(6) })
+        add(self:segmentedRow({ { "left", _("Left") }, { "right", _("Right") }, { "top", _("Top") },
+                { "bottom", _("Bottom") } }, self._bar_side, content_w,
+            function(side) closeSelf(); self:setToolbarSide(side); self:openReaderSettings() end))
         -- (Pen and input is in the Pen sheet, where the pen is)
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
         add(self:actionButton(_("Gestures and pen buttons"), content_w, function()

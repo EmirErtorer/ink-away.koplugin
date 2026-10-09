@@ -64,7 +64,7 @@ local function standInBook()
     return book, s1, s2, items
 end
 
-for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 } }) do
+for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     local W, H = wh[1], wh[2]
     Screen:setSize(W, H)
     BB.out_of_bounds = 0
@@ -147,6 +147,34 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 } }) do
     view:openShapePicker()
     ok(view._shape_dialog and not hasText(view._shape_dialog, "Paint bucket"), tag .. ": no paint bucket over a book")
     view:closeSheet("_shape_dialog")
+
+    -- the toolbar on each side: the area makes room for it, the tab sits at its
+    -- inner edge (or at the screen's edge once hidden), and all of it on screen
+    local function inside(r) return r.x >= 0 and r.y >= 0 and r.x + r.w <= W and r.y + r.h <= H end
+    for _, side in ipairs({ "right", "top", "bottom", "left" }) do
+        view:setToolbarSide(side)
+        local t = view._vb_thick
+        local want = {
+            left = { t, 0, W - t, H }, right = { 0, 0, W - t, H },
+            top = { 0, t, W, H - t }, bottom = { 0, 0, W, H - t },
+        }
+        local e = want[side]
+        ok(v.area_x == e[1] and v.area_y == e[2] and v.area_w == e[3] and v.area_h == e[4]
+            and v.pan_x == v.area_x and v.pan_y == v.area_y, tag .. " " .. side .. ": the area beside the toolbar, 1:1")
+        local r = view:fabRect("bar")
+        local touching = (side == "left" and r.x >= t and r.x < t + 8) or (side == "right" and r.x + r.w <= W - t and r.x + r.w > W - t - 8)
+            or (side == "top" and r.y >= t and r.y < t + 8) or (side == "bottom" and r.y + r.h <= H - t and r.y + r.h > H - t - 8)
+        ok(inside(r) and touching, tag .. " " .. side .. ": the tab sits at the toolbar's inner edge")
+        view:setToolbarHidden(true)
+        local h = view:fabRect("bar")
+        ok(v.area_w == W and v.area_h == H and inside(h), tag .. " " .. side .. ": hidden, the page fills the screen, the tab at its edge")
+        view:setToolbarHidden(false)
+        BB.out_of_bounds = 0
+        view._paint_all = true
+        view:paintTo(Screen.bb, 0, 0)
+        ok(BB.out_of_bounds == 0, tag .. " " .. side .. ": painted within the screen")
+    end
+    ok(view:sheetLeftX() == view._vb_thick, tag .. ": sheets open right of a left toolbar")
 
     -- painting stays on the screen, and closing saves and repaints the book
     view:paintTo(Screen.bb, 0, 0)
