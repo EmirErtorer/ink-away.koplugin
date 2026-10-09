@@ -329,11 +329,14 @@ function InkAwayView:openSettings()
         -- where documents are kept, and what opening Ink Away shows
         add(self:sheetLabel(_("Files"), true))
         add(vspan(6))
-        add(act(_("Library folder: ") .. Storage.baseName(self:libraryDir()), content_w,
-            function() self:chooseLibraryRoot() end))
-        add(vspan(8))
-        add(act(_("Export folder: ") .. Storage.baseName(self:defaultExportDir()), content_w,
-            function() self:chooseExportRoot() end))
+        -- the library and export folders side by side, each named for its folder
+        local half = math.floor((content_w - Screen:scaleBySize(12)) / 2)
+        add(HorizontalGroup:new{ align = "center",
+            act(_("Library: ") .. Storage.baseName(self:libraryDir()), half,
+                function() self:chooseLibraryRoot() end),
+            HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+            act(_("Exports: ") .. Storage.baseName(self:defaultExportDir()), half,
+                function() self:chooseExportRoot() end) })
         add(vspan(10))
         add(self:sheetLabel(_("When Ink Away opens")))
         add(vspan(6))
@@ -344,8 +347,6 @@ function InkAwayView:openSettings()
         -- (palm rejection, the stabilizer and the pen test are in the Pen
         -- sheet's Pen and input, set from where the pen is)
         add(vspan(16))
-        add(self:sheetLabel(_("Gestures"), true))
-        add(vspan(6))
         add(act(_("Gestures and pen buttons"), content_w, function()
             self:closeSheet("_settings_dialog"); self:openGestureSettings() end))
         return content
