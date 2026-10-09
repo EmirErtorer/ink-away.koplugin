@@ -30,6 +30,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Brushes = require("ink/brushes")
+local EinkDrive = require("ink/einkdrive")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local PenSample = require("ink/ui/pensample")
@@ -533,12 +534,16 @@ function InkAwayView:openPenInput()
         add(vspan(12))
         add(ToggleRow:new{ label = _("Palm rejection"), is_on = self.palm_reject,
             width = content_w, parent = menu, callback = function(on)
+                -- where KOReader can't hand over the pen it stays off (see penCapable)
+                if on and not self:penCapable() then
+                    again()
+                    UIManager:show(InfoMessage:new{ text = self:onAndroid() and _(
+                        "On Android, palm rejection needs a KOReader newer than 2026.07.1 (a nightly build from August 2026 or later). Earlier versions report the pen as a finger, so Ink Away can't tell it from your hand. Your pen draws as it is.")
+                        or _("Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+                    return
+                end
                 self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()
                 again()   -- show or hide the options that need it
-                if on and not self:penCapable() then
-                    UIManager:show(InfoMessage:new{ text = _(
-                        "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
-                end
             end })
         -- with palm rejection on, the pen writes and fingers can be kept for moving
         -- around: scrolling, turning pages, holding a picture or shape for its menu
@@ -576,6 +581,17 @@ function InkAwayView:openPenInput()
             add(self:segmentedRow({ { "soft", _("Light touch") }, { "medium", _("Medium") }, { "firm", _("Firm") } },
                 self.pressure_curve or "medium", content_w,
                 function(c) self.pressure_curve = c; self:setSetting("inkaway_pressure_curve", c); again() end))
+        end
+        -- a Boox: Ink Away asks for the fast refresh itself (see ink/einkdrive.lua)
+        if self:onAndroid() and EinkDrive.detect() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Fast refresh while drawing"), is_on = self:getSetting("inkaway_boox_fast", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_boox_fast", on)
+                    if on then self:startEinkDrive() else self:stopEinkDrive() end
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."), content_w))
         end
         add(vspan(12))
         add(SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,

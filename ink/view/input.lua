@@ -58,10 +58,23 @@ local InkAwayView = {}
 -- so a resting palm never draws. See ink/stylus.lua for the pure pieces.
 ------------------------------------------------------------------------------
 
--- Can this KOReader build deliver raw stylus events? On a finger-only reader the
--- callback simply never fires, so the setting is harmless there.
+-- Can this KOReader build deliver raw stylus events, and tell the pen from a
+-- finger? On a finger-only reader the callback simply never fires, so the setting
+-- is harmless there.
 function InkAwayView:penCapable()
-    return Device.input and type(Device.input.registerStylusCallback) == "function"
+    if not (Device.input and type(Device.input.registerStylusCallback) == "function") then return false end
+    return not self:onAndroid() or self:androidPenTypes()
+end
+
+-- Does this KOReader say which touches are a pen on Android? Up to 2026.07.1 it
+-- reports every touch there as a finger (pen types came in August 2026), so palm
+-- rejection would take the pen for a hand and move the page with it.
+function InkAwayView:androidPenTypes()
+    if InkAwayView._android_pen_types == nil then
+        local ok, r = pcall(function() return require("android").lib.AMOTION_EVENT_TOOL_TYPE_STYLUS ~= nil end)
+        InkAwayView._android_pen_types = (ok and r) and true or false
+    end
+    return InkAwayView._android_pen_types
 end
 
 -- Does the device have a stylus? This only picks the default of the palm

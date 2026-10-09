@@ -174,8 +174,11 @@ function InkAwayView:init()
     self.hold_straighten = self:getSetting("inkaway_hold_straighten", true)
     -- Palm rejection: draw from the pen's own events and ignore fingers while the
     -- pen is down. On by default only where KOReader reports a Wacom pen (Kindle
-    -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua.
-    self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus()) and true or false
+    -- Scribe, reMarkable); elsewhere it is opt-in. See ink/stylus.lua. Where
+    -- KOReader can't hand over the pen (see penCapable) it stays off whatever was
+    -- saved: fingers would move the page and the pen, a finger there, would too.
+    self.palm_reject = self:getSetting("inkaway_palm_reject", self:deviceHasStylus())
+        and self:penCapable() and true or false
     -- Pen taps menus and buttons: the pen also works the toolbar, menus and
     -- dialogs. Off keeps it for drawing and leaves the UI to fingers. Only matters
     -- with palm rejection on; without it the pen already arrives as a finger.
@@ -379,6 +382,7 @@ end
 
 function InkAwayView:onShow()
     self:installRawFinger()
+    self:startEinkDrive()
     UIManager:setDirty(self, "full")
     -- opened here rather than a tick later, so its refresh joins the canvas's and
     -- the screen flashes once, not twice
@@ -406,6 +410,7 @@ end
 function InkAwayView:onCloseWidget()
     self.closing = true
     self:uninstallRawFinger()
+    self:stopEinkDrive()
     self:removePenBridge()
     if self._stylus_cb then
         pcall(function() Device.input:unregisterStylusCallback() end)

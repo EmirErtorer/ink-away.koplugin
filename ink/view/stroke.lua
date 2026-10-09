@@ -84,10 +84,12 @@ function InkAwayView:setupLiveWriters()
     -- refresh settles the true colour once the pen rests. With that setting off
     -- the screen copy of a non-black pen is drawn black, which that waveform shows
     -- sharply, and its colour comes back on lift. The master always keeps it.
+    -- A grey Boox that Ink Away drives (see fastLive) always draws that black
+    -- copy: the fast waveform would show light grey ink as white.
     local area_color = color
     self._live_preview = false
-    if self:colourPanel() and not self.live_colour and self.tool ~= "erase"
-            and self._live_mode == "fast" and not self:pureBlackPen() then
+    local preview = self:colourPanel() and not self.live_colour or (not self:colourPanel() and self:einkDriven())
+    if preview and self.tool ~= "erase" and self._live_mode == "fast" and not self:pureBlackPen() then
         area_color, self._live_preview = PREVIEW_INK, true
     end
     -- master (1:1) writer
@@ -281,11 +283,15 @@ function InkAwayView:beginStroke(sx, sy)
         -- fast can only show white, so it suits erasing to a blank page; over a
         -- notebook ruling or a picture the erased path needs the grey-capable "ui"
         local reveal = self.erase_bg and (self.notebook and self:barePaperBB()) or self:eraseRevealBB()
-        self._live_mode = reveal and "ui" or "fast"
+        self._live_mode = (reveal and not self:einkDriven()) and "ui" or "fast"
     else
-        -- on a colour panel every pen draws with "fast" (a black preview, see
-        -- setupLiveWriters) because the grey-capable waveform blocks each refresh
-        self._live_mode = (self:pureBlackPen() or self:colourPanel()) and "fast" or "ui"
+        -- on a colour panel every pen draws with "fast", and on a grey Boox Ink
+        -- Away drives every opaque one (see fastLive and setupLiveWriters), settled
+        -- once the pen rests; a see-through pen there would show as a black bar
+        -- over the text until then
+        local opaque = (self.pen_alpha or 255) >= 255
+        self._live_mode = (self:pureBlackPen() or self:colourPanel()
+            or (opaque and self:einkDriven())) and "fast" or "ui"
     end
     -- a new stroke pushes back the pending colour settle (see queueReconcile)
     if self._reconcile then UIManager:unschedule(self._reconcile_cb) end
@@ -502,20 +508,23 @@ function InkAwayView:finalizeStroke()
             for i = 1, nr do
                 local rr = rects[i]
                 self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
-                if not self:colourPanel() then self:dirtyAreaRect("ui", rr, 2) end
+                if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
             end
         end
     end
-    if self:colourPanel() then
+    if self:fastLive() then
         -- show the last samples now, put the real colours back where the black
         -- preview was, and let one refresh settle them once the pen rests (not
-        -- needed where every refresh already shows the colour as drawn)
+        -- needed where every refresh already shows the colour as drawn). A
+        -- driven Boox is asked for the whole stroke again, in case a live
+        -- request reached the panel before its frame.
         self:liveFlush()
         local settle = self._live_preview or not self:instantColour()
         if sr then
             local rects, nr = self:symAreaRects(sr)
             for i = 1, nr do
                 local rr = rects[i]
+                if self._live_mode == "fast" then self:einkAsk("fast", rr, 2) end
                 if self._live_preview then self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1) end
                 if settle then self:queueReconcile(rr, 2) end
             end

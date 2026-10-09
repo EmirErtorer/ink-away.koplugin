@@ -1604,16 +1604,16 @@ do
     local view = InkAwayView:new{}
     local PTS = require("ink/ui/pentestscreen")
     local real = PTS.deviceFacts
-    PTS.deviceFacts = function() return { android = true, eink = true, eink_full = false } end
+    PTS.deviceFacts = function() return { android = true, eink = true, eink_full = false, boox = true } end
     view:setSetting("inkaway_device_tip_shown", nil)
     UIManager.shown = nil
     view:deviceTips(false)
-    ok(UIManager.shown and UIManager.shown.text:find("Ultrafast"), "tips: shown once by themselves")
+    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: shown once by themselves")
     UIManager.shown = nil
     view:deviceTips(false)
     ok(UIManager.shown == nil, "tips: not a second time")
     view:deviceTips(true)
-    ok(UIManager.shown and UIManager.shown.text:find("Ultrafast"), "tips: again from Settings")
+    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: again from Settings")
     PTS.deviceFacts = function() return { android = true, eink = true, eink_full = true } end
     view:deviceTips(true)
     ok(UIManager.shown.text:find("needs no special settings"), "tips: a fully driven reader needs none")
