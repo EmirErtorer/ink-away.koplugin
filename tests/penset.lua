@@ -98,44 +98,34 @@ do
     ok(gone.cur.style == "solid", "save: a pen whose style is gone starts fresh")
 end
 
--- ---- the first pen case's untouched starting pens become today's ------------------------
+-- ---- a case saved by a 4.0 test build starts once on today's pens ----------------------
 do
-    local d, get = store()
-    local px = function(mm) return math.floor(mm * 11.8 + 0.5) end
-    d.inkaway_pens = {
-        cur = { style = "solid", width = px(0.4), alpha = 255, color = { 0, 0, 0 } },
-        favs = {
-            { style = "solid", width = px(0.4), alpha = 255, color = { 0, 0, 0 } },
-            { style = "ballpoint", width = px(0.5), alpha = 255, color = { 25, 45, 130 } },
-            { style = "solid", width = px(0.4), alpha = 255, color = { 210, 30, 40 } },
-            { style = "highlighter", width = px(5.0), alpha = 255, color = { 255, 235, 59 } },
-            { style = "pencil", width = px(0.6), alpha = 255, color = { 40, 40, 40 } },
-        },
-    }
-    local st = Penset.load(get, opts)
-    ok(#st.favs == 7 and st.favs[3].style == "pencil" and st.sel == 1 and st.cur.width == px(1.8),
-        "migrate: the first starting pens are replaced, the pen in hand with them")
-    d.inkaway_pens.favs[1].width = px(0.9)
-    st = Penset.load(get, opts)
-    ok(#st.favs == 5 and st.favs[1].width == px(0.9), "migrate: a case the reader changed is kept")
-end
-
--- ---- the test build's untouched set becomes today's too --------------------------------
-do
-    local d, get = store()
+    local d, get, set = store()
     local px = function(mm) return math.floor(mm * 11.8 + 0.5) end
     local function p(style, mm, color, alpha) return { style = style, width = px(mm), alpha = alpha or 255, color = color } end
+    -- a test build's case, changed while testing (no version)
     d.inkaway_pens = {
-        cur = p("ballpoint", 0.8, { 25, 45, 130 }), sel = 2,
+        cur = p("pencil", 1.5, { 40, 40, 40 }), sel = 4, prev = p("solid", 0.6, { 0, 0, 0 }),
+        types = { pencil = p("pencil", 1.5, { 40, 40, 40 }) },
         favs = { p("solid", 0.6, { 0, 0, 0 }), p("ballpoint", 0.8, { 25, 45, 130 }), p("fountain", 1.4, { 0, 0, 0 }),
-                 p("pencil", 1.0, { 40, 40, 40 }), p("felttip", 3.0, { 210, 40, 40 }, 190), p("highlighter", 6.0, { 255, 235, 59 }) },
+                 p("pencil", 1.5, { 40, 40, 40 }), p("felttip", 3.0, { 210, 40, 40 }, 190) },
     }
+    d.inkaway_pen_style = "fountain"
     local st = Penset.load(get, opts)
-    ok(#st.favs == 7 and st.favs[7].style == "smudge" and st.cur.style == "solid" and st.cur.width == px(1.8),
-        "migrate: the test build's untouched pens become today's")
-    d.inkaway_pens.favs[4].width = px(1.5)
+    local kinds = {}
+    for i, f in ipairs(st.favs) do kinds[i] = f.style end
+    ok(table.concat(kinds, ",") == "solid,ballpoint,pencil,calligraphy,highlighter,wash,smudge",
+        "test build: today's seven pens (" .. table.concat(kinds, ",") .. ")")
+    ok(st.sel == 1 and st.cur.style == "solid" and st.cur.width == px(1.8) and st.prev == nil,
+        "test build: the 1.8 mm fineliner in hand, nothing older kept")
+    Penset.save(st, set)
+    ok(d.inkaway_pens.version == Penset.VERSION, "test build: saved with the version")
+    -- once saved, the reader's own changes stay
+    Penset.select(st, 3)
+    Penset.set(st, "width", px(1.5))
+    Penset.save(st, set)
     st = Penset.load(get, opts)
-    ok(#st.favs == 6 and st.favs[4].width == px(1.5), "migrate: a set the reader changed is kept")
+    ok(#st.favs == 7 and st.favs[3].width == px(1.5) and st.sel == 3, "test build: only once; changes after it stay")
 end
 
 -- ---- 4.0's single setting --------------------------------------------------------------

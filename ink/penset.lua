@@ -20,6 +20,9 @@ local Penset = {}
 
 local SETTING = "inkaway_pens"
 Penset.FAV_CAP = 20   -- three rows in the pen menu
+-- The pen case's format. A case without it was saved by a 4.0 test build (no
+-- released version kept one): it starts once on today's pens.
+Penset.VERSION = 2
 
 -- The kinds of pen, in the order the pen case shows them.
 Penset.GROUPS = {
@@ -100,34 +103,6 @@ local function startingFavs(opts)
     }
 end
 
--- The pens a 4.0 test build started with before these (by their sizes then):
--- a case still exactly so was never chosen either, and gets today's set.
-local function earlierFavs(opts)
-    local function old(style, mm)
-        local p = Penset.default(style, opts)
-        p.width = math.max(1, math.floor(mm * (opts.pxmm or 11.8) + 0.5))
-        return p
-    end
-    return { old("solid", 0.6), old("ballpoint", 0.8), old("fountain", 1.4),
-             old("pencil", 1.0), old("felttip", 3.0), old("highlighter", 6.0) }
-end
-
--- The pens 4.0's first pen case started with (same kind in several colours,
--- thin): a case still exactly so was never chosen, and gets today's set.
-local function firstFavs(opts)
-    local function old(style, mm, color)
-        local d = Penset.DEFAULTS[style]
-        local c = (not opts.colour and d.grey) or color or d.color
-        return { style = style, width = math.max(1, math.floor(mm * (opts.pxmm or 11.8) + 0.5)),
-                 alpha = d.alpha, color = copyColor(c) }
-    end
-    local list = { old("solid", 0.4), old("ballpoint", 0.5, { 25, 45, 130 }) }
-    if opts.colour then list[#list + 1] = old("solid", 0.4, { 210, 30, 40 }) end
-    list[#list + 1] = old("highlighter", 5.0)
-    list[#list + 1] = old("pencil", 0.6)
-    return list
-end
-
 -- The index of the saved pen drawing like `p`, or nil.
 local function indexOf(st, p)
     for i, f in ipairs(st.favs) do if Penset.same(f, p) then return i end end
@@ -149,12 +124,13 @@ end
 
 -- The case from the settings, or a fresh one. `get(key)` reads a setting,
 -- `known(style)` says whether a style exists (a deleted made brush does not).
--- Older versions kept only inkaway_pen_style: that becomes the pen in hand.
+-- Older versions kept only inkaway_pen_style: that becomes the pen in hand. A
+-- case from a test build (see Penset.VERSION) starts fresh.
 function Penset.load(get, opts, known)
     opts = opts or {}
     local saved = get(SETTING)
     local st
-    if type(saved) == "table" and validPen(saved.cur, known) then
+    if type(saved) == "table" and saved.version == Penset.VERSION and validPen(saved.cur, known) then
         st = { cur = copyPen(saved.cur), prev = validPen(saved.prev, known) and copyPen(saved.prev) or nil,
                types = {}, favs = {}, opts = opts }
         if type(saved.types) == "table" then
@@ -167,22 +143,12 @@ function Penset.load(get, opts, known)
                 if validPen(p, known) then st.favs[#st.favs + 1] = copyPen(p) end
             end
         end
-        -- an earlier starting set, never changed: today's instead
-        for _i, first in ipairs({ firstFavs(opts), earlierFavs(opts) }) do
-            local untouched = #st.favs == #first
-            for i, p in ipairs(first) do untouched = untouched and Penset.same(p, st.favs[i]) end
-            if untouched then
-                st.favs = startingFavs(opts)
-                if indexOf({ favs = first }, st.cur) then st.cur = copyPen(st.favs[1]) end
-                break
-            end
-        end
         local sel = tonumber(saved.sel)
         if not (sel and st.favs[sel] and Penset.same(st.favs[sel], st.cur)) then sel = indexOf(st, st.cur) end
         st.sel = sel
     else
         st = Penset.new(opts)
-        local old = get("inkaway_pen_style")
+        local old = type(saved) ~= "table" and get("inkaway_pen_style")
         if type(old) == "string" and (not known or known(old)) and old ~= "solid" then
             st.cur = Penset.default(Penset.DEFAULTS[old] and old or "solid", opts)
             st.cur.style = old
@@ -198,8 +164,8 @@ function Penset.save(st, set)
     for k, p in pairs(st.types) do types[k] = copyPen(p) end
     local favs = {}
     for i, p in ipairs(st.favs) do favs[i] = copyPen(p) end
-    set(SETTING, { cur = copyPen(st.cur), prev = st.prev and copyPen(st.prev) or nil, sel = st.sel,
-                   types = types, favs = favs })
+    set(SETTING, { version = Penset.VERSION, cur = copyPen(st.cur), prev = st.prev and copyPen(st.prev) or nil,
+                   sel = st.sel, types = types, favs = favs })
 end
 
 -- Make `p` the pen in hand (a switch: the one in hand becomes the previous one),
