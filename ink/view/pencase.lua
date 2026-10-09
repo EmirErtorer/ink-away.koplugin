@@ -34,7 +34,6 @@ local EinkDrive = require("ink/einkdrive")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local PenSample = require("ink/ui/pensample")
-local Pens = require("ink/pens")
 local Penset = require("ink/penset")
 local Raster = require("ink/raster")
 local SliderRow = require("ink/ui/controls").SliderRow
@@ -367,16 +366,6 @@ function InkAwayView:openPenSettings()
             add(self:penColourRow(content_w, gap, cur, closeSelf, again))
         end
 
-        -- pressure, for the pens it shapes
-        if Pens.usesPressure(cur.style) then
-            add(vspan(10))
-            add(ToggleRow:new{ label = _("Width follows pressure"), is_on = self.pen_pressure ~= false,
-                width = content_w, parent = menu, callback = function(on)
-                    self.pen_pressure = on; self:setSetting("inkaway_pen_pressure", on)
-                    if on then self:installPressure() else self:removePressure() end
-                end })
-        end
-
         add(vspan(12))
         add(self:actionButton(_("Pen and input settings"), content_w, function() closeSelf(); self:openPenInput() end))
         return content
@@ -574,14 +563,23 @@ function InkAwayView:openPenInput()
         add(ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
             width = content_w, parent = menu,
             callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
-        if self:penCapable() then
-            add(vspan(12))
-            add(self:sheetLabel(_("Pen pressure")))
+        -- pressure shapes Ballpoint, Fountain, Calligraphy and Pencil; with a pen
+        -- that reports it, how hard a press counts as firm is chosen below
+        add(vspan(10))
+        add(ToggleRow:new{ label = _("Pen pressure"), is_on = self.pen_pressure ~= false,
+            width = content_w, parent = menu, callback = function(on)
+                self.pen_pressure = on; self:setSetting("inkaway_pen_pressure", on)
+                if on then self:installPressure() else self:removePressure() end
+                again()
+            end })
+        if self.pen_pressure ~= false and self:penCapable() then
             add(vspan(6))
             add(self:segmentedRow({ { "soft", _("Light touch") }, { "medium", _("Medium") }, { "firm", _("Firm") } },
                 self.pressure_curve or "medium", content_w,
                 function(c) self.pressure_curve = c; self:setSetting("inkaway_pressure_curve", c); again() end))
         end
+        add(vspan(4))
+        add(self:sheetHint(_("Ballpoint, Fountain, Calligraphy and Pencil follow how hard you press. Without a pressure pen, Ballpoint and Fountain follow your speed instead."), content_w))
         -- a Boox: Ink Away asks for the fast refresh itself (see ink/einkdrive.lua)
         if self:onAndroid() and EinkDrive.detect() then
             add(vspan(10))
