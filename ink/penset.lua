@@ -21,7 +21,9 @@ Penset.FAV_CAP = 8
 Penset.GROUPS = {
     { label = "Write", types = { "solid", "ballpoint", "fountain", "calligraphy", "pencil" } },
     { label = "Mark",  types = { "highlighter", "felttip" } },
-    { label = "Paint", types = { "wash", "acrylic", "hatch", "stipple", "smudge" } },
+    -- Acrylic and Stipple are no longer offered; strokes drawn with them still
+    -- draw (their styles stay in ink/raster.lua)
+    { label = "Paint", types = { "wash", "hatch", "smudge" } },
 }
 Penset.LABELS = {
     solid = "Fineliner", ballpoint = "Ballpoint", fountain = "Fountain", calligraphy = "Calligraphy",

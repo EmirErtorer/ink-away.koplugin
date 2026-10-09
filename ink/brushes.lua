@@ -13,13 +13,12 @@ local Brushes = {}
 
 local SETTING = "inkaway_brushes"
 
--- The built-in styles, in pen menu order.
+-- The built-in textured styles, in pen menu order (Acrylic and Stipple are no
+-- longer offered, though strokes drawn with them still draw).
 local BUILTIN = {
-    { key = "solid",   label = "Ink" },
+    { key = "solid",   label = "Fineliner" },
     { key = "pencil",  label = "Pencil" },
-    { key = "acrylic", label = "Acrylic" },
     { key = "hatch",   label = "Hatch" },
-    { key = "stipple", label = "Stipple" },
 }
 
 -- The brush maker's sliders, each 0..1 unless noted, and how they map onto the
