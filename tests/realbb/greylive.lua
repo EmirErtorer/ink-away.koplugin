@@ -1,9 +1,9 @@
 -- See-through pens drawn live on grey e-ink, on KOReader's REAL blitter: the
 -- highlighter, marker and watercolour show in their own greys as they are
--- drawn (nothing stands in for them), and their grey refreshes go out at a
--- steady pace, each carrying everything drawn since, so they never queue up
--- behind the pen; the last piece goes at the lift and the screen then equals
--- the saved stroke. Solid and thin grey pens keep their refresh per sample.
+-- drawn (nothing stands in for them), with a refresh per sample as the pen
+-- moves, each covering only the pixels that sample changed (a sliver at the
+-- front of the stroke, not a box round the tip), and the screen equals the
+-- saved stroke. The smudge and the other pens keep their refresh per sample.
 -- Run (the test runner does this):  cd <emulator>/koreader && ./luajit <repo>/tests/realbb/greylive.lua <repo>
 local REPO = arg[1] or "."
 require("ffi/loadlib")
@@ -83,7 +83,6 @@ for _i, pen in ipairs({ { "highlighter", 60, 255, nil }, { "felttip", 30, 190, n
     local ay0, ay1 = y - v.area_y - 20, y - v.area_y + 20
     for k = #rs, 1, -1 do rs[k] = nil end
     local n = drag(view, tick, 300, 700, y)
-    ok(view._live_paced, name .. ": a see-through pen is paced")
     -- what shows while drawing is the pen itself: its greys, no dots
     local g = greys(view.area_bb, ax0, ay0, ax1 - 40, ay1)
     ok(g > 200, ("%s: the stroke shows in its own greys as it is drawn (%d)"):format(name, g))
@@ -94,26 +93,25 @@ for _i, pen in ipairs({ { "highlighter", 60, 255, nil }, { "felttip", 30, 190, n
     local on = view.area_bb:getPixel(sx, y - v.area_y):getColorRGB32().r
     local m = view.canvas_bb:getPixel(math.floor(cx), math.floor(cy)):getColorRGB32().r
     ok(math.abs(on - m) <= 2, ("%s: the screen shows the stroke as saved, while drawing (%d / %d)"):format(name, on, m))
-    -- the grey refreshes are few and steady: about one per 320 ms of drawing
+    -- a grey refresh per sample, as the pen moves, none fast
     local ui, fast = count(rs, "ui"), count(rs, "fast")
-    local span = (n - 1) * 8
-    ok(fast == 0 and ui >= 1 and ui <= math.ceil(span / 320) + 1,
-        ("%s: %d grey refreshes over %d samples in %d ms, none fast"):format(name, ui, n, span))
-    local last
-    for _k, r in ipairs(rs) do
-        if r.mode == "ui" then
-            ok(not last or r.t - last >= 320, ("%s: refreshes %d ms apart"):format(name, last and r.t - last or 0))
-            last = r.t
-        end
+    ok(fast == 0 and ui >= n - 2, ("%s: a grey refresh per sample (%d for %d)"):format(name, ui, n))
+    -- each one only the new sliver at the front, narrower than the box round the
+    -- tip each refresh used to cover (the pen's width and the step, padded)
+    local widths, areas = {}, 0
+    for k = 2, #rs do
+        local reg = rs[k].region
+        if rs[k].mode == "ui" and reg then widths[#widths + 1] = reg.w; areas = areas + reg.w * reg.h end
     end
-    -- the pen lifts: the last piece goes at once, and the screen is the stroke
-    local before = #rs
+    table.sort(widths)
+    local med = widths[math.ceil(#widths / 2)] or 999
+    local box = pen[2] + 12
+    ok(med <= 0.85 * box, ("%s: each refresh is the changed sliver (%d px wide, the box was %d)"):format(name, med, box))
+    print(("  %s: refreshes %d px wide on average, %d%% of the old box's area"):format(name, med,
+        math.floor(100 * areas / math.max(1, #widths * box * box))))
+    -- the pen lifts: the screen is the stroke, to its end
     view:onIaPanRelease(nil, { pos = { x = 700, y = y } })
     view:flushPending()
-    local tail
-    for k = before + 1, #rs do if rs[k].mode == "ui" then tail = rs[k] end end
-    ok(tail and tail.region and tail.region.x + tail.region.w >= 690, name .. ": the last piece shows at the lift")
-    ok(not view._live_pend and not view._live_paced, name .. ": nothing is left waiting")
     local ex = 690 - v.area_x
     local e1 = view.area_bb:getPixel(ex, y - v.area_y):getColorRGB32().r
     local ecx, ecy = require("ink/geom").toCanvas(v, 690, y)
@@ -123,14 +121,19 @@ for _i, pen in ipairs({ { "highlighter", 60, 255, nil }, { "felttip", 30, 190, n
     done()
 end
 
--- a solid black pen and a thin grey pencil keep their refresh per sample
-for _i, pen in ipairs({ { "solid", { 0, 0, 0 }, "fast" }, { "pencil", { 40, 40, 40 }, "ui" } }) do
+-- a solid black pen, a thin grey pencil and the smudge keep their refresh per sample
+for _i, pen in ipairs({ { "solid", { 0, 0, 0 }, "fast" }, { "pencil", { 40, 40, 40 }, "ui" }, { "smudge", { 0, 0, 0 }, "ui" } }) do
     local view, rs, tick, done = world(false)
+    if pen[1] == "smudge" then
+        view:choosePenType("solid"); view:setTool("pen"); view.pen_width = 20
+        drag(view, tick, 300, 700, view.view.area_y + 600)
+        view:onIaPanRelease(nil, { pos = { x = 700, y = view.view.area_y + 600 } }); view:flushPending()
+        tick(1000)
+    end
     view:choosePenType(pen[1]); view:setTool("pen")
-    view.pen_width, view.pen_color, view.pen_alpha = 6, pen[2], 255
+    view.pen_width, view.pen_color, view.pen_alpha = pen[1] == "smudge" and 40 or 6, pen[2], 255
     for k = #rs, 1, -1 do rs[k] = nil end
     local n = drag(view, tick, 300, 700, view.view.area_y + 600)
-    ok(not view._live_paced, pen[1] .. ": not paced")
     ok(count(rs, pen[3]) >= n - 2, ("%s: a %s refresh per sample (%d for %d)"):format(pen[1], pen[3], count(rs, pen[3]), n))
     view:onIaPanRelease(nil, { pos = { x = 700, y = view.view.area_y + 600 } }); view:flushPending()
     done()

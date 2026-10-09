@@ -326,9 +326,6 @@ function InkAwayView:beginStroke(sx, sy)
     local wst = (not is_erase) and self:washStyle(style)
     if wst then self:washBegin(wst) end
     if smudge then self:smudgeBegin() end
-    -- a see-through pen or the smudge (wide, in the grey waveform) is refreshed
-    -- at a steady pace on grey e-ink (see liveDirty)
-    self._live_paced = (wst or smudge) and true or false
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -539,13 +536,7 @@ function InkAwayView:finalizeStroke()
             if settle then self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0) end
         end
         self._live_preview = false
-    else
-        -- the last piece of a stroke drawn in the grey waveform, held back by
-        -- the pacing (see liveDirty), goes now
-        self:liveFlush()
-    end
-    self._live_paced = false
-    if was_erase and not self:fastLive() then
+    elseif was_erase then
         -- Taking ink back to white with the fast waveform leaves a faint grey
         -- ghost, which one cleaning refresh over the erased rects removes. A pen
         -- stroke needs nothing more: its live refreshes already showed it as it is

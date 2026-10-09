@@ -58,6 +58,24 @@ function Wash.newMask(w, h, ox, oy)
     return { buf = ffi.new("uint8_t[?]", w * h), w = w, h = h, ox = ox or 0, oy = oy or 0 }
 end
 
+-- What stamping changed in a mask: the box (canvas px, x1 and y1 included) of
+-- the pixels it raised since Wash.unmark, or nil. Drawing live, only those
+-- pixels are drawn and refreshed again (see washPoint).
+function Wash.unmark(m)
+    m.cx0, m.cy0, m.cx1, m.cy1 = math.huge, math.huge, -math.huge, -math.huge
+end
+function Wash.marked(m)
+    if not m.cx0 or m.cx1 < m.cx0 then return nil end
+    return m.cx0, m.cy0, m.cx1, m.cy1
+end
+local function mark(m, x0, x1, y)
+    if not m.cx0 then Wash.unmark(m) end
+    if x0 < m.cx0 then m.cx0 = x0 end
+    if x1 > m.cx1 then m.cx1 = x1 end
+    if y < m.cy0 then m.cy0 = y end
+    if y > m.cy1 then m.cy1 = y end
+end
+
 -- Zero a rect (canvas coordinates) of a mask, or all of it.
 function Wash.clearMask(m, x0, y0, x1, y1)
     if not x0 then ffi.fill(m.buf, m.w * m.h); return end
@@ -78,9 +96,15 @@ local function maskPut(m, v)
         if x + len > w then len = w - x end
         if len <= 0 then return end
         local base = y * w + x
+        local first, last
         for i = 0, len - 1 do
-            if buf[base + i] < v then buf[base + i] = v end
+            if buf[base + i] < v then
+                buf[base + i] = v
+                first = first or i
+                last = i
+            end
         end
+        if first then mark(m, x + first + ox, x + last + ox, y + oy) end
     end
 end
 
@@ -141,6 +165,7 @@ local function softSegment(m, x0, y0, r0, x1, y1, r1, st, alpha)
     for y = by0, by1 do
         local py = y - y0
         local mrow = (y - oy) * w - ox
+        local first, last
         for x = bx0, bx1 do
             local px = x - x0
             local u = (px * dx + py * dy) * inv
@@ -156,9 +181,14 @@ local function softSegment(m, x0, y0, r0, x1, y1, r1, st, alpha)
             if t2 < 1 then
                 local v = floor(alpha * prof[floor(t2 * PROF_N)] + 0.5)
                 local o = mrow + x
-                if buf[o] < v then buf[o] = v end
+                if buf[o] < v then
+                    buf[o] = v
+                    first = first or x
+                    last = x
+                end
             end
         end
+        if first then mark(m, first, last, y) end
     end
 end
 

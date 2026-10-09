@@ -82,13 +82,25 @@ function InkAwayView:washPoint(cx, cy, fresh, p)
     end
     self.last_cx, self.last_cy = cx, cy
     self._live_p = p
+    Wash.unmark(wl.mask)
     Wash.stamp(wl.mask, st, seg, pr, r, Wash.strength(op, st), op.sym, W, H)
-    -- the segment's box, and its mirror images
-    local pad = math.ceil(r) + 2
-    local x0, y0 = math.min(seg[1], seg[#seg - 1]) - pad, math.min(seg[2], seg[#seg]) - pad
-    local x1, y1 = math.max(seg[1], seg[#seg - 1]) + pad, math.max(seg[2], seg[#seg]) + pad
-    local base = { x0 = math.max(0, math.floor(x0)), y0 = math.max(0, math.floor(y0)),
-                   x1 = math.min(W, math.ceil(x1)), y1 = math.min(H, math.ceil(y1)) }
+    -- what changed: only the pixels this piece raised are drawn again and
+    -- refreshed, a sliver at the front of a wide stroke rather than a box round
+    -- the whole tip, so the panel has less to redraw per piece and the stroke
+    -- keeps closer to the pen. A symmetric stroke takes the segment's box and its
+    -- mirror images.
+    local base
+    if not op.sym or op.sym == "off" then
+        local mx0, my0, mx1, my1 = Wash.marked(wl.mask)
+        if not mx0 then return end   -- nothing new under the pen
+        base = { x0 = math.max(0, mx0), y0 = math.max(0, my0), x1 = math.min(W, mx1 + 1), y1 = math.min(H, my1 + 1) }
+    else
+        local pad = math.ceil(r) + 2
+        local x0, y0 = math.min(seg[1], seg[#seg - 1]) - pad, math.min(seg[2], seg[#seg]) - pad
+        local x1, y1 = math.max(seg[1], seg[#seg - 1]) + pad, math.max(seg[2], seg[#seg]) + pad
+        base = { x0 = math.max(0, math.floor(x0)), y0 = math.max(0, math.floor(y0)),
+                 x1 = math.min(W, math.ceil(x1)), y1 = math.min(H, math.ceil(y1)) }
+    end
     if base.x1 <= base.x0 or base.y1 <= base.y0 then return end
     local rects, nr = Symmetry.mirrorRects(base, op.sym, W, H)
     local cacc = self._lw_cacc
