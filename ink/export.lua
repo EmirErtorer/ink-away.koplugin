@@ -384,9 +384,14 @@ end
 local wash_scratch
 function Export.washInto(buf, ow, oh, bpp, offx, offy, canvas, op)
     local _w, st = Wash.isWash(op)
-    local m = Wash.buildMask(op, st, canvas.w, canvas.h, wash_scratch)
-    if not m then return end
-    if not wash_scratch or m.w * m.h > wash_scratch.w * wash_scratch.h then wash_scratch = m end
+    -- the screen's mask when it keeps one (a watercolour's takes long to build),
+    -- else one built in the export's own scratch buffer
+    local m = Wash.peekMask(op, canvas.w, canvas.h)
+    if not m then
+        m = Wash.buildMask(op, st, canvas.w, canvas.h, wash_scratch)
+        if not m then return end
+        if not wash_scratch or m.w * m.h > wash_scratch.w * wash_scratch.h then wash_scratch = m end
+    end
     Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st)
 end
 

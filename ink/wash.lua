@@ -285,6 +285,14 @@ function Wash.cachedMask(op, st, W, H)
     return m
 end
 
+-- The mask the screen already keeps for op, if any (an export reuses it rather
+-- than building it again, without adding to the cache).
+function Wash.peekMask(op, W, H)
+    local e = cache[op]
+    if e and e.sig == signature(op, W, H) then return e.m end
+    return nil
+end
+
 function Wash.clearCache()
     cache, cache_order, cache_bytes = {}, {}, 0
 end
