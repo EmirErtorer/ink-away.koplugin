@@ -80,9 +80,7 @@ function InkAwayView:runAction(id)
     end
     local fav = id:match("^fav(%d)$")
     if fav then
-        local p = self:savedPen(tonumber(fav))
-        if not p then return false end
-        self:usePen(p)
+        if not self:selectPen(tonumber(fav)) then return false end
         self:setTool("pen")
         return true
     end

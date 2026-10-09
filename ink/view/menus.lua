@@ -20,6 +20,7 @@ local _ = require("gettext")
 local Brushes = require("ink/brushes")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
+local Penset = require("ink/penset")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -107,7 +108,7 @@ function InkAwayView:confirmDeleteBrush(key, label)
             local case = self:penset()
             case.types[key] = nil
             for i = #case.favs, 1, -1 do
-                if case.favs[i].style == key then table.remove(case.favs, i) end
+                if case.favs[i].style == key then Penset.removeFav(case, i) end
             end
             self:savePens()
             self:openPenSettings()

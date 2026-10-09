@@ -32,9 +32,10 @@ local function wave(w, h, pad, n)
 end
 
 -- A new w x h bitmap with `pen` drawn on white at `width` px (its own width
--- times the zoom for a true-size sample). `bg` is an optional background colour
--- for the tile around the paper.
-function PenSample.render(pen, w, h, width)
+-- times the zoom for a true-size sample). `colour` says whether the screen
+-- shows colour (the smudge's sample colours), by default whether its buffer
+-- holds colour.
+function PenSample.render(pen, w, h, width, colour)
     local bb = Blitbuffer.new(w, h, Screen.bb:getType())
     bb:fill(WHITE)
     width = math.max(1, width or pen.width or 4)
@@ -48,7 +49,8 @@ function PenSample.render(pen, w, h, width)
     end
     if pen.style == "smudge" then
         -- three bars of colour, dragged across by the smudge
-        local colours = Screen.bb:getType() == Blitbuffer.TYPE_BBRGB32
+        if colour == nil then colour = Screen.bb:getType() == Blitbuffer.TYPE_BBRGB32 end
+        local colours = colour
             and { { 220, 30, 40 }, { 245, 200, 30 }, { 30, 80, 220 } }
             or { { 40, 40, 40 }, { 140, 140, 140 }, { 80, 80, 80 } }
         local bw = math.max(4, math.floor(w / 10))

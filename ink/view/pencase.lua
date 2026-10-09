@@ -1,10 +1,12 @@
 --[[
 The pen case: the Pen sheet. From the top: the reader's saved pens, drawn at
-their real size and colour (a tap takes one up, a hold edits it); the pen in
-hand drawn at its real size on screen, which follows the size slider; its size
-in mm and its opacity; its colour; the kinds of pen; and, for pens that change
-width with pressure, how. Palm rejection, the stabilizer and the other input
-settings, which are set once and not per pen, are in "Pen and input".
+their real size and colour (a tap takes one up, a hold moves, copies or removes
+it, + makes a new one of a chosen kind); the pen in hand drawn at its real size
+on screen, which follows the size slider, with its kind; its size in mm and its
+opacity; its colour; and, for pens that change width with pressure, how. The
+saved pen in hand is edited directly. Palm rejection, the stabilizer and the
+other input settings, which are set once and not per pen, are in "Pen and
+input".
 What is kept, and how each kind of pen remembers its settings: ink/penset.lua.
 Part of InkAwayView (see ink/view.lua).
 ]]
@@ -98,6 +100,28 @@ function InkAwayView:usePen(p)
     self:savePens()
 end
 
+-- Take up saved pen i.
+function InkAwayView:selectPen(i)
+    local p = Penset.select(self:penset(), i)
+    if not p then return false end
+    self:applyPen(p)
+    self:savePens()
+    return true
+end
+
+-- Make the pen in hand another kind (the saved pen in hand changes with it).
+function InkAwayView:setPenKind(style)
+    self:applyPen(Penset.setKind(self:penset(), style))
+    self:savePens()
+end
+
+-- A new saved pen of a kind, taken up.
+function InkAwayView:addPen(style)
+    local i = Penset.addNew(self:penset(), style)
+    if i then self:applyPen(self:penset().cur); self:savePens() end
+    return i
+end
+
 function InkAwayView:choosePenType(style)
     self:applyPen(Penset.choose(self:penset(), style))
     self:savePens()
@@ -122,11 +146,12 @@ function InkAwayView:cachedPenSample(p, w, h, width)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
     local c = p.color or { 0, 0, 0 }
+    local colour = self:colorScreen()
     local id = table.concat({ "pen", p.style, width, p.alpha or 255, c[1], c[2], c[3], w, h,
-        Screen.bb:getType() }, "|")
+        Screen.bb:getType(), tostring(colour) }, "|")
     local e = cache[id]
     if e then return e.bb end
-    local ok, bb = pcall(PenSample.render, p, w, h, width)
+    local ok, bb = pcall(PenSample.render, p, w, h, width, colour)
     if not ok then return nil end
     cache[id] = { bb = bb }
     return bb
@@ -176,7 +201,7 @@ end
 
 -- The pen in hand on a strip of paper, at its real width on screen. Updated in
 -- place while the size or opacity slider moves; a tap opens the kinds of pen.
-local Strip = InputContainer:extend{ w = 0, h = 0, bb = nil, on_tap = nil }
+local Strip = InputContainer:extend{ w = 0, h = 0, bb = nil, on_tap = nil, note = nil }
 function Strip:init()
     self.dimen = GeomUI:new{ x = 0, y = 0, w = self.w, h = self.h }
     if Device:isTouchDevice() then
@@ -188,6 +213,15 @@ function Strip:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     bb:paintRect(x, y, self.w, self.h, WHITE)
     if self.bb then bb:blitFrom(self.bb, x, y, 0, 0, self.w, self.h) end
+    if self.note then
+        -- a pen wider than the strip is shown smaller, and says so
+        local t = TextWidget:new{ text = self.note, face = Font:getFace("cfont", 12), fgcolor = LABEL }
+        local sz = t:getSize()
+        local m = Screen:scaleBySize(3)
+        bb:paintRect(x + self.w - sz.w - 2 * m, y + self.h - sz.h - m, sz.w + 2 * m, sz.h + m, WHITE)
+        t:paintTo(bb, x + self.w - sz.w - m, y + self.h - sz.h)
+        t:free()
+    end
 end
 function Strip:setImage(new)
     if self.bb then self.bb:free() end
@@ -228,8 +262,8 @@ function InkAwayView:openPenSettings()
         add(vspan(10))
 
         -- Your pens, at their real size and colour: a tap takes one up, a hold
-        -- replaces, moves or removes it
-        local per = 6
+        -- moves, copies or removes it, + makes a new one
+        local per = (content_w >= Screen:scaleBySize(7 * 52)) and 7 or 6
         local fw = math.floor((content_w - (per - 1) * gap) / per)
         local fh = Screen:scaleBySize(34)
         local inner = fw - Screen:scaleBySize(6)
@@ -238,16 +272,20 @@ function InkAwayView:openPenSettings()
             -- thin enough to read as a stroke: the strip below shows the real size
             local bb = self:cachedPenSample(p, inner, fh, math.min(p.width * zoom, math.floor(fh * 0.4)))
             favs[#favs + 1] = frame(self:imageTile(bb, inner, fh,
-                function() self:usePen(p); again() end,
-                function() self:editSavedPen(i) end), Penset.same(p, cur))
+                function() self:selectPen(i); again() end,
+                function() self:editSavedPen(i) end), case.sel == i)
         end
         if #case.favs < Penset.FAV_CAP then
             favs[#favs + 1] = frame(Button:new{ text = "+", text_font_size = 20, text_font_bold = true,
                 width = inner, height = fh, bordersize = 0, radius = Screen:scaleBySize(10),
                 background = TILE_BG, margin = 0, padding = 0, show_parent = self,
-                callback = function() Penset.addFav(case); self:savePens(); again() end }, false)
+                callback = function() closeSelf(); self:openPenTypes(true) end }, false)
         end
         add(rows(favs, per, gap))
+        if not case.sel then
+            add(vspan(4))
+            add(self:sheetHint(_("The pen in hand is not one of your pens: + keeps it as a new one."), content_w))
+        end
         add(vspan(12))
 
         -- the pen in hand, its real size on screen, and its kind: tap to change
@@ -257,7 +295,13 @@ function InkAwayView:openPenSettings()
         local strip = Strip:new{ w = strip_w, h = strip_h,
             on_tap = function() closeSelf(); self:openPenTypes() end }
         local function preview()
-            strip:setImage(PenSample.render(case.cur, strip.w, strip.h, math.max(1, case.cur.width * zoom)))
+            -- at its real size on screen; a pen too wide for the strip is shown
+            -- smaller (with a note), so it never fills it edge to edge
+            local real = math.max(1, case.cur.width * zoom)
+            local fit = math.max(1, math.floor(strip.h * 0.55))
+            local shown = math.min(real, fit)
+            strip.note = shown < real and string.format(_("shown at %d%%"), math.floor(shown / real * 100 + 0.5)) or nil
+            strip:setImage(PenSample.render(case.cur, strip.w, strip.h, shown, self:colorScreen()))
         end
         preview()
         self._pen_strip = strip
@@ -312,10 +356,11 @@ function InkAwayView:openPenSettings()
 end
 
 -- The kinds of pen, each drawn as it is set, in groups; the reader's made
--- brushes (a hold deletes one), and making one. A tap takes the kind up, set as
--- it was last time, and goes back to the Pen sheet.
-function InkAwayView:openPenTypes()
-    if self:rebuildSheet("_pentypes_dialog") then return end
+-- brushes (a hold deletes one), and making one. A tap makes the pen in hand
+-- that kind and goes back to the Pen sheet; with `adding` (from +) it makes a
+-- new saved pen of that kind instead.
+function InkAwayView:openPenTypes(adding)
+    self:closeSheet("_pentypes_dialog")
     self:ensureUserIcons()
     local content_w, gap = self:sheetWidth()
     local function closeSelf() self:closeSheet("_pentypes_dialog") end
@@ -324,7 +369,12 @@ function InkAwayView:openPenTypes()
         local cur = case.cur
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Kind of pen"), content_w, _("Back"), function() closeSelf(); self:openPenSettings() end))
+        add(self:sheetTitle(adding and _("New pen") or _("Kind of pen"), content_w, _("Back"),
+            function() closeSelf(); self:openPenSettings() end))
+        if adding then
+            add(vspan(4))
+            add(self:sheetHint(_("Choose its kind. You can then set its size and colour."), content_w))
+        end
         local cols = 5
         local kw = math.floor((content_w - (cols - 1) * gap) / cols)
         local kh = Screen:scaleBySize(34)
@@ -334,8 +384,12 @@ function InkAwayView:openPenTypes()
             local bb = self:cachedPenSample(shown, kw - Screen:scaleBySize(6), kh,
                 math.min(p.width, math.floor(kh * 0.45)))
             local tile = frame(self:imageTile(bb, kw - Screen:scaleBySize(6), kh,
-                function() closeSelf(); self:choosePenType(style); self:openPenSettings() end, hold_cb),
-                cur.style == style)
+                function()
+                    closeSelf()
+                    if adding then self:addPen(style) else self:setPenKind(style) end
+                    self:openPenSettings()
+                end, hold_cb),
+                not adding and cur.style == style)
             return VerticalGroup:new{ align = "center", tile, caption(_(label), kw) }
         end
         for _i, g in ipairs(Penset.GROUPS) do
@@ -418,17 +472,20 @@ function InkAwayView:penColourRow(content_w, gap, cur, closeSelf, again)
     return out
 end
 
--- A saved pen's menu (from a hold): replace it with the pen in hand, move it,
--- or remove it.
+-- A saved pen's menu (from a hold): move it, copy it, or remove it. (The
+-- saved pen in hand is changed by changing the pen itself.)
 function InkAwayView:editSavedPen(i)
     local case = self:penset()
-    local function done() self:savePens(); self:openPenSettings() end
-    self:openActionSheet("_penfav_menu", _("Saved pen"), nil, {
-        { { _("Replace with the pen in hand"), function() Penset.replaceFav(case, i); done() end } },
+    local function done() self:applyPen(case.cur); self:savePens(); self:openPenSettings() end
+    local rows_ = {
         { { _("Move left"), function() Penset.moveFav(case, i, -1); done() end },
           { _("Move right"), function() Penset.moveFav(case, i, 1); done() end } },
-        { { _("Remove"), function() Penset.removeFav(case, i); done() end, true } },
-    })
+    }
+    if #case.favs < Penset.FAV_CAP then
+        rows_[#rows_ + 1] = { { _("Make a copy"), function() Penset.duplicateFav(case, i); done() end } }
+    end
+    rows_[#rows_ + 1] = { { _("Remove"), function() Penset.removeFav(case, i); done() end, true } }
+    self:openActionSheet("_penfav_menu", _("Saved pen"), nil, rows_)
 end
 
 ------------------------------------------------------------------------------
