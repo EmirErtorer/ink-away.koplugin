@@ -351,6 +351,22 @@ end
 
 -- Ink follows its book when KOReader moves, renames, copies or deletes it (the
 -- file browser, "Move book metadata"...). Once per KOReader run.
+-- The ink in folder `src` of the book at `doc_path`, which is being deleted,
+-- into the trash of Ink Away's library, under the book's title. Returns
+-- whether it went.
+function BookInk.trashDeleted(src, doc_path)
+    local G = rawget(_G, "G_reader_settings")
+    local root = require("ink/library").root(G and G:readSetting("inkaway_library_dir"))
+    if not root then return false end
+    local name
+    pcall(function()
+        local props = docSettings():open(doc_path):readSetting("doc_props")
+        name = props and props.title
+    end)
+    if not name or name == "" then name = Storage.stem(doc_path) end
+    return require("ink/trash").putBookInk(root, src, { name = name, book = doc_path, gone = true }) ~= nil
+end
+
 function BookInk.installFollow()
     local DocSettings = docSettings()
     if not (DocSettings and DocSettings.updateLocation) or DocSettings._inkaway_follows then return end
@@ -359,11 +375,16 @@ function BookInk.installFollow()
     DocSettings.updateLocation = function(doc_path, new_doc_path, copy)
         local src
         pcall(function() src = BookInk.find(doc_path) end)
-        -- deleted: the ink (and its pictures) go with the book, before KOReader
-        -- removes its folder
+        -- deleted: the ink (and its pictures) wait in Ink Away's trash, taken
+        -- out before KOReader removes the book's folder; gone with the book only
+        -- if the trash can't take them
         if src and not new_doc_path then
-            for _i, sfx in ipairs(SUFFIXES) do os.remove(BookInk.path(src) .. sfx) end
-            BookInk.prunePictures(src, {})
+            local ok, kept = pcall(BookInk.trashDeleted, src, doc_path)
+            if not (ok and kept) then
+                if not ok then logger.warn("Ink Away: the book's ink could not go to the trash:", kept) end
+                for _i, sfx in ipairs(SUFFIXES) do os.remove(BookInk.path(src) .. sfx) end
+                BookInk.prunePictures(src, {})
+            end
         end
         local r = { orig(doc_path, new_doc_path, copy) }
         if src and new_doc_path then

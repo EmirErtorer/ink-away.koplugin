@@ -101,7 +101,13 @@ function InkAwayView:restoreTrashItem(it)
     end
     if it.kind == "bookink" then
         self:bookInkBack(it)
-        self:showNotice(string.format(_("Put back on %s"), it.name or ""))
+        if it.book and not Storage.exists(it.book) then
+            UIManager:show(InfoMessage:new{ text = string.format(
+                _("The annotations of %s are back where the book was. They show again when the book is back in that place."),
+                it.name or "") })
+        else
+            self:showNotice(string.format(_("Put back on %s"), it.name or ""))
+        end
         return
     end
     if self._library then self:refreshLibrary() end
@@ -139,7 +145,9 @@ function InkAwayView:trashRow(it)
         local title = (it.name and it.name ~= "") and it.name or string.format(_("Page %d"), it.page or 1)
         return "file", title, { string.format(_("Page %d of %s"), it.page or 1, it.notebook or "?"), when }
     end
-    if it.kind == "bookink" then return "highlighter", it.name, { _("Annotations on this book"), when } end
+    if it.kind == "bookink" then
+        return "highlighter", it.name, { it.gone and _("Annotations of a deleted book") or _("Annotations on this book"), when }
+    end
     local place = string.format(_("From %s"), self:searchPlace(Storage.dirName(it.from)))
     if it.kind == "folder" then return "folder", it.name, { place, when } end
     return it.nb and "notebook" or "pen", it.name, { place, when }

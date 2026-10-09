@@ -152,7 +152,8 @@ end
 -- Move a book's annotations, Ink Away's file and pictures in the book's
 -- KOReader folder `sidecar` (see ink/reader/bookink.lua), to the trash, in a
 -- folder of their own. `info` is { name = the book's title, book = its file },
--- so they go back to the book wherever it is by then. KOReader's own files stay.
+-- so they go back to the book wherever it is by then; `info.gone` says the book
+-- itself was deleted. KOReader's own files stay.
 -- Returns the item, or nil, err.
 function Trash.putBookInk(root, sidecar, info)
     local BookInk = require("ink/reader/bookink")
@@ -163,7 +164,8 @@ function Trash.putBookInk(root, sidecar, info)
     local stored = Storage.join(dirOf(root), id)
     if not BookInk.transfer(sidecar, stored, false) then return nil, "it could not be moved" end
     local item = { id = id, kind = "bookink", from = sidecar, book = info and info.book,
-        name = info and info.name or Storage.baseName(sidecar), when = Trash.now() }
+        name = info and info.name or Storage.baseName(sidecar), when = Trash.now(),
+        gone = info and info.gone or nil }   -- the book itself was deleted
     data.items[#data.items + 1] = item
     if not save(root, data) then
         BookInk.transfer(stored, sidecar, false)   -- back where it was rather than lose track of it

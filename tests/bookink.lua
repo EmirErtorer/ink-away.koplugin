@@ -272,8 +272,19 @@ do
     local b4 = root .. "/books/copy.epub"
     write(b4, "x"); DS.updateLocation(b3, b4, true)
     ok(BookInk.exists(root .. "/books/copy.sdr") and BookInk.exists(root .. "/books/moved.sdr"), "copy: both have the ink")
+    -- deleted: the ink waits in Ink Away's trash, the book's folder goes
+    local lib = root .. "/lib"; sh("mkdir -p '" .. lib .. "'")
+    local had_G = rawget(_G, "G_reader_settings")
+    _G.G_reader_settings = { readSetting = function(_, k) if k == "inkaway_library_dir" then return lib end end }
+    local Trash = require("ink/trash")
     os.remove(b4); DS.updateLocation(b4)
-    ok(not isdir(root .. "/books/copy.sdr"), "delete: the ink and the folder are gone with the book")
+    ok(not isdir(root .. "/books/copy.sdr"), "delete: the book's folder is gone with the book")
+    local t = Trash.list(lib)[1]
+    ok(t and t.kind == "bookink" and t.gone and t.name == "copy" and t.book == b4,
+        "delete: its ink is in Ink Away's trash, named for the book")
+    ok(Trash.restore(lib, t.id) == root .. "/books/copy.sdr" and BookInk.exists(root .. "/books/copy.sdr"),
+        "delete: put back where the book was, for when it comes back")
+    _G.G_reader_settings = had_G
 
     -- moved onto a folder that already has ink: the two put together
     local b5 = root .. "/books/other.epub"; write(b5, "x"); opened(b5)
