@@ -58,7 +58,10 @@ function InkAwayView:setupLiveWriters()
     local seed = self.live_seed or 0
     if st and (st.engine or (st.pressure and self._live_pressured)) then
         -- a pen whose width changes: each segment with its two pressures
-        self._lw_stroke = function(seg, r, put, p0, p1, t0, t1) Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1) end
+        local nib = st.engine == "nib" and Pens.nibAngle(self.pen_nib) or nil
+        self._lw_stroke = function(seg, r, put, p0, p1, t0, t1)
+            Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1, nib)
+        end
     else
         self._lw_stroke = function(seg, r, put)
             if textured then Raster.pathTex(seg, r, put, st, seed) else Raster.path(seg, r, put) end
@@ -297,6 +300,8 @@ function InkAwayView:beginStroke(sx, sy)
     self.canvas:startStroke(is_erase and "erase" or (smudge and "smudge" or "ink"),
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed, self._live_pressured)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
+    -- a calligraphy nib keeps the angle it was drawn with
+    if st and st.engine == "nib" and self.pen_nib and self.canvas.live then self.canvas.live.nib = self.pen_nib end
     -- a "hard" erase also removes pictures; the soft default leaves them
     if is_erase and self.erase_bg and self.canvas.live then self.canvas.live.ebg = true end
     self.capturing = true

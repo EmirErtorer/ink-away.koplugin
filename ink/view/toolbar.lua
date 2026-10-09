@@ -40,7 +40,10 @@ local FABS = {
     { rect = "bar",   hidden = "_bar_toggle_hidden",   show = "_show_bar_toggle" },
     { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
     { rect = "back",  hidden = "_back_hidden",         show = "_show_back_fab" },
+    { rect = "pens",  hidden = "_pens_hidden",         show = "_show_pens_fab" },
 }
+
+local PEN_STRIP_MAX = 4   -- saved pens on the floating strip
 
 local InkAwayView = {}
 
@@ -248,11 +251,14 @@ function InkAwayView:ensureUserIcons()
     return ok
 end
 
--- Paint the hairline that separates the toolbar from the canvas, after the icons.
-function InkAwayView:drawToolbarIcons(bb)
+-- Paint the hairline that separates the toolbar from the canvas, after the
+-- icons, and the pen in hand's colour under the Pen button.
+function InkAwayView:drawToolbarIcons(bb, ox, oy)
     if not self._bar_h then return end
+    ox, oy = ox or 0, oy or 0
     local y = (self.dimen and self.dimen.y or 0) + self._bar_h - 1
     bb:paintRect(0, y, self.screen_w, 1, HAIRLINE)
+    if self._btn_w then self:paintPenMark(bb, ox, oy, self._btn_w, self._bar_h) end
 end
 
 function InkAwayView:setTool(tool)
@@ -319,6 +325,13 @@ function InkAwayView:fabRect(which)
     elseif which == "pan" then   -- a round button a little above the zoom pill
         local z = self:fabRect("zoom")
         return { x = z.x, y = z.y - Screen:scaleBySize(12) - w, w = w, h = w }
+    elseif which == "pens" then  -- your first saved pens, at the bottom left
+        local n = self:penStripCount()
+        if n == 0 then return nil end
+        local sw, sh, pad = Screen:scaleBySize(44), Screen:scaleBySize(36), Screen:scaleBySize(5)
+        local pw, ph = n * sw + (n + 1) * pad, sh + 2 * pad
+        return { x = v.area_x + Screen:scaleBySize(56), y = v.area_y + v.area_h - m - ph, w = pw, h = ph,
+                 slot = sw, sh = sh, pad = pad, n = n }
     elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
         -- bar's top left, anchored to the area bottom so it sits on the bar's top
         -- edge when shown and near the screen bottom when collapsed
@@ -378,7 +391,28 @@ function InkAwayView:fabHit(px, py)
         local r = self:fabRect("back")
         if r and InkGeom.inRect(px, py, r) then return "back" end
     end
+    if not self._pens_hidden then
+        local r = self:fabRect("pens")
+        if r and InkGeom.inRect(px, py, r) then
+            local i = math.floor((px - r.x - r.pad / 2) / (r.slot + r.pad)) + 1
+            return "pen" .. math.max(1, math.min(r.n, i))
+        end
+    end
     return nil
+end
+
+-- How many saved pens the floating strip shows (none when it is off).
+function InkAwayView:penStripCount()
+    if not self:penStripOn() then return 0 end
+    return math.min(PEN_STRIP_MAX, #self:penset().favs)
+end
+
+-- The strip is a setting, on by default on readers with a pen.
+function InkAwayView:penStripOn()
+    if self.pen_strip == nil then
+        self.pen_strip = self:getSetting("inkaway_pen_strip", self:deviceHasStylus()) and true or false
+    end
+    return self.pen_strip
 end
 
 -- Act on a completed tap of a control.
@@ -388,7 +422,13 @@ function InkAwayView:fabAction(kind)
     elseif kind == "pan" then self:togglePan()
     elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden)
     elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed)
-    elseif kind == "back" then self:linkBack() end
+    elseif kind == "back" then self:linkBack()
+    elseif kind:match("^pen%d$") then
+        if self:selectPen(tonumber(kind:sub(4))) then
+            if self.tool ~= "pen" then self:setTool("pen") end
+            self:refreshFabRegion(self:fabRect("pens"))
+        end
+    end
 end
 
 -- The Pan button: the first tap picks Pan, a second goes back to the tool in use
@@ -533,6 +573,27 @@ function InkAwayView:freeFabSprites(icons_only)
     self._fab_sprites = nil
 end
 
+-- The floating pen strip at rect r: a light pill with each saved pen drawn
+-- small, the pen in hand underlined in the accent.
+function InkAwayView:drawPenStrip(bb, ox, oy, r)
+    bb:alphablitFrom(self:fabSprite("pens", r.w, r.h), ox + r.x, oy + r.y, 0, 0, r.w, r.h)
+    local case = self:penset()
+    local zoom = self.view.zoom or 1
+    local inset = Screen:scaleBySize(3)
+    local tw, th = r.slot - 2 * inset, r.sh - 2 * inset
+    for i = 1, r.n do
+        local p = case.favs[i]
+        local x = ox + r.x + r.pad + (i - 1) * (r.slot + r.pad)
+        local y = oy + r.y + r.pad
+        local sample = self:cachedPenSample(p, tw, th, math.max(1, math.min(p.width * zoom, math.floor(th * 0.4))))
+        if sample then bb:blitFrom(sample, x + inset, y + inset, 0, 0, tw, th) end
+        if case.sel == i then
+            local uh = math.max(3, Screen:scaleBySize(3))
+            Accent.paintRounded(bb, x + inset, y + r.sh - uh, tw, uh, math.floor(uh / 2))
+        end
+    end
+end
+
 -- Paint the floating controls onto the screen buffer, last in paintTo so they
 -- sit on top. With `br` (an area-local region paint) only the ones it reaches
 -- are painted again; the rest of the screen is untouched.
@@ -572,6 +633,11 @@ function InkAwayView:drawFabs(bb, ox, oy, br)
     if self.notebook and not self._nbbar_toggle_hidden then
         local r = self:fabRect("nbbar")
         if reached(r) then stamp(self._nb_collapsed and "chev_up" or "chev_down", r) end
+    end
+    -- your first saved pens: a tap takes one up; the one in hand is underlined
+    if not self._pens_hidden then
+        local r = self:fabRect("pens")
+        if reached(r) then self:drawPenStrip(bb, ox, oy, r) end
     end
     -- the way back from a followed link: a dark pill
     if not self._back_hidden then

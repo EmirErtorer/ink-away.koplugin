@@ -89,10 +89,25 @@ function VBar:drawActiveToolPill(bb, ox, oy)
     Accent.paintRounded(bb, ox + m, cy + m, self._bar_w - 2 * m, self._btn_h - 2 * m, Screen:scaleBySize(9))
 end
 
--- The hairline between the column and the page.
+-- The hairline between the column and the page, and the pen in hand's colour
+-- under its button (the highlighter's, when it is the highlighter).
 function VBar:drawToolbarIcons(bb, ox, oy)
     if not self._bar_w then return end
-    bb:paintRect((ox or 0) + self._bar_w - 1, oy or 0, 1, self._vbar_h or self.screen_h, Paint.HAIRLINE)
+    ox, oy = ox or 0, oy or 0
+    bb:paintRect(ox + self._bar_w - 1, oy, 1, self._vbar_h or self.screen_h, Paint.HAIRLINE)
+    local want = self.pen_style == "highlighter" and "highlight" or "pen"
+    for i, e in ipairs(self._toolbar_icons or {}) do
+        if e.id == want or (want == "highlight" and e.id == "pen" and not self:vbarHas("highlight")) then
+            self:paintPenMark(bb, ox, oy + self._btn_h * (i - 1), self._bar_w, self._btn_h)
+            break
+        end
+    end
+end
+
+-- Is there a button `id` in the column?
+function VBar:vbarHas(id)
+    for _i, e in ipairs(self._toolbar_icons or {}) do if e.id == id then return true end end
+    return false
 end
 
 -- Add these to a view class.

@@ -137,7 +137,7 @@ function Pens.paint(op, put)
     if st.engine == "var" then
         return Raster.pathVar(op.pts, Pens.radii(op, st, 1), put)
     elseif st.engine == "nib" then
-        return Pens.nib(op.pts, op.pr, op.width, st, put)
+        return Pens.nib(op.pts, op.pr, op.width, st, put, Pens.nibAngle(op.nib))
     elseif st.engine == "wash" then
         -- see-through pens blend in ink/wash.lua; here only their footprint, for
         -- the hit tests that ask what a stroke covers
@@ -152,8 +152,16 @@ function Pens.paint(op, put)
     return Raster.pathTex(op.pts, op.width / 2, put, st, op.seed or 0)
 end
 
--- The calligraphy nib along pts, `width` long at full pressure.
-function Pens.nib(pts, pr, width, st, put)
+-- A calligraphy nib's angle in degrees (0 flat, 45 the usual slant, 90
+-- upright; nil the usual) as the rasterizer takes it, in screen radians.
+function Pens.nibAngle(deg)
+    if not deg then return NIB end
+    return -deg * math.pi / 180
+end
+
+-- The calligraphy nib along pts, `width` long at full pressure, at `angle`
+-- (screen radians, the usual slant by default).
+function Pens.nib(pts, pr, width, st, put, angle)
     local lens
     if pr then
         lens = {}
@@ -161,19 +169,20 @@ function Pens.nib(pts, pr, width, st, put)
     end
     local thick = width * (st.thin or 0.16)
     if thick < 1 then thick = 1 end
-    Raster.pathNib(pts, width, thick, NIB, put, lens)
+    Raster.pathNib(pts, width, thick, angle or NIB, put, lens)
 end
 
 -- One live segment from (x0, y0, p0) to (x1, y1, p1) at full radius r (already
 -- scaled to the target), or a dot when x0 is nil; t0 and t1 are its ends'
 -- distances from the stroke's start, in widths (for the start of the taper; the
--- end's is drawn when the stroke is finished). Draws what Pens.paint draws for
--- that piece of the stroke.
-function Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1)
+-- end's is drawn when the stroke is finished), and nib a calligraphy nib's
+-- angle (Pens.nibAngle). Draws what Pens.paint draws for that piece of the
+-- stroke.
+function Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1, nib)
     local single = #seg == 2
     if st.engine == "nib" then
         local w = 2 * r
-        return Pens.nib(seg, single and { p1 } or { p0, p1 }, w, st, put)
+        return Pens.nib(seg, single and { p1 } or { p0, p1 }, w, st, put, nib)
     end
     local rs
     if single then

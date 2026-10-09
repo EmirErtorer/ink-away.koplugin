@@ -41,6 +41,7 @@ local NotesView = InkAwayView:extend{
 -- The window uses the narrow toolbar; once full screen, the canvas's own.
 NotesView.buildVBar = VBar.buildVBar
 NotesView.vbarActive = VBar.vbarActive
+NotesView.vbarHas = VBar.vbarHas
 for _i, k in ipairs({ "updateToolbarActive", "drawActiveToolPill", "drawToolbarIcons" }) do
     NotesView[k] = function(self, ...)
         if self.floating then return VBar[k](self, ...) end

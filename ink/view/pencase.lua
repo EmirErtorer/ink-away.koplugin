@@ -81,12 +81,36 @@ function InkAwayView:applyPen(p)
     self.pen_width = p.width or self.pen_width
     self.pen_alpha = p.alpha or 255
     self.pen_color = p.color and { p.color[1], p.color[2], p.color[3] } or { 0, 0, 0 }
+    self.pen_nib = p.nib
 end
 
--- Keep the pen case after a change.
+-- Keep the pen case after a change, and show the pen in hand's colour on the
+-- toolbar.
 function InkAwayView:savePens()
     Penset.save(self:penset(), function(k, v) self:setSetting(k, v) end)
     self:setSetting("inkaway_pen_style", self.pen_style)   -- for 4.0 and older, if ever opened again
+    local r = self.toolbar and self.toolbar.dimen
+    if r and r.w and not self._toolbar_hidden and not self.closing then
+        self._paint_all = true
+        UIManager:setDirty(self, "ui", r)
+    end
+    if not self.closing and not self._pens_hidden then self:refreshFabRegion(self:fabRect("pens")) end
+end
+
+-- The pen in hand's colour as a short bar under its toolbar button (x, y, w,
+-- h: the button's cell on the screen).
+function InkAwayView:paintPenMark(bb, x, y, w, h)
+    local isz = self._icon_sz or math.floor(h * 0.6)
+    local mw = math.max(6, math.floor(isz * 0.7))
+    local mh = math.max(3, Screen:scaleBySize(3))
+    local mx = x + math.floor((w - mw) / 2)
+    local my = y + math.floor((h + isz) / 2) + math.max(1, Screen:scaleBySize(1))
+    if my + mh > y + h - 1 then my = y + h - 1 - mh end
+    bb:paintRect(mx, my, mw, mh, Paint.displayColor(self.pen_color, 255))
+    local c = self.pen_color or { 0, 0, 0 }
+    if c[1] + c[2] + c[3] > 600 then   -- a light colour gets an edge, to show on white
+        bb:paintBorder(mx, my, mw, mh, 1, HAIRLINE)
+    end
 end
 
 -- The pen in hand changed one setting (field: width, alpha or color).
@@ -332,6 +356,14 @@ function InkAwayView:openPenSettings()
                 self.pen_alpha = a; self:penChanged("alpha", a); showPreview()
             end })
 
+        -- a calligraphy nib's angle
+        if cur.style == "calligraphy" then
+            add(vspan(6))
+            add(SliderRow:new{ label = _("Nib angle"), value = cur.nib or 45, min = 0, max = 90,
+                width = content_w, parent = menu, format = function(v) return string.format("%d\u{00B0}", v) end,
+                on_set = function(v) self.pen_nib = v; self:penChanged("nib", v); showPreview() end })
+        end
+
         -- one row of colours (the smudge has none: it moves the colours already there)
         if not smudge then
             add(vspan(10))
@@ -521,6 +553,17 @@ function InkAwayView:openPenInput()
             add(self:segmentedRow({ { "navigate", _("Navigate") }, { "nothing", _("Nothing") } },
                 self.finger_mode, content_w,
                 function(m) self.finger_mode = m; self:setSetting("inkaway_finger_mode", m); again() end))
+        end
+        if not (self.reader_mode or self.floating) then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Your pens on the page"), is_on = self:penStripOn(),
+                width = content_w, parent = menu, callback = function(on)
+                    self.pen_strip = on; self:setSetting("inkaway_pen_strip", on)
+                    self._paint_all = true
+                    UIManager:setDirty(self, "ui")
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("Your first four saved pens in a small strip at the bottom of the page, one tap away."), content_w))
         end
         add(vspan(10))
         add(ToggleRow:new{ label = _("Hold still to straighten"), is_on = self.hold_straighten,

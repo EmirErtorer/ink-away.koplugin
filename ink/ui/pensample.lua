@@ -42,7 +42,7 @@ function PenSample.render(pen, w, h, width, colour)
     local pad = math.ceil(width / 2) + 4
     local n = 40
     local op = { kind = "ink", style = pen.style, width = width, alpha = pen.alpha or 255,
-                 color = pen.color, seed = 12345, pts = wave(w, h, math.min(pad, w / 3), n) }
+                 color = pen.color, seed = 12345, nib = pen.nib, pts = wave(w, h, math.min(pad, w / 3), n) }
     if Pens.usesPressure(pen.style) then
         op.pr = {}
         for i = 0, n do op.pr[i + 1] = math.floor(70 + 185 * math.sin(i / n * math.pi)) end
