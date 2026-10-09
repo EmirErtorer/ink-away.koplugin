@@ -25,7 +25,9 @@ An item is { op = <op in anchor space>, a = <anchor> }:
                   underline): from the box's bottom, so it stays under the word
                   when a bigger font makes the word taller; ml or mr instead of
                   dx for ink in the left or right margin: its distance from that
-                  screen edge, so it stays in the margin
+                  screen edge, so it stays in the margin; seg for a word a
+                  hyphen splits over two lines: the part the ink is by (2 for
+                  the part on the second line), whose box it is measured from
   rolling, page:  a = { pxp, dx, dy }              dx, dy on the screen
   paging:         a = { page, x, y }               page units
 ]]
@@ -74,9 +76,11 @@ function Place.anchor(op, doc)
     -- lines) the word just above it; then just below; then the nearest one
     local w = doc:wordAt(cx, cy) or doc:wordAt(cx, y0 - 6) or doc:wordAt(cx, y1 + 6)
         or doc:nearestWord(cx, cy)
+    -- a word split over two lines: the part nearest the ink
+    if w and doc.partOf then w = doc:partOf(w, cx, cy) or w end
     local local_op = Place.moved(op, -x0, -y0)
     if w and w.box then
-        local a = { xp0 = w.xp0, xp1 = w.xp1, dx = x0 - w.box.x }
+        local a = { xp0 = w.xp0, xp1 = w.xp1, seg = w.seg, dx = x0 - w.box.x }
         Place.setDy(a, y0, w.box)
         -- ink in a side margin stays in it: kept by its distance from that edge
         local W = doc.width and doc:width()
@@ -109,9 +113,9 @@ function Place.anchorWith(op, doc, a)
     local x0, y0 = origin(op)
     if not x0 then return nil end
     if doc.kind == "paging" or not (a and a.xp0) then return Place.anchor(op, doc) end
-    local box = doc:boxOf(a.xp0, a.xp1)
+    local box = doc:boxOf(a.xp0, a.xp1, a.seg)
     if not box then return Place.anchor(op, doc) end
-    local na = { xp0 = a.xp0, xp1 = a.xp1 }
+    local na = { xp0 = a.xp0, xp1 = a.xp1, seg = a.seg }
     Place.setDy(na, y0, box)
     if a.mr then na.mr = (doc.width and doc:width() or 0) - x0
     elseif a.ml then na.ml = x0
@@ -123,7 +127,8 @@ end
 function Place.pageOf(item, doc)
     local a = item.a
     if a.page then return a.page end
-    if a.xp0 then return doc:pageOf(a.xp0) end
+    -- (the second part of a split word can be on the next page: where it ends)
+    if a.xp0 then return doc:pageOf((a.seg or 1) > 1 and a.xp1 or a.xp0) end
     if a.pxp then return doc:pageOf(a.pxp) end
     return nil
 end
@@ -137,7 +142,7 @@ function Place.place(item, doc)
         return Place.moved(item.op, sx, sy, zoom)
     end
     if a.xp0 then
-        local box = doc:boxOf(a.xp0, a.xp1)
+        local box = doc:boxOf(a.xp0, a.xp1, a.seg)
         if not box then return nil end
         local x
         if a.mr then x = (doc.width and doc:width() or 0) - a.mr

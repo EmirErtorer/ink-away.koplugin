@@ -501,6 +501,58 @@ do
     ok(Place.anchor(circle, rollingDoc()).a.dy ~= nil, "a circle around a word keeps its top offset")
 end
 
+-- ---- ink by a word a hyphen splits over two lines stays by that part ---------------------
+do
+    -- "gal-" ends one line and "loping" starts the next; the reader gives the
+    -- word with the box of both lines together, and its parts one by one
+    local doc = rollingDoc()
+    doc.words.s1 = { xp1 = "s1e", page = 3, box = { x = 20, y = 600, w = 520, h = 40 },
+        parts = { { x = 500, y = 600, w = 40, h = 20 }, { x = 20, y = 620, w = 70, h = 20 } } }
+    -- as the adapter in ink/reader/book.lua: the part nearest the point
+    function doc:partOf(w, x, y)
+        local parts = self.words[w.xp0].parts
+        if not parts or #parts < 2 then return w end
+        local best, bd
+        for k, b in ipairs(parts) do
+            local dx = math.max(b.x - x, 0, x - (b.x + b.w))
+            local dy = math.max(b.y - y, 0, y - (b.y + b.h))
+            if not bd or dx * dx + dy * dy < bd then best, bd = k, dx * dx + dy * dy end
+        end
+        return { xp0 = w.xp0, xp1 = w.xp1, box = parts[best], seg = best }
+    end
+    local plainBox, plainPage = doc.boxOf, doc.pageOf
+    function doc:boxOf(xp0, xp1, seg)
+        local w = self.words[xp0]
+        if w and w.parts and w.page == self.page then return w.parts[math.min(seg or 1, #w.parts)] end
+        return plainBox(self, xp0, xp1, seg)
+    end
+    function doc:pageOf(xp)
+        if xp == "s1e" then return self.words.s1.page_end or self.words.s1.page end
+        return plainPage(self, xp)
+    end
+    -- a note under "loping"
+    local note = { kind = "ink", width = 4, alpha = 255, pts = { 25, 650, 85, 650 } }
+    local ox, oy = bbox(note)
+    local item = Place.anchor(note, doc)
+    ok(item and item.a.xp0 == "s1" and item.a.seg == 2, "split word: anchored to its second part")
+    local x0, y0 = bbox(Place.place(item, doc))
+    ok(math.abs(x0 - ox) < 1 and math.abs(y0 - oy) < 1,
+        ("split word: placed back where it was drawn (%.0f,%.0f, drawn at %.0f,%.0f)"):format(x0, y0, ox, oy))
+    -- ink by the first part stays there
+    local tick = { kind = "ink", width = 4, alpha = 255, pts = { 505, 590, 535, 590 } }
+    local tx, ty = bbox(tick)
+    local t_item = Place.anchor(tick, doc)
+    x0, y0 = bbox(Place.place(t_item, doc))
+    ok(t_item.a.seg == 1 and math.abs(x0 - tx) < 1 and math.abs(y0 - ty) < 1, "split word: ink by its first part stays there")
+    -- a new layout where the word is whole: by the word
+    doc.words.s1.parts = { { x = 300, y = 700, w = 110, h = 24 } }
+    x0, y0 = bbox(Place.place(item, doc))
+    ok(math.abs(x0 - (300 + ox - 20)) < 1 and math.abs(y0 - (724 + oy - 640)) < 1, "split word: by the whole word in a layout that keeps it whole")
+    -- split over two pages: the note is on the page with the second part
+    doc.words.s1.page_end = 4
+    ok(Place.pageOf(item, doc) == 4 and Place.pageOf(t_item, doc) == 3, "split word over two pages: each part's ink on its own page")
+end
+
 -- ---- pictures are kept in the book's folder --------------------------------------------
 do
     local root = os.tmpname(); os.remove(root)

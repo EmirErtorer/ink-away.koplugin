@@ -124,9 +124,26 @@ function Book:doc()
             local ok, p = pcall(document.getPageFromXPointer, document, xp)
             return ok and p or nil
         end
-        function d.boxOf(_, xp0, xp1)
+        -- a word a hyphen splits over two lines comes with the box of both
+        -- lines together: the part nearest (x, y) instead, and which it is
+        function d.partOf(_, w, x, y)
+            local ok, boxes = pcall(document.getScreenBoxesFromPositions, document, w.xp0, w.xp1, true)
+            if not (ok and boxes and #boxes > 1) then return w end
+            local best, bd
+            for k, b in ipairs(boxes) do
+                local dx = math.max(b.x - x, 0, x - (b.x + b.w))
+                local dy = math.max(b.y - y, 0, y - (b.y + b.h))
+                local dd = dx * dx + dy * dy
+                if not bd or dd < bd then best, bd = k, dd end
+            end
+            return { xp0 = w.xp0, xp1 = w.xp1, box = boxes[best], seg = best }
+        end
+        -- the word's box (part `seg` of a split word; the whole word, or what
+        -- of it is on the screen, when it is not split now)
+        function d.boxOf(_, xp0, xp1, seg)
             local ok, boxes = pcall(document.getScreenBoxesFromPositions, document, xp0, xp1, true)
-            return ok and boxes and boxes[1] or nil
+            if not (ok and boxes and #boxes > 0) then return nil end
+            return boxes[math.min(seg or 1, #boxes)]
         end
     end
     self._doc = d
