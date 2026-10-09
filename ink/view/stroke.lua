@@ -222,11 +222,13 @@ end
 
 -- Add a screen point to the live stroke (kept in canvas coords) and draw it.
 -- The stabilizer pulls the point towards the previous one, turning wobble into a
--- clean line; strength 0 draws the raw point.
-function InkAwayView:addScreenPoint(sx, sy, fresh)
+-- clean line; strength 0 draws the raw point. The `lift` point is taken as it
+-- is: the smoothed line trails the pen, and would otherwise stop short of where
+-- the pen left (a quick highlighter stroke missed the last word).
+function InkAwayView:addScreenPoint(sx, sy, fresh, lift)
     if self._wipe then return self:wipeTo(sx, sy) end   -- the whole-stroke eraser
     local cx, cy = self:toCanvasClamped(sx, sy)
-    if fresh then
+    if fresh or lift then
         self.sm_x, self.sm_y = cx, cy
     else
         local a = InkGeom.stabilizerAlpha(self.stabilizer)

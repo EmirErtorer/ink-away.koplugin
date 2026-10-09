@@ -648,7 +648,8 @@ function InkAwayView:onIaPanRelease(_, ges)
         return true
     end
     if not self.capturing then return false end
-    if ges and ges.pos then self:addScreenPoint(ges.pos.x, ges.pos.y, false) end
+    -- the lift: the stroke ends where the pen left (see addScreenPoint)
+    if ges and ges.pos then self:addScreenPoint(ges.pos.x, ges.pos.y, false, true) end
     self:scheduleFinalize(ges and ges.pos and ges.pos.x or 0,
                           ges and ges.pos and ges.pos.y or 0)
     return true
@@ -684,7 +685,7 @@ function InkAwayView:onIaSwipe(_, ges)
     if not self.capturing then return false end
     -- swipe reports the lift point separately as end_pos
     local p = ges and (ges.end_pos or ges.pos)
-    if p then self:addScreenPoint(p.x, p.y, false) end
+    if p then self:addScreenPoint(p.x, p.y, false, true) end
     self:scheduleFinalize(p and p.x or 0, p and p.y or 0)
     return true
 end

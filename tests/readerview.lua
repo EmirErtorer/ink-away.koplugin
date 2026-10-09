@@ -207,6 +207,21 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     end
     ok(view:sheetLeftX() == view._vb_thick, tag .. ": sheets open right of a left toolbar")
 
+    -- with the stabilizer on, a stroke still ends where the pen lifted
+    view:choosePenType("solid"); view:setTool("pen")
+    view.stabilizer = 60
+    local n0 = #view.canvas.ops
+    view:onIaTouch(nil, pos(tw + 40, H / 2))
+    view:onIaPan(nil, pos(tw + 200, H / 2))
+    view:onIaPanRelease(nil, pos(tw + 200, H / 2))
+    view:flushPending()
+    local made = view.canvas.ops[#view.canvas.ops]
+    local lx = require("ink/geom").toCanvas(view.view, tw + 200, H / 2)
+    ok(#view.canvas.ops == n0 + 1 and math.abs(made.pts[#made.pts - 1] - lx) < 0.01,
+        tag .. ": the stroke ends where the pen lifted (" .. tostring(made and made.pts[#made.pts - 1]) .. " of " .. lx .. ")")
+    view:undo()
+    view.stabilizer = 40
+
     -- with the lasso, a tap on a picture or a shape's line picks it out (over a
     -- book there is no Pan to do it), and a hold does too
     view:dropSelection()
