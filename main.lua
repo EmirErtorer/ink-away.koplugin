@@ -64,7 +64,7 @@ function InkAway:init()
         end
     end
     -- the book gestures, once, after every plugin (the gesture manager too) is up
-    if not G_reader_settings:readSetting("inkaway_gestures_setup") then
+    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 2 then
         UIManager:nextTick(function() self:setupEntryGestures() end)
     end
     -- emulator hook: INKAWAY_AUTOOPEN opens the canvas straight away, once; the
@@ -100,58 +100,37 @@ function InkAway:addToMainMenu(menu_items)
 end
 
 -- Set the book gestures in KOReader's gesture manager, where they are free
--- (see ink/reader/entrygestures.lua). Gestures already in use are kept, and
--- listed in a note for the next time Ink Away opens.
+-- (see ink/reader/entrygestures.lua), and keep what was placed, and what held
+-- the gestures that weren't, for the notice the first time Ink Away opens
+-- (see ink/view/welcome.lua). With the gesture manager off that is all the
+-- notice can say, and the setup runs again once it is on.
 function InkAway:setupEntryGestures()
-    if G_reader_settings:readSetting("inkaway_gestures_setup") then return end
+    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) >= 2 then return end
     local g = self.ui and self.ui.gestures
-    if not (g and type(g.data) == "table") then return end   -- the gesture manager is off
+    if not (g and type(g.data) == "table") then
+        G_reader_settings:saveSetting("inkaway_entry_gestures", { off = true })
+        return
+    end
     local EntryGestures = require("ink/reader/entrygestures")
-    local set, taken = EntryGestures.apply(g.data)
-    if #set > 0 then
+    local placed, busy, n = EntryGestures.apply(g.data)
+    if n > 0 then
         g.updated = true
         pcall(g.onFlushSettings, g)
     end
-    G_reader_settings:saveSetting("inkaway_gestures_setup", 1)
-    if #taken > 0 then
-        local names = {
-            one_finger_swipe_right_edge_up = _("Swipe up along the right edge"),
-            one_finger_swipe_right_edge_down = _("Swipe down along the right edge"),
-        }
-        local lines, seen = {}, {}
-        for _i, t in ipairs(taken) do
-            local key = t.want.ges
-            if not seen[key] then
-                seen[key] = true
-                local what = ""
-                pcall(function() what = Dispatcher:menuTextFunc(t.current) end)
-                lines[#lines + 1] = "\u{2022} " .. names[key] .. (what ~= "" and (": " .. what) or "")
-            end
-        end
-        G_reader_settings:saveSetting("inkaway_gesture_notice", table.concat({
-            _("Ink Away left these gestures as they are, as they already do something:"),
-            table.concat(lines, "\n"),
-            _("Ink Away uses swipe up along the right edge for book notes, and swipe down for annotating the book. To use them, change them in Settings \u{2192} Taps and gestures \u{2192} Gesture manager \u{2192} One-finger swipe; the actions are \u{201C}Ink Away: book notes\u{201D} and \u{201C}Ink Away: annotate the book\u{201D}."),
-        }, "\n\n"))
+    local held = {}
+    for _i, b in ipairs(busy) do
+        local what = ""
+        pcall(function() what = Dispatcher:menuTextFunc(b.current) end)
+        what = what:gsub(":.*$", "")   -- the action, without its settings
+        held[#held + 1] = { feature = b.feature, section = b.section, ges = b.ges, what = what }
     end
-end
-
--- The note about the book gestures, the first time Ink Away opens after it.
-function InkAway:gestureNotice()
-    local text = G_reader_settings:readSetting("inkaway_gesture_notice")
-    if not text then return end
-    G_reader_settings:delSetting("inkaway_gesture_notice")
-    UIManager:scheduleIn(0.4, function()
-        UIManager:show(require("ui/widget/infomessage"):new{ text = text })
-    end)
+    G_reader_settings:saveSetting("inkaway_entry_gestures", { placed = placed, held = held })
+    G_reader_settings:saveSetting("inkaway_gestures_setup", 2)
 end
 
 -- Draw on the book being read (does nothing outside a book).
 function InkAway:onInkAwayAnnotate()
-    if self.book then
-        self.book:annotate()
-        self:gestureNotice()
-    end
+    if self.book then self.book:annotate() end
     return true
 end
 
@@ -159,7 +138,6 @@ end
 function InkAway:onInkAwayBookNotes()
     if self.book and self.book.openNotes then
         self.book:openNotes()
-        self:gestureNotice()
     else self:openCanvas() end
     return true
 end
@@ -200,7 +178,6 @@ function InkAway:openCanvas(library)
     for _, w in ipairs(existing) do UIManager:close(w) end
     local InkAwayView = require("ink/view")
     UIManager:show(InkAwayView:new{ show_library = library or nil })
-    self:gestureNotice()
 end
 
 return InkAway

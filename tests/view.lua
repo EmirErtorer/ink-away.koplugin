@@ -1597,28 +1597,85 @@ do
     view2:onCloseWidget()
 end
 
--- ---- device tips: once by themselves on a Boox-like reader, again on request ----
+-- ---- device tips: once by themselves where still needed, again on request ----
 do
     UIManager.reset()
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
+    view._android = true
     local PTS = require("ink/ui/pentestscreen")
     local real = PTS.deviceFacts
+    -- a Boox: Ink Away asks for the fast refresh itself, so nothing unasked
     PTS.deviceFacts = function() return { android = true, eink = true, eink_full = false, boox = true } end
     view:setSetting("inkaway_device_tip_shown", nil)
     UIManager.shown = nil
     view:deviceTips(false)
-    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: shown once by themselves")
+    ok(UIManager.shown == nil, "tips: a Boox needs none unasked")
+    view:deviceTips(true)
+    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: a Boox's on request")
+    view:setSetting("inkaway_boox_fast", false)
+    view:setSetting("inkaway_device_tip_shown", nil)
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: a Boox with the fast refresh off gets it once")
+    view:setSetting("inkaway_boox_fast", nil)
+    -- another Android reader KOReader can't drive: once by itself
+    PTS.deviceFacts = function() return { android = true, eink = false } end
+    view:setSetting("inkaway_device_tip_shown", nil)
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown and UIManager.shown.text:find("per%-app refresh"), "tips: shown once by themselves")
     UIManager.shown = nil
     view:deviceTips(false)
     ok(UIManager.shown == nil, "tips: not a second time")
     view:deviceTips(true)
-    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: again from Settings")
+    ok(UIManager.shown and UIManager.shown.text:find("per%-app refresh"), "tips: again on request")
     PTS.deviceFacts = function() return { android = true, eink = true, eink_full = true } end
     view:deviceTips(true)
     ok(UIManager.shown.text:find("needs no special settings"), "tips: a fully driven reader needs none")
     PTS.deviceFacts = real
     view:onCloseWidget()
+end
+
+-- ---- the notice the first time Ink Away opens: once, and the device tip with it ----
+do
+    UIManager.reset()
+    G_reader_settings.data.inkaway_welcome_seen = nil
+    G_reader_settings.data.inkaway_entry_gestures = { placed = {
+        booknotes = { gesture_reader = "two_finger_swipe_northwest", gesture_fm = "two_finger_swipe_northwest" },
+        annotate = { gesture_reader = "two_finger_swipe_southwest" } }, held = {} }
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(view._welcome_sheet ~= nil, "welcome: shown the first time Ink Away opens")
+    local sheet = view._welcome_sheet
+    view:closeSheet("_welcome_sheet")
+    if sheet.on_close then sheet.on_close() end
+    ok(G_reader_settings.data.inkaway_welcome_seen == true, "welcome: closing it marks it seen")
+    view:onCloseWidget()
+    UIManager.reset()
+    local view2 = InkAwayView:new{}
+    UIManager:show(view2)
+    ok(view2._welcome_sheet == nil, "welcome: never again")
+    view2:onCloseWidget()
+    -- on an Android reader that still needs the tip, it comes with the notice
+    G_reader_settings.data.inkaway_welcome_seen, G_reader_settings.data.inkaway_device_tip_shown = nil, nil
+    local PTS = require("ink/ui/pentestscreen")
+    local real = PTS.deviceFacts
+    PTS.deviceFacts = function() return { android = true, eink = false } end
+    UIManager.reset()
+    local view3 = InkAwayView:new{}
+    view3._android = true
+    UIManager:show(view3)
+    local s3 = view3._welcome_sheet
+    ok(s3 ~= nil, "welcome: shown on Android too")
+    view3:closeSheet("_welcome_sheet")
+    if s3 and s3.on_close then s3.on_close() end
+    ok(G_reader_settings.data.inkaway_device_tip_shown == true, "welcome: the device tip went with it")
+    PTS.deviceFacts = real
+    view3:onCloseWidget()
+    G_reader_settings.data.inkaway_welcome_seen = true
+    G_reader_settings.data.inkaway_entry_gestures = nil
 end
 
 -- ---- pen pressure: from the pen's frames into the stroke, and off on request ---

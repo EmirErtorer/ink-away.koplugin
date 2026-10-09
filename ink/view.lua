@@ -396,8 +396,10 @@ function InkAwayView:onShow()
     if self._note_on_show then   -- shown over the canvas (and the library)
         UIManager:show(InfoMessage:new{ text = self._note_on_show })
         self._note_on_show = nil
+    elseif self:welcomeDue() then
+        self:showWelcome()       -- once: the book features and their gestures
     elseif self:onAndroid() then
-        self:deviceTips(false)   -- once, on readers KOReader can't fully drive
+        self:deviceTips(false)   -- once, on readers that still need it
     end
     return true
 end
@@ -952,7 +954,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures" }
+    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

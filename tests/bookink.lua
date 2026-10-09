@@ -408,19 +408,75 @@ end
 -- ---- the book gestures: set where free, never over the reader's own ------------------------
 do
     local EntryGestures = require("ink/reader/entrygestures")
-    local data = { gesture_fm = {}, gesture_reader = { one_finger_swipe_right_edge_down = { toggle_frontlight = true } } }
-    local set, taken = EntryGestures.apply(data)
-    ok(data.gesture_reader.one_finger_swipe_right_edge_up.inkaway_booknotes
-        and data.gesture_fm.one_finger_swipe_right_edge_up.inkaway_booknotes, "gestures: swipe up set in the reader and the file browser")
-    ok(data.gesture_reader.one_finger_swipe_right_edge_down.toggle_frontlight
-        and not data.gesture_reader.one_finger_swipe_right_edge_down.inkaway_annotate, "gestures: one in use is left as it is")
-    ok(#set == 2 and #taken == 1 and taken[1].want.ges == "one_finger_swipe_right_edge_down", "gestures: and listed for the note")
-    ok(data.gesture_fm.one_finger_swipe_right_edge_down == nil, "gestures: swipe down is not set outside a book")
-    local s2, t2 = EntryGestures.apply(data)
-    ok(#s2 == 0 and #t2 == 1, "gestures: running again changes nothing")
-    local d3 = { gesture_reader = { one_finger_swipe_right_edge_up = {} } }
+    local Welcome = require("ink/welcome")
+    local R_UP, R_DOWN = "one_finger_swipe_right_edge_up", "one_finger_swipe_right_edge_down"
+    local NW, SW = "two_finger_swipe_northwest", "two_finger_swipe_southwest"
+
+    -- a reader without warmth: both along the right edge
+    local data = { gesture_fm = {}, gesture_reader = {} }
+    local placed, busy, n = EntryGestures.apply(data)
+    ok(data.gesture_reader[R_UP].inkaway_booknotes and data.gesture_fm[R_UP].inkaway_booknotes,
+        "gestures: book notes along the right edge, in the reader and the file browser")
+    ok(data.gesture_reader[R_DOWN].inkaway_annotate and data.gesture_fm[R_DOWN] == nil,
+        "gestures: annotating along the right edge, in a book only")
+    ok(n == 3 and #busy == 0 and placed.booknotes.gesture_reader == R_UP and placed.annotate.gesture_reader == R_DOWN,
+        "gestures: all three placed, nothing in the way")
+    local p2, b2, n2 = EntryGestures.apply(data)
+    ok(n2 == 0 and #b2 == 0 and p2.booknotes.gesture_fm == R_UP, "gestures: running again changes nothing")
+    local c = Welcome.content({ placed = placed, held = {} })
+    ok(c.rows[1].gesture == "Swipe down along the right edge" and c.rows[2].gesture == "Swipe up along the right edge"
+        and c.rows[2].outside == "Outside a book, it opens Ink Away." and not c.info and #c.warnings == 0,
+        "notice: the edge swipes, said plainly, no warning")
+
+    -- a reader with warmth on the right edge (most colour readers): two-finger swipes
+    local warm = { increase_frontlight_warmth = 0 }
+    local cool = { decrease_frontlight_warmth = 0 }
+    data = { gesture_fm = { [R_UP] = warm, [R_DOWN] = cool }, gesture_reader = { [R_UP] = warm, [R_DOWN] = cool } }
+    placed, busy, n = EntryGestures.apply(data)
+    ok(data.gesture_reader[R_UP] == warm and data.gesture_reader[R_DOWN] == cool, "warmth: the reader's own are kept")
+    ok(data.gesture_reader[NW].inkaway_booknotes and data.gesture_fm[NW].inkaway_booknotes,
+        "warmth: book notes on the two-finger swipe from bottom right to top left")
+    ok(data.gesture_reader[SW].inkaway_annotate and data.gesture_fm[SW] == nil,
+        "warmth: annotating on the two-finger swipe from top right to bottom left")
+    ok(#busy == 3, ("warmth: the right edge listed as in use (%d)"):format(#busy))
+    local held = {}
+    for _i, b in ipairs(busy) do
+        held[#held + 1] = { feature = b.feature, section = b.section, ges = b.ges,
+            what = b.current == warm and "Warmth up" or "Warmth down" }
+    end
+    c = Welcome.content({ placed = placed, held = held })
+    ok(c.rows[1].glyph == "ges_two_swipe_sw" and c.rows[2].glyph == "ges_two_swipe_nw", "notice: the two-finger glyphs")
+    ok(c.info and c.info:find("Warmth up") and c.info:find("two%-finger"), "notice: says why two fingers")
+    ok(#c.warnings == 0, "notice: no warning when both got a gesture")
+
+    -- the edge in the reader taken, free in the file browser: the same gesture everywhere when one is free in both
+    data = { gesture_fm = {}, gesture_reader = { [R_UP] = warm } }
+    placed = EntryGestures.apply(data)
+    ok(placed.booknotes.gesture_reader == NW and placed.booknotes.gesture_fm == NW and data.gesture_fm[R_UP] == nil,
+        "gestures: one gesture free in both is used in both")
+
+    -- everything taken: nothing set, a warning naming what holds them
+    data = { gesture_fm = { [R_UP] = warm, [NW] = { toc = true } },
+        gesture_reader = { [R_UP] = warm, [R_DOWN] = cool, [NW] = { toc = true }, [SW] = { bookmarks = true } } }
+    placed, busy, n = EntryGestures.apply(data)
+    ok(n == 0 and placed.booknotes.gesture_reader == nil and placed.annotate.gesture_reader == nil,
+        "full: nothing set over the reader's gestures")
+    held = {}
+    for _i, b in ipairs(busy) do held[#held + 1] = { feature = b.feature, section = b.section, ges = b.ges, what = "X" } end
+    c = Welcome.content({ placed = placed, held = held })
+    ok(not c.rows[1].gesture and #c.warnings == 3 and c.warnings[1]:find("Annotate the book has no gesture")
+        and c.warnings[3]:find("Gesture manager"), "notice: a warning for each, and where to set them")
+
+    -- an emptied gesture counts as free
+    local d3 = { gesture_reader = { [R_UP] = {} } }
     EntryGestures.apply(d3)
-    ok(d3.gesture_reader.one_finger_swipe_right_edge_up.inkaway_booknotes, "gestures: an emptied gesture counts as free")
+    ok(d3.gesture_reader[R_UP].inkaway_booknotes, "gestures: an emptied gesture counts as free")
+
+    -- the gesture manager off, or the setup never ran
+    c = Welcome.content({ off = true })
+    ok(#c.rows == 2 and not c.rows[1].gesture and c.warnings[1]:find("gesture manager is off"), "notice: gesture manager off")
+    c = Welcome.content(nil)
+    ok(#c.warnings == 2, "notice: no setup yet reads as off")
 end
 
 -- ---- what the eraser leaves of a shape stays together -------------------------------

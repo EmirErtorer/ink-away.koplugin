@@ -359,12 +359,23 @@ function InkAwayView:openSettings()
     self:showSheet("_settings_dialog", build)
 end
 
+-- The faster-drawing tip for this reader, or nil: none where KOReader drives
+-- the panel fully. When `auto` (shown unasked), none on a Boox either, where Ink
+-- Away asks for the fast refresh itself (unless the reader turned that off).
+function InkAwayView:deviceTipText(auto)
+    if not self:onAndroid() then return nil end
+    local ok, facts = pcall(function() return require("ink/ui/pentestscreen").deviceFacts() end)
+    if not ok then return nil end
+    if auto and facts.boox and self:getSetting("inkaway_boox_fast", true) ~= false then return nil end
+    return PenTest.androidTip(facts)
+end
+
 -- The faster-drawing tip for Android readers whose panel KOReader can't fully
--- drive: shown once by itself, or again from Settings (`again`).
+-- drive: shown once by itself where it is still needed, or again on request
+-- (`again`).
 function InkAwayView:deviceTips(again)
     if not again and self:getSetting("inkaway_device_tip_shown") then return end
-    local ok, facts = pcall(function() return require("ink/ui/pentestscreen").deviceFacts() end)
-    local tip = ok and PenTest.androidTip(facts)
+    local tip = self:deviceTipText(not again)
     if not tip then
         if again then UIManager:show(InfoMessage:new{ text = _("This reader needs no special settings for Ink Away.") }) end
         return
