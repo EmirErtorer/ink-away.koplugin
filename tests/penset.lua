@@ -22,12 +22,15 @@ do
     local st = Penset.load(get, opts)
     local kinds = {}
     for i, p in ipairs(st.favs) do kinds[i] = p.style end
-    ok(table.concat(kinds, ",") == "solid,ballpoint,fountain,pencil,felttip,highlighter",
-        "new: one saved pen of each everyday kind (" .. table.concat(kinds, ",") .. ")")
-    ok(st.sel == 1 and st.cur.style == "solid" and st.cur.width == 7, "new: the 0.6 mm fineliner in hand (" .. st.cur.width .. " px)")
-    ok(st.favs[3].width == 17 and st.favs[6].width == 71, "new: sizes that read on e-ink (fountain 1.4 mm, highlighter 6 mm)")
+    ok(table.concat(kinds, ",") == "solid,ballpoint,pencil,calligraphy,highlighter,wash,smudge",
+        "new: the starting pens (" .. table.concat(kinds, ",") .. ")")
+    ok(st.sel == 1 and st.cur.style == "solid" and st.cur.width == 21, "new: the 1.8 mm fineliner in hand (" .. st.cur.width .. " px)")
+    ok(st.favs[2].width == 15 and st.favs[3].width == 24 and st.favs[4].width == 31 and st.favs[5].width == 71,
+        "new: ballpoint 1.3 mm, pencil 2 mm, calligraphy 2.6 mm, highlighter 6 mm")
+    ok(st.favs[2].color[3] == 130 and st.favs[4].nib == 45, "new: a dark blue ballpoint, a 45 degree nib")
     local grey = Penset.new({ colour = false, pxmm = 11.8 })
-    ok(#grey.favs == 6 and grey.favs[6].color[1] == 200, "new: on grey a light grey highlighter")
+    ok(#grey.favs == 7 and grey.favs[5].color[1] == 200 and grey.favs[2].color[3] == 0,
+        "new: on grey a light grey highlighter and a black ballpoint")
 end
 
 -- ---- the saved pen in hand is edited directly ------------------------------------
@@ -68,16 +71,16 @@ do
     local _d, get = store()
     local st = Penset.load(get, opts)
     Penset.choose(st, "highlighter")
-    ok(st.sel == 6 and st.cur.style == "highlighter", "choose: the saved highlighter is taken up")
-    Penset.choose(st, "wash")
-    ok(st.sel == nil and st.cur.style == "wash", "choose: a kind with no saved pen, as last set, unsaved")
+    ok(st.sel == 5 and st.cur.style == "highlighter", "choose: the saved highlighter is taken up")
+    Penset.choose(st, "felttip")
+    ok(st.sel == nil and st.cur.style == "felttip", "choose: a kind with no saved pen, as last set, unsaved")
     Penset.set(st, "width", 50)
-    ok(st.favs[6].style == "highlighter", "choose: an unsaved pen changes no saved one")
+    ok(st.favs[5].style == "highlighter", "choose: an unsaved pen changes no saved one")
     Penset.swap(st)
-    ok(st.cur.style == "highlighter" and st.sel == 6, "swap: back to the saved highlighter")
-    ok(Penset.moveFav(st, 6, -1) and st.sel == 5, "move: the pen in hand moves with it")
-    ok(Penset.removeFav(st, 1) and st.sel == 4, "remove: one before it shifts it")
-    ok(Penset.removeFav(st, 4) and st.sel == nil and st.cur.style == "highlighter", "remove: the pen in hand stays, unsaved")
+    ok(st.cur.style == "highlighter" and st.sel == 5, "swap: back to the saved highlighter")
+    ok(Penset.moveFav(st, 5, -1) and st.sel == 4, "move: the pen in hand moves with it")
+    ok(Penset.removeFav(st, 1) and st.sel == 3, "remove: one before it shifts it")
+    ok(Penset.removeFav(st, 3) and st.sel == nil and st.cur.style == "highlighter", "remove: the pen in hand stays, unsaved")
     ok(Penset.use(st, st.favs[1]) and st.sel == 1, "use: a pen drawing like a saved one is that one")
 end
 
@@ -89,9 +92,9 @@ do
     Penset.set(st, "width", 14)
     Penset.save(st, set)
     local back = Penset.load(get, opts)
-    ok(back.cur.style == "fountain" and back.cur.width == 14 and back.sel == 3, "save: the pen in hand and its slot come back")
-    ok(back.types.fountain ~= nil and back.prev ~= nil, "save: and so do the kinds and the previous pen")
-    local gone = Penset.load(get, opts, function(s) return s ~= "fountain" end)
+    ok(back.cur.style == "pencil" and back.cur.width == 14 and back.sel == 3, "save: the pen in hand and its slot come back")
+    ok(back.types.pencil ~= nil and back.prev ~= nil, "save: and so do the kinds and the previous pen")
+    local gone = Penset.load(get, opts, function(s) return s ~= "pencil" end)
     ok(gone.cur.style == "solid", "save: a pen whose style is gone starts fresh")
 end
 
@@ -110,11 +113,29 @@ do
         },
     }
     local st = Penset.load(get, opts)
-    ok(#st.favs == 6 and st.favs[3].style == "fountain" and st.sel == 1 and st.cur.width == px(0.6),
+    ok(#st.favs == 7 and st.favs[3].style == "pencil" and st.sel == 1 and st.cur.width == px(1.8),
         "migrate: the first starting pens are replaced, the pen in hand with them")
     d.inkaway_pens.favs[1].width = px(0.9)
     st = Penset.load(get, opts)
     ok(#st.favs == 5 and st.favs[1].width == px(0.9), "migrate: a case the reader changed is kept")
+end
+
+-- ---- the test build's untouched set becomes today's too --------------------------------
+do
+    local d, get = store()
+    local px = function(mm) return math.floor(mm * 11.8 + 0.5) end
+    local function p(style, mm, color, alpha) return { style = style, width = px(mm), alpha = alpha or 255, color = color } end
+    d.inkaway_pens = {
+        cur = p("ballpoint", 0.8, { 25, 45, 130 }), sel = 2,
+        favs = { p("solid", 0.6, { 0, 0, 0 }), p("ballpoint", 0.8, { 25, 45, 130 }), p("fountain", 1.4, { 0, 0, 0 }),
+                 p("pencil", 1.0, { 40, 40, 40 }), p("felttip", 3.0, { 210, 40, 40 }, 190), p("highlighter", 6.0, { 255, 235, 59 }) },
+    }
+    local st = Penset.load(get, opts)
+    ok(#st.favs == 7 and st.favs[7].style == "smudge" and st.cur.style == "solid" and st.cur.width == px(1.8),
+        "migrate: the test build's untouched pens become today's")
+    d.inkaway_pens.favs[4].width = px(1.5)
+    st = Penset.load(get, opts)
+    ok(#st.favs == 6 and st.favs[4].width == px(1.5), "migrate: a set the reader changed is kept")
 end
 
 -- ---- 4.0's single setting --------------------------------------------------------------

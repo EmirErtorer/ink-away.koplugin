@@ -122,6 +122,8 @@ end
 
 -- Take up saved pen i.
 function InkAwayView:selectPen(i)
+    local fav = self:penset().favs[i]
+    if self.reader_mode and fav and fav.style == "smudge" then return false end   -- (no smudge over a book)
     local p = Penset.select(self:penset(), i)
     if not p then return false end
     self:applyPen(p)
@@ -289,11 +291,15 @@ function InkAwayView:openPenSettings()
         local inner = fw - Screen:scaleBySize(6)
         local favs = {}
         for i, p in ipairs(case.favs) do
+          -- the smudge needs the page under the ink, which a book's ink does not
+          -- keep, so over a book its saved pens are left out
+          if not (self.reader_mode and p.style == "smudge") then
             -- thin enough to read as a stroke: the strip below shows the real size
             local bb = self:cachedPenSample(p, inner, fh, math.min(p.width * zoom, math.floor(fh * 0.4)))
             favs[#favs + 1] = frame(self:imageTile(bb, inner, fh,
                 function() self:selectPen(i); again() end,
                 function() self:editSavedPen(i) end), case.sel == i)
+          end
         end
         -- + is always there, after the last pen; with the case full it says how
         -- to make room rather than vanish
@@ -332,7 +338,7 @@ function InkAwayView:openPenSettings()
         end
         preview()
         self._pen_strip = strip
-        local label = Penset.LABELS[cur.style] or (cur.style:match("^user:(.*)$")) or cur.style
+        local label = Penset.name(cur)
         add(HorizontalGroup:new{ align = "center",
             FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = HAIRLINE, radius = Screen:scaleBySize(10),
                 padding = Screen:scaleBySize(2), margin = 0, background = WHITE, strip },
@@ -510,7 +516,10 @@ function InkAwayView:editSavedPen(i)
         rows_[#rows_ + 1] = { { _("Make a copy"), function() Penset.duplicateFav(case, i); done() end } }
     end
     rows_[#rows_ + 1] = { { _("Remove"), function() Penset.removeFav(case, i); done() end, true } }
-    self:openActionSheet("_penfav_menu", _("Saved pen"), nil, rows_)
+    -- named for the pen held, with its size
+    local p = case.favs[i]
+    self:openActionSheet("_penfav_menu", p and _(Penset.name(p)) or _("Saved pen"),
+        p and Penset.mmText(p.width, self:pxPerMM()) or nil, rows_)
 end
 
 ------------------------------------------------------------------------------

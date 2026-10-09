@@ -39,11 +39,11 @@ Penset.LABELS = {
 -- screen; `grey` on a greyscale one, black when absent). Sized to read well on
 -- e-ink, where a hairline looks faint.
 Penset.DEFAULTS = {
-    solid       = { mm = 0.6, alpha = 255, color = { 0, 0, 0 } },
-    ballpoint   = { mm = 0.8, alpha = 255, color = { 25, 45, 130 }, grey = { 0, 0, 0 } },
+    solid       = { mm = 1.8, alpha = 255, color = { 0, 0, 0 } },
+    ballpoint   = { mm = 1.3, alpha = 255, color = { 25, 45, 130 }, grey = { 0, 0, 0 } },
     fountain    = { mm = 1.4, alpha = 255, color = { 0, 0, 0 } },
-    calligraphy = { mm = 3.2, alpha = 255, color = { 0, 0, 0 }, nib = 45 },
-    pencil      = { mm = 1.0, alpha = 255, color = { 40, 40, 40 } },
+    calligraphy = { mm = 2.6, alpha = 255, color = { 0, 0, 0 }, nib = 45 },
+    pencil      = { mm = 2.0, alpha = 255, color = { 40, 40, 40 } },
     highlighter = { mm = 6.0, alpha = 255, color = { 255, 235, 59 }, grey = { 200, 200, 200 } },
     felttip     = { mm = 3.0, alpha = 190, color = { 210, 40, 40 }, grey = { 70, 70, 70 } },
     wash        = { mm = 10.0, alpha = 160, color = { 40, 120, 220 }, grey = { 90, 90, 90 } },
@@ -95,9 +95,21 @@ end
 -- own colour on a colour screen.
 local function startingFavs(opts)
     return {
-        pen("solid", opts), pen("ballpoint", opts), pen("fountain", opts),
-        pen("pencil", opts), pen("felttip", opts), pen("highlighter", opts),
+        pen("solid", opts), pen("ballpoint", opts), pen("pencil", opts), pen("calligraphy", opts),
+        pen("highlighter", opts), pen("wash", opts), pen("smudge", opts),
     }
+end
+
+-- The pens a 4.0 test build started with before these (by their sizes then):
+-- a case still exactly so was never chosen either, and gets today's set.
+local function earlierFavs(opts)
+    local function old(style, mm)
+        local p = Penset.default(style, opts)
+        p.width = math.max(1, math.floor(mm * (opts.pxmm or 11.8) + 0.5))
+        return p
+    end
+    return { old("solid", 0.6), old("ballpoint", 0.8), old("fountain", 1.4),
+             old("pencil", 1.0), old("felttip", 3.0), old("highlighter", 6.0) }
 end
 
 -- The pens 4.0's first pen case started with (same kind in several colours,
@@ -155,13 +167,15 @@ function Penset.load(get, opts, known)
                 if validPen(p, known) then st.favs[#st.favs + 1] = copyPen(p) end
             end
         end
-        -- the first pen case's starting pens, never changed: today's instead
-        local first = firstFavs(opts)
-        local untouched = #st.favs == #first
-        for i, p in ipairs(first) do untouched = untouched and Penset.same(p, st.favs[i]) end
-        if untouched then
-            st.favs = startingFavs(opts)
-            if indexOf({ favs = first }, st.cur) then st.cur = copyPen(st.favs[1]) end
+        -- an earlier starting set, never changed: today's instead
+        for _i, first in ipairs({ firstFavs(opts), earlierFavs(opts) }) do
+            local untouched = #st.favs == #first
+            for i, p in ipairs(first) do untouched = untouched and Penset.same(p, st.favs[i]) end
+            if untouched then
+                st.favs = startingFavs(opts)
+                if indexOf({ favs = first }, st.cur) then st.cur = copyPen(st.favs[1]) end
+                break
+            end
         end
         local sel = tonumber(saved.sel)
         if not (sel and st.favs[sel] and Penset.same(st.favs[sel], st.cur)) then sel = indexOf(st, st.cur) end
@@ -303,6 +317,12 @@ function Penset.moveFav(st, i, dir)
 end
 
 -- The width as a reader thinks of it: "0.4 mm".
+-- A pen's name, as the pen menu shows it: its kind, or a brush's own name.
+function Penset.name(p)
+    local style = p and p.style or "solid"
+    return Penset.LABELS[style] or style:match("^user:(.*)$") or style
+end
+
 function Penset.mmText(px, pxmm)
     local mm = px / (pxmm or 11.8)
     if mm < 10 then return string.format("%.1f mm", mm) end

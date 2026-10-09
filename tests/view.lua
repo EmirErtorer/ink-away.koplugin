@@ -1783,6 +1783,20 @@ do
     end
     local case = view:penset()
     local start = #case.favs
+    -- holding a saved pen names it
+    view:editSavedPen(2)
+    local named = false
+    local seen2 = {}
+    local function find(t) if type(t) ~= "table" or seen2[t] then return end; seen2[t] = true
+        if t.text == "Ballpoint" then named = true end
+        for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then find(c) end end end
+    find(view._penfav_menu)
+    ok(named, "pens: holding a saved pen shows its name")
+    view:closeSheet("_penfav_menu")
+    -- over a book the smudge is left out
+    view.reader_mode = true
+    ok(not view:selectPen(7) and view.pen_style ~= "smudge", "pens: no smudge over a book")
+    view.reader_mode = nil
     for _i = 1, 3 do
         local p = plus()
         ok(p ~= nil, ("pens: + is there with %d pens"):format(#case.favs))
@@ -1857,8 +1871,8 @@ do
     _G.G_reader_settings.data.inkaway_pens = nil
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
-    ok(view.pen_style == "solid" and view.pen_width >= 2 and view.pen_width <= 8,
-        "pen case: a new reader starts with a fine pen (" .. view.pen_width .. " px)")
+    ok(view.pen_style == "solid" and view.pen_width >= 15 and view.pen_width <= 30,
+        "pen case: a new reader starts with the 1.8 mm fineliner (" .. view.pen_width .. " px)")
     view:openPenSettings()
     ok(view._pen_dialog ~= nil and view._pen_strip ~= nil, "pen case: opens with its true-size preview")
     view:closeSheet("_pen_dialog")
