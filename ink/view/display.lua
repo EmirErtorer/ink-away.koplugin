@@ -39,9 +39,18 @@ end
 -- On Android every refresh, however small, copies the whole screen into the app's
 -- window before the e-ink driver sees it, so there live refreshes of any waveform
 -- go out at most every LIVE_ANDROID_MS.
+-- On grey e-ink the fast waveform goes out at once, as always. The grey one
+-- takes a few hundred ms, and the panel will not start one while an overlapping
+-- one runs: sent for every sample of a wide see-through stroke (a highlighter,
+-- a marker, a watercolour, the smudge), each piece waited for the last and the
+-- stroke trickled in behind the pen. For those it goes out at most every
+-- LIVE_GREY_MS instead, about as long as one takes, each carrying everything
+-- drawn since: the stroke shows in its true greys, a few steps behind the pen,
+-- without a queue. Thin pens in grey keep their refresh per sample.
 local LIVE_FAST_MS = 20
 local LIVE_UI_MS = 80
 local LIVE_ANDROID_MS = 40
+local LIVE_GREY_MS = 320
 local LIVE_TAIL_MS = 35
 local RECONCILE_SEC = 0.8
 
@@ -446,13 +455,17 @@ function InkAwayView:nowMs()
     return os.time() * 1000
 end
 
--- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect. On a colour
--- panel or on Android the rect joins the pending one, which is sent at a bounded
--- pace (see LIVE_*_MS): the first sample shows at once, later ones go with the
--- next update.
+-- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect, sent at
+-- once, except for a see-through stroke in the grey waveform. That, and anything
+-- on a colour panel or on Android, joins the pending rect, which is sent at a
+-- bounded pace (see LIVE_*_MS): the first sample shows at once, later ones go
+-- with the next update.
 function InkAwayView:liveDirty(mode, r, pad)
     local android = self:onAndroid()
-    if not (android or self:colourPanel()) then return self:dirtyAreaRect(mode, r, pad) end
+    local colour = self:colourPanel()
+    if not (android or colour or (self._live_paced and mode ~= "fast")) then
+        return self:dirtyAreaRect(mode, r, pad)
+    end
     local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
     if not x0 then return end
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
@@ -460,7 +473,8 @@ function InkAwayView:liveDirty(mode, r, pad)
     local p = growRect(self._live_pend, x0, y0, x1, y1)
     self._live_pend = p
     if fresh or mode ~= "fast" then p.mode = mode end
-    local gap = android and LIVE_ANDROID_MS or (p.mode == "fast") and LIVE_FAST_MS or LIVE_UI_MS
+    local gap = android and LIVE_ANDROID_MS or (p.mode == "fast") and LIVE_FAST_MS
+        or (colour and LIVE_UI_MS) or LIVE_GREY_MS
     local elapsed = self:nowMs() - (self._live_last or -math.huge)
     if elapsed >= gap then
         self:liveFlush()
