@@ -425,5 +425,36 @@ do
     ok(Place.anchor(circle, rollingDoc()).a.dy ~= nil, "a circle around a word keeps its top offset")
 end
 
+-- ---- pictures are kept in the book's folder --------------------------------------------
+do
+    local root = os.tmpname(); os.remove(root)
+    os.execute("mkdir -p '" .. root .. "/pics' '" .. root .. "/a.sdr'")
+    local pic = root .. "/pics/photo.png"
+    local f = io.open(pic, "wb"); f:write(string.rep("x", 300)); f:close()
+    local sdr = root .. "/a.sdr"
+    local ref = BookInk.keepPicture(sdr, pic)
+    ok(ref:match("^@book/") ~= nil, "picture: named in the book's folder (" .. ref .. ")")
+    local file = BookInk.picturePath(sdr, ref)
+    local g = io.open(file, "rb")
+    ok(g ~= nil and #g:read("*a") == 300, "picture: copied there")
+    if g then g:close() end
+    ok(BookInk.keepPicture(sdr, pic) == ref, "picture: placed again, kept once")
+    ok(BookInk.keepPicture(sdr, file) == ref, "picture: one already there keeps its name")
+    os.remove(pic)
+    ok(io.open(BookInk.picturePath(sdr, ref), "rb") ~= nil, "picture: the original can go, the book keeps its copy")
+    -- moved with the book's folder
+    os.execute("mkdir -p '" .. root .. "/b.sdr'")
+    local d = io.open(BookInk.path(sdr), "wb"); d:write("return {version=1,items={}}"); d:close()
+    BookInk.transfer(sdr, root .. "/b.sdr", false)
+    ok(io.open(BookInk.picturePath(root .. "/b.sdr", ref), "rb") ~= nil
+        and io.open(BookInk.picturePath(sdr, ref), "rb") == nil, "picture: moves with the book's ink")
+    -- unused pictures go (and the emptied folder)
+    BookInk.prunePictures(root .. "/b.sdr", { { op = { kind = "image", path = ref } } })
+    ok(io.open(BookInk.picturePath(root .. "/b.sdr", ref), "rb") ~= nil, "prune: a picture in use stays")
+    BookInk.prunePictures(root .. "/b.sdr", {})
+    ok(io.open(BookInk.picturePath(root .. "/b.sdr", ref), "rb") == nil, "prune: an unused one goes")
+    os.execute("rm -rf '" .. root .. "'")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

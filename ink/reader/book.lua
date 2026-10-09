@@ -210,6 +210,7 @@ function Book:pageOps()
         for _i, idx in ipairs(self._index[page] or {}) do
             local item = data.items[idx]
             local ok, op = pcall(Place.place, item, doc)
+            if ok and op and op.kind == "image" then op.path = BookInk.picturePath(self.sidecar, op.path) end
             -- only what reaches the screen (a page scrolled half away keeps
             -- the rest of its ink out of the way, untouched)
             local x0, y0, x1, y1
@@ -251,7 +252,12 @@ function Book:setPageOps(ops, came_from, shown)
             end
             if a then item = Place.anchorWith(op, doc, a) end
         end
-        if item == nil then item = Place.anchor(op, doc) end
+        if item == nil then
+            item = Place.anchor(op, doc)
+            -- a picture is kept in the book's folder, so the book's ink never
+            -- loses it (see ink/reader/bookink.lua)
+            if item and item.op.kind == "image" then item.op.path = BookInk.keepPicture(self.sidecar, item.op.path) end
+        end
         if item then keep[#keep + 1] = item; map[op] = item end
     end
     local old = {}
@@ -389,6 +395,9 @@ function Book:close()
     if self._view then pcall(function() self._view:closeCanvas() end) end
     if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
     self._view, self._notes_view = nil, nil
+    -- pictures no longer shown go now (not at each save, so an undo could still
+    -- bring one back while the book was open)
+    if self._data and not self._data.read_only then pcall(BookInk.prunePictures, self.sidecar, self._data.items) end
     self._placed, self._index, self._painter = nil, nil, nil
     require("ink/wash").clearCache()
 end

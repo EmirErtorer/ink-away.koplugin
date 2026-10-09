@@ -29,6 +29,10 @@ local BookInk = {}
 
 BookInk.FILE = "inkaway.lua"
 BookInk.VERSION = 1
+-- Pictures placed on the book are kept beside its ink, in this folder, and its
+-- ink names them "@book/<file>" (see BookInk.keepPicture).
+BookInk.PICTURES = "inkaway-pictures"
+local BOOK_REF = "@book/"
 
 local SUFFIXES = { "", ".old" }
 
@@ -198,10 +202,93 @@ local function merge(into, from)
     return into
 end
 
+------------------------------------------------------------------------------
+-- Pictures
+------------------------------------------------------------------------------
+
+-- The book's picture folder.
+function BookInk.picturesDir(sidecar_dir)
+    return sidecar_dir .. "/" .. BookInk.PICTURES
+end
+
+-- A picture's file name in the book's folder: named by its content, so a
+-- picture placed twice is kept once.
+local function pictureName(path)
+    local ext = (path:match("%.([%w]+)$") or "png"):lower()
+    local ok, util = pcall(require, "util")
+    local md5 = ok and util and util.partialMD5 and util.partialMD5(path)
+    if md5 then return md5 .. "." .. ext end
+    local f = io.open(path, "rb")
+    local size = f and f:seek("end") or 0
+    if f then f:close() end
+    local stem = (path:match("([^/]+)%.[^./]*$") or "picture"):gsub("[^%w%-_]", "_")
+    return string.format("%s-%d.%s", stem, size, ext)
+end
+
+-- Keep a picture with the book: copied into its folder (once), and named as
+-- the book's ink names it ("@book/<file>"). A picture already there, or one
+-- that cannot be copied, keeps its path.
+function BookInk.keepPicture(sidecar_dir, path)
+    if type(path) ~= "string" or not sidecar_dir or path:sub(1, #BOOK_REF) == BOOK_REF then return path end
+    local dir = BookInk.picturesDir(sidecar_dir)
+    if path:sub(1, #dir + 1) == dir .. "/" then return BOOK_REF .. path:sub(#dir + 2) end
+    local name = pictureName(path)
+    local dst = dir .. "/" .. name
+    if not isFile(dst) then
+        if not (makePath(dir) and Storage.copyFile(path, dst)) then return path end
+    end
+    return BOOK_REF .. name
+end
+
+-- A picture's path on disk, from the book's ink's name for it.
+function BookInk.picturePath(sidecar_dir, path)
+    if type(path) == "string" and sidecar_dir and path:sub(1, #BOOK_REF) == BOOK_REF then
+        return BookInk.picturesDir(sidecar_dir) .. "/" .. path:sub(#BOOK_REF + 1)
+    end
+    return path
+end
+
+-- Remove the book's pictures its ink no longer shows (and the folder, if
+-- that leaves it empty).
+function BookInk.prunePictures(sidecar_dir, items)
+    if not sidecar_dir then return end
+    local dir = BookInk.picturesDir(sidecar_dir)
+    if not Storage.isDir(dir) then return end
+    local used = {}
+    for _i, it in ipairs(items or {}) do
+        local p = it.op and it.op.kind == "image" and it.op.path
+        if type(p) == "string" and p:sub(1, #BOOK_REF) == BOOK_REF then used[p:sub(#BOOK_REF + 1)] = true end
+    end
+    for _i, e in ipairs(Storage.list(dir)) do
+        if e.mode == "file" and not used[e.name] then os.remove(e.path) end
+    end
+    pcall(os.remove, dir)   -- only when empty
+end
+
+-- Move (or copy) the picture folder from one book folder to another.
+local function transferPictures(src, dst, copy)
+    local from, to = BookInk.picturesDir(src), BookInk.picturesDir(dst)
+    if not Storage.isDir(from) then return end
+    if not copy and not Storage.isDir(to) and os.rename(from, to) then return end
+    makePath(to)
+    for _i, e in ipairs(Storage.list(from)) do
+        if e.mode == "file" then
+            local target = to .. "/" .. e.name
+            if not isFile(target) then
+                local moved = not copy and os.rename(e.path, target)
+                if not moved then Storage.copyFile(e.path, target) end
+            end
+            if not copy then os.remove(e.path) end
+        end
+    end
+    if not copy then pcall(os.remove, from) end
+end
+
 -- Bring the ink in folder `src` to folder `dst` (a copy when `copy`). Ink
 -- already in `dst` is kept, the two put together. Returns whether it is there.
 function BookInk.transfer(src, dst, copy)
     if src == dst then return true end
+    transferPictures(src, dst, copy)
     if BookInk.exists(dst) then
         local into, from = BookInk.load(dst), BookInk.load(src)
         if into.read_only or from.read_only then return false end
@@ -251,9 +338,11 @@ function BookInk.installFollow()
     DocSettings.updateLocation = function(doc_path, new_doc_path, copy)
         local src
         pcall(function() src = BookInk.find(doc_path) end)
-        -- deleted: the ink goes with the book, before KOReader removes its folder
+        -- deleted: the ink (and its pictures) go with the book, before KOReader
+        -- removes its folder
         if src and not new_doc_path then
             for _i, sfx in ipairs(SUFFIXES) do os.remove(BookInk.path(src) .. sfx) end
+            BookInk.prunePictures(src, {})
         end
         local r = { orig(doc_path, new_doc_path, copy) }
         if src and new_doc_path then
