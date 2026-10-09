@@ -22,7 +22,8 @@ end
 function M:widgetRepaint(w)
     if w and w.movable and not w.movable.dimen then
         local ok, sz = pcall(function() return w.movable:getSize() end)
-        w.movable.dimen = ok and sz or { x = 0, y = 0, w = 0, h = 0 }
+        w.movable.dimen = require("ui/geometry"):new{ x = 0, y = 0,
+            w = ok and sz and sz.w or 0, h = ok and sz and sz.h or 0 }
     end
 end
 -- Store scheduled callbacks by identity so tests can fire the coalesce timer.

@@ -1723,6 +1723,35 @@ do
     button(view._guide, "Back").callback()
     ok(view._guide_topic == nil and walkFind(view._guide, function(x) return x.text == "Export" end) ~= nil,
         "guide: Back returns to the topics")
+    -- every button in the guide, the first-open notice and the new sheets takes a
+    -- tap (KOReader's tap highlight inverts a text button's label colour)
+    local function buttons(w, out, seen)
+        if type(w) ~= "table" or seen[w] then return out end
+        seen[w] = true
+        if getmetatable(w) and w.highlightSafe then out[#out + 1] = w end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then buttons(val, out, seen) end
+        end
+        return out
+    end
+    local bad, n = 0, 0
+    local function check(field)
+        for _, b in ipairs(buttons(view[field], {}, {})) do
+            n = n + 1
+            if not b:highlightSafe() then bad = bad + 1 end
+        end
+    end
+    view:openGuide(); check("_guide")
+    for _, t in ipairs(require("ink/guide").TOPICS) do
+        view:guideGo(t.id); check("_guide")
+        if (view._guide_pages or 1) > 1 then view._guide_page = 1; view:rebuildSheet("_guide"); check("_guide") end
+    end
+    view:closeSheet("_guide")
+    view:openSettings(); check("_settings_dialog"); view:closeSheet("_settings_dialog")
+    view:showWelcome(); check("_welcome_sheet"); view:closeSheet("_welcome_sheet")
+    view:confirmSheet("_c", "T", "text", "Delete", function() end); check("_c"); view:closeSheet("_c")
+    view:noticeSheet("_c", "T", "text"); check("_c"); view:closeSheet("_c")
+    ok(n > 40 and bad == 0, ("guide: every button can be tapped (%d of %d not)"):format(bad, n))
     view:closeSheet("_guide")
     view:onCloseWidget()
 end

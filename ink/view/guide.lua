@@ -25,6 +25,7 @@ local Paint = require("ink/paint")
 local Welcome = require("ink/welcome")
 
 local Screen = Device.screen
+local BLACK = Blitbuffer.COLOR_BLACK
 local GREY = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF)
 
 local function S(px) return Screen:scaleBySize(px) end
@@ -106,7 +107,9 @@ function InkAwayView:guideTile(t, w, h, cb)
         TextWidget:new{ text = _(t.title), face = Font:getFace("cfont", 16), bold = true, max_width = tw },
         vspan(2),
         TextWidget:new{ text = _(t.line), face = Font:getFace("cfont", 12), fgcolor = GREY, max_width = tw } }
-    local row = HorizontalGroup:new{ align = "center", hspan(12), self:guideIcon(t.icon, isz), hspan(10), texts,
+    -- fgcolor is set for the tap highlight, which inverts the label's colour
+    local row = HorizontalGroup:new{ align = "center", fgcolor = BLACK,
+        hspan(12), self:guideIcon(t.icon, isz), hspan(10), texts,
         HorizontalSpan:new{ width = math.max(0, w - S(22) - isz - texts:getSize().w) } }
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0, radius = S(14),
         background = Paint.TILE_BG, margin = 0, padding = 0, callback = cb, show_parent = self }
