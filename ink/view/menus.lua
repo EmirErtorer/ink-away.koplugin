@@ -134,12 +134,17 @@ function InkAwayView:openEraserSettings()
         local pictures = ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
             compact = true, parent = menu,
             callback = function(on) self.erase_bg = on; self:setSetting("inkaway_erase_bg", on) end }
-        local whole = ToggleRow:new{ label = _("Erase whole strokes"), is_on = self.erase_whole,
-            compact = true, parent = menu,
-            callback = function(on) self.erase_whole = on; self:setSetting("inkaway_erase_whole", on) end }
-        add(HorizontalGroup:new{ align = "center", pictures,
-            HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
-            whole })
+        if self.reader_mode then
+            -- over a book the eraser always takes whole strokes (see ink/reader/inkview.lua)
+            add(pictures)
+        else
+            local whole = ToggleRow:new{ label = _("Erase whole strokes"), is_on = self.erase_whole,
+                compact = true, parent = menu,
+                callback = function(on) self.erase_whole = on; self:setSetting("inkaway_erase_whole", on) end }
+            add(HorizontalGroup:new{ align = "center", pictures,
+                HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
+                whole })
+        end
         return content
     end
     self:showSheet("_eraser_dialog", build)
@@ -258,6 +263,16 @@ function InkAwayView:openShapePicker()
             self.snap_grid = on; self:setSetting("inkaway_snap_grid", on) end)
         local snap45Row = toggle(_("Snap to 45\u{00B0}"), self.snap_angle, function(on)
             self.snap_angle = on; self:setSetting("inkaway_snap_angle", on) end)
+        if self.reader_mode then
+            -- over a book: no grid to snap to, nothing to pour paint into, and the
+            -- lasso has its own button
+            local slack = math.max(Screen:scaleBySize(16), content_w - fillRow.width - snap45Row.width)
+            return VerticalGroup:new{ align = "left",
+                self:sheetTitle(_("Shapes"), content_w, _("Done"), closeSelf), vspan(16),
+                shapeRow, vspan(16),
+                HorizontalGroup:new{ align = "center", fillRow, HorizontalSpan:new{ width = slack }, snap45Row },
+            }
+        end
         local totalW = fillRow.width + gridRow.width + snap45Row.width
         local slack = math.max(Screen:scaleBySize(16), math.floor((content_w - totalW) / 2))
         local togglesRow = HorizontalGroup:new{ align = "center",
@@ -404,17 +419,19 @@ function InkAwayView:openTextSettings()
             width = content_w, parent = menu, format = pxfmt,
             on_set = function(v) self.text_size = v; self:setSetting("inkaway_text_size", v) end })
         add(vspan(14))
-        add(ToggleRow:new{ label = _("Snap lines to ruling"), is_on = self.text_grid_snap,
-            width = content_w, parent = menu,
-            callback = function(on)
-                self.text_grid_snap = on; self:setSetting("inkaway_text_grid_snap", on)
-                if self.editing_text then
-                    self.editing_text.grid_snap = on
-                    if on then self:snapTextBoxToGrid(self.editing_text) end
-                    self:invalidateLayout(); self:refreshTextBox("flashui")
-                end
-            end })
-        add(vspan(10))
+        if not self.reader_mode then   -- a book's page has no ruling
+            add(ToggleRow:new{ label = _("Snap lines to ruling"), is_on = self.text_grid_snap,
+                width = content_w, parent = menu,
+                callback = function(on)
+                    self.text_grid_snap = on; self:setSetting("inkaway_text_grid_snap", on)
+                    if self.editing_text then
+                        self.editing_text.grid_snap = on
+                        if on then self:snapTextBoxToGrid(self.editing_text) end
+                        self:invalidateLayout(); self:refreshTextBox("flashui")
+                    end
+                end })
+            add(vspan(10))
+        end
         add(ToggleRow:new{ label = _("Protect text from eraser"), is_on = self.text_erase_protect,
             width = content_w, parent = menu,
             callback = function(on)

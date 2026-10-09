@@ -43,6 +43,8 @@ local IconMenu = InputContainer:extend{
     anchor = nil,              -- function() -> { x, y, w, h, gap }: sit beside this
                                -- screen rect (above it when there is room, else
                                -- below, else at the foot of the screen), `gap` away
+    left_x = nil,              -- if set, centre the sheet in the screen right of
+                               -- this x (beside a toolbar down the left side)
     tap_pos = nil,             -- where the tap that closed it landed, if one did
     on_uncover = nil,          -- function(): the sheet left part of the screen to be
                                -- painted again under it (it closed, or a rebuild
@@ -151,6 +153,9 @@ function IconMenu:paintTo(bb, _x, _y)
     local sz = self.movable:getSize()
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)
+    if self.left_x and self.left_x + sz.w + 2 * pad <= Screen:getWidth() then
+        px = self.left_x + math.floor((Screen:getWidth() - self.left_x - sz.w) / 2)
+    end
     local py
     local r = self.anchor and self.anchor()
     if r then

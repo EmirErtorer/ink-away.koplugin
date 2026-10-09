@@ -79,6 +79,10 @@ end
 
 -- Where a tool sheet's top should sit: just under the toolbar, so its options
 -- open right where the hand tapped (falls back to a small margin if unknown).
+-- Where sheets start across: nil centres them on the screen; a mode with a
+-- toolbar down the left side keeps them beside it.
+function InkAwayView:sheetLeftX() return nil end
+
 function InkAwayView:sheetTopY()
     return (self._bar_h or 0) + Screen:scaleBySize(6)
 end
@@ -90,6 +94,13 @@ function InkAwayView:sheetWidth(cols)
     cols = cols or 4
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    -- beside a toolbar down the left side, narrow enough to fit next to it (the
+    -- sheet's frame adds its padding and border on each side, see IconMenu)
+    local left = self:sheetLeftX()
+    if left then
+        local frame = 2 * (Screen:scaleBySize(18) + Size.border.window) + 2 * Screen:scaleBySize(4)
+        target = math.min(target, Screen:getWidth() - left - frame - 2)
+    end
     local col = math.floor((target - (cols - 1) * gap) / cols)
     return cols * col + (cols - 1) * gap, gap, col
 end
@@ -101,6 +112,7 @@ function InkAwayView:showSheet(field, build, opts)
     opts = opts or {}
     self[field] = IconMenu:new{ build = build, flash = not self:colourPanel(),
         top_y = not opts.bottom_y and self:sheetTopY() or nil, bottom_y = opts.bottom_y,
+        left_x = self:sheetLeftX(),
         on_uncover = function() self:uncovered() end,
         on_close = function()
             self[field] = nil

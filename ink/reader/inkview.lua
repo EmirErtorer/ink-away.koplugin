@@ -71,6 +71,7 @@ function ReaderInkView:openStartDocument()
     self.erase_whole = true      -- see the file comment
     self.symmetry = "off"
     self.grid_on = false
+    self.snap_grid = false       -- no grid over a book (for this visit; the canvas keeps its setting)
     if self.pen_style == "smudge" then self:choosePenType("solid") end
     self:loadBookPage()
 end
@@ -189,8 +190,26 @@ function ReaderInkView:runAction(id)
     if id == "next_page" then self:turnPage(1); return true end
     if id == "prev_page" then self:turnPage(-1); return true end
     if id == "browse" or id == "library" then self:openBookNotes(); return true end
-    if id == "pan" or id == "fit" or id == "toolbar" then return false end
+    if id == "toolbar" then self:setToolbarHidden(not self._toolbar_hidden); return true end
+    if id == "pan" or id == "fit" then return false end
     return InkAwayView.runAction(self, id)
+end
+
+-- Gestures named for what they do over a book; moving or fitting the page is
+-- the reader's, so not offered.
+function ReaderInkView:actionLabel(id)
+    if id == "browse" or id == "library" then return _("Book notes") end
+    return InkAwayView.actionLabel(self, id)
+end
+
+function ReaderInkView:actionOffered(id)
+    return id ~= "pan" and id ~= "fit" and id ~= "library"
+end
+
+-- Sheets open beside the toolbar, so it stays in reach.
+function ReaderInkView:sheetLeftX()
+    if self._toolbar_hidden then return nil end
+    return self._bar_w
 end
 
 -- The book's notes (see ink/reader/booknotes.lua): leave the book's ink saved

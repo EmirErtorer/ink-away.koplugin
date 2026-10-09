@@ -225,6 +225,14 @@ end
 
 -- Gestures and pen buttons: each trigger with its action on a pill; a tap on the
 -- pill chooses another.
+-- An action's name where it acts (the annotation mode names some its own way).
+function InkAwayView:actionLabel(id)
+    return _(Actions.label(id))
+end
+
+-- Whether to offer an action here (every one, in the canvas).
+function InkAwayView:actionOffered(_id) return true end
+
 function InkAwayView:openGestureSettings()
     if self:rebuildSheet("_gestures_dialog") then return end
     self:ensureUserIcons()
@@ -239,7 +247,7 @@ function InkAwayView:openGestureSettings()
         local label_w = content_w - pill_w - gap
         local function row(t)
             local label = TextWidget:new{ text = _(t.label), face = Font:getFace("cfont", 17), max_width = label_w }
-            local pill = self:actionButton(_(Actions.label(b[t.id])), pill_w,
+            local pill = self:actionButton(self:actionLabel(b[t.id]), pill_w,
                 function() self:chooseGestureAction(t) end, false, "small")
             return HorizontalGroup:new{ align = "center",
                 LeftContainer:new{ dimen = GeomUI:new{ w = label_w, h = pill:getSize().h }, label },
@@ -256,7 +264,7 @@ function InkAwayView:openGestureSettings()
             add(row(t))
         end
         local notes = {}
-        for _i, t in ipairs(self:availableTriggers()) do
+        for _i, t in ipairs(self.reader_mode and {} or self:availableTriggers()) do
             for _j, n in ipairs(Actions.notes(b, t.id)) do notes[n] = true end
         end
         for n in pairs(notes) do
@@ -292,7 +300,7 @@ function InkAwayView:chooseGestureAction(t)
         for _i, other in ipairs(info.also) do names[#names + 1] = _(Actions.trigger(other).label) end
         UIManager:show(ConfirmBox:new{
             text = string.format(_("%s already does \"%s\". Use it only for %s, or for both?"),
-                table.concat(names, ", "), _(Actions.label(id)), _(t.label)),
+                table.concat(names, ", "), self:actionLabel(id), _(t.label)),
             ok_text = _("Only this one"), cancel_text = _("Both"),
             ok_callback = function() apply(id, true) end,
             cancel_callback = function() apply(id, false) end,
@@ -304,7 +312,10 @@ function InkAwayView:chooseGestureAction(t)
         add(self:sheetTitle(_(t.label), content_w, _("Back"), function()
             closeSelf(); self:openGestureSettings() end))
         add(vspan(10))
-        local list = Actions.choices(t.id)
+        local list = {}
+        for _i, a in ipairs(Actions.choices(t.id)) do
+            if self:actionOffered(a.id) then list[#list + 1] = a end
+        end
         local w = math.floor((content_w - gap) / 2)
         for i = 1, #list, 2 do
             if i > 1 then add(vspan(8)) end
@@ -312,7 +323,7 @@ function InkAwayView:chooseGestureAction(t)
             for j = i, math.min(i + 1, #list) do
                 local a = list[j]
                 if j > i then table.insert(hg, HorizontalSpan:new{ width = gap }) end
-                table.insert(hg, self:actionButton(_(a.label), w, function() pick(a.id) end, b[t.id] == a.id, "small"))
+                table.insert(hg, self:actionButton(self:actionLabel(a.id), w, function() pick(a.id) end, b[t.id] == a.id, "small"))
             end
             add(hg)
         end

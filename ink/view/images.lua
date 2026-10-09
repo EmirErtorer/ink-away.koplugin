@@ -366,7 +366,7 @@ function InkAwayView:chooseImage()
         add(TextBoxWidget:new{ text = _("Browsing needs Wi-Fi. Ink Away itself never requires a connection."),
             face = Font:getFace("cfont", 13), width = content_w,
             fgcolor = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF) })
-        if not self.notebook then   -- a notebook's paper is its background
+        if not (self.notebook or self.reader_mode) then   -- a notebook's paper, or the book, is the background
             add(vspan(14))
             add(self:actionButton(_("Background\u{2026}"), content_w, function()
                 closeSelf(); self:openBackground() end))
