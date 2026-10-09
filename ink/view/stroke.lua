@@ -325,6 +325,13 @@ function InkAwayView:beginStroke(sx, sy)
     self._wl, self._sm = nil, nil
     local wst = (not is_erase) and self:washStyle(style)
     if wst then self:washBegin(wst) end
+    -- a see-through pen on grey e-ink draws live as a dot pattern with the fast
+    -- waveform, and settles into its greys when the pen rests (see washDots)
+    self._live_dither = wst and self:ditherLive() or false
+    if self._live_dither then
+        self._live_mode, self._live_preview = "fast", true
+        self._dots_level = self:washDotLevel(self.canvas.live, wst)
+    end
     if smudge then self:smudgeBegin() end
     self:addScreenPoint(sx, sy, true)
 end
@@ -510,11 +517,11 @@ function InkAwayView:finalizeStroke()
             for i = 1, nr do
                 local rr = rects[i]
                 self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
-                if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+                if not (self:fastLive() or self._live_dither) then self:dirtyAreaRect("ui", rr, 2) end
             end
         end
     end
-    if self:fastLive() then
+    if self:fastLive() or self._live_dither then
         -- show the last samples now, put the real colours back where the black
         -- preview was, and let one refresh settle them once the pen rests (not
         -- needed where every refresh already shows the colour as drawn). A
