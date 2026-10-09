@@ -488,8 +488,11 @@ function InkAwayView:openPenInput()
         add(vspan(4))
         add(self:sheetHint(
             _("Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."), content_w))
-        add(vspan(14))
-        add(self:actionButton(_("Test pen and touch"), content_w, function() closeSelf(); self:openPenTest() end))
+        -- the pen test is the app's (over a book it would only take the book away)
+        if not (self.reader_mode or self.floating) then
+            add(vspan(14))
+            add(self:actionButton(_("Test pen and touch"), content_w, function() closeSelf(); self:openPenTest() end))
+        end
         return content
     end
     self:showSheet("_peninput_dialog", build)
