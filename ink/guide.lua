@@ -99,8 +99,8 @@ Guide.TOPICS = {
           text = "Cut or copy, then on any page of any notebook: the page menu, Paste." },
         { icon = "lasso", title = "Links", when = "canvas",
           text = "Link to page in the lasso's menu makes it a link: tap it to jump there, and Back returns." },
-        { glyph = "ges_hold", title = "One shape or picture", when = "canvas",
-          text = "With Pan, hold a shape or picture for its menu." },
+        { glyph = "ges_tap", title = "One shape or picture",
+          text = "With the lasso, tap a shape or picture to pick it out: move, resize, turn or delete it. On a drawing, a hold with Pan does it too." },
     } },
     { id = "notebooks", title = "Notebooks", line = "Pages, papers and PDFs", icon = "notebook", when = "canvas", cards = {
         { glyph = "ges_two_swipe_side", title = "Turn pages",

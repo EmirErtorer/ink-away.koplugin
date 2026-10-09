@@ -6,6 +6,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local bit = require("bit")
+local Device = require("device")
 local Export = require("ink/export")
 local Fill = require("ink/fill")
 local InkGeom = require("ink/geom")
@@ -13,6 +14,7 @@ local Paint = require("ink/paint")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
 
+local Screen = Device.screen
 local displayColor = Paint.displayColor
 
 local InkAwayView = {}
@@ -310,7 +312,8 @@ function InkAwayView:hitTestShape(sx, sy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
         if op.kind == "shape" then
-            local tol = (op.width or 6) / 2 + 8 / self.view.zoom
+            -- about 1.5 mm either side of the line, so a fingertip finds it
+            local tol = (op.width or 6) / 2 + Screen:scaleBySize(10) / self.view.zoom
             if Shapes.hit(op, cx, cy, tol) and not self:shapeErased(i) then
                 return { op = op, idx = i }
             end

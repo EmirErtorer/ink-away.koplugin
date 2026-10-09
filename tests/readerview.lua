@@ -207,6 +207,34 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     end
     ok(view:sheetLeftX() == view._vb_thick, tag .. ": sheets open right of a left toolbar")
 
+    -- with the lasso, a tap on a picture or a shape's line picks it out (over a
+    -- book there is no Pan to do it), and a hold does too
+    view:dropSelection()
+    local pic = { kind = "image", path = "x.png", x = tw + 300, y = 380, w = 120, h = 90 }
+    local rect = { kind = "shape", shape = "rect", width = 4, alpha = 255, color = { 0, 0, 0 },
+        pts = { tw + 60, 420, tw + 200, 520 } }
+    view.canvas.ops[#view.canvas.ops + 1] = pic
+    view.canvas.ops[#view.canvas.ops + 1] = rect
+    view:setTool("lasso")
+    view:onIaTouch(nil, pos(tw + 360, 420))
+    view:onIaTap(nil, pos(tw + 360, 420))
+    ok(view.selection and view.canvas.ops[view.selection.idxs[1]] == pic, tag .. ": a lasso tap picks the picture")
+    view:dropSelection(); view:closeSheet("_sel_dialog")
+    view:onIaTouch(nil, pos(tw + 130, 423))
+    view:onIaTap(nil, pos(tw + 130, 423))
+    ok(view.selection and view.canvas.ops[view.selection.idxs[1]] == rect, tag .. ": a tap near the rectangle's line picks it")
+    view:dropSelection(); view:closeSheet("_sel_dialog")
+    view:onIaTouch(nil, pos(tw + 330, 440))
+    view:onIaHold(nil, pos(tw + 330, 440))
+    view:onIaHoldRel(nil, pos(tw + 330, 440))
+    ok(view.selection and view.canvas.ops[view.selection.idxs[1]] == pic, tag .. ": a lasso hold picks it too")
+    view:dropSelection(); view:closeSheet("_sel_dialog")
+    view:onIaTouch(nil, pos(tw + 40, 650))
+    view:onIaTap(nil, pos(tw + 40, 650))
+    ok(view.selection == nil, tag .. ": a tap on nothing picks nothing")
+    table.remove(view.canvas.ops); table.remove(view.canvas.ops)
+    view:setTool("pen")
+
     -- deleting every annotation on the book: two confirmations, then gone at
     -- once into the trash, with nothing left to undo
     view:openReaderSettings()

@@ -772,6 +772,12 @@ function InkAwayView:onIaHold(_, ges)
         if self._finger_nav.mode == "navigate" then self:holdMenuAt(pos) end
         return true
     end
+    -- a hold with the lasso picks out the picture or shape under it
+    if self.tool == "lasso" and not self.sel_drag then
+        self.lassoing, self.lasso_scr = false, nil
+        self:selectAt(pos)
+        return true
+    end
     -- selecting only happens in Pan mode, so a hold never fights with drawing
     if self.tool == "pan" or self.sel_drag then
         -- a hold on the selection (or on a picture or shape, which it selects)

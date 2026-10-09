@@ -130,8 +130,23 @@ function InkAwayView:lassoRelease(pos)
 end
 
 function InkAwayView:lassoTap(pos)
-    if self.lassoing then self:lassoFinish(); return true end
+    local scr = self.lasso_scr
+    if self.lassoing and scr and #scr >= 6 then self:lassoFinish(); return true end
+    self.lassoing, self.lasso_scr = false, nil   -- a tap, not a loop
+    if pos and self:selectAt(pos) then return true end
     if pos and Clipboard.count() > 0 then self:openPasteMenu(pos) end
+    return true
+end
+
+-- Select the picture or shape at screen `pos`, if there is one, and open its
+-- menu: a tap or hold with the lasso picks one out as a hold with Pan does
+-- (over a book, where there is no Pan, this is how they are picked again).
+function InkAwayView:selectAt(pos)
+    if not (pos and self:inArea(pos.x, pos.y)) then return false end
+    local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+    if not (hit and self:selectOps({ hit.idx }, "lasso")) then return false end
+    self:redraw()
+    self:openSelectionMenu()
     return true
 end
 
