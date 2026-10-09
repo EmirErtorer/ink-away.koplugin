@@ -62,8 +62,8 @@ function InkAwayView:welcomeRow(row, w)
         self:tileIcon(row.feature.icon, isz) or hspan(30), hspan(14), col }
 end
 
--- Show the notice. Closing it, however, marks it seen (and the device tip with
--- it, when it was part of it).
+-- Show the notice, once: it is marked seen as it opens (and the device tip with
+-- it, when it is part of it).
 function InkAwayView:showWelcome()
     local c = Welcome.content(self:getSetting("inkaway_entry_gestures"))
     local tip = not self:getSetting("inkaway_device_tip_shown") and self:deviceTipText(true) or nil
@@ -105,10 +105,11 @@ function InkAwayView:showWelcome()
         end
         return content
     end
-    self:showSheet("_welcome_sheet", build, { on_close = function()
-        self:setSetting("inkaway_welcome_seen", true)
-        if tip then self:setSetting("inkaway_device_tip_shown", true) end
-    end })
+    -- seen once shown, however it is closed (Got it, a tap outside, or Ink Away
+    -- closing under it), so it never comes back
+    self:setSetting("inkaway_welcome_seen", true)
+    if tip then self:setSetting("inkaway_device_tip_shown", true) end
+    self:showSheet("_welcome_sheet", build)
 end
 
 return InkAwayView

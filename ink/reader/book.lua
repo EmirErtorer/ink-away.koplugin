@@ -411,8 +411,15 @@ end
 
 -- Open the annotation mode over the page shown (once: a second call while it is
 -- open does nothing).
+-- Is `w` still shown?
+local function shown(w)
+    for _i, e in ipairs(UIManager._window_stack or {}) do if e.widget == w then return true end end
+    return false
+end
+
 function Book:annotate()
-    if self._view then return end
+    if self._view and shown(self._view) then return end
+    self._view = nil
     if self:data().read_only then
         local InfoMessage = require("ui/widget/infomessage")
         local _ = require("gettext")
@@ -505,7 +512,8 @@ end
 -- Open the book's notes in a window over the page (once: a second call while
 -- they are open does nothing).
 function Book:openNotes()
-    if self._notes_view then return end
+    if self._notes_view and shown(self._notes_view) then return end
+    self._notes_view = nil
     local ok, NotesView = pcall(require, "ink/reader/notesview")
     if not ok then logger.warn("Ink Away: book notes unavailable:", NotesView); return end
     -- the page as it is, to show around the window

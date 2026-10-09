@@ -328,11 +328,12 @@ function ReaderInkView:onSetDimensions()
 end
 
 function ReaderInkView:onCloseWidget()
+    -- the book lets go of this view first, so nothing that fails while closing
+    -- can leave it thinking annotation mode is still open
+    local book = self.book
+    if book and book._view == self then book._view = nil end
     InkAwayView.onCloseWidget(self)
-    if self.book then
-        self.book._view = nil
-        self.book:repaint()
-    end
+    if book then book:repaint() end
 end
 
 ------------------------------------------------------------------------------

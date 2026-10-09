@@ -1648,10 +1648,8 @@ do
     local view = InkAwayView:new{}
     UIManager:show(view)
     ok(view._welcome_sheet ~= nil, "welcome: shown the first time Ink Away opens")
-    local sheet = view._welcome_sheet
-    view:closeSheet("_welcome_sheet")
-    if sheet.on_close then sheet.on_close() end
-    ok(G_reader_settings.data.inkaway_welcome_seen == true, "welcome: closing it marks it seen")
+    ok(G_reader_settings.data.inkaway_welcome_seen == true, "welcome: marked seen as it opens")
+    view:closeSheet("_welcome_sheet")       -- Got it
     view:onCloseWidget()
     UIManager.reset()
     local view2 = InkAwayView:new{}
@@ -1667,10 +1665,8 @@ do
     local view3 = InkAwayView:new{}
     view3._android = true
     UIManager:show(view3)
-    local s3 = view3._welcome_sheet
-    ok(s3 ~= nil, "welcome: shown on Android too")
+    ok(view3._welcome_sheet ~= nil, "welcome: shown on Android too")
     view3:closeSheet("_welcome_sheet")
-    if s3 and s3.on_close then s3.on_close() end
     ok(G_reader_settings.data.inkaway_device_tip_shown == true, "welcome: the device tip went with it")
     PTS.deviceFacts = real
     view3:onCloseWidget()
@@ -1753,7 +1749,16 @@ do
     view:noticeSheet("_c", "T", "text"); check("_c"); view:closeSheet("_c")
     ok(n > 40 and bad == 0, ("guide: every button can be tapped (%d of %d not)"):format(bad, n))
     view:closeSheet("_guide")
-    view:onCloseWidget()
+    -- closing the view closes every sheet it opened, the new ones too: one left
+    -- over the reader would take the gestures meant for it
+    view:openGuide(); view:noticeSheet("_delete_ink", "T", "text")
+    local left = { view._guide, view._delete_ink }
+    UIManager:close(view)
+    local stray = 0
+    for _, e in ipairs(UIManager._window_stack) do
+        for _, w in ipairs(left) do if e.widget == w then stray = stray + 1 end end
+    end
+    ok(stray == 0, "sheets: none outlives the view (" .. stray .. ")")
 end
 
 -- ---- the pen menu's +: always after the last pen, however many there are ----

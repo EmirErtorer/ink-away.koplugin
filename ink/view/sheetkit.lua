@@ -111,6 +111,9 @@ end
 -- opts.on_close runs when a tap outside it or Back closes it.
 function InkAwayView:showSheet(field, build, opts)
     opts = opts or {}
+    -- every field a sheet was shown in, so closing the view closes them all
+    self._sheet_fields = self._sheet_fields or {}
+    self._sheet_fields[field] = true
     self[field] = IconMenu:new{ build = build, flash = not self:colourPanel(),
         top_y = not opts.bottom_y and self:sheetTopY() or nil, bottom_y = opts.bottom_y,
         left_x = self:sheetLeftX(), right_x = self:sheetRightX(),

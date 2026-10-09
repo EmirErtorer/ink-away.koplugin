@@ -376,13 +376,11 @@ function NotesView:expand()
 end
 
 function NotesView:onCloseWidget()
+    local book = self.book
+    if book and book._notes_view == self then book._notes_view = nil end   -- first (see ReaderInkView)
     self:pruneFreshPage()
     InkAwayView.onCloseWidget(self)
-    local book = self.book
-    if book then
-        book._notes_view = nil
-        if self.doc_written and self.doc_path then book:setNotesPath(self.doc_path) end
-    end
+    if book and self.doc_written and self.doc_path then book:setNotesPath(self.doc_path) end
 end
 
 function NotesView:free()

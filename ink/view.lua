@@ -452,6 +452,9 @@ function InkAwayView:onCloseWidget()
             "_peninput_dialog", "_pentypes_dialog", "_gestures_dialog", "_gesture_pick", "_penfav_menu" }) do
         self:closeSheet(key)
     end
+    -- and every other sheet still open: one left over the reader would take
+    -- the gestures meant for it
+    for key in pairs(self._sheet_fields or {}) do self:closeSheet(key) end
     -- Release the large buffers and drop references so the GC can reclaim them.
     self:closeNotebookPDF()
     self:free()
