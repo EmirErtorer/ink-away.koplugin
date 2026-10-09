@@ -1692,7 +1692,7 @@ do
     -- a restart: the pen in hand comes back as it was
     local view2 = InkAwayView:new{}
     ok(view2.pen_style == "solid" and view2.pen_width == 9, "pen case: the size survives closing Ink Away")
-    for _, p in ipairs(view2:penset().favs) do if p.style == "highlighter" then view2:usePen(p) end end
+    for i, p in ipairs(view2:penset().favs) do if p.style == "highlighter" then view2:selectPen(i) end end
     ok(view2.pen_style == "highlighter", "pen case: a saved pen is one tap")
     view2:onCloseWidget()
     -- 4.0's setting

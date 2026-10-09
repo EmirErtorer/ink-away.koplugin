@@ -105,6 +105,28 @@ function BookInk.load(sidecar_dir)
     return BookInk.new()
 end
 
+-- Each item's text in the file, kept while the item lives: an item never
+-- changes once made (an edit makes a new one), so saving writes out only the
+-- items that are new since the last save.
+local item_text = setmetatable({}, { __mode = "k" })
+local function itemText(item)
+    local s = item_text[item]
+    if not s then
+        s = Project.encode(item):sub(8)   -- without "return "
+        item_text[item] = s
+    end
+    return s
+end
+
+-- The file's text: the head, then the items from their kept text.
+local function encode(data)
+    local head = Project.encode({ version = BookInk.VERSION, notes = data.notes })   -- "return {...,}"
+    local parts = {}
+    for i, item in ipairs(data.items) do parts[i] = itemText(item) end
+    return head:sub(1, -2) .. '["items"]={' .. table.concat(parts, ",") .. "},}"
+end
+BookInk.encode = encode
+
 -- Keep it. One with no ink and no book notes removes the files, so such a book
 -- leaves none. Returns whether it is kept.
 function BookInk.save(sidecar_dir, data)
@@ -116,12 +138,11 @@ function BookInk.save(sidecar_dir, data)
         return true
     end
     if not makePath(sidecar_dir) then return false end
-    local stored = { version = BookInk.VERSION, items = data.items, notes = data.notes }
     if isFile(p) then
         os.remove(p .. ".old")
         os.rename(p, p .. ".old")
     end
-    local ok = Storage.writeAtomic(p, Project.encode(stored))
+    local ok = Storage.writeAtomic(p, encode(data))
     if not ok and isFile(p .. ".old") and not isFile(p) then os.rename(p .. ".old", p) end
     return ok and true or false
 end

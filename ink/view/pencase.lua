@@ -87,6 +87,7 @@ end
 -- Keep the pen case after a change, and show the pen in hand's colour on the
 -- toolbar.
 function InkAwayView:savePens()
+    self._pens_rev = (self._pens_rev or 0) + 1
     Penset.save(self:penset(), function(k, v) self:setSetting(k, v) end)
     self:setSetting("inkaway_pen_style", self.pen_style)   -- for 4.0 and older, if ever opened again
     local r = self.toolbar and self.toolbar.dimen
@@ -116,11 +117,6 @@ end
 -- The pen in hand changed one setting (field: width, alpha or color).
 function InkAwayView:penChanged(field, value)
     Penset.set(self:penset(), field, value)
-    self:savePens()
-end
-
-function InkAwayView:usePen(p)
-    self:applyPen(Penset.use(self:penset(), p))
     self:savePens()
 end
 

@@ -58,16 +58,17 @@ end
 
 -- Anchor a screen op. Returns the item, or nil for an op that draws nothing.
 function Place.anchor(op, doc)
-    local x0, y0 = origin(op)
-    if not x0 then return nil end
+    local bx0, by0, x1, y1 = Canvas.opBox(op)
+    if not bx0 then return nil end
+    local x0, y0 = floor(bx0), floor(by0)
     if doc.kind == "paging" then
         local page, px, py, zoom = doc:toPage(x0, y0)
         if not page then return nil end
-        -- the top-left at the origin, then in page units (the zoom undone)
-        return { op = Place.moved(Place.moved(op, -x0, -y0), 0, 0, 1 / zoom),
-                 a = { page = page, x = px, y = py } }
+        -- the top-left at the origin, in page units (the zoom undone): one copy,
+        -- scaled, then moved by the scaled corner
+        local s = 1 / zoom
+        return { op = Place.moved(op, -x0 * s, -y0 * s, s), a = { page = page, x = px, y = py } }
     end
-    local x1, y1 = select(3, Canvas.opBox(op))
     local cx, cy = floor((x0 + x1) / 2), floor((y0 + y1) / 2)
     -- the word under the middle; for an underline (whose middle is between two
     -- lines) the word just above it; then just below; then the nearest one
@@ -133,7 +134,7 @@ function Place.place(item, doc)
     if a.page then
         local sx, sy, zoom = doc:toScreen(a.page, a.x, a.y)
         if not sx then return nil end
-        return Place.moved(Place.moved(item.op, 0, 0, zoom), sx, sy)
+        return Place.moved(item.op, sx, sy, zoom)
     end
     if a.xp0 then
         local box = doc:boxOf(a.xp0, a.xp1)
@@ -149,15 +150,15 @@ function Place.place(item, doc)
 end
 
 -- Which items are on which page, for the layout `doc` describes: a table page
--- -> list of item indexes. Built once per layout; cheap to ask again.
+-- -> list of items, in their order. Built once per layout; cheap to ask again.
 function Place.index(items, doc)
     local idx = {}
-    for i, item in ipairs(items) do
+    for _i, item in ipairs(items) do
         local p = Place.pageOf(item, doc)
         if p then
             local l = idx[p]
             if not l then l = {}; idx[p] = l end
-            l[#l + 1] = i
+            l[#l + 1] = item
         end
     end
     return idx

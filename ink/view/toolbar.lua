@@ -581,11 +581,21 @@ function InkAwayView:drawPenStrip(bb, ox, oy, r)
     local zoom = self.view.zoom or 1
     local inset = Screen:scaleBySize(3)
     local tw, th = r.slot - 2 * inset, r.sh - 2 * inset
+    -- the samples, looked up once per change of the pens (or of the sample
+    -- cache, whose buffers they are), not on every paint near the strip
+    local key = table.concat({ self._pens_rev or 0, r.n, tw, th, zoom }, "|")
+    if self._strip_key ~= key or self._strip_cache ~= self._wave_cache then
+        local samples = {}
+        for i = 1, r.n do
+            local p = case.favs[i]
+            samples[i] = self:cachedPenSample(p, tw, th, math.max(1, math.min(p.width * zoom, math.floor(th * 0.4))))
+        end
+        self._strip_samples, self._strip_key, self._strip_cache = samples, key, self._wave_cache
+    end
     for i = 1, r.n do
-        local p = case.favs[i]
         local x = ox + r.x + r.pad + (i - 1) * (r.slot + r.pad)
         local y = oy + r.y + r.pad
-        local sample = self:cachedPenSample(p, tw, th, math.max(1, math.min(p.width * zoom, math.floor(th * 0.4))))
+        local sample = self._strip_samples[i]
         if sample then bb:blitFrom(sample, x + inset, y + inset, 0, 0, tw, th) end
         if case.sel == i then
             local uh = math.max(3, Screen:scaleBySize(3))

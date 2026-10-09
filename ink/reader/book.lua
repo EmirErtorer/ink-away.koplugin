@@ -198,8 +198,13 @@ function Book:pageOps()
     if c and c.key == key then return c end
     local doc = self:doc()
     -- the page index is built once per layout (for a fixed-page book it is just
-    -- the page numbers, so it does not depend on the zoom)
-    local ikey = (doc.kind == "paging" and "paging" or layout:gsub("|[^|]*$", "")) .. "#" .. self.rev
+    -- the page numbers, so it does not depend on the zoom; for a reflowing one
+    -- the scroll position, the layout key's last part, does not count)
+    if layout ~= self._layout_last then
+        self._layout_last = layout
+        self._ikey_base = doc.kind == "paging" and "paging" or (layout:gsub("|[^|]*$", ""))
+    end
+    local ikey = self._ikey_base .. "#" .. self.rev
     if not (self._index and self._index_key == ikey) then
         self._index = Place.index(data.items, doc)
         self._index_key = ikey
@@ -207,8 +212,7 @@ function Book:pageOps()
     local out = { key = key, pages = pages, ops = {}, items = {} }
     local W, H = Screen:getWidth(), Screen:getHeight()
     for _p, page in ipairs(pages) do
-        for _i, idx in ipairs(self._index[page] or {}) do
-            local item = data.items[idx]
+        for _i, item in ipairs(self._index[page] or {}) do
             local ok, op = pcall(Place.place, item, doc)
             if ok and op and op.kind == "image" then op.path = BookInk.picturePath(self.sidecar, op.path) end
             -- only what reaches the screen (a page scrolled half away keeps
@@ -260,14 +264,47 @@ function Book:setPageOps(ops, came_from, shown)
         end
         if item then keep[#keep + 1] = item; map[op] = item end
     end
-    local old = {}
-    for _i, item in ipairs(shown or {}) do old[item] = true end
+    local old, n_old = {}, 0
+    for _i, item in ipairs(shown or {}) do
+        if not old[item] then old[item] = true; n_old = n_old + 1 end
+    end
     local items = {}
     for _i, item in ipairs(data.items) do if not old[item] then items[#items + 1] = item end end
     for _i, item in ipairs(keep) do items[#items + 1] = item end
     data.items = items
+    -- the page index follows, changed only on the pages shown, so it is not
+    -- built again for the whole book after every stroke (it is when an old
+    -- item is not where it was expected)
+    local idx = self._index
+    if idx then
+        local page_of, found = {}, 0
+        for _p, p in ipairs(self:visiblePages()) do
+            local l = idx[p]
+            if l then
+                local rest = {}
+                for _i, it in ipairs(l) do
+                    if old[it] then page_of[it] = p; found = found + 1 else rest[#rest + 1] = it end
+                end
+                idx[p] = rest
+            end
+        end
+        if found < n_old then
+            idx = nil
+        else
+            for _i, it in ipairs(keep) do
+                local p = page_of[it] or Place.pageOf(it, doc)
+                if p then
+                    local l = idx[p]
+                    if not l then l = {}; idx[p] = l end
+                    l[#l + 1] = it
+                end
+            end
+        end
+    end
     self.rev = self.rev + 1
-    self._placed, self._index = nil, nil
+    self._index = idx
+    if idx and self._ikey_base then self._index_key = self._ikey_base .. "#" .. self.rev end
+    self._placed = nil
     return map, keep
 end
 

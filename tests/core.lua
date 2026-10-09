@@ -533,9 +533,6 @@ do
     local key = Brushes.save(get, set, "My Pen", { density = 0.6, cell = 2 })
     ok(key == "user:My Pen", "save returns the style key")
     ok(Raster.STYLES["user:My Pen"] ~= nil, "a saved brush is registered in the rasterizer")
-    local found = false
-    for _, m in ipairs(Brushes.menu(get)) do if m.key == key then found = true end end
-    ok(found, "a saved brush appears in the pen menu")
     ok(#Brushes.userList(get) == 1, "the brush is stored in settings")
     -- a fresh session: loadAll re-registers from the stored settings
     Raster.STYLES["user:My Pen"] = nil

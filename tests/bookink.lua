@@ -316,6 +316,34 @@ do
     for _, it in ipairs(b._data.items) do has[it] = true end
     ok(has[a5] and not has[a6] and has[hidden] and #b._data.items == 4,
         "save: the erased stroke is gone, ink that was not shown is kept")
+    -- the page index followed the change, as a full rebuild would have it
+    b:pageOps()
+    b._placed = nil
+    local shown2 = b:pageOps().items
+    local map2, now2 = b:setPageOps({ placed.ops[1] }, { [placed.ops[1]] = a5 }, shown2)
+    local full = Place.index(b._data.items, doc)
+    local same = true
+    for p, l in pairs(full) do
+        local inc = b._index and b._index[p] or {}
+        if #inc ~= #l then same = false end
+        for i = 1, #l do if inc[i] ~= l[i] then same = false end end
+    end
+    ok(b._index ~= nil and same and map2 and #now2 == 1, "index: changed on the shown pages only, as a full rebuild has it")
+end
+
+-- ---- the file is written from each item's kept text ------------------------------------
+do
+    local Project = require("ink/project")
+    local data = { version = 1, notes = "/x/Book notes/A.inkaway", items = {
+        { op = { kind = "ink", width = 3, alpha = 255, pts = { 1, 2, 3, 4 } }, a = { page = 2, x = 1, y = 2 } },
+        { op = { kind = "text", x = 1, y = 2, w = 50, h = 20, text = "a \"note\"" }, a = { xp0 = "/b/p[2].4", dyb = 3 } },
+    } }
+    local back = Project.decode(BookInk.encode(data))
+    ok(back and back.version == 1 and back.notes == data.notes and #back.items == 2
+        and back.items[2].op.text == data.items[2].op.text and back.items[1].a.page == 2,
+        "file: written from kept item texts, read back the same")
+    data.items[3] = { op = { kind = "ink", width = 2, alpha = 255, pts = { 9, 9 } }, a = { page = 3, x = 0, y = 0 } }
+    ok(#Project.decode(BookInk.encode(data)).items == 3, "file: a new item is added to the kept ones")
 end
 
 -- ---- the smart highlighter: which strokes are along a line of text ---------------------
