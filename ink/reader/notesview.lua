@@ -117,6 +117,7 @@ function NotesView:buildToolbar()
             elseif self.tool == "text" then self:openTextSettings()
             else self:setTool("text") end
         end },
+        { id = "image", icon = "image", cb = function() self:chooseImage() end },
         { id = "undo", icon = "undo", cb = function() self:undo() end },
         { id = "redo", icon = "redo", cb = function() self:redo() end },
         { id = "prev", icon = "nav_prev", cb = function() self:nbGo(-1) end },

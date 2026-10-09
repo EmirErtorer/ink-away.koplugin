@@ -72,6 +72,7 @@ end
 function ReaderInkView:openStartDocument()
     self.symmetry = "off"
     self.grid_on = false
+    self.text_grid_snap = false  -- no ruling over a book (for this visit)
     self.snap_grid = false       -- no grid over a book (for this visit; the canvas keeps its setting)
     if self.pen_style == "smudge" then self:choosePenType("solid") end
     self:loadBookPage()
@@ -231,6 +232,24 @@ end
 function ReaderInkView:sheetLeftX()
     if self._toolbar_hidden then return nil end
     return self._bar_w
+end
+
+-- A new text box over a book starts where it was tapped (beside the toolbar,
+-- at the least) and runs to the page's right edge; a tap too far right starts
+-- it further left, so it is never a sliver.
+function ReaderInkView:newTextAt(pos)
+    local Text = require("ink/text")
+    local v = self.view
+    local cx, cy = self:toCanvasClamped(pos.x, pos.y)
+    local margin = math.max(6, math.floor(v.canvas_w * 0.02))
+    local left = v.area_x + margin
+    local x = math.max(left, math.floor(cx))
+    local min_w = math.floor((v.canvas_w - left) * 0.45)
+    if v.canvas_w - margin - x < min_w then x = math.max(left, v.canvas_w - margin - min_w) end
+    local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
+    local op = Text.new{ x = x, y = cy, w = v.canvas_w - margin - x, size = size,
+        font = self.text_font, align = "left" }
+    self:startTextEdit(op, { p = 1, o = 0 }, true, nil)
 end
 
 -- The book's notes (see ink/reader/booknotes.lua): leave the book's ink saved
