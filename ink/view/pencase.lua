@@ -295,12 +295,19 @@ function InkAwayView:openPenSettings()
                 function() self:selectPen(i); again() end,
                 function() self:editSavedPen(i) end), case.sel == i)
         end
-        if #case.favs < Penset.FAV_CAP then
-            favs[#favs + 1] = frame(Button:new{ text = "+", text_font_size = 20, text_font_bold = true,
-                width = inner, height = fh, bordersize = 0, radius = Screen:scaleBySize(10),
-                background = TILE_BG, margin = 0, padding = 0, show_parent = self,
-                callback = function() closeSelf(); self:openPenTypes(true) end }, false)
-        end
+        -- + is always there, after the last pen; with the case full it says how
+        -- to make room rather than vanish
+        favs[#favs + 1] = frame(Button:new{ text = "+", text_font_size = 20, text_font_bold = true,
+            width = inner, height = fh, bordersize = 0, radius = Screen:scaleBySize(10),
+            background = TILE_BG, margin = 0, padding = 0, show_parent = self,
+            callback = function()
+                if #case.favs >= Penset.FAV_CAP then
+                    UIManager:show(InfoMessage:new{ text = string.format(
+                        _("You have %d pens, as many as the menu holds. Hold one and Remove it to make room."), Penset.FAV_CAP) })
+                    return
+                end
+                closeSelf(); self:openPenTypes(true)
+            end }, false)
         add(rows(favs, per, gap))
         if not case.sel then
             add(vspan(4))

@@ -1756,6 +1756,48 @@ do
     view:onCloseWidget()
 end
 
+-- ---- the pen menu's +: always after the last pen, however many there are ----
+do
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local Penset = require("ink/penset")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local function plus()
+        view:openPenSettings()
+        local found
+        local seen = {}
+        local function walk(t)
+            if type(t) ~= "table" or seen[t] or found then return end
+            seen[t] = true
+            if t.text == "+" and type(t.callback) == "function" then found = t; return end
+            for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then walk(c) end end
+        end
+        walk(view._pen_dialog)
+        return found
+    end
+    local case = view:penset()
+    local start = #case.favs
+    for _i = 1, 3 do
+        local p = plus()
+        ok(p ~= nil, ("pens: + is there with %d pens"):format(#case.favs))
+        p.callback()
+        view:addPen("ballpoint")
+        view:closeSheet("_pen_dialog")
+    end
+    ok(#case.favs == start + 3 and plus() ~= nil, "pens: still there after adding three")
+    while #case.favs < Penset.FAV_CAP do view:addPen("pencil") end
+    UIManager.shown = nil
+    local p = plus()
+    ok(p ~= nil, "pens: + stays with the menu full")
+    p.callback()
+    ok(UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("Remove it to make room"),
+        "pens: and says how to make room")
+    view:closeSheet("_pen_dialog")
+    view:onCloseWidget()
+    G_reader_settings.data.inkaway_pens, G_reader_settings.data.inkaway_pen_style = nil, nil
+end
+
 -- ---- pen pressure: from the pen's frames into the stroke, and off on request ---
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)

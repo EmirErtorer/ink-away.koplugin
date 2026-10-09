@@ -59,7 +59,7 @@ do
     local fresh = Penset.load(function() end, opts)
     ok(Penset.duplicateFav(fresh, 1) == 2 and fresh.sel == 2 and #fresh.favs == n + 1
         and Penset.same(fresh.favs[1], fresh.favs[2]), "duplicate: a copy after it, taken up")
-    for _i = 1, 10 do Penset.addNew(st, "solid") end
+    for _i = 1, Penset.FAV_CAP do Penset.addNew(st, "solid") end
     ok(#st.favs == Penset.FAV_CAP and Penset.addNew(st, "solid") == nil, "new pen: never more than " .. Penset.FAV_CAP)
 end
 

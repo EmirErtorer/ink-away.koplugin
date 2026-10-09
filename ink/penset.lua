@@ -19,7 +19,7 @@ Ink Away and plugin updates. Plain Lua, so the headless tests drive it directly.
 local Penset = {}
 
 local SETTING = "inkaway_pens"
-Penset.FAV_CAP = 8
+Penset.FAV_CAP = 20   -- three rows in the pen menu
 
 -- The kinds of pen, in the order the pen case shows them.
 Penset.GROUPS = {
