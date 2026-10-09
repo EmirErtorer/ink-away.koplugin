@@ -281,25 +281,42 @@ end
 -- Title row shared by every tool sheet: the sheet title on the left (cut short
 -- with an ellipsis when long) and a filled black pill (Done / Back) on the
 -- right, spanning content_w.
-function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size)
+function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size, extra)
     local a = Accent.get()
     local pill_w = Screen:scaleBySize(84)
+    local pill_h = Screen:scaleBySize(34)
+    -- `extra` { label, cb }: a plain grey pill before the main one (the guide)
+    local extra_b
+    if extra then
+        extra_b = Button:new{ text = "", width = pill_w, height = pill_h, bordersize = 0,
+            radius = Screen:scaleBySize(11), background = TILE_BG, margin = 0, padding = 0,
+            callback = extra.cb, show_parent = self }
+        self:setButtonLabel(extra_b, TextWidget:new{ text = extra.label, face = Font:getFace("cfont", 15),
+            bold = true, fgcolor = BLACK })
+    end
+    local gap = Screen:scaleBySize(8)
     local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true,
-        max_width = content_w - pill_w - Screen:scaleBySize(8) }
+        max_width = content_w - pill_w - gap - (extra_b and pill_w + gap or 0) }
     local text = TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
         bold = true, fgcolor = a.text }
     local pill
     if a.chromatic then
-        pill = self:accentButton(pill_w, Screen:scaleBySize(34), Screen:scaleBySize(11), text, pill_cb)
+        pill = self:accentButton(pill_w, pill_h, Screen:scaleBySize(11), text, pill_cb)
     else
-        pill = Button:new{ text = "", width = pill_w, height = Screen:scaleBySize(34),
+        pill = Button:new{ text = "", width = pill_w, height = pill_h,
             bordersize = 0, radius = Screen:scaleBySize(11), background = a.fill, margin = 0, padding = 0,
             callback = pill_cb, show_parent = self }
         self:setButtonLabel(pill, text)
     end
-    local g = content_w - titleW:getSize().w - pill:getSize().w
-    return HorizontalGroup:new{ align = "center",
-        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), g) }, pill }
+    local g = content_w - titleW:getSize().w - pill:getSize().w - (extra_b and pill_w + gap or 0)
+    local row = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(gap, g) } }
+    if extra_b then
+        row[#row + 1] = extra_b
+        row[#row + 1] = HorizontalSpan:new{ width = gap }
+    end
+    row[#row + 1] = pill
+    return row
 end
 
 -- A small grey line of text in a sheet; a section heading when `bold`.

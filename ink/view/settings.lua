@@ -247,7 +247,8 @@ function InkAwayView:openSettings()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
 
-        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf))
+        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil,
+            { label = _("Guide"), cb = function() self:openGuide() end }))
         add(vspan(16))
 
         -- orientation: picking one closes the sheet, as the screen size changes
@@ -347,13 +348,6 @@ function InkAwayView:openSettings()
         add(vspan(6))
         add(act(_("Gestures and pen buttons"), content_w, function()
             self:closeSheet("_settings_dialog"); self:openGestureSettings() end))
-        if self:onAndroid() then
-            add(vspan(16))
-            add(self:sheetLabel(_("Help"), true))
-            add(vspan(6))
-            add(act(_("Device tips"), content_w, function()
-                self:closeSheet("_settings_dialog"); self:deviceTips(true) end))
-        end
         return content
     end
     self:showSheet("_settings_dialog", build)

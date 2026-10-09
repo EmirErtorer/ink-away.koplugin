@@ -18,6 +18,13 @@ function M:close(w)
     M.closed = true
     if w and w.onCloseWidget then w:onCloseWidget() end
 end
+-- Paint a widget in place (a sheet rebuilt): give it a size, as painting would.
+function M:widgetRepaint(w)
+    if w and w.movable and not w.movable.dimen then
+        local ok, sz = pcall(function() return w.movable:getSize() end)
+        w.movable.dimen = ok and sz or { x = 0, y = 0, w = 0, h = 0 }
+    end
+end
 -- Store scheduled callbacks by identity so tests can fire the coalesce timer.
 function M:scheduleIn(_, fn) M.scheduled[fn] = true end
 function M:nextTick(fn) M.scheduled[fn] = true end

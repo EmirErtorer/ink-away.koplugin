@@ -1678,6 +1678,55 @@ do
     G_reader_settings.data.inkaway_entry_gestures = nil
 end
 
+-- ---- the guide: beside Done in Settings, topics, cards a page at a time, Show me ----
+do
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:openSettings()
+    local function walkFind(w, pred, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return nil end
+        seen[w] = true
+        if pred(w) then return w end
+        for k, c in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = walkFind(c, pred, seen)
+                if f then return f end
+            end
+        end
+    end
+    local function button(w, text)
+        return walkFind(w, function(t)
+            return type(t.callback) == "function" and walkFind(t, function(x) return x.text == text end) ~= nil
+                and not walkFind(t, function(x) return x ~= t and type(x.callback) == "function" end)
+        end)
+    end
+    local g = button(view._settings_dialog, "Guide")
+    ok(g ~= nil, "guide: a Guide button beside Done in Settings")
+    ok(walkFind(view._settings_dialog, function(x) return x.text == "Device tips" end) == nil,
+        "guide: Settings no longer holds the device tips")
+    g.callback()
+    ok(view._guide ~= nil and view._settings_dialog == nil, "guide: opens in place of Settings")
+    ok(walkFind(view._guide, function(x) return x.text == "Pens" end) ~= nil
+        and walkFind(view._guide, function(x) return x.text == "Books" end) == nil, "guide: the topics here, no book topic")
+    button(view._guide, "Pens").callback()
+    ok(view._guide_topic == "pens" and walkFind(view._guide, function(x) return x.text == "Take up a pen" end) ~= nil,
+        "guide: a topic shows its cards")
+    local show = button(view._guide, "Show me")
+    ok(show ~= nil, "guide: a card with something to open has Show me")
+    show.callback()
+    ok(view._guide == nil and view._pen_dialog ~= nil, "guide: Show me opens the pen menu")
+    view:closeSheet("_pen_dialog")
+    view:openGuide("pens")
+    button(view._guide, "Back").callback()
+    ok(view._guide_topic == nil and walkFind(view._guide, function(x) return x.text == "Export" end) ~= nil,
+        "guide: Back returns to the topics")
+    view:closeSheet("_guide")
+    view:onCloseWidget()
+end
+
 -- ---- pen pressure: from the pen's frames into the stroke, and off on request ---
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)

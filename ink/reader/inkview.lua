@@ -469,7 +469,8 @@ function ReaderInkView:openReaderSettings()
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Book ink"), content_w, _("Done"), closeSelf))
+        add(self:sheetTitle(_("Book ink"), content_w, _("Done"), closeSelf, nil,
+            { label = _("Guide"), cb = function() self:openGuide() end }))
         add(VerticalSpan:new{ width = Screen:scaleBySize(12) })
         add(ToggleRow:new{ label = _("Show ink while reading"), is_on = self:getSetting("inkaway_book_ink", true) ~= false,
             width = content_w, parent = menu,
