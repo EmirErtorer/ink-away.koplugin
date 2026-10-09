@@ -124,6 +124,8 @@ Unzip the download and copy the `ink-away.koplugin` folder inside it into KORead
 
 Then restart KOReader. Open from Top menu → **Tools** tab → "Ink Away (drawing canvas)" near the top. You can also map it to a gesture in KOReader's gesture manager; the actions are "Open Ink Away" and "Ink Away library". 
 
+What changed in each version is in the [changelog](CHANGELOG.md).
+
 
 ## Notes
 
