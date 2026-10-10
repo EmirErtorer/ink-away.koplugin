@@ -67,5 +67,49 @@ do
     ok(#out == 0, "gone: an eraser crossing a picture between its points reaches it")
 end
 
+-- ---- a fill loses the pixels under the eraser, exactly ------------------------------
+do
+    -- a 40 x 20 block of fill, rows 0..19, columns 10..49
+    local runs = {}
+    for y = 0, 19 do runs[#runs + 1] = 10; runs[#runs + 1] = y; runs[#runs + 1] = 40 end
+    local fill = { kind = "fill", runs = runs, color = { 200, 0, 0 }, alpha = 255, layer = 3 }
+    local epts, er = { 30, -10, 30, 30 }, 5   -- a vertical eraser down the middle
+    local out, changed = Cut.ops({ fill }, epts, er)
+    ok(changed and #out == 1 and out[1].kind == "fill" and out[1].layer == 3, "fill: cut, one op, same layer")
+    -- every pixel of the block: kept exactly when its centre is outside the eraser
+    local kept = {}
+    local r = out[1].runs
+    for i = 1, #r - 2, 3 do
+        for x = r[i], r[i] + r[i + 2] - 1 do kept[r[i + 1] * 1000 + x] = true end
+    end
+    local right = true
+    for y = 0, 19 do
+        for x = 10, 49 do
+            local under = math.abs(x + 0.5 - 30) <= er   -- the path covers rows -10..30
+            if (kept[y * 1000 + x] or false) == under then right = false end
+        end
+    end
+    ok(right, "fill: exactly the pixels under the eraser go")
+    ok(#fill.runs == 60, "fill: the original is left as it was")
+    -- missed, and rubbed out whole
+    ok(not select(2, Cut.ops({ fill }, { 200, 200, 210, 210 }, 5)), "fill: an eraser elsewhere changes nothing")
+    local small = { kind = "fill", runs = { 30, 5, 4 }, color = { 0, 0, 0 } }
+    local gone = Cut.ops({ small }, { 32, 0, 32, 10 }, 6)
+    ok(#gone == 0, "fill: rubbed out whole, it goes")
+end
+
+-- ---- only some ops (a layered drawing's active layer) ---------------------------------
+do
+    local a = { kind = "ink", width = 4, alpha = 255, pts = { 0, 50, 100, 50 } }
+    local b = { kind = "ink", width = 4, alpha = 255, pts = { 0, 50, 100, 50 }, layer = 2 }
+    local out = Cut.ops({ a, b }, { 50, 0, 50, 100 }, 6, { only = function(op) return op.layer == 2 end })
+    ok(#out == 3 and out[1] == a and out[2].layer == 2 and out[3].layer == 2, "only the active layer is cut")
+    local box = { kind = "shape", shape = "rect", pts = { 0, 0, 100, 100 }, width = 4, alpha = 255, layer = 2 }
+    local pieces = Cut.ops({ box }, { 50, -10, 50, 10 }, 6)
+    local same = #pieces > 0
+    for _, p in ipairs(pieces) do same = same and p.layer == 2 end
+    ok(same, "a cut shape's pieces stay on its layer")
+end
+
 print(("cut: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -37,7 +37,16 @@ function Canvas.new(w, h)
         undo_stack = {},   -- past ops-list snapshots (shallow)
         redo_stack = {},
         rev = 0,           -- counts every change to the ops, so a save can tell what changed
+        layers = nil,      -- a drawing's layers, when it has them (see ink/layers.lua)
+        hidden_layers = {},
     }, Canvas)
+end
+
+-- (loaded on first use: ink/layers.lua uses this module too)
+local Layers
+local function layers()
+    if not Layers then Layers = require("ink/layers") end
+    return Layers
 end
 
 -- A shallow snapshot of the current ops list: the ops are shared, only the array
@@ -47,9 +56,12 @@ local function snapshot(self)
 end
 
 -- History entries are one of:
---   { snap = <ops array> }  restore this whole list (an edit of existing ops:
---                           colour, size, move, delete, order, clear, load)
---   { add = true }          the last op was appended; undo drops it
+--   { snap = <ops array>, lay = <layer list or false> }
+--                           restore this whole list (an edit of existing ops:
+--                           colour, size, move, delete, order, clear, load, and
+--                           any change to the layers)
+--   { add = true, at = n }  an op was added (at position n: the end of its layer
+--                           in a layered drawing, else the end); undo drops it
 --   { mark = <any> }        a change made outside the ops (the annotation mode's
 --                           reader highlights): undo and redo hand it back to
 --                           the view to undo or redo
@@ -64,15 +76,36 @@ local function pushEntry(self, entry)
     self.redo_stack = {}
 end
 
--- Snapshot checkpoint: call before an edit that changes existing ops.
+-- Snapshot checkpoint: call before an edit that changes existing ops or the
+-- layers.
 function Canvas:pushHistory()
-    pushEntry(self, { snap = snapshot(self) })
+    pushEntry(self, { snap = snapshot(self), lay = self.layers and layers().copy(self.layers) or false, act = self.active_layer })
 end
 
 -- O(1) checkpoint for appending one op to the end of the list. Undo just drops
 -- whatever is last, so it does not matter that the op is recorded by position.
 function Canvas:recordAppend()
     pushEntry(self, { add = true })
+end
+
+-- Add a new op: at the end, or in a layered drawing at the end of the active
+-- layer (on the page, over that layer and under the ones above). One undo step.
+-- Returns the op and its index.
+function Canvas:addOp(op)
+    if self.layers then
+        local L = layers()
+        local id = self.active_layer or 1
+        op.layer = (id ~= 1) and id or nil
+        local at = L.insertIndex(self, id)
+        if at <= #self.ops then
+            table.insert(self.ops, at, op)
+            pushEntry(self, { add = true, at = at })
+            return op, at
+        end
+    end
+    self.ops[#self.ops + 1] = op
+    self:recordAppend()
+    return op, #self.ops
 end
 
 -- A change made outside the ops, for the view to undo and redo itself.
@@ -152,8 +185,7 @@ function Canvas:finishStroke()
         pts, pr = Geom.rdp(pts, RDP_TOL, pr, (live.width or 1) * 0.5 / 255)
         live.pts, live.pr = pts, pr
     end
-    self.ops[#self.ops + 1] = live
-    self:recordAppend()
+    self:addOp(live)
     return live
 end
 
@@ -168,17 +200,13 @@ function Canvas:addShape(shape, fill, pts, width, alpha, color)
         kind = "shape", shape = shape, fill = fill and true or false,
         width = width, alpha = alpha or 255, color = color, pts = pts,
     }
-    self.ops[#self.ops + 1] = op
-    self:recordAppend()
-    return op
+    return (self:addOp(op))
 end
 
 -- Commit a flood fill as one op. `runs` is a flat { x,y,len, ... } run list.
 function Canvas:addFillOp(runs, color, alpha)
     local op = { kind = "fill", runs = runs, color = color, alpha = alpha or 255 }
-    self.ops[#self.ops + 1] = op
-    self:recordAppend()
-    return op
+    return (self:addOp(op))
 end
 
 -- Undo and redo step through the history. An `add` entry drops (undo) or
@@ -192,14 +220,24 @@ function Canvas:undo()
         self.redo_stack[#self.redo_stack + 1] = entry
         return true, entry.mark
     elseif entry.snap ~= nil then
-        self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self) }
+        self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self), lay = self.layers and layers().copy(self.layers) or false, act = self.active_layer }
         self.ops = entry.snap
-    else   -- an appended op: drop the last one, remember it so redo can re-add it
-        local op = table.remove(self.ops)
-        self.redo_stack[#self.redo_stack + 1] = { readd = op }
+        self:restoreLayers(entry.lay, entry.act)
+    else   -- an added op: drop it, remember it so redo can add it again
+        local op = table.remove(self.ops, entry.at or #self.ops)
+        self.redo_stack[#self.redo_stack + 1] = { readd = op, at = entry.at }
     end
     self.live = nil
     return true
+end
+
+-- The layer list and active layer of a history entry put back (false: no
+-- layers).
+function Canvas:restoreLayers(lay, act)
+    if lay == nil then return end
+    self.layers = lay or nil
+    if act ~= nil then self.active_layer = act end
+    layers().fix(self)
 end
 
 function Canvas:redo()
@@ -210,11 +248,12 @@ function Canvas:redo()
         self.undo_stack[#self.undo_stack + 1] = entry
         return true, entry.mark
     elseif entry.snap ~= nil then
-        self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self) }
+        self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self), lay = self.layers and layers().copy(self.layers) or false, act = self.active_layer }
         self.ops = entry.snap
-    else   -- re-append the op an undo removed
-        self.ops[#self.ops + 1] = entry.readd
-        self.undo_stack[#self.undo_stack + 1] = { add = true }
+        self:restoreLayers(entry.lay, entry.act)
+    else   -- add again the op an undo removed, where it was
+        table.insert(self.ops, entry.at or (#self.ops + 1), entry.readd)
+        self.undo_stack[#self.undo_stack + 1] = { add = true, at = entry.at }
     end
     self.live = nil
     return true
@@ -226,13 +265,15 @@ function Canvas:clear()
     self.live = nil
 end
 
--- Replace all ops (used when loading a project). Clears history.
+-- Replace all ops (used when loading a project). Clears history, and the
+-- layers (a layered drawing sets them again: see Layers.load).
 function Canvas:setOps(ops)
     self.rev = self.rev + 1
     self.ops = ops or {}
     self.live = nil
     self.undo_stack = {}
     self.redo_stack = {}
+    self.layers, self.active_layer, self.hidden_layers = nil, nil, {}
 end
 
 -- Which kinds of visible op a list holds: erases (soft_erase and hard_erase,
