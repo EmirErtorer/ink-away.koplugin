@@ -9,7 +9,7 @@
 
 Ink Away is a drawing, notes and book annotation app for KOReader, with **palm rejection** and **pen pressure** for stylus users.
 
-* **Draw** with pens of every kind, watercolor and smudge, on **layers**: a first for KOReader.
+* **Draw** with pens of every kind, watercolor and smudge, on up to five **layers**.
 * **Take notes** in notebooks of lined, grid, dotted or planner pages, kept in folders and searchable, with handwriting turned into text.
 * **Annotate any book** KOReader opens, from EPUB, MOBI and FB2 to PDF, DjVu and comics, with ink that follows its words when you change the font.
 
@@ -84,7 +84,7 @@ Export a transparent or white PNG, or a paged PDF, at your exact screen size.
 
 ### Layers
 
-Layers in a drawing, new to KOReader: sketch, ink and colour each on their own, as in a desktop drawing app.
+Sketch, ink and colour each on a layer of its own, as in a desktop drawing app.
 
 | | |
 |---|---|
