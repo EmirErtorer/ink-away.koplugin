@@ -9,7 +9,7 @@ versions marked *Prerelease* were test builds.
 ## [4.0.0] - Unreleased
 
 The biggest update yet: write on your books, a whole new set of pens, dark mode,
-paper colours, a guide, and updates from inside Ink Away.
+paper colours, a guide and updates from inside Ink Away.
 
 ### Added
 
@@ -54,7 +54,7 @@ paper colours, a guide, and updates from inside Ink Away.
 - By default, holding the pen's side button turns it into a highlighter.
 
 **Look**
-- Dark mode for Ink Away's toolbars, menus and library: Light, Dark, or
+- Dark mode for Ink Away's toolbars, menus and library: Light, Dark or
   following KOReader's night mode. Your page and colours are never changed.
 - Paper colours: twelve papers on colour screens (cream, sandpaper, legal pad,
   kraft, blueprint, chalkboard and more) and white or black on grey ones. The
