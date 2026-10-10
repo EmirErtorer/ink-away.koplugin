@@ -28,12 +28,12 @@
     <td width="33%" valign="top"><a href="assets/screenshots/search.png"><img src="assets/screenshots/search.png" alt="Search"></a><br><sub>Search names, or the typed and converted text inside pages.</sub></td>
   </tr>
   <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/notebook-page.png"><img src="assets/screenshots/notebook-page.png" alt="Notebook page"></a><br><sub>Handwriting, typed text and diagrams on lined, grid or dotted paper, in colour.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/layers.gif"><img src="assets/screenshots/layers.gif" alt="Layers"></a><br><sub>Layers: colour under your line art, then hide or show each layer from the strip.</sub></td>
     <td width="33%" valign="top"><a href="assets/screenshots/lasso-selection.png"><img src="assets/screenshots/lasso-selection.png" alt="Lasso selection"></a><br><sub>Lasso anything to move, resize, rotate, recolour or link it, or turn writing into text.</sub></td>
     <td width="33%" valign="top"><a href="assets/screenshots/pdf-annotation.png"><img src="assets/screenshots/pdf-annotation.png" alt="PDF annotation"></a><br><sub>Open a PDF as a notebook and write on it, then export it with your ink.</sub></td>
   </tr>
   <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/pens.png"><img src="assets/screenshots/pens.png" alt="Pen case"></a><br><sub>Your pen case: fountain, calligraphy, pencil, highlighter, marker, watercolor that blends and smudge that swirls colours together like paint. With pen pressure.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/pens.png"><img src="assets/screenshots/pens.png" alt="Pen case"></a><br><sub>Pens with pressure, watercolor that blends and smudge that mixes colours like paint.</sub></td>
     <td width="33%" valign="top"><a href="assets/screenshots/dark-mode.png"><img src="assets/screenshots/dark-mode.png" alt="Dark mode"></a><br><sub>Dark mode for the toolbars and menus, here over chalkboard paper.</sub></td>
     <td width="33%" valign="top"><a href="assets/screenshots/paper-colours.png"><img src="assets/screenshots/paper-colours.png" alt="Paper colours"></a><br><sub>Twelve paper colours, from cream and legal pad to kraft and blueprint.</sub></td>
   </tr>
