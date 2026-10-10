@@ -84,7 +84,7 @@ Export a transparent or white PNG, or a paged PDF, at your exact screen size.
 
 ### Layers
 
-Sketch, ink and colour each on a layer of its own, as in a desktop drawing app.
+Sketch, ink and colour each on a layer of its own, as in a desktop or tablet drawing app.
 
 | | |
 |---|---|
