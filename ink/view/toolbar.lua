@@ -42,6 +42,7 @@ local FABS = {
     { rect = "nbbar", hidden = "_nbbar_toggle_hidden", show = "_show_nbbar_toggle" },
     { rect = "back",  hidden = "_back_hidden",         show = "_show_back_fab" },
     { rect = "pens",  hidden = "_pens_hidden",         show = "_show_pens_fab" },
+    { rect = "layers", hidden = "_layers_hidden",       show = "_show_layers_fab" },
 }
 
 local PEN_STRIP_MAX = 4   -- saved pens on the floating strip
@@ -278,6 +279,9 @@ function InkAwayView:setTool(tool)
     if self.selection or self.lassoing then self:dropSelection() end
     self.pan_last = nil
     if tool == "pan" then self._tool_before_pan = self.tool end   -- for the Pan button's second tap
+    -- the eraser's cache of a layered drawing: made when it is picked (not at the
+    -- first touch, which would then start late) and gone with it
+    if tool ~= "erase" then self:layerRestFree() elseif self:layered() and not self.erase_whole then self:layerRest() end
     self.tool = tool
     self:refreshToolLabels()
     -- the toolbar strip changes too (the pill moves), so clear any area-only flag
@@ -337,6 +341,8 @@ function InkAwayView:fabRect(which)
         local pw, ph = n * sw + (n + 1) * pad, sh + 2 * pad
         return { x = v.area_x + Screen:scaleBySize(56), y = v.area_y + v.area_h - m - ph, w = pw, h = ph,
                  slot = sw, sh = sh, pad = pad, n = n }
+    elseif which == "layers" then   -- a layered drawing's layers, at the right (view/layers.lua)
+        return self:layerStripRect()
     elseif which == "nbbar" then -- notebook bottom-bar toggle: a bare chevron at the
         -- bar's top left, anchored to the area bottom so it sits on the bar's top
         -- edge when shown and near the screen bottom when collapsed
@@ -403,6 +409,10 @@ function InkAwayView:fabHit(px, py)
             return "pen" .. math.max(1, math.min(r.n, i))
         end
     end
+    if not self._layers_hidden then
+        local r = self:fabRect("layers")
+        if r and InkGeom.inRect(px, py, r) then return self:layerStripHit(py, r) end
+    end
     return nil
 end
 
@@ -428,6 +438,8 @@ function InkAwayView:fabAction(kind)
     elseif kind == "bar" then self:setToolbarHidden(not self._toolbar_hidden)
     elseif kind == "nbbar" then self:setNbBarHidden(not self._nb_collapsed)
     elseif kind == "back" then self:linkBack()
+    elseif kind:match("^layer") then
+        self:layerStripAction(kind)
     elseif kind:match("^pen%d$") then
         if self:selectPen(tonumber(kind:sub(4))) then
             if self.tool ~= "pen" then self:setTool("pen") end
@@ -663,6 +675,11 @@ function InkAwayView:drawFabs(bb, ox, oy, br)
     if not self._pens_hidden then
         local r = self:fabRect("pens")
         if reached(r) then self:drawPenStrip(bb, ox, oy, r) end
+    end
+    -- a layered drawing's layers: tap one to draw on it, the active one for its menu
+    if not self._layers_hidden then
+        local r = self:fabRect("layers")
+        if reached(r) then self:drawLayerStrip(bb, ox, oy, r) end
     end
     -- the way back from a followed link: a dark pill
     if not self._back_hidden then

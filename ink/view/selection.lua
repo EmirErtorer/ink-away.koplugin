@@ -33,6 +33,7 @@ local _ = require("gettext")
 local Canvas = require("ink/canvas")
 local Clipboard = require("ink/clipboard")
 local InkGeom = require("ink/geom")
+local Layers = require("ink/layers")
 local Palette = require("ink/palette")
 local Shapes = require("ink/shapes")
 local Transform = require("ink/transform")
@@ -606,12 +607,17 @@ function InkAwayView:selToFront()
     for i, idx in ipairs(sel.idxs) do idxs[i] = idx end
     table.sort(idxs)
     local ops = self.canvas.ops
-    if idxs[#idxs] == #ops and idxs[1] == #ops - #idxs + 1 then return end   -- already on top
+    -- the top of the list, or of the active layer in a layered drawing
+    local top = self.canvas.layers and (Layers.insertIndex(self.canvas, self.canvas.active_layer) - 1) or #ops
+    if idxs[#idxs] == top and idxs[1] == top - #idxs + 1 then return end   -- already on top
     self.canvas:pushHistory()
     local moved = {}
     for k = #idxs, 1, -1 do table.insert(moved, 1, table.remove(ops, idxs[k])) end
     local new = {}
-    for _, op in ipairs(moved) do ops[#ops + 1] = op; new[#new + 1] = #ops end
+    for _, op in ipairs(moved) do
+        local _op, at = self.canvas:placeOp(op)
+        new[#new + 1] = at
+    end
     sel.idxs = new
     self:markDirty()
     self:repaintCanvasBoxes({ sel.bbox }, self:selNeedsFullCompose(moved))
@@ -628,8 +634,8 @@ function InkAwayView:selDuplicate()
     for _, op in ipairs(self:selectionOps()) do
         local c = self.canvas:cloneOp(op)
         translateOp(c, off, off)
-        self.canvas.ops[#self.canvas.ops + 1] = c
-        new[#new + 1] = #self.canvas.ops
+        local _op, at = self.canvas:placeOp(c)
+        new[#new + 1] = at
     end
     sel.idxs = new
     self:recomputeSelectionBBox()

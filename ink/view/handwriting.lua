@@ -142,7 +142,7 @@ function InkAwayView:replaceWithText(text, ink_ops, x, y)
         size = size, font = self.text_font, align = "left", grid_snap = self.text_grid_snap }
     if self.text_grid_snap then self:snapTextBoxToGrid(op) end
     Text.insert(op, { p = 1, o = 0 }, text, nil)
-    self.canvas.ops[#self.canvas.ops + 1] = op
+    self.canvas:placeOp(op)
     self:markDirty()
     self:composeCanvas(); self:renderView()
     self:refresh(self, "ui", self:areaScreenRect())

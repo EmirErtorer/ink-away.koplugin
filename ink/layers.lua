@@ -33,6 +33,10 @@ Layers.MAX = 5   -- a few layers, not a stack: sketch, ink, colour, shading, bac
 -- Is the canvas layered?
 function Layers.on(c) return c.layers ~= nil end
 
+-- Note a change outside the active layer: the view's caches are made again.
+local function touch(c) c.lrev = (c.lrev or 0) + 1 end
+Layers.touch = touch
+
 -- The layer id of an op.
 local function of(op) return op.layer or 1 end
 Layers.of = of
@@ -60,6 +64,7 @@ end
 -- Make the active layer and the hidden set agree with the layer list (after an
 -- undo or a load): an active layer that is gone becomes the top one.
 function Layers.fix(c)
+    touch(c)
     if not c.layers then
         c.active_layer, c.hidden_layers = nil, {}
         c._hid = (c._hid or 0) + 1
@@ -89,6 +94,7 @@ end
 
 -- Turn layers on: everything drawn so far is the first layer, and the active one.
 function Layers.enable(c)
+    touch(c)
     if c.layers then return false end
     c:pushHistory()
     c.layers = { { id = 1, name = "Layer 1" } }
@@ -183,6 +189,7 @@ end
 -- A new empty layer above the active one, made active. Returns its id, or nil
 -- when there are as many as there can be.
 function Layers.add(c)
+    touch(c)
     if not c.layers or #c.layers >= Layers.MAX then return nil end
     c:pushHistory()
     local id = 0
@@ -227,6 +234,7 @@ end
 
 -- Move layer `id` one place up or down.
 function Layers.move(c, id, dir)
+    touch(c)
     if not Layers.canMove(c, id, dir) then return false end
     local p = Layers.pos(c, id)
     c:pushHistory()
@@ -251,6 +259,7 @@ end
 
 -- Show or hide layer `id`.
 function Layers.setHidden(c, id, hidden)
+    touch(c)
     if not Layers.pos(c, id) then return false end
     c.hidden_layers = c.hidden_layers or {}
     if (c.hidden_layers[id] or false) == (hidden and true or false) then return false end
@@ -277,6 +286,7 @@ end
 
 -- Delete layer `id` and everything on it (not the last layer).
 function Layers.remove(c, id)
+    touch(c)
     local p = Layers.pos(c, id)
     if not p or #c.layers < 2 then return false end
     c:pushHistory()
@@ -298,6 +308,7 @@ end
 -- which shows the page exactly as before (the list is already in that order).
 -- The merged layer is shown and active. Returns the id merged into, or nil.
 function Layers.mergeDown(c, id)
+    touch(c)
     local p = Layers.pos(c, id)
     if not p or p < 2 then return nil end
     local to = c.layers[p - 1].id
@@ -315,12 +326,29 @@ end
 -- Turn layers off: every layer, hidden ones too, merged into one drawing that
 -- looks as the layers did together.
 function Layers.flatten(c)
+    touch(c)
     if not c.layers then return false end
     c:pushHistory()
     c.ops = relabel(c.ops, nil, 1)
     c.layers = nil
     Layers.fix(c)
     return true
+end
+
+-- The ops of a drawing file to draw, without its hidden layers' (`saved` as
+-- Layers.save made it): for its thumbnail and for exports made from the file.
+function Layers.drawnOfFile(ops, saved)
+    if type(ops) ~= "table" or type(saved) ~= "table" or type(saved.hidden) ~= "table"
+            or #saved.hidden == 0 then
+        return ops
+    end
+    local hidden = {}
+    for _i, id in ipairs(saved.hidden) do hidden[id] = true end
+    local out = {}
+    for _i, op in ipairs(ops) do
+        if not hidden[of(op)] then out[#out + 1] = op end
+    end
+    return out
 end
 
 -- The fields a drawing file keeps (nil without layers).

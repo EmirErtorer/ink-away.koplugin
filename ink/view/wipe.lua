@@ -14,7 +14,8 @@ local InkAwayView = {}
 -- Start an eraser stroke at screen (sx, sy).
 function InkAwayView:wipeBegin(sx, sy)
     local v = self.view
-    self._wipe = { boxes = Wipe.boxes(self.canvas.ops, v.canvas_w, v.canvas_h),
+    -- (in a layered drawing only the active layer's strokes can go)
+    self._wipe = { boxes = Wipe.boxes(self:editableOps(), v.canvas_w, v.canvas_h),
         areas = {}, rows = {}, removed = 0 }
     self.capturing, self.pending_lift = true, nil
     self:wipeTo(sx, sy)

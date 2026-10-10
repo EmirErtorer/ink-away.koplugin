@@ -264,7 +264,7 @@ end
 function InkAwayView:shapeUnderPoint(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "shape" and Shapes.contains(op, cx, cy) then
+        if op.kind == "shape" and self:editableOp(op) and Shapes.contains(op, cx, cy) then
             return { op = op, idx = i }
         end
     end
@@ -273,6 +273,7 @@ end
 
 function InkAwayView:doFill(pos)
     self:flushPending()
+    self:layerReady()
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     -- A tap inside a shape fills that shape: the colour is stored on the shape
     -- (under its outline), so it moves, rotates, duplicates and deletes with it.
@@ -288,7 +289,7 @@ function InkAwayView:doFill(pos)
         return
     end
     local paper = self:paperRGB()
-    local gray = Export.buildGray(self.canvas, paper and Paint.lum(paper), Paint.darkPaper(paper))
+    local gray = Export.buildGray(self:drawnCanvas(), paper and Paint.lum(paper), Paint.darkPaper(paper))
     local runs = Fill.compute(gray, self.view.canvas_w, self.view.canvas_h,
         math.floor(cx), math.floor(cy), 40)
     if not runs or #runs == 0 then return end
@@ -312,7 +313,7 @@ function InkAwayView:hitTestShape(sx, sy)
     local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "shape" then
+        if op.kind == "shape" and self:editableOp(op) then
             -- about 1.5 mm either side of the line, so a fingertip finds it
             local tol = (op.width or 6) / 2 + Screen:scaleBySize(10) / self.view.zoom
             if Shapes.hit(op, cx, cy, tol) and not self:shapeErased(i) then

@@ -37,7 +37,9 @@ function InkAwayView:computeSelection(poly)
     local idxs = {}
     local slop = self:lassoSlop()
     for i, op in ipairs(self.canvas.ops) do
-        if op.kind ~= "erase" and op.kind ~= "smudge" and opInPoly(op, poly, slop) then idxs[#idxs + 1] = i end
+        if op.kind ~= "erase" and op.kind ~= "smudge" and self:editableOp(op) and opInPoly(op, poly, slop) then
+            idxs[#idxs + 1] = i
+        end
     end
     return self:selectOps(idxs, "lasso")
 end
@@ -72,11 +74,12 @@ function InkAwayView:pasteAt(pos)
     local cx, cy
     if pos then cx, cy = InkGeom.toCanvas(self.view, pos.x, pos.y) end
     self:flushPending()
+    self:layerReady()
     self.canvas:pushHistory()
     local idxs = {}
     for _, op in ipairs(Clipboard.take(cx, cy)) do
-        self.canvas.ops[#self.canvas.ops + 1] = op
-        idxs[#idxs + 1] = #self.canvas.ops
+        local _op, at = self.canvas:placeOp(op)   -- (onto the active layer)
+        idxs[#idxs + 1] = at
     end
     if self.tool ~= "lasso" then self.tool = "lasso"; self:refreshToolLabels() end
     self:selectOps(idxs, "lasso")

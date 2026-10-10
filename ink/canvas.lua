@@ -39,6 +39,8 @@ function Canvas.new(w, h)
         rev = 0,           -- counts every change to the ops, so a save can tell what changed
         layers = nil,      -- a drawing's layers, when it has them (see ink/layers.lua)
         hidden_layers = {},
+        lrev = 0,          -- counts changes outside the active layer (the view's
+                           -- layer caches are kept while it stays the same)
     }, Canvas)
 end
 
@@ -88,24 +90,35 @@ function Canvas:recordAppend()
     pushEntry(self, { add = true })
 end
 
--- Add a new op: at the end, or in a layered drawing at the end of the active
--- layer (on the page, over that layer and under the ones above). One undo step.
+-- Put a new op in its place without an undo step of its own, for a change that
+-- made one already (pushHistory): at the end, or in a layered drawing at the end
+-- of the active layer (on the page, over that layer and under the ones above).
 -- Returns the op and its index.
-function Canvas:addOp(op)
+function Canvas:placeOp(op)
+    local at = #self.ops + 1
     if self.layers then
-        local L = layers()
         local id = self.active_layer or 1
-        op.layer = (id ~= 1) and id or nil
-        local at = L.insertIndex(self, id)
-        if at <= #self.ops then
-            table.insert(self.ops, at, op)
-            pushEntry(self, { add = true, at = at })
-            return op, at
-        end
+        local label = (id ~= 1) and id or nil
+        if op.layer ~= label then op.layer = label end
+        at = layers().insertIndex(self, id)
     end
-    self.ops[#self.ops + 1] = op
-    self:recordAppend()
-    return op, #self.ops
+    table.insert(self.ops, at, op)
+    self.rev = self.rev + 1
+    self.last_placed = op
+    return op, at
+end
+
+-- Add a new op where placeOp puts it, as one undo step. Returns the op and its
+-- index.
+function Canvas:addOp(op)
+    local at
+    op, at = self:placeOp(op)
+    if at < #self.ops then
+        pushEntry(self, { add = true, at = at })
+    else
+        self:recordAppend()
+    end
+    return op, at
 end
 
 -- A change made outside the ops, for the view to undo and redo itself.
@@ -223,9 +236,11 @@ function Canvas:undo()
         self.redo_stack[#self.redo_stack + 1] = { snap = snapshot(self), lay = self.layers and layers().copy(self.layers) or false, act = self.active_layer }
         self.ops = entry.snap
         self:restoreLayers(entry.lay, entry.act)
+        self.lrev = (self.lrev or 0) + 1
     else   -- an added op: drop it, remember it so redo can add it again
         local op = table.remove(self.ops, entry.at or #self.ops)
         self.redo_stack[#self.redo_stack + 1] = { readd = op, at = entry.at }
+        if self.layers and op and (op.layer or 1) ~= self.active_layer then self.lrev = (self.lrev or 0) + 1 end
     end
     self.live = nil
     return true
@@ -251,9 +266,12 @@ function Canvas:redo()
         self.undo_stack[#self.undo_stack + 1] = { snap = snapshot(self), lay = self.layers and layers().copy(self.layers) or false, act = self.active_layer }
         self.ops = entry.snap
         self:restoreLayers(entry.lay, entry.act)
+        self.lrev = (self.lrev or 0) + 1
     else   -- add again the op an undo removed, where it was
         table.insert(self.ops, entry.at or (#self.ops + 1), entry.readd)
         self.undo_stack[#self.undo_stack + 1] = { add = true, at = entry.at }
+        local op = entry.readd
+        if self.layers and op and (op.layer or 1) ~= self.active_layer then self.lrev = (self.lrev or 0) + 1 end
     end
     self.live = nil
     return true
@@ -274,6 +292,7 @@ function Canvas:setOps(ops)
     self.undo_stack = {}
     self.redo_stack = {}
     self.layers, self.active_layer, self.hidden_layers = nil, nil, {}
+    self.lrev = (self.lrev or 0) + 1
 end
 
 -- Which kinds of visible op a list holds: erases (soft_erase and hard_erase,

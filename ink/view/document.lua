@@ -20,6 +20,7 @@ local Library = require("ink/library")
 local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
+local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
 local existingDir = Storage.existingDir
@@ -138,7 +139,8 @@ function InkAwayView:saveDocument(force)
     if self.notebook then
         ok, err = Project.saveNotebook(self.notebook, path, self._page_cache, { export = self.export_opts })
     else
-        ok, err = Project.save(self.canvas, path, { bg = self.bg_path, export = self.export_opts, paper = self.paper })
+        ok, err = Project.save(self.canvas, path, { bg = self.bg_path, export = self.export_opts, paper = self.paper,
+            layers = self:layersForFile() })
     end
     if not ok then
         logger.warn("InkAway: saving failed:", path, err)
@@ -246,6 +248,7 @@ function InkAwayView:openDocument(path)
         self:clearBackground()
         self.paper = Palette.paperRGB(data.paper)
         self:loadProjectData(data)
+        self:loadLayers(data.layers)
         if type(data.bg) == "string" then self:restoreBackground(data.bg) end
         self:composeCanvas(); self:renderView()
         self:resetTransientMemory()
@@ -454,7 +457,7 @@ function InkAwayView:openDocumentSheet()
     local status = self.doc_written
         and string.format(_("Saved automatically in %s"), self:docPlace())
         or string.format(_("Saved in %s once there is something in it"), self:docPlace())
-    local build = function()
+    local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(self:docName(), content_w, _("Done"), closeSelf))
@@ -467,6 +470,15 @@ function InkAwayView:openDocumentSheet()
             act(_("Duplicate"), thirdW, function() self:duplicateDocument() end),
             HorizontalSpan:new{ width = gap },
             act(_("Export\u{2026}"), thirdW, function() self:openExport() end) })
+        -- a drawing's layers (view/layers.lua): off until turned on
+        if self:layersAllowed() then
+            add(vspan(12))
+            add(ToggleRow:new{ label = _("Layers"), is_on = self:layered(), width = content_w, parent = menu,
+                callback = function(on)
+                    closeSelf()
+                    if on then self:layersOn() else self:confirmLayersOff() end
+                end })
+        end
         add(vspan(16))
         add(self:actionTile("pen", _("New drawing"), _("A blank page. Hold to start from a picture."), content_w,
             function() closeSelf(); self:newDrawing() end,

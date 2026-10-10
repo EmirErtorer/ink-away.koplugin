@@ -161,8 +161,8 @@ function InkAwayView:selLink()
             end
         else
             local b = sel.bbox
-            self.canvas.ops[#self.canvas.ops + 1] = Links.new(b, to)
-            sel.idxs[#sel.idxs + 1] = #self.canvas.ops
+            local _op, at = self.canvas:placeOp(Links.new(b, to))
+            sel.idxs[#sel.idxs + 1] = at
         end
         self:markDirty()
         self:recomputeSelectionBBox()

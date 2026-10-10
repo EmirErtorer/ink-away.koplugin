@@ -62,8 +62,9 @@ end
 -- `reveal_resolved` means the caller already built the reveal buffers (see
 -- composeCanvas) and the reveal_pic and reveal_text it passed are final (nil when
 -- not needed); otherwise composeInto builds its own, as the thumbnails do. With
--- `region` only that rect of dst is rebuilt (see composeRegion).
-function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare, region)
+-- `region` only that rect of dst is rebuilt (see composeRegion). With `keep` the
+-- ops are drawn over what dst already holds (the layer caches, view/layers.lua).
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare, region, keep)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local found = Canvas.scanOps(ops)
     -- the paper, and the text on it: black, or white on a dark paper
@@ -103,7 +104,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                 bare = pageCopy()
             end
         end
-    else
+    elseif not keep then
         dst:paintRect(0, 0, W, H, WHITE)
         if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
     end
@@ -202,6 +203,8 @@ end
 -- (colour, ruling and any PDF page), so erasing never removes the ruling; in a
 -- drawing it is the background image, else its paper, or nil for white.
 function InkAwayView:eraseRevealBB()
+    -- in a layered drawing: the page without the active layer (view/layers.lua)
+    if self.canvas.layers then return self:layerRest() end
     -- while protection is on, a live erase stroke spares text, so it reveals the
     -- page-with-text buffer; otherwise it reveals the plain page
     if self.text_erase_protect and self._reveal_text_bb then return self._reveal_text_bb end
@@ -235,7 +238,7 @@ function InkAwayView:buildRevealBuffer(field, needed, base, kind)
         self[field] = bb
     end
     if base then bb:blitFrom(base, 0, 0, 0, 0, W, H) else bb:paintRect(0, 0, W, H, WHITE) end
-    self:stampOps(bb, self.canvas.ops, kind)
+    self:stampOps(bb, self:drawnOps(), kind)
 end
 
 -- What a hard erase (Erase pictures on) reveals in a notebook: the bare paper,
@@ -286,7 +289,8 @@ end
 -- drawn, not the zoom; it runs on open, undo, clear and resize.
 function InkAwayView:composeCanvas()
     if not self.canvas_bb then return end
-    local found = Canvas.scanOps(self.canvas.ops)
+    local ops = self:drawnOps()   -- (without a hidden layer's)
+    local found = Canvas.scanOps(ops)
     -- a drawing's picture, else its paper (nil on white)
     local base, bare = self.bg_bb or self:plainPaperBB(), nil
     if found.hard_erase and not self.notebook then bare = self:barePaperBB() end
@@ -302,7 +306,7 @@ function InkAwayView:composeCanvas()
     self:buildRevealBuffer("_reveal_pic_bb", found.image, base, "image")
     self:buildRevealBuffer("_reveal_text_bb", found.text and (self.text_erase_protect or found.spare_text),
         self._reveal_pic_bb or base, "text")   -- text reveal keeps images too
-    self:composeInto(self.canvas_bb, self.canvas.ops, base, nil,
+    self:composeInto(self.canvas_bb, ops, base, nil,
         self._reveal_text_bb, self._reveal_pic_bb, true, bare)   -- reveal buffers already resolved
     -- the whole master was rebuilt: resync the panel-order mirror on the next render
     self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
@@ -318,14 +322,16 @@ function InkAwayView:composeRegion(x0, y0, x1, y1)
     x1, y1 = math.min(W, math.ceil(x1)), math.min(H, math.ceil(y1))
     if x1 <= x0 or y1 <= y0 then return end
     local base, bare = self.bg_bb or self:plainPaperBB(), nil
-    if Canvas.scanOps(self.canvas.ops).smudge then return self:composeCanvas() end
-    if not self.notebook and Canvas.scanOps(self.canvas.ops).hard_erase then bare = self:barePaperBB() end
+    local ops = self:drawnOps()
+    local found = Canvas.scanOps(ops)
+    if found.smudge then return self:composeCanvas() end
+    if not self.notebook and found.hard_erase then bare = self:barePaperBB() end
     if self.notebook then
         if not self._paper_bb then return self:composeCanvas() end
         base = self._paper_bb
-        if Canvas.scanOps(self.canvas.ops).hard_erase then bare = self:barePaperBB() end
+        if found.hard_erase then bare = self:barePaperBB() end
     end
-    self:composeInto(self.canvas_bb, self.canvas.ops, base, nil, self._reveal_text_bb,
+    self:composeInto(self.canvas_bb, ops, base, nil, self._reveal_text_bb,
         self._reveal_pic_bb, true, bare, { x0 = x0, y0 = y0, x1 = x1, y1 = y1 })
     self:markCanvasDirty(x0, y0, x1, y1)
 end

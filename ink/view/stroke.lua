@@ -158,7 +158,7 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
         -- a soft erase reveals the page; a hard erase the bare paper (in a notebook
         -- with its ruling, so the ruling can never be rubbed out), or white
         local reveal
-        if self.erase_bg then reveal = self:barePaperBB()
+        if self.erase_bg and not self.canvas.layers then reveal = self:barePaperBB()
         else reveal = self:eraseRevealBB() end
         if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
@@ -186,7 +186,9 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
 
     -- master, at 1:1
     if self.canvas_bb then
+        local lx, ly = cx, cy
         if self.last_cx and not fresh then
+            lx, ly = self.last_cx, self.last_cy
             local seg = self._lw_seg_c
             seg[1], seg[2], seg[3], seg[4] = self.last_cx, self.last_cy, cx, cy
             strokeFn(seg, width / 2, self._lw_cput, p0, p, t0, t1)
@@ -194,6 +196,12 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
             strokeFn({ cx, cy }, width / 2, self._lw_cput, p, p)
         end
         self.last_cx, self.last_cy = cx, cy
+        -- on a layer under others: they stay over it (see view/layers.lua)
+        if self._lay_over then
+            local pad = width / 2 + 2
+            self:layerCover(math.min(lx, cx) - pad, math.min(ly, cy) - pad,
+                math.max(lx, cx) + pad, math.max(ly, cy) + pad, self.symmetry)
+        end
     end
 
     -- on screen, at the current zoom; acc tracks the base image only (see
@@ -215,6 +223,11 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
         self._stroke_rect = InkGeom.growRect(self._stroke_rect, acc.x0, acc.y0, acc.x1, acc.y1)
         local rects, nr = self:symAreaRects(acc)
         for i = 1, nr do
+            -- (under other layers: the screen's rect from the master, which has them on top)
+            if self._lay_over then
+                local rr = rects[i]
+                self:renderViewRect(rr.x0 - 1, rr.y0 - 1, rr.x1 + 1, rr.y1 + 1)
+            end
             self:liveDirty(self._live_mode or "fast", rects[i], 1)
         end
     end
@@ -273,6 +286,8 @@ function InkAwayView:pureBlackPen()
 end
 
 function InkAwayView:beginStroke(sx, sy)
+    -- in a layered drawing: the active layer shown, what lies above it at hand
+    self:layerStrokeBegin(self.tool == "erase")
     if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
     local is_erase = self.tool == "erase"
     self.live_seed = math.random(1, 1000000)
@@ -481,6 +496,7 @@ function InkAwayView:finalizeStroke()
     local committed = self.canvas:finishStroke()
     if self._wl then self:washEnd() end   -- the page under it is drawn again from the op below
     if self._sm then self:smudgeEnd() end
+    self:layerStrokeEnd(committed)   -- under other layers: the page there drawn again
     -- a mode may take the stroke over (the annotation mode makes a highlighter
     -- stroke along a line of text the reader's own highlight)
     if committed and self.takeStroke and self:takeStroke(committed) then

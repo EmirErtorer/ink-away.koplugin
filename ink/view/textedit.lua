@@ -55,9 +55,20 @@ end
 -- peel back (or, for redo, to replay)? Returns idx, hist or nil.
 function InkAwayView:topTextHist()
     local ops = self.canvas.ops
-    local top = ops[#ops]
+    local idx = #ops
+    if self.canvas.layers then
+        -- in a layered drawing the newest op can sit under another layer's: the
+        -- one placed last, or the box being peeled (a new op at each step)
+        local want = { [self.canvas.last_placed or false] = true, [self._peel_op or false] = true }
+        idx = nil
+        for i = #ops, 1, -1 do
+            if want[ops[i]] then idx = i; break end
+        end
+        if not idx then return nil end
+    end
+    local top = ops[idx]
     local h = top and top.kind == "text" and self._text_hist[top]
-    if h then return #ops, h end
+    if h then return idx, h end
 end
 
 ------------------------------------------------------------------------------
@@ -298,8 +309,9 @@ function InkAwayView:finishTextEdit(commit)
     local committed_op   -- the op that ended up on the ops list (for undo history)
     if self.editing_is_new then
         if commit and not Text.isEmpty(op) then
+            self:layerReady()
             self.canvas:pushHistory()
-            self.canvas.ops[#self.canvas.ops + 1] = op
+            self.canvas:placeOp(op)
             committed_op = op
         end
     else
@@ -480,7 +492,7 @@ end
 function InkAwayView:textOpAt(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "text" and cx >= op.x and cx <= op.x + op.w
+        if op.kind == "text" and self:editableOp(op) and cx >= op.x and cx <= op.x + op.w
            and cy >= op.y and cy <= op.y + (op.h or 0) then
             return op, i
         end

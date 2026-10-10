@@ -260,7 +260,7 @@ function InkAwayView:hitTestImage(sx, sy)
     local ops = self.canvas.ops
     for i = #ops, 1, -1 do
         local op = ops[i]
-        if op.kind == "image" then
+        if op.kind == "image" and self:editableOp(op) then
             local bx, by, bw, bh = imageBBox(op)
             if cx >= bx and cx <= bx + bw and cy >= by and cy <= by + bh then
                 return { op = op, idx = i }
@@ -335,14 +335,15 @@ function InkAwayView:insertImage(path)
     local ccy = v.pan_y + (v.area_h / 2) / v.zoom
     op.x = math.max(0, math.min(v.canvas_w - op.w, ccx - op.w / 2))
     op.y = math.max(0, math.min(v.canvas_h - op.h, ccy - op.h / 2))
+    self:layerReady()
     self.canvas:pushHistory()
-    self.canvas.ops[#self.canvas.ops + 1] = op
+    local _op, at = self.canvas:placeOp(op)
     self:markDirty()
     -- Switch to Pan with the picture selected and its menu open, as if it had been
     -- tapped there, so a new image is ready to move, resize or delete at once.
     self:setTool("pan")
     self:recompose()
-    self:selectOps({ #self.canvas.ops }, "pan")
+    self:selectOps({ at }, "pan")
     self:openSelectionMenu()
 end
 

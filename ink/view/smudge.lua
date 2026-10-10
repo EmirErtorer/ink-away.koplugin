@@ -26,8 +26,8 @@ function InkAwayView:smudgeBegin()
     else
         base:fill(Blitbuffer.COLOR_WHITE)
     end
-    self:stampOps(base, self.canvas.ops, "image")
-    self:stampOps(base, self.canvas.ops, "text")
+    self:stampOps(base, self:drawnOps(), "image")
+    self:stampOps(base, self:drawnOps(), "text")
     local live = self.canvas.live
     local r = math.max(1, (live.width or 1) / 2)
     local states = {}
@@ -53,6 +53,7 @@ function InkAwayView:smudgePoint(cx, cy, fresh)
         r.x0, r.y0 = math.max(0, r.x0), math.max(0, r.y0)
         r.x1, r.y1 = math.min(W, r.x1), math.min(H, r.y1)
         if r.x1 > r.x0 and r.y1 > r.y0 then
+            self:layerCover(r.x0, r.y0, r.x1, r.y1)   -- other layers above stay on top
             self:markCanvasDirty(r.x0, r.y0, r.x1, r.y1)
             local ax0, ay0 = self:toAreaLocal(r.x0, r.y0)
             local ax1, ay1 = self:toAreaLocal(r.x1, r.y1)

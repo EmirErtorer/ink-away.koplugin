@@ -113,6 +113,7 @@ function InkAwayView:washPoint(cx, cy, fresh, p)
             local w, h = rr.x1 - rr.x0, rr.y1 - rr.y0
             self.canvas_bb:blitFrom(wl.under, rr.x0, rr.y0, rr.x0, rr.y0, w, h)
             Wash.blendBB(self.canvas_bb, wl.mask, op, st, rr.x0, rr.y0, rr.x1, rr.y1)
+            self:layerCover(rr.x0, rr.y0, rr.x1, rr.y1)   -- other layers above stay on top
             self:markCanvasDirty(rr.x0, rr.y0, rr.x1, rr.y1)
             local b = wl.box
             b.x0, b.y0 = math.min(b.x0, rr.x0), math.min(b.y0, rr.y0)

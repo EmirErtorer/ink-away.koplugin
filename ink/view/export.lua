@@ -17,6 +17,7 @@ local _ = require("gettext")
 local RenderImage = require("ui/renderimage")
 local Export = require("ink/export")
 local ImageProc = require("ink/imageproc")
+local Layers = require("ink/layers")
 local Links = require("ink/links")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
@@ -405,7 +406,7 @@ function InkAwayView:pngOptions()
 end
 
 function InkAwayView:writePNG(path)
-    local ok, err = Export.savePNG(self.canvas, path, self:pngOptions())
+    local ok, err = Export.savePNG(self:drawnCanvas(), path, self:pngOptions())
     if ok then
         self:markDirty()   -- keep the export settings with the document
         local ow = self.save_area and self.save_area.w or self.canvas.w
@@ -461,7 +462,7 @@ function InkAwayView:writePDF(path)
             bg_opaque, quality = true, 90   -- rendered PDF pages are drawn on white
         end
     else
-        pages_ops = { self.canvas.ops }
+        pages_ops = { self:drawnOps() }
         w, h = self.canvas.w, self.canvas.h
         template = self:drawingGridTemplate() or self:drawingPaperTemplate()
         if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
@@ -500,7 +501,7 @@ function InkAwayView:collectFolderPages(dir, acc)
                     if page.title then item.kids[#item.kids + 1] = { title = page.title, page = #pages } end
                 end
             else
-                pages[#pages + 1] = data.ops or {}
+                pages[#pages + 1] = Layers.drawnOfFile(data.ops or {}, data.layers)
                 acc.places[#pages] = { path = d.path }
                 templates[#pages] = dress({ style = "blank" }, Palette.paperRGB(data.paper))
                 if type(data.bg) == "string" and Storage.exists(data.bg) then sources[#pages] = { image = data.bg } end
@@ -741,7 +742,7 @@ function InkAwayView:writeOrnament(dir, name)
     local opts = self:pngOptions()
     opts.white = nil   -- an ornament is always transparent
     if not self.notebook then opts.template = nil end   -- and has no grid
-    local ok, err = Export.savePNG(self.canvas, path, opts)
+    local ok, err = Export.savePNG(self:drawnCanvas(), path, opts)
     if ok then
         UIManager:show(InfoMessage:new{ text = string.format(_("Saved bookshelf ornament:\n%s"), path) })
     else
