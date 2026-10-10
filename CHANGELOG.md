@@ -6,7 +6,9 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
-## [Unreleased]
+## [4.0.1] - 2026-10-10
+
+Two fixes for pen and colour readers.
 
 ### Fixed
 - With palm rejection on (the default on pen readers), a text box's Done and
@@ -426,7 +428,7 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...HEAD
+[4.0.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.1.3...v3.2.0
