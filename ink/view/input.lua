@@ -49,6 +49,15 @@ local RAW_START_MS = 90
 -- pen and still count as the pen's own, while it works the UI.
 local PEN_UI_SLOP = 3
 
+-- A pen contact that lands on a floating button (zoom, Pan, the toolbar's
+-- chevron, the pen or layer strip) is a tap on it when it moves less than
+-- PEN_TAP_SLOP_DP (density-independent px: 8 is about 1.3 mm, the distance
+-- Android uses to tell a tap from a drag) and lifts within KOReader's hold time
+-- (PEN_TAP_MS unless its gesture settings change it). One that moves further is
+-- a stroke, drawn from where the pen landed.
+local PEN_TAP_SLOP_DP = 8
+local PEN_TAP_MS = 500
+
 local InkAwayView = {}
 
 ------------------------------------------------------------------------------
@@ -178,6 +187,7 @@ end
 -- so turning it off mid-stroke never leaves the tool stuck on erase or lasso.
 function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_clear)
+    self._pen_fab, self._pen_fab_stroke = nil, nil
     self:restoreHeld()
     self._pen_state = Stylus.new()
     self._pen_started = false
@@ -442,6 +452,16 @@ function InkAwayView:onStylusSlot(inp, slot)
             role = Stylus.ROLE_PALM
         end
     end
+    -- A pen contact on a floating button waits to see whether it is a tap or a
+    -- stroke (see penFabFrame); once it is a stroke, this frame is drawn below.
+    if self._pen_fab then
+        if (sn == self._pen_fab.slot or is_pen_slot)
+                and (role == Stylus.ROLE_PEN or role == Stylus.ROLE_PEN_OUT) then
+            if self:penFabFrame(slot, role == Stylus.ROLE_PEN_OUT, facts) then return true end
+        elseif role == Stylus.ROLE_PEN then
+            role = Stylus.ROLE_PALM
+        end
+    end
     if role == Stylus.ROLE_PEN and self._pen_owner ~= nil and sn ~= self._pen_owner
             and not is_pen_slot then
         role = Stylus.ROLE_PALM
@@ -467,6 +487,8 @@ function InkAwayView:onStylusSlot(inp, slot)
     if self.pen_ui and not self._pen_started and slot.id ~= nil and slot.id >= 0
             and slot.x and slot.y then
         local x, y = self:penScreenXY(slot)
+        local fab = self:penFabAt(x, y)
+        if fab then return self:penFabStart(sn, slot, fab, x, y) end
         if self:penOnUI(x, y) then return self:penUiStart(sn, x, y) end
     end
     local action = Stylus.step(self._pen_state, slot.id)
@@ -660,6 +682,78 @@ function InkAwayView:penUiFrame(slot, leaving)
     UIManager:nextTick(self._pen_ui_end)
     UIManager:unschedule(self._pen_clear)
     UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+    return false
+end
+
+-- The floating button under a pen contact's first point, while the canvas is the
+-- topmost window (with a menu over it the pen works that, as before).
+function InkAwayView:penFabAt(x, y)
+    local top = self:touchTarget()
+    if (top and top ~= self) or not self:inArea(x, y) then return nil end
+    return self:fabHit(x, y)
+end
+
+-- The pen's tap slop in screen px (see PEN_TAP_SLOP_DP).
+function InkAwayView:penTapSlop()
+    if not self._pen_tap_slop then
+        local ok, px = pcall(function() return Screen:scaleByDPI(PEN_TAP_SLOP_DP) end)
+        if not (ok and type(px) == "number" and px > 0) then px = Screen:scaleBySize(PEN_TAP_SLOP_DP) end
+        self._pen_tap_slop = px
+    end
+    return self._pen_tap_slop
+end
+
+-- How long a pen tap on a floating button may last: KOReader's hold time, after
+-- which it is a hold, which the buttons ignore (a finger's hold does nothing there
+-- either).
+function InkAwayView:penTapMs()
+    local ok, ms = pcall(function() return tonumber(G_reader_settings:readSetting("ges_hold_interval_ms")) end)
+    return (ok and ms and ms > 0) and ms or PEN_TAP_MS
+end
+
+-- The pen landed on a floating button: keep the contact until it lifts (a tap on
+-- the button) or moves past the slop (a stroke from where it landed). KOReader
+-- reuses its slot tables, so the landing frame is copied.
+function InkAwayView:penFabStart(sn, slot, kind, x, y)
+    if self._pen_state.down then   -- a coordinate-less first frame may have opened a stroke
+        self._pen_state = Stylus.new()
+        self._pen_owner, self._pen_kin = nil, nil
+        self:restoreHeld()
+    end
+    self._pen_fab = { kind = kind, slot = sn, x = x, y = y,
+        tv = Stylus.timevMs(slot.timev), now = self:nowMs(),
+        first = { slot = slot.slot, id = slot.id, x = slot.x, y = slot.y, tool = slot.tool,
+                  timev = slot.timev, pressure = slot.pressure } }
+    self._reject_finger = true
+    UIManager:unschedule(self._pen_clear)
+    return true
+end
+
+-- One more frame of a contact that landed on a floating button. Returns true when
+-- it is taken here, or false when it has just become a stroke, opened at the
+-- landing point, so the caller draws this frame as its next point.
+function InkAwayView:penFabFrame(slot, leaving, facts)
+    local f = self._pen_fab
+    if leaving or slot.id == nil or slot.id < 0 then
+        self._pen_fab = nil
+        UIManager:unschedule(self._pen_clear)
+        UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
+        -- the time from the same clock as the landing: the frames' own, or ours
+        local tv = Stylus.timevMs(slot.timev)
+        local held = (tv and f.tv) and (tv - f.tv) or (self:nowMs() - f.now)
+        if held <= self:penTapMs() then self:fabAction(f.kind) end   -- held longer: nothing, as a finger's hold
+        return true
+    end
+    if not (slot.x and slot.y) then return true end
+    local x, y = self:penScreenXY(slot)
+    local dx, dy, slop = x - f.x, y - f.y, self:penTapSlop()
+    if dx * dx + dy * dy <= slop * slop then return true end
+    self._pen_fab = nil
+    Stylus.step(self._pen_state, f.first.id)   -- the contact's down
+    self._pen_owner = f.slot
+    self._pen_fab_stroke = true                -- its touch lands on the button: draw, not press
+    self:penDown(f.first, facts)
+    self._pen_fab_stroke = nil
     return false
 end
 

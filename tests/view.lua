@@ -1215,10 +1215,16 @@ do
         "pen ui: a first point on the toolbar hands the contact over and puts the tool back")
     pen(-1, 100, tb_y, 2)
     UIManager.fireScheduled()
-    -- a floating control (the zoom pill) is UI too
+    -- a floating control (the zoom pill) holds the pen until it is a tap or a
+    -- stroke (see penFabFrame); lifted there, it is a tap
     local zr = view:fabRect("zoom")
-    ok(pen(0, zr.x + 4, zr.y + 4) == false, "pen ui: the zoom pill takes the pen")
+    local zz = view.view.zoom
+    ok(pen(0, zr.x + 4, zr.y + 4) == true and view._pen_fab ~= nil and not view._pen_ui_contact,
+        "pen ui: the zoom pill holds the pen until it is a tap or a stroke")
     pen(-1, zr.x + 4, zr.y + 4)
+    ok(view._pen_fab == nil and view.view.zoom > zz and view.canvas:opCount() == q + 1,
+        "pen ui: lifted there, it taps the pill and draws nothing")
+    view:fabAction("zoomout")
     UIManager.fireScheduled()
     -- with the toggle off the pen never reaches the toolbar
     view.pen_ui = false

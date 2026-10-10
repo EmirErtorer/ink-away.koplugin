@@ -18,6 +18,10 @@ versions marked *Prerelease* were test builds.
   When the touch screen took the edge of the hand for a pen, Ink Away took it
   for the real pen. Only the pen's own digitizer is the pen now, and a hand on
   the screen while the side button is held is never taken for it either.
+- A pen stroke that starts on a floating button (zoom, Pan, the toolbar's
+  chevron, the pen or layer strip) is drawn instead of lost. A pen that lifts
+  within about 1.3 mm of where it landed, and within KOReader's hold time,
+  still presses the button.
 
 ## [4.0.1] - 2026-10-10
 

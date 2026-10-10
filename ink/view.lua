@@ -530,7 +530,8 @@ function InkAwayView:onIaTouch(_, ges)
     self._swallow = nil   -- a new touch: any straightened stroke's contact is over
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel
     -- floating controls: a tap on one acts; a drag off it (below) draws instead
-    local fab = self:fabHit(pos.x, pos.y)
+    -- (not the start of a pen stroke that landed on one: see penFabFrame)
+    local fab = not self._pen_fab_stroke and self:fabHit(pos.x, pos.y)
     if fab then self._fab_press = fab; return true end
     if self.selecting_crop then return self:cropTouch(pos) end
     -- the selection's frame and handles, with any tool (a finger's hold can make

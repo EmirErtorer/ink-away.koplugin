@@ -447,6 +447,87 @@ uirun("U12", "keyboard up: the pen's taps on the canvas get through, a palm's do
     UI._window_stack = {}
 end)
 
+-- A pen contact that lands on a floating button is a tap only if it stays within
+-- the tap slop (8 dp, about 1.3 mm) and lifts within half a second; one that
+-- moves further is a stroke from where it landed, and never presses the button.
+local function onPill(v)
+    local r = v:fabRect("zoom")
+    return math.floor(r.x + r.w / 2), math.floor(r.y + r.h / 4)   -- the zoom-in half
+end
+uirun("U13", "a stroke that starts on the zoom pill draws from where it landed", function(w)
+    local v = w.view
+    local x, y = onPill(v)
+    local z0 = v.view.zoom
+    pen.enter(w, x, y, 60); pen.touch(w, x, y, 7)
+    for i = 1, 16 do pen.move(w, x - i * 10, y - i * 3, 7) end
+    pen.lift(w, 7); pen.leave(w, 30)
+    local op = v.canvas.ops[1]
+    local cx, cy = v:toCanvasClamped(x, y)
+    uiok(v.view.zoom == z0, "U13: the zoom stays")
+    uiok(v.canvas:opCount() == 1 and op.pts[1] == cx and op.pts[2] == cy,
+        "U13: one stroke, starting where the pen landed on the pill")
+    uiok(#w.ges_log == 0, "U13: the gesture detector saw nothing")
+end)
+uirun("U14", "a tap that skids within the slop zooms; just past it draws", function(w)
+    local v = w.view
+    local x, y = onPill(v)
+    local slop = v:penTapSlop()
+    local z0 = v.view.zoom
+    local d = math.floor(slop * 0.6)
+    pen.enter(w, x, y, 60); pen.touch(w, x, y, 7)
+    pen.move(w, x + d, y, 7); pen.move(w, x, y + d, 7)
+    pen.lift(w, 7); pen.leave(w, 30)
+    local z1 = v.view.zoom
+    uiok(z1 > z0 and v.canvas:opCount() == 0, ("U14: a skid of %d px of %d is still a tap"):format(d, slop))
+    H.tick(w, 1000)
+    local x2, y2 = onPill(v)
+    local e = math.ceil(slop * 1.6)
+    pen.enter(w, x2, y2, 60); pen.touch(w, x2, y2, 7)
+    pen.move(w, x2 - e, y2, 7); pen.move(w, x2 - 2 * e, y2, 7)
+    pen.lift(w, 7); pen.leave(w, 30)
+    uiok(v.view.zoom == z1 and v.canvas:opCount() == 1, ("U14: %d px is a stroke, no zoom"):format(e))
+end)
+uirun("U15", "the pen held still on the pill for 0.8 s does nothing", function(w)
+    local v = w.view
+    local x, y = onPill(v)
+    local z0 = v.view.zoom
+    pen.enter(w, x, y, 60); pen.touch(w, x, y, 7)
+    for _ = 1, 8 do pen.move(w, x, y, 100) end
+    pen.lift(w, 7); pen.leave(w, 30)
+    uiok(v.view.zoom == z0 and v.canvas:opCount() == 0, "U15: no zoom, no ink")
+end)
+uirun("U16", "a stroke that starts on the toolbar chevron draws; the toolbar stays", function(w)
+    local v = w.view
+    local r = v:fabRect("bar")
+    local x, y = math.floor(r.x + r.w / 2), math.floor(r.y + r.h / 2)
+    pen.enter(w, x, y, 60); pen.touch(w, x, y, 7)
+    for i = 1, 12 do pen.move(w, x - i * 8, y + i * 8, 7) end
+    pen.lift(w, 7); pen.leave(w, 30)
+    uiok(not v._toolbar_hidden and v.canvas:opCount() == 1, "U16: drawn, toolbar unchanged")
+end)
+uirun("U17", "a palm rests while the pen taps the pill; leaving range counts as the lift", function(w)
+    local v = w.view
+    local x, y = onPill(v)
+    local z0 = v.view.zoom
+    panel.down(w, 0, 801, 600, 900, 0, 50)
+    pen.enter(w, x, y, 20); pen.touch(w, x, y, 7)
+    panel.move(w, { { 0, 606, 904 } }, 4)
+    pen.leaveLift(w, 7)
+    panel.move(w, { { 0, 612, 910 } }, 8)
+    panel.up(w, 0, 8)
+    uiok(v.view.zoom > z0 and v.canvas:opCount() == 0, "U17: zoomed, nothing drawn")
+end)
+uirun("U18", "with a menu up, the pen on the pill goes to the menu's world as before", function(w)
+    local v = w.view
+    local UI = H.UIManager
+    UI._window_stack[#UI._window_stack + 1] = { widget = v }
+    UI._window_stack[#UI._window_stack + 1] = { widget = { name = "menu" } }
+    local x, y = onPill(v)
+    tapAt(w, x, y)
+    uiok(#gestures(w, "touch") == 1 and #w.fed == 0 and v.canvas:opCount() == 0, "U18: the gesture path, nothing drawn")
+    UI._window_stack = {}
+end)
+
 -- The side button through KOReader's real input: on a Kindle Scribe it is
 -- BTN_STYLUS, which KOReader keeps as its "eraser" latch and relabels the pen's
 -- tool while held. By default it highlights while held (B0); set to Lasso the
