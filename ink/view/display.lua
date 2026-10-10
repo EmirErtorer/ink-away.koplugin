@@ -302,6 +302,16 @@ function InkAwayView:colourPanel()
     return self._is_colour
 end
 
+-- Does the panel have colour waveforms of its own (Kaleido, on colour Kobos)?
+-- KOReader uses them for a refresh that carries the dithering hint.
+function InkAwayView:kaleido()
+    if self._kaleido == nil then
+        local ok, r = pcall(function() return Device:hasKaleidoWfm() end)
+        self._kaleido = (ok and r) and true or false
+    end
+    return self._kaleido
+end
+
 -- Does every refresh show colour exactly as drawn? On the emulator and on screens
 -- that are not e-ink (a desktop, a phone) there are no waveforms, so live ink
 -- needs no settling refresh after it.
@@ -414,8 +424,9 @@ local function clipToArea(v, r, pad)
     return x0, y0, x1, y1
 end
 
--- Refresh one area-local rect, clipped to the drawing area, at `mode`.
-function InkAwayView:dirtyAreaRect(mode, r, pad)
+-- Refresh one area-local rect, clipped to the drawing area, at `mode` (with
+-- KOReader's dithering hint when `dither` is set).
+function InkAwayView:dirtyAreaRect(mode, r, pad, dither)
     local v = self.view
     local x0, y0, x1, y1 = clipToArea(v, r, pad)
     if not x0 then return end
@@ -423,7 +434,7 @@ function InkAwayView:dirtyAreaRect(mode, r, pad)
     -- just their union (area-local) instead of the whole drawing area
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
     UIManager:setDirty(self, mode, GeomUI:new{
-        x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
+        x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 }, dither)
 end
 
 -- Ask a driven panel (see einkDriven) for `kind` ("fast" or "ui") over an
@@ -513,26 +524,39 @@ end
 
 -- Colour panels: remember an area-local rect whose true colours still need a
 -- grey-capable refresh, and restart the settle timer. Each new stroke pushes it
--- back, so a slow refresh never runs under the next letter.
-function InkAwayView:queueReconcile(r, pad)
+-- back, so a slow refresh never runs under the next letter. With `drive`, the
+-- rect holds ink whose pixels already have their final values (see runReconcile).
+function InkAwayView:queueReconcile(r, pad, drive)
     pad = pad or 0
     self._reconcile = growRect(self._reconcile, r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad)
+    if drive then self._reconcile_drive = true end
     UIManager:unschedule(self._reconcile_cb)
     UIManager:scheduleIn(RECONCILE_SEC, self._reconcile_cb)
 end
 
 function InkAwayView:runReconcile()
     UIManager:unschedule(self._reconcile_cb)
-    if self.closing then self._reconcile = nil; return end
+    if self.closing then self._reconcile, self._reconcile_drive = nil, nil; return end
     if self.capturing or (self._pen_state and self._pen_state.down) then
         UIManager:scheduleIn(RECONCILE_SEC, self._reconcile_cb)   -- still writing
         return
     end
-    local q = self._reconcile
-    self._reconcile = nil
+    local q, drive = self._reconcile, self._reconcile_drive
+    self._reconcile, self._reconcile_drive = nil, nil
     if q then
         self._area_only = true          -- only drawing-area pixels changed
-        self:dirtyAreaRect("ui", q, 0)
+        if drive then
+            -- Ink drawn in its own colours already holds its final values, which
+            -- the fast waveform showed only as black and white. A "ui" update
+            -- drives only pixels that changed since the last one, so it left them
+            -- that way (pale colours stayed white). "partial" is REAGL, which
+            -- drives every pixel of the rect without a flash, and on a Kaleido
+            -- panel the dithering hint makes it the colour waveform, as KOReader
+            -- does for its colour highlights.
+            self:dirtyAreaRect("partial", q, 0, self:kaleido())
+        else
+            self:dirtyAreaRect("ui", q, 0)
+        end
         self:einkAsk("ui", q, 0)        -- a Boox: the grey waveform, whatever its mode
     end
 end

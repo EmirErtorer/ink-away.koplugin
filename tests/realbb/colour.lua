@@ -2,7 +2,10 @@
 -- Colour) vs grey (BB8). On colour: every pen draws live with the fast waveform at
 -- a bounded pace, a coloured pen shows a black preview while drawing, the master
 -- keeps the real colour, a lift sends no blocking refresh, and one grey/colour
--- refresh settles the stroke once the pen rests. Grey e-ink keeps the old path.
+-- refresh settles the stroke once the pen rests: one that drives every pixel for
+-- ink drawn in its own colours (a "ui" one skips pixels the fast waveform already
+-- set), on a Kaleido panel with the dithering hint for its colour waveform. Grey
+-- e-ink keeps the old path.
 -- Run (the test runner does this):  cd <emulator>/koreader && ./luajit <repo>/tests/realbb/colour.lua <repo>
 local REPO = arg[1] or "."
 require("ffi/loadlib")
@@ -32,8 +35,9 @@ local function world(typ)
     view.nowMs = function() return clock end
     local modes = {}
     local orig = UIManager.setDirty
-    UIManager.setDirty = function(self, w, mode, region)
+    UIManager.setDirty = function(self, w, mode, region, dither)
         modes[#modes + 1] = tostring(mode)
+        modes.dither = dither
         return orig(self, w, mode, region)
     end
     return view, modes, function(ms) clock = clock + ms end, function() UIManager.setDirty = orig end
@@ -68,9 +72,12 @@ do
     view:onIaTouch(nil, { pos = { x = 200, y = y + 100 } })
     for x = 204, 300, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y + 100 } }) end
     view:onIaPanRelease(nil, { pos = { x = 300, y = y + 100 } }); view:flushPending()
-    ok(view._reconcile ~= nil and count(modes, "ui") == 0, "colour: the settle waits while writing continues")
+    ok(view._reconcile ~= nil and count(modes, "ui") == 0 and count(modes, "partial") == 0,
+        "colour: the settle waits while writing continues")
     UIManager.fireScheduled()
-    ok(count(modes, "ui") == 1, "colour: ONE grey/colour refresh settles both strokes when the pen rests")
+    ok(count(modes, "partial") == 1 and count(modes, "ui") == 0,
+        "colour: ONE refresh that drives every pixel settles both strokes when the pen rests")
+    ok(not modes.dither, "colour: no dithering hint where the panel has no colour waveforms")
     -- the eraser over a notebook page: grey-capable but paced, and no flash on lift
     view:startNotebook({ style = "lines", size = 40, strength = 45 })
     view:setTool("erase")
@@ -101,7 +108,40 @@ do
     view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
     r, g, b = rgb(view.area_bb, ax, ay)
     ok(r > 150 and g < 100 and view._reconcile ~= nil, "colour, black first: red on lift, settled when the pen rests")
+    for k = 1, #modes do modes[k] = nil end
+    UIManager.fireScheduled()
+    ok(count(modes, "ui") == 1 and count(modes, "partial") == 0,
+        "colour, black first: the lift changed the pixels, so a plain grey/colour refresh settles them")
     view:onCloseWidget(); done()
+end
+
+-- a Kaleido panel (colour Kobos): the settle asks for its colour waveform; black
+-- ink, which the fast waveform shows exactly, keeps the plain settle
+do
+    local had = Device.hasKaleidoWfm
+    Device.hasKaleidoWfm = function() return true end
+    local view, modes, tick, done = world(BB.TYPE_BBRGB32)
+    local v = view.view
+    view:setTool("pen")
+    local y = v.area_y + 400
+    local function stroke(colour)
+        view.pen_color = colour
+        for k = 1, #modes do modes[k] = nil end
+        modes.dither = nil
+        view:onIaTouch(nil, { pos = { x = 200, y = y } })
+        for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end
+        view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
+        UIManager.fireScheduled()
+        y = y + 60
+    end
+    stroke({ 255, 105, 180 })
+    ok(count(modes, "partial") == 1 and modes.dither == true,
+        "kaleido: pink drawn in colour settles with the colour waveform")
+    stroke({ 0, 0, 0 })
+    ok(count(modes, "partial") == 0 and count(modes, "ui") == 1 and not modes.dither,
+        "kaleido: black ink keeps the plain settle")
+    view:onCloseWidget(); done()
+    Device.hasKaleidoWfm = had
 end
 
 -- the emulator (or a screen that is not e-ink): the colour as drawn, no settle

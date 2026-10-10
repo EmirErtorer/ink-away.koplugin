@@ -320,6 +320,11 @@ function InkAwayView:beginStroke(sx, sy)
     self._live_p, self._lp_at = nil, nil
     local smudge = (not is_erase) and style == "smudge"
     if smudge and not self:colourPanel() then self._live_mode = "ui" end   -- smudged ink is grey
+    -- On a colour panel, ink that the fast waveform shows in its own colours
+    -- (not the black preview) needs a settle that drives every pixel (see
+    -- runReconcile); solid black shows exactly, and an eraser has nothing to settle.
+    self._live_drive = (not is_erase) and self:colourPanel() and self._live_mode == "fast"
+        and not self:pureBlackPen()
     self.canvas:startStroke(is_erase and "erase" or (smudge and "smudge" or "ink"),
         self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed, self._live_pressured)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
@@ -538,18 +543,19 @@ function InkAwayView:finalizeStroke()
         -- request reached the panel before its frame.
         self:liveFlush()
         local settle = self._live_preview or not self:instantColour()
+        local drive = self._live_drive and not self._live_preview
         if sr then
             local rects, nr = self:symAreaRects(sr)
             for i = 1, nr do
                 local rr = rects[i]
                 if self._live_mode == "fast" then self:einkAsk("fast", rr, 2) end
                 if self._live_preview then self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1) end
-                if settle then self:queueReconcile(rr, 2) end
+                if settle then self:queueReconcile(rr, 2, drive) end
             end
         else
             local v = self.view
             if self._live_preview then self:renderView() end
-            if settle then self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0) end
+            if settle then self:queueReconcile({ x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h }, 0, drive) end
         end
         self._live_preview = false
     elseif was_erase then

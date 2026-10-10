@@ -12,6 +12,9 @@ versions marked *Prerelease* were test builds.
 - With palm rejection on (the default on pen readers), a text box's Done and
   Format buttons answered neither the pen nor a finger, so the keyboard could
   not be closed. Both work now, and a finger tapping away closes the box.
+- Colour ink on colour e-ink settles to its true colour once the pen rests.
+  Pale colours such as pink could stay invisible, and blue could stay cyan,
+  until something else redrew the page.
 
 ## [4.0.0] - 2026-10-10
 
