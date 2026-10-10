@@ -19,8 +19,13 @@ local Text = require("ink/text")
 local Screen = Device.screen
 local TILE_BG = Paint.TILE_BG
 
-local TEXT_HANDLE = 40   -- touch target for the move / resize handles (screen px)
-local TEXT_PAD = TEXT_HANDLE + 4   -- refresh margin around the frame and handles
+-- A length in millimetres as screen pixels, so the box's grips are as big under
+-- a finger on any reader.
+local function mm(v)
+    local px = v * 160 / 25.4
+    if Screen.scaleByDPI then return math.max(1, math.floor(Screen:scaleByDPI(px) + 0.5)) end
+    return Screen:scaleBySize(px)
+end
 
 local InkAwayView = {}
 
@@ -101,12 +106,42 @@ function InkAwayView:editTextLayout()
     return lay, ctx, proxy
 end
 
--- The editing box rectangle on screen. InkGeom.toScreen already includes the
--- area origin, so area_x and area_y are not added again.
-function InkAwayView:textBoxScreenRect()
+-- The box being edited in its own frame: x along its lines and y down them, in
+-- screen px from its top-left corner (op.x, op.y), turned by op.angle (degrees,
+-- clockwise) about that corner. These map a point between that frame and the
+-- screen. InkGeom.toScreen already includes the area origin.
+function InkAwayView:textToScreen(lx, ly)
     local op, v = self.editing_text, self.view
-    local sx, sy = InkGeom.toScreen(v, op.x, op.y)
-    return { x = sx, y = sy, w = op.w * v.zoom, h = op.h * v.zoom }
+    local ox, oy = InkGeom.toScreen(v, op.x, op.y)
+    local a = op.angle or 0
+    if a == 0 then return ox + lx, oy + ly end
+    local r = math.rad(a)
+    local c, s = math.cos(r), math.sin(r)
+    return ox + lx * c - ly * s, oy + lx * s + ly * c
+end
+
+function InkAwayView:textLocal(sx, sy)
+    local op, v = self.editing_text, self.view
+    local ox, oy = InkGeom.toScreen(v, op.x, op.y)
+    local dx, dy = sx - ox, sy - oy
+    local a = op.angle or 0
+    if a == 0 then return dx, dy end
+    local r = math.rad(a)
+    local c, s = math.cos(r), math.sin(r)
+    return dx * c + dy * s, -dx * s + dy * c
+end
+
+-- The screen box around the box being edited (the box itself while it is not
+-- turned).
+function InkAwayView:textBoxScreenRect()
+    local op, z = self.editing_text, self.view.zoom
+    local bw, bh = op.w * z, op.h * z
+    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    for _, p in ipairs({ { 0, 0 }, { bw, 0 }, { 0, bh }, { bw, bh } }) do
+        local x, y = self:textToScreen(p[1], p[2])
+        x0, y0, x1, y1 = math.min(x0, x), math.min(y0, y), math.max(x1, x), math.max(y1, y)
+    end
+    return { x = x0, y = y0, w = x1 - x0, h = y1 - y0 }
 end
 
 -- Lay out the two edit buttons, Format and Done, at the top right. This runs on
@@ -138,28 +173,78 @@ function InkAwayView:textEditButtons()
     }
 end
 
--- Which part of the box a screen point falls on: "resize", "move", "inside" or
--- "outside".
+-- The grips around the box being edited, in screen px: each grip's radius as
+-- drawn (r) and as a finger finds it (reach), and the band around the frame that
+-- moves the box when dragged (band). Sized in millimetres.
+function InkAwayView:textGrips()
+    local g = self._text_grips
+    if not g then
+        g = { r = mm(2.2), reach = mm(4.5), band = mm(3) }
+        g.pad = g.reach + mm(1)   -- how far anything drawn reaches past the frame
+        self._text_grips = g
+    end
+    return g
+end
+
+-- Where the grips sit, in the box's own frame (see textLocal): move at the
+-- top-left corner and resize at the bottom-right, each just outside the box.
+function InkAwayView:textGripSpots()
+    local op, z, g = self.editing_text, self.view.zoom, self:textGrips()
+    local bw, bh = op.w * z, op.h * z
+    local off = math.floor(g.r * 0.7)
+    return { move = { x = -off, y = -off }, resize = { x = bw + off, y = bh + off } }, bw, bh
+end
+
+-- The grips on the screen: each spot turned with the box, and kept inside the
+-- drawing area so a box running to the page's edge still shows them whole.
+function InkAwayView:textGripPoints()
+    local g, v = self:textGrips(), self.view
+    local out = {}
+    for name, p in pairs(self:textGripSpots()) do
+        local x, y = self:textToScreen(p.x, p.y)
+        x = math.max(v.area_x + g.r + 1, math.min(v.area_x + v.area_w - g.r - 2, x))
+        y = math.max(v.area_y + g.r + 1, math.min(v.area_y + v.area_h - g.r - 2, y))
+        out[name] = { x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
+    end
+    return out
+end
+
+-- Which part of the box a screen point falls on: "inside", "resize" or "move"
+-- (its grips), "frame" (the band around it, which moves it when dragged) or
+-- "outside". The inside wins over a grip, so the caret can reach every letter.
 function InkAwayView:textZone(sx, sy)
-    local r = self:textBoxScreenRect()
-    if sx >= r.x + r.w - TEXT_HANDLE and sx <= r.x + r.w + TEXT_HANDLE
-       and sy >= r.y + r.h - TEXT_HANDLE and sy <= r.y + r.h + TEXT_HANDLE then
-        return "resize"
+    local lx, ly = self:textLocal(sx, sy)
+    local _spots, bw, bh = self:textGripSpots()
+    if lx >= 0 and lx <= bw and ly >= 0 and ly <= bh then return "inside" end
+    local g = self:textGrips()
+    local pts = self:textGripPoints()
+    local function near(p)
+        local dx, dy = sx - p.x, sy - p.y
+        return dx * dx + dy * dy <= g.reach * g.reach
     end
-    -- the move handle is a strip just above the box's top-left
-    if sx >= r.x - TEXT_HANDLE and sx <= r.x + TEXT_HANDLE
-       and sy >= r.y - TEXT_HANDLE and sy <= r.y + TEXT_HANDLE then
-        return "move"
-    end
-    if InkGeom.inRect(sx, sy, r) then return "inside" end
+    if near(pts.resize) then return "resize" end
+    if near(pts.move) then return "move" end
+    if lx >= -g.band and lx <= bw + g.band and ly >= -g.band and ly <= bh + g.band then return "frame" end
     return "outside"
 end
 
--- Refresh just the box's rectangle, with a margin for the frame and handles.
+-- The screen box the editing overlay draws in: the box with its frame and grips.
+function InkAwayView:textOverlayRect()
+    local r, g = self:textBoxScreenRect(), self:textGrips()
+    local p = g.pad
+    local x0, y0, x1, y1 = r.x - p, r.y - p, r.x + r.w + p, r.y + r.h + p
+    for _, q in pairs(self:textGripPoints()) do
+        x0, y0 = math.min(x0, q.x - g.r - 2), math.min(y0, q.y - g.r - 2)
+        x1, y1 = math.max(x1, q.x + g.r + 2), math.max(y1, q.y + g.r + 2)
+    end
+    return { x = x0, y = y0, w = x1 - x0, h = y1 - y0 }
+end
+
+-- Refresh just the box's rectangle, with a margin for the frame and grips.
 function InkAwayView:refreshTextBox(mode)
     self:hideClipBubble()   -- any change to the box (typing, caret, selection) dismisses it
-    local r = self:textBoxScreenRect()
-    self:refreshRectUnion(r, r, TEXT_PAD, mode or "ui")
+    local r = self:textOverlayRect()
+    self:refreshRectUnion(r, r, 2, mode or "ui")
 end
 
 -- Every few edits, clear the fast-refresh ghosting the box leaves behind.
@@ -522,8 +607,10 @@ function InkAwayView:textToolTouch(pos)
             self._text_drag = { kind = "resize", sx = pos.x, sy = pos.y,
                 w0 = self.editing_text.w, h0 = self.editing_text.h }
             return true
-        elseif zone == "move" then
-            self._text_drag = { kind = "move", sx = pos.x, sy = pos.y,
+        elseif zone == "move" or zone == "frame" then
+            -- the band around the frame moves the box too, but a tap there
+            -- closes it like a tap away (see textToolRelease)
+            self._text_drag = { kind = "move", sx = pos.x, sy = pos.y, frame = zone == "frame",
                 x0 = self.editing_text.x, y0 = self.editing_text.y }
             return true
         elseif zone == "inside" then
@@ -542,7 +629,10 @@ function InkAwayView:textToolTouch(pos)
             self:finishTextEdit(true)   -- tapped away: commit and leave
             -- a finger that palm rejection keeps from writing only closes the box
             if self:navFinger(pos) then return true end
-            -- fall through to maybe start a new box at this point
+            -- a tap on another box opens it; anywhere else it only closes this
+            -- one, so the keyboard does not come straight back
+            local cx, cy = self:toCanvasClamped(pos.x, pos.y)
+            if not self:textOpAt(cx, cy) then return true end
         end
     end
     -- not editing (or just finished): edit an existing box, or start a new one
@@ -574,24 +664,29 @@ function InkAwayView:textToolPan(pos)
     if self:inKeyboard(pos) and not self._text_drag then return true end
     local d = self._text_drag
     if not d then return true end
+    if (d.kind == "move" or d.kind == "resize") and not d.moved then
+        -- a finger's wobble is not a drag yet (a tap on the band closes the box)
+        if math.abs(pos.x - d.sx) + math.abs(pos.y - d.sy) < mm(1.5) then return true end
+        d.moved = true
+    end
     if d.kind == "move" then
         local dx = (pos.x - d.sx) / self.view.zoom
         local dy = (pos.y - d.sy) / self.view.zoom
-        local old = self:textBoxScreenRect()
+        local old = self:textOverlayRect()
         self.editing_text.x = d.x0 + dx
         self.editing_text.y = d.y0 + dy
         -- refresh the union of the old and new positions so no ghost is left
-        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast", true)
+        self:refreshRectUnion(old, self:textOverlayRect(), 2, "fast", true)
     elseif d.kind == "resize" then
         local dw = (pos.x - d.sx) / self.view.zoom
-        local old = self:textBoxScreenRect()
+        local old = self:textOverlayRect()
         -- only the width is dragged; the height follows the re-wrapped text, so
         -- the text never overflows the box
         self.editing_text.w = math.max(40, d.w0 + dw)
         self:invalidateLayout()   -- width changed: re-wrap (and grow the height)
         self:editTextLayout()     -- recompute now so op.h reflects the new wrap
         -- refresh the union of the old and new box, so a shrink leaves no ghost
-        self:refreshRectUnion(old, self:textBoxScreenRect(), TEXT_PAD, "fast", true)
+        self:refreshRectUnion(old, self:textOverlayRect(), 2, "fast", true)
     elseif d.kind == "select" then
         local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()
@@ -620,6 +715,9 @@ function InkAwayView:textToolRelease(pos)
         -- open the format menu on release, so the same tap cannot close it again
         -- as a tap outside
         self:openTextFormatMenu()
+    elseif d.kind == "move" and d.frame and not d.moved then
+        -- a tap on the band around the frame: as a tap away, it closes the box
+        self:finishTextEdit(true)
     elseif d.kind == "move" or d.kind == "resize" then
         -- re-align to the ruling once the drag ends (grid-snap boxes only), with a
         -- flashing refresh to clear what the fast waveform left
@@ -643,6 +741,57 @@ end
 ------------------------------------------------------------------------------
 -- Painting the box being edited
 ------------------------------------------------------------------------------
+
+-- A filled disc of radius r centred on (x, y), as rows.
+local function disc(bb, x, y, r, c)
+    x, y = math.floor(x + 0.5), math.floor(y + 0.5)
+    for dy = -r, r do
+        local half = math.floor(math.sqrt(r * r - dy * dy))
+        bb:paintRect(x - half, y + dy, 2 * half + 1, 1, c)
+    end
+end
+
+-- A line of squares t px wide from (x0, y0) to (x1, y1).
+local function stroke(bb, x0, y0, x1, y1, t, c)
+    local n = math.max(1, math.floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0))))
+    local h = math.floor(t / 2)
+    for i = 0, n do
+        bb:paintRect(math.floor(x0 + (x1 - x0) * i / n + 0.5) - h, math.floor(y0 + (y1 - y0) * i / n + 0.5) - h, t, t, c)
+    end
+end
+
+-- The grips, drawn on the screen bitmap bb whose origin is at (x, y): a disc in
+-- the ink with a mark in the paper's colour, a cross to move and a double arrow
+-- along the lines to resize.
+function InkAwayView:paintTextGrips(bb, x, y, ink, mark)
+    local g = self:textGrips()
+    local pts = self:textGripPoints()
+    local t = math.max(2, math.floor(g.r / 5))
+    local a = math.floor(g.r * 0.55)
+    local m = pts.move
+    local mx, my = m.x + x, m.y + y
+    disc(bb, mx, my, g.r, ink)
+    bb:paintRect(mx - a, my - math.floor(t / 2), 2 * a + 1, t, mark)
+    bb:paintRect(mx - math.floor(t / 2), my - a, t, 2 * a + 1, mark)
+    local rz = pts.resize
+    local rx, ry = rz.x + x, rz.y + y
+    disc(bb, rx, ry, g.r, ink)
+    -- the arrow lies along the box's lines, turned with it
+    local r = math.rad(self.editing_text.angle or 0)
+    local c, s = math.cos(r), math.sin(r)
+    local function at(u, w) return rx + u * c - w * s, ry + u * s + w * c end
+    local ax0, ay0 = at(-a, 0)
+    local ax1, ay1 = at(a, 0)
+    stroke(bb, ax0, ay0, ax1, ay1, t, mark)
+    local hd = math.floor(a / 2)
+    for _, e in ipairs({ { -a, 1 }, { a, -1 } }) do   -- the arrowheads
+        local tx, ty = at(e[1], 0)
+        for _, w in ipairs({ -hd, hd }) do
+            local hx, hy = at(e[1] + e[2] * hd, w)
+            stroke(bb, tx, ty, hx, hy, t, mark)
+        end
+    end
+end
 
 function InkAwayView:paintTextOverlay(bb, x, y)
     local op = self.editing_text
@@ -670,12 +819,10 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     end
     -- the glyphs
     Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
-    -- the frame
+    -- the frame and its grips
     local fx, fy, fw, fh = math.floor(ox), math.floor(oy), math.ceil(r.w), math.ceil(r.h)
     Paint.outline(bb, fx, fy, fw, fh, BLACKC)
-    -- handles: move (top-left), resize (bottom-right)
-    bb:paintRect(fx - 6, fy - 6, 12, 12, BLACKC)
-    bb:paintRect(fx + fw - 6, fy + fh - 6, 12, 12, BLACKC)
+    self:paintTextGrips(bb, x, y, BLACKC, on_dark and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE)
     -- caret
     if not (self.text_sel and not Text.selEmpty(self.text_sel)) then
         local c = Text.caret(op, lay, self.text_cur, ctx)

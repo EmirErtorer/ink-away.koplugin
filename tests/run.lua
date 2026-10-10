@@ -29,7 +29,7 @@ if exists(EMU .. "/luajit") then
         "tests/realbb/wipe.lua", "tests/realbb/accent.lua", "tests/realbb/selection.lua",
         "tests/realbb/android.lua", "tests/realbb/wash.lua", "tests/realbb/smudge.lua", "tests/realbb/greylive.lua",
         "tests/realbb/theme.lua", "tests/realbb/paper.lua", "tests/realbb/layers.lua",
-        "tests/realbb/update.lua" }) do
+        "tests/realbb/update.lua", "tests/realbb/text.lua" }) do
         suites[#suites + 1] = t
         REAL[t] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. t .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
     end

@@ -8,6 +8,15 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Changed
+- A text box's grips are sized for a finger: about 9 mm to hit on any reader,
+  just outside its corners so a tap near a letter still places the caret, and
+  always whole on the screen. Dragging the band around the frame moves the box
+  too.
+- A tap away from a text box only closes it. It used to start a new box where
+  you tapped and bring the keyboard straight back; a tap on another box still
+  opens that one.
+
 ### Fixed
 - On colour e-ink (Kobo Libra Colour and others) a shape being dragged out no
   longer falls behind the pen. Each move asked the screen to redraw the whole
