@@ -99,8 +99,8 @@ do
     ok(view:textZone(pts.resize.x + g.reach - 3, pts.resize.y) == "resize", "the resize grip reaches past its disc")
     ok(view:textZone(r.x + 3, r.y + 3) == "inside", "just inside the corner is the text, not the grip")
     ok(view:textZone(r.x + r.w - 3, r.y + r.h - 3) == "inside", "so is the bottom-right corner")
-    ok(view:textZone(r.x + r.w / 2, r.y - g.band + 2) == "frame", "the band above the frame")
-    ok(view:textZone(r.x + r.w / 2, r.y - g.band - 20) == "outside", "beyond it is outside")
+    ok(view:textZone(r.x + r.w / 4, r.y - g.band + 2) == "frame", "the band above the frame")
+    ok(view:textZone(r.x + r.w / 4, r.y - g.band - 20) == "outside", "beyond it is outside")
     -- a drag on the band moves the box
     local x0 = op.x
     drag(view, r.x + r.w / 2, r.y - 4, r.x + r.w / 2 + 120, r.y - 4)
@@ -133,6 +133,149 @@ do
         "the resize grip is drawn")
     shot:free()
     view:finishTextEdit(true)
+    view:onCloseWidget()
+end
+
+------------------------------------------------------------------------------
+-- A turned box: a quarter turn draws exactly the upright pixels turned, any
+-- angle stays on the box, the page under it is untouched, and exports match
+------------------------------------------------------------------------------
+do
+    local Turn = require("ink/turn")
+    local view = newView()
+    local op = Text.new{ x = 300, y = 200, w = 400, size = 30 }
+    Text.insert(op, { p = 1, o = 0 }, "Quarter turn")
+    local up = BB.new(1072, 1448, BB.TYPE_BB8); up:fill(BB.COLOR_WHITE)
+    view:stampTextInto(up, op)
+    local h = op.h
+    ok(h and h > 0, "the box is laid out")
+    local turned = BB.new(1072, 1448, BB.TYPE_BB8); turned:fill(BB.COLOR_WHITE)
+    op.angle = 90
+    view:stampTextInto(turned, op)
+    local same, total, stray = true, 0, 0
+    for j = 0, math.ceil(h) - 1 do
+        for i = 0, 399 do
+            local a = up:getPixel(300 + i, 200 + j):getColor8().a
+            local b = turned:getPixel(300 - j - 1, 200 + i):getColor8().a
+            if a ~= b then same = false end
+            if a < 128 then total = total + 1 end
+        end
+    end
+    ok(total > 200 and same, "a quarter turn is the upright text, pixel for pixel, standing on end")
+    -- nothing drawn outside the turned box
+    for y = 0, 1447, 3 do
+        for x = 0, 1071, 3 do
+            if turned:getPixel(x, y):getColor8().a < 250 and not Text.contains(op, x + 0.5, y + 0.5, 4) then
+                stray = stray + 1
+            end
+        end
+    end
+    ok(stray == 0, "a turned box draws only on itself")
+    -- any angle: the ink under it stays exactly as it was where no letter falls
+    local page = BB.new(600, 600, BB.TYPE_BB8)
+    for y = 0, 599 do for x = 0, 599 do page:setPixel(x, y, BB.Color8((x * 7 + y * 13) % 256)) end end
+    local before = page:copy()
+    local op2 = Text.new{ x = 150, y = 300, w = 300, size = 28 }
+    Text.insert(op2, { p = 1, o = 0 }, "Thirty degrees")
+    op2.angle = 330
+    view:stampTextInto(page, op2)
+    local changed_off, changed_on = 0, 0
+    for y = 0, 599 do
+        for x = 0, 599 do
+            if page:getPixel(x, y):getColor8().a ~= before:getPixel(x, y):getColor8().a then
+                if Text.contains(op2, x + 0.5, y + 0.5, view:textOverhang(op2)) then changed_on = changed_on + 1
+                else changed_off = changed_off + 1 end
+            end
+        end
+    end
+    ok(changed_on > 100 and changed_off == 0, "at 330 degrees the letters land on the box and nothing else changes")
+    -- the same on a colour page
+    local cpage = BB.new(600, 600, BB.TYPE_BBRGB32)
+    cpage:paintRectRGB32(0, 0, 600, 600, BB.ColorRGB32(200, 230, 255, 255))
+    view:stampTextInto(cpage, op2)
+    local dark = 0
+    for y = 0, 599, 2 do for x = 0, 599, 2 do
+        local c = cpage:getPixel(x, y):getColorRGB32()
+        if c.r < 100 and c.g < 100 and c.b < 100 then dark = dark + 1 end
+    end end
+    local corner = cpage:getPixel(2, 2):getColorRGB32()
+    ok(dark > 30 and corner.r == 200 and corner.g == 230 and corner.b == 255, "and on a colour page")
+    -- the exported raster sits where the screen draws it
+    local raster, rw, rh, rx, ry = view:exportTextRaster(op)
+    local hits, misses = 0, 0
+    for j = 0, rh - 1 do for i = 0, rw - 1 do
+        if raster[j * rw + i] < 128 then
+            if turned:getPixel(rx + i, ry + j):getColor8().a < 128 then hits = hits + 1 else misses = misses + 1 end
+        end
+    end end
+    ok(rx and hits > 200 and misses == 0, "the export of a turned box matches the screen")
+    -- a turned box shows in the page's box and is found where it is drawn
+    local x0, y0, x1, y1 = require("ink/canvas").opBox(op)
+    ok(math.abs(x0 - (300 - h)) < 1e-6 and math.abs(y1 - 600) < 1e-6, "its page box is the turned box")
+    view.canvas:pushHistory(); view.canvas:placeOp(op)
+    ok(view:textOpAt(300 - h / 2, 390) == op and view:textOpAt(350, 220) == nil,
+        "a tap finds it where it is drawn, not where it was")
+    up:free(); turned:free(); page:free(); before:free(); cpage:free()
+    view:onCloseWidget()
+    -- quarter turns paint upright bitmaps of every kind
+    local probe = BB.new(50, 50, BB.TYPE_BB8); probe:fill(BB.COLOR_WHITE)
+    Turn.paint(probe, 40, 10, 0, 1, 20, 10, 0, function(b, x, y) b:paintRect(x, y, 20, 10, BB.COLOR_BLACK) end)
+    ok(probe:getPixel(35, 25):getColor8().a == 0 and probe:getPixel(29, 25):getColor8().a == 255
+        and probe:getPixel(35, 31):getColor8().a == 255, "Turn.paint: a 20 x 10 block turned is 10 x 20")
+    probe:free()
+end
+
+------------------------------------------------------------------------------
+-- Editing a turned box: the grips go round with it, the turning grip turns it
+-- about its middle (snapping to quarter turns), a tap places the caret along its
+-- lines, and the resize grip follows its lines
+------------------------------------------------------------------------------
+do
+    local view = newView()
+    tap(view, 200, 300)
+    type(view, "ABCDEFGHIJ")
+    local op = view.editing_text
+    op.w = 400; view:invalidateLayout(); view:editTextLayout()
+    local g = view:textGrips()
+    local pts = view:textGripPoints()
+    local r = view:textBoxScreenRect()
+    ok(math.abs(pts.turn.x - (r.x + r.w / 2)) <= 1 and pts.turn.y < r.y - g.stem / 2, "the turning grip stands above the middle")
+    ok(view:textZone(pts.turn.x, pts.turn.y) == "turn", "a finger on it turns")
+    local cx, cy = Text.centre(op)
+    local scx, scy = require("ink/geom").toScreen(view.view, cx, cy)
+    -- drag it a quarter turn round the middle (and a little more: it snaps)
+    local rad = scy - pts.turn.y
+    drag(view, pts.turn.x, pts.turn.y, scx + rad * math.cos(math.rad(3)), scy + rad * math.sin(math.rad(3)))
+    local ncx, ncy = Text.centre(op)
+    ok(op.angle == 90, "a quarter turn of the grip snaps the box to 90 degrees")
+    ok(math.abs(ncx - cx) < 1e-6 and math.abs(ncy - cy) < 1e-6, "turned about its middle")
+    pts = view:textGripPoints()
+    ok(view:textZone(pts.turn.x, pts.turn.y) == "turn" and pts.turn.x > scx, "the grip went round with it")
+    -- a tap near the end of its line puts the caret there
+    local ex, ey = view:textToScreen(op.w * view.view.zoom * 0.98, op.h * view.view.zoom / 2)
+    local lay = view:editTextLayout()
+    local endx = Text.caret(op, lay, { p = 1, o = 10 }, view:textCtx(op, view.view.zoom)).x
+    ex, ey = view:textToScreen(endx - 2, op.h * view.view.zoom / 2)
+    tap(view, ex, ey)
+    ok(view.editing_text == op and view.text_cur.o >= 9, "a tap at the far end of a turned line puts the caret there")
+    -- the resize grip drags along the lines: down the page now
+    local w0 = op.w
+    pts = view:textGripPoints()
+    drag(view, pts.resize.x, pts.resize.y, pts.resize.x + 30, pts.resize.y + 100)
+    ok(math.abs(op.w - (w0 + 100 / view.view.zoom)) < 1, "resizing a turned box follows its lines")
+    -- it paints turned, with its grips on the screen
+    local shot = BB.new(W, H, BB.TYPE_BB8); shot:fill(BB.COLOR_WHITE)
+    view:paintTextOverlay(shot, 0, 0)
+    r = view:textBoxScreenRect()
+    ok(r.h > r.w and darkIn(shot, r.x, r.y, r.x + r.w, r.y + r.h) > 100, "the turned box is drawn standing up")
+    shot:free()
+    view:finishTextEdit(true)
+    ok(view.canvas.ops[1].angle == 90, "it is saved turned")
+    -- on the page and in a thumbnail it is drawn turned as well
+    view:composeCanvas()
+    local x0, y0, x1, y1 = require("ink/canvas").opBox(view.canvas.ops[1])
+    ok(darkIn(view.canvas_bb, math.floor(x0), math.floor(y0), math.ceil(x1), math.ceil(y1)) > 100,
+        "the page shows the turned box")
     view:onCloseWidget()
 end
 

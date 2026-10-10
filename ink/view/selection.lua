@@ -36,6 +36,7 @@ local InkGeom = require("ink/geom")
 local Layers = require("ink/layers")
 local Palette = require("ink/palette")
 local Shapes = require("ink/shapes")
+local Text = require("ink/text")
 local Transform = require("ink/transform")
 local IconMenu = require("ink/ui/iconmenu")
 local SliderRow = require("ink/ui/controls").SliderRow
@@ -64,7 +65,9 @@ local function opExtent(op)
         local cx, cy = op.x + op.w / 2, op.y + op.h / 2
         return cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2
     elseif k == "text" then
-        local h = (op.h and op.h > 0) and op.h or (op.size or 20) * 1.5
+        local a, b, c, d = Text.bounds(op)
+        if a then return a, b, c, d end
+        local h = (op.size or 20) * 1.5   -- not laid out yet
         return op.x, op.y, op.x + (op.w or 0), op.y + h
     elseif k == "shape" and op.pts and #op.pts >= 4 then
         local x0, y0, x1, y1 = Shapes.bounds(op)
@@ -189,10 +192,10 @@ function InkAwayView:selFrame()
     return { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
 end
 
--- Can the selection turn? Not when it is only text boxes (they stay upright).
+-- Can the selection turn? Not when it is only links (they stay upright).
 function InkAwayView:selCanTurn()
     local k = self:selectionKinds()
-    return k.n > k.text + k.link
+    return k.n > k.link
 end
 
 -- Where the turning handle sits: above the frame's middle, or below it when the
@@ -757,9 +760,12 @@ function InkAwayView:openSelectionMenu(panel)
                       act(_("Copy"), function() self:selCopy(false) end),
                       act(_("Duplicate"), function() self:selDuplicate(); again() end) }))
             if self:selCanTurn() then
-                add(row({ act("\u{21BB} " .. _("90\u{00B0}"), function() self:selTurn90(); again() end),
-                          act("\u{2194} " .. _("Flip"), function() self:selFlip("h"); again() end),
-                          act("\u{2195} " .. _("Flip"), function() self:selFlip("v"); again() end) }))
+                local turn = { act("\u{21BB} " .. _("90\u{00B0}"), function() self:selTurn90(); again() end) }
+                if k.n > k.text + k.link then   -- (a text box alone stays readable: no mirror)
+                    turn[2] = act("\u{2194} " .. _("Flip"), function() self:selFlip("h"); again() end)
+                    turn[3] = act("\u{2195} " .. _("Flip"), function() self:selFlip("v"); again() end)
+                end
+                add(row(turn))
             end
             if stylable then
                 local style = { act(_("Colour"), function() again("colour") end),

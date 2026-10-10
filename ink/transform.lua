@@ -16,12 +16,15 @@ How each kind takes it:
     ellipse stays exact at any angle; its line width and arrowheads scale
   * a picture: its box moves and scales about its centre, its angle (degrees)
     turns, and a mirror flips it and reverses its angle
-  * a text box: it moves and its letters scale, but it stays upright and
-    readable: a turn or a mirror moves it to where its centre goes; a link's
-    area (see ink/links.lua) the same way
+  * a text box: it moves and its letters scale, and a turn turns it (its
+    angle, about its top-left corner, see ink/text.lua); a mirror moves it to
+    where its centre goes and mirrors its angle, so it stays readable
+  * a link's area (see ink/links.lua): it moves and scales, and stays upright
   * a fill (a paint bucket area, stored as pixel runs): mirrored run by run;
     resized or turned by resampling its pixels
 ]]
+
+local Text = require("ink/text")
 
 local Transform = {}
 
@@ -55,8 +58,12 @@ end
 
 local function shiftBox(op, dx, dy) op.x, op.y = op.x + dx, op.y + dy end
 
--- The centre of a picture's or a text box's box.
-local function boxCentre(op) return op.x + (op.w or 0) / 2, op.y + (op.h or 0) / 2 end
+-- The centre of a picture's, a text box's or a link's box (a text box's turned
+-- with it).
+local function boxCentre(op)
+    if op.kind == "text" then return Text.centre(op) end
+    return op.x + (op.w or 0) / 2, op.y + (op.h or 0) / 2
+end
 
 ------------------------------------------------------------------------------
 -- Fills: pixel runs { x, y, len, ... }
@@ -150,7 +157,13 @@ function Transform.rotate(op, cx, cy, a)
         local nx, ny = rotPoint(ox, oy, cx, cy, ca, sa)
         shiftBox(op, nx - ox, ny - oy)
         op.angle = ((op.angle or 0) + math.deg(a)) % 360
-    elseif k == "text" or k == "link" then
+    elseif k == "text" then
+        -- its corner goes round the pivot and the box turns about it
+        op.x, op.y = rotPoint(op.x, op.y, cx, cy, ca, sa)
+        local deg = ((op.angle or 0) + math.deg(a)) % 360
+        if math.abs(deg - floor(deg + 0.5)) < 1e-6 then deg = floor(deg + 0.5) % 360 end
+        op.angle = deg ~= 0 and deg or nil
+    elseif k == "link" then
         local ox, oy = boxCentre(op)
         local nx, ny = rotPoint(ox, oy, cx, cy, ca, sa)
         shiftBox(op, nx - ox, ny - oy)   -- it stays upright
@@ -180,6 +193,9 @@ function Transform.flip(op, axis, mid)
         if k == "image" then
             if h then op.flip_h = not op.flip_h else op.flip_v = not op.flip_v end
             op.angle = (-(op.angle or 0)) % 360
+        elseif k == "text" and Text.turned(op) then
+            -- its letters stay readable: the angle mirrors, about the new centre
+            Text.turnTo(op, -(op.angle or 0))
         end
     elseif k == "fill" then
         local r = op.runs

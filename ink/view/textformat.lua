@@ -24,6 +24,7 @@ local _ = require("gettext")
 local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Text = require("ink/text")
+local Turn = require("ink/turn")
 
 local Screen = Device.screen
 
@@ -115,7 +116,7 @@ end
 -- lines (a no-op without one).
 function InkAwayView:snapTextBoxToGrid(op)
     local step = self:textRulingStep()
-    if op and step and step > 0 then op.y = math.floor(op.y / step + 0.5) * step end
+    if op and step and step > 0 and not Text.turned(op) then op.y = math.floor(op.y / step + 0.5) * step end
 end
 
 -- The font size (canvas px) for grid-snapped text, so one line fills one ruling
@@ -159,8 +160,9 @@ function InkAwayView:textCtx(op, scale)
     -- grid-line snap: when the box asks for it and the page has rows, the ruling
     -- step sets both the line spacing and the font size, so one line fills one
     -- row however fine the ruling
+    -- (a turned box keeps the size but leaves the ruling, which it cannot follow)
     local rawStep = op.grid_snap and self:textRulingStep() or nil
-    local gridStep = rawStep and rawStep * scale or nil
+    local gridStep = rawStep and not Text.turned(op) and rawStep * scale or nil
     local base = rawStep and self:gridBaseSize(name, rawStep) or (op.size or 32)
     local function pxOf(style) return base * ((style and style.sz) or 1) * scale end
     local function faceOf(style) return self:faceAt(name, pxOf(style)) end
@@ -215,26 +217,57 @@ end
 function InkAwayView:stampTextInto(dst, op, region, ink)
     local lay, ctx = self:layoutText(op, 1)
     if op.auto_h then op.h = lay.height end
+    ink = ink or self:textInk()
+    local on_dark = ink == Blitbuffer.COLOR_WHITE
+    local rctx = { color = ink, highlight = on_dark and Blitbuffer.Color8(0x55) or nil }
+    if Text.turned(op) then
+        -- drawn upright, then put on the page turned (see ink/turn.lua)
+        local c, s = Text.turn(op)
+        Turn.paint(dst, op.x, op.y, c, s, op.w, op.h, self:textOverhang(op),
+            function(bb, x, y) Text.render(op, lay, bb, x, y, ctx, rctx) end, region)
+        return
+    end
     local x, y = op.x, op.y
     if region then
         dst = dst:viewport(region.x0, region.y0, region.x1 - region.x0, region.y1 - region.y0)
         x, y = x - region.x0, y - region.y0
     end
-    ink = ink or self:textInk()
-    local on_dark = ink == Blitbuffer.COLOR_WHITE
-    Text.render(op, lay, dst, x, y, ctx, { color = ink, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
+    Text.render(op, lay, dst, x, y, ctx, rctx)
+end
+
+-- How far a box's letters can reach past its edges (a slanted italic, a glyph's
+-- overhang), in canvas px: the margin a turned box is drawn with.
+function InkAwayView:textOverhang(op)
+    return 4 + math.floor((op.size or 32) * 0.3)
 end
 
 -- Rasterise a text op at 1:1 into an 8-bit level buffer (255 is untouched white,
 -- lower values are ink and highlight shades) for the exporter to composite.
--- Returns the uint8 buffer, w and h.
+-- Returns the uint8 buffer, w and h, and for a turned box the canvas point its
+-- top-left pixel goes to (an upright one goes to op.x, op.y).
 function InkAwayView:exportTextRaster(op)
     local lay, ctx = self:layoutText(op, 1)
-    local w = math.max(1, math.floor(op.w + 0.5))
-    local h = math.max(1, math.floor((op.auto_h and lay.height or op.h) + 0.5))
-    local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
-    bb:fill(Blitbuffer.COLOR_WHITE)
-    Text.render(op, lay, bb, 0, 0, ctx, { color = Blitbuffer.COLOR_BLACK })
+    if op.auto_h then op.h = lay.height end
+    local rx, ry
+    local bb, w, h
+    if Text.turned(op) then
+        local x0, y0, x1, y1 = Text.bounds(op)
+        local m = self:textOverhang(op)
+        rx, ry = math.floor(x0) - m, math.floor(y0) - m
+        w, h = math.ceil(x1) + m - rx, math.ceil(y1) + m - ry
+        bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+        bb:fill(Blitbuffer.COLOR_WHITE)
+        local c, s = Text.turn(op)
+        Turn.paint(bb, op.x - rx, op.y - ry, c, s, op.w, op.h, m, function(b, x, y)
+            Text.render(op, lay, b, x, y, ctx, { color = Blitbuffer.COLOR_BLACK })
+        end)
+    else
+        w = math.max(1, math.floor(op.w + 0.5))
+        h = math.max(1, math.floor((op.auto_h and lay.height or op.h) + 0.5))
+        bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+        bb:fill(Blitbuffer.COLOR_WHITE)
+        Text.render(op, lay, bb, 0, 0, ctx, { color = Blitbuffer.COLOR_BLACK })
+    end
     local out = ffi.new("uint8_t[?]", w * h)
     local data = ffi.cast("uint8_t*", bb.data)
     local stride = bb.stride or w
@@ -243,7 +276,7 @@ function InkAwayView:exportTextRaster(op)
         for px = 0, w - 1 do out[drow + px] = data[srow + px] end
     end
     bb:free()
-    return out, w, h
+    return out, w, h, rx, ry
 end
 
 ------------------------------------------------------------------------------

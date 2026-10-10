@@ -791,14 +791,14 @@ function InkAwayView:onIaHold(_, ges)
     end
     -- selecting only happens in Pan mode, so a hold never fights with drawing
     if self.tool == "pan" or self.sel_drag then
-        -- a hold on the selection (or on a picture or shape, which it selects)
-        -- opens its menu; the drag its touch began is dropped
+        -- a hold on the selection (or on a picture, shape or text box, which it
+        -- selects) opens its menu; the drag its touch began is dropped
         if self.sel_drag then self:endSelectionDrag(true) end
         self._link_press = nil
         if not (self.selection and self:selHit(pos.x, pos.y)) then
             local _, link_idx = self:linkAtScreen(pos.x, pos.y)
             local hit = (link_idx and { idx = link_idx }) or self:hitTestImage(pos.x, pos.y)
-                or self:hitTestShape(pos.x, pos.y)
+                or self:hitTestShape(pos.x, pos.y) or self:hitTestText(pos.x, pos.y)
             if not (hit and self:selectOps({ hit.idx }, "pan")) then return true end
         end
         self:openSelectionMenu()

@@ -185,5 +185,36 @@ do
     eq(T.plainRange(op, { a = { p = 2, o = 3 }, b = { p = 2, o = 3 } }), "", "plainRange of an empty selection")
 end
 
+-- a turned box: its own frame on the page
+do
+    local function near(a, b) return math.abs(a - b) < 1e-9 end
+    local op = T.new{ x = 100, y = 50, w = 200, size = 20 }
+    op.h = 40
+    ok(not T.turned(op) and T.bounds(op) == 100, "an upright box covers its own box")
+    op.angle = 90
+    local c, s = T.turn(op)
+    ok(c == 0 and s == 1, "a quarter turn is exact")
+    local px, py = T.toPage(op, 200, 0)   -- the end of the first line
+    ok(near(px, 100) and near(py, 250), "reading down: along the line is down the page")
+    px, py = T.toPage(op, 0, 40)          -- the bottom of the box
+    ok(near(px, 60) and near(py, 50), "and its lines stack to the left")
+    local lx, ly = T.toLocal(op, 80, 150)
+    ok(near(lx, 100) and near(ly, 20), "a page point back in the box's frame")
+    local x0, y0, x1, y1 = T.bounds(op)
+    ok(near(x0, 60) and near(y0, 50) and near(x1, 100) and near(y1, 250), "it covers the turned box")
+    ok(T.contains(op, 80, 150) and not T.contains(op, 120, 150), "a point on it, and one beside it")
+    ok(T.contains(op, 102, 150, 3), "within the slack counts")
+    local cx, cy = T.centre(op)
+    T.turnTo(op, 30)
+    local nx, ny = T.centre(op)
+    ok(op.angle == 30 and near(nx, cx) and near(ny, cy), "turning it keeps it where it is")
+    T.turnTo(op, 360)
+    ok(op.angle == nil and near(T.centre(op), cx), "a whole turn is upright again")
+    T.turnTo(op, -90)
+    ok(op.angle == 270, "an angle is kept between 0 and 360")
+    op.h = nil
+    ok(T.bounds(op) == nil, "nothing before it is laid out")
+end
+
 print(("text: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

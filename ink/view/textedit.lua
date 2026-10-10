@@ -15,6 +15,7 @@ local InkGeom = require("ink/geom")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
 local Text = require("ink/text")
+local Turn = require("ink/turn")
 
 local Screen = Device.screen
 local TILE_BG = Paint.TILE_BG
@@ -174,25 +175,28 @@ function InkAwayView:textEditButtons()
 end
 
 -- The grips around the box being edited, in screen px: each grip's radius as
--- drawn (r) and as a finger finds it (reach), and the band around the frame that
--- moves the box when dragged (band). Sized in millimetres.
+-- drawn (r) and as a finger finds it (reach), the band around the frame that
+-- moves the box when dragged (band), and how far above the box the turning
+-- grip stands (stem). Sized in millimetres.
 function InkAwayView:textGrips()
     local g = self._text_grips
     if not g then
-        g = { r = mm(2.2), reach = mm(4.5), band = mm(3) }
-        g.pad = g.reach + mm(1)   -- how far anything drawn reaches past the frame
+        g = { r = mm(2.2), reach = mm(4.5), band = mm(3), stem = mm(8) }
+        g.pad = g.stem + g.reach   -- how far anything drawn reaches past the frame
         self._text_grips = g
     end
     return g
 end
 
 -- Where the grips sit, in the box's own frame (see textLocal): move at the
--- top-left corner and resize at the bottom-right, each just outside the box.
+-- top-left corner and resize at the bottom-right, each just outside the box,
+-- and the turning grip on a stem above the middle of its top.
 function InkAwayView:textGripSpots()
     local op, z, g = self.editing_text, self.view.zoom, self:textGrips()
     local bw, bh = op.w * z, op.h * z
     local off = math.floor(g.r * 0.7)
-    return { move = { x = -off, y = -off }, resize = { x = bw + off, y = bh + off } }, bw, bh
+    return { move = { x = -off, y = -off }, resize = { x = bw + off, y = bh + off },
+        turn = { x = bw / 2, y = -g.stem } }, bw, bh
 end
 
 -- The grips on the screen: each spot turned with the box, and kept inside the
@@ -209,9 +213,9 @@ function InkAwayView:textGripPoints()
     return out
 end
 
--- Which part of the box a screen point falls on: "inside", "resize" or "move"
--- (its grips), "frame" (the band around it, which moves it when dragged) or
--- "outside". The inside wins over a grip, so the caret can reach every letter.
+-- Which part of the box a screen point falls on: "inside", "turn", "resize" or
+-- "move" (its grips), "frame" (the band around it, which moves it when dragged)
+-- or "outside". The inside wins over a grip, so the caret can reach every letter.
 function InkAwayView:textZone(sx, sy)
     local lx, ly = self:textLocal(sx, sy)
     local _spots, bw, bh = self:textGripSpots()
@@ -222,6 +226,7 @@ function InkAwayView:textZone(sx, sy)
         local dx, dy = sx - p.x, sy - p.y
         return dx * dx + dy * dy <= g.reach * g.reach
     end
+    if near(pts.turn) then return "turn" end
     if near(pts.resize) then return "resize" end
     if near(pts.move) then return "move" end
     if lx >= -g.band and lx <= bw + g.band and ly >= -g.band and ly <= bh + g.band then return "frame" end
@@ -273,9 +278,12 @@ function InkAwayView:ensureCaretVisible()
     if not self.editing_text then return end
     local v = self.view
     local lay, ctx = self:editTextLayout()
-    local c = Text.caret(self.editing_text, lay, self.text_cur, ctx)   -- op-local, scale=zoom
-    local caret_top = self.editing_text.y + c.y / v.zoom               -- canvas coords
-    local caret_bot = caret_top + c.h / v.zoom
+    local op = self.editing_text
+    local c = Text.caret(op, lay, self.text_cur, ctx)   -- op-local, scale=zoom
+    -- the caret's ends on the page (canvas coords), however the box is turned
+    local _x1, y1 = Text.toPage(op, c.x / v.zoom, c.y / v.zoom)
+    local _x2, y2 = Text.toPage(op, c.x / v.zoom, (c.y + c.h) / v.zoom)
+    local caret_top, caret_bot = math.min(y1, y2), math.max(y1, y2)
     local margin = 12
     local top_lim = v.area_y + margin
     local bot_lim = self:keyboardTop() - margin
@@ -374,9 +382,9 @@ function InkAwayView:startTextEdit(op, cur, is_new, idx, hit_pos)
     -- opening a box does not pan (the tap is above the keyboard). pan_y is not
     -- restored afterwards, so closing the keyboard does not jump either.
     if hit_pos then
-        local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()
-        self.text_cur = Text.hit(self.editing_text, lay, hit_pos.x - r.x, hit_pos.y - r.y,
+        local lx, ly = self:textLocal(hit_pos.x, hit_pos.y)
+        self.text_cur = Text.hit(self.editing_text, lay, lx, ly,
             self:textCtx(self.editing_text, self.view.zoom))
     end
     self:ensureCaretVisible()           -- only pans if the caret is actually hidden
@@ -573,15 +581,22 @@ end
 -- Touch handling for the text tool
 ------------------------------------------------------------------------------
 
--- Find a committed text op under a canvas point (topmost first).
+-- Find a committed text op under a canvas point (topmost first), turned or not.
 function InkAwayView:textOpAt(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "text" and self:editableOp(op) and cx >= op.x and cx <= op.x + op.w
-           and cy >= op.y and cy <= op.y + (op.h or 0) then
+        if op.kind == "text" and self:editableOp(op) and op.h and Text.contains(op, cx, cy) then
             return op, i
         end
     end
+end
+
+-- The text box at screen (sx, sy) as { op, idx }, for picking it out as a
+-- picture or a shape is (a hold, or the lasso's tap), or nil.
+function InkAwayView:hitTestText(sx, sy)
+    local cx, cy = self:toCanvasClamped(sx, sy)
+    local op, idx = self:textOpAt(cx, cy)
+    if op then return { op = op, idx = idx } end
 end
 
 -- Does a gesture land on the on-screen keyboard? The view is is_always_active
@@ -613,11 +628,18 @@ function InkAwayView:textToolTouch(pos)
             self._text_drag = { kind = "move", sx = pos.x, sy = pos.y, frame = zone == "frame",
                 x0 = self.editing_text.x, y0 = self.editing_text.y }
             return true
+        elseif zone == "turn" then
+            -- turned about the box's middle, by how far the finger goes round it
+            local cx, cy = Text.centre(self.editing_text)
+            local sx, sy = InkGeom.toScreen(self.view, cx, cy)
+            self._text_drag = { kind = "turn", sx = pos.x, sy = pos.y, cx = sx, cy = sy,
+                grab = math.atan2(pos.y - sy, pos.x - sx), a0 = self.editing_text.angle or 0 }
+            return true
         elseif zone == "inside" then
             -- place the caret; a following pan turns it into a selection
-            local r = self:textBoxScreenRect()
             local lay = self:editTextLayout()
-            local cur = Text.hit(self.editing_text, lay, pos.x - r.x, pos.y - r.y,
+            local lx, ly = self:textLocal(pos.x, pos.y)
+            local cur = Text.hit(self.editing_text, lay, lx, ly,
                 self:textCtx(self.editing_text, self.view.zoom))
             self.text_cur = cur
             self.text_sel = nil
@@ -664,7 +686,7 @@ function InkAwayView:textToolPan(pos)
     if self:inKeyboard(pos) and not self._text_drag then return true end
     local d = self._text_drag
     if not d then return true end
-    if (d.kind == "move" or d.kind == "resize") and not d.moved then
+    if (d.kind == "move" or d.kind == "resize" or d.kind == "turn") and not d.moved then
         -- a finger's wobble is not a drag yet (a tap on the band closes the box)
         if math.abs(pos.x - d.sx) + math.abs(pos.y - d.sy) < mm(1.5) then return true end
         d.moved = true
@@ -677,8 +699,17 @@ function InkAwayView:textToolPan(pos)
         self.editing_text.y = d.y0 + dy
         -- refresh the union of the old and new positions so no ghost is left
         self:refreshRectUnion(old, self:textOverlayRect(), 2, "fast", true)
+    elseif d.kind == "turn" then
+        local old = self:textOverlayRect()
+        local a = d.a0 + math.deg(math.atan2(pos.y - d.cy, pos.x - d.cx) - d.grab)
+        local q = math.floor(a / 90 + 0.5) * 90
+        if math.abs(a - q) < 4 then a = q end   -- quarter turns snap
+        Text.turnTo(self.editing_text, a)
+        self:refreshRectUnion(old, self:textOverlayRect(), 2, "fast", true)
     elseif d.kind == "resize" then
-        local dw = (pos.x - d.sx) / self.view.zoom
+        -- the drag along the box's lines, however it is turned
+        local c, s = Text.turn(self.editing_text)
+        local dw = ((pos.x - d.sx) * c + (pos.y - d.sy) * s) / self.view.zoom
         local old = self:textOverlayRect()
         -- only the width is dragged; the height follows the re-wrapped text, so
         -- the text never overflows the box
@@ -688,9 +719,9 @@ function InkAwayView:textToolPan(pos)
         -- refresh the union of the old and new box, so a shrink leaves no ghost
         self:refreshRectUnion(old, self:textOverlayRect(), 2, "fast", true)
     elseif d.kind == "select" then
-        local r = self:textBoxScreenRect()
         local lay = self:editTextLayout()
-        local cur = Text.hit(self.editing_text, lay, pos.x - r.x, pos.y - r.y,
+        local lx, ly = self:textLocal(pos.x, pos.y)
+        local cur = Text.hit(self.editing_text, lay, lx, ly,
             self:textCtx(self.editing_text, self.view.zoom))
         -- act only when the caret lands somewhere new: a pen held still sends
         -- frames with a pixel of jitter, and each refresh would also dismiss the
@@ -718,6 +749,9 @@ function InkAwayView:textToolRelease(pos)
     elseif d.kind == "move" and d.frame and not d.moved then
         -- a tap on the band around the frame: as a tap away, it closes the box
         self:finishTextEdit(true)
+    elseif d.kind == "turn" then
+        self:invalidateLayout()
+        self:refreshTextBox(d.moved and "flashui" or "ui")
     elseif d.kind == "move" or d.kind == "resize" then
         -- re-align to the ruling once the drag ends (grid-snap boxes only), with a
         -- flashing refresh to clear what the fast waveform left
@@ -761,8 +795,8 @@ local function stroke(bb, x0, y0, x1, y1, t, c)
 end
 
 -- The grips, drawn on the screen bitmap bb whose origin is at (x, y): a disc in
--- the ink with a mark in the paper's colour, a cross to move and a double arrow
--- along the lines to resize.
+-- the ink with a mark in the paper's colour, a cross to move, a double arrow
+-- along the lines to resize, and a ring on a stem to turn.
 function InkAwayView:paintTextGrips(bb, x, y, ink, mark)
     local g = self:textGrips()
     local pts = self:textGripPoints()
@@ -776,6 +810,12 @@ function InkAwayView:paintTextGrips(bb, x, y, ink, mark)
     local rz = pts.resize
     local rx, ry = rz.x + x, rz.y + y
     disc(bb, rx, ry, g.r, ink)
+    -- the turning grip: a ring on a stem from the middle of the box's top
+    local tx0, ty0 = self:textToScreen(self:textGripSpots().turn.x, 0)
+    local tn = pts.turn
+    stroke(bb, tx0 + x, ty0 + y, tn.x + x, tn.y + y, math.max(2, math.floor(t * 0.75)), ink)
+    disc(bb, tn.x + x, tn.y + y, g.r, ink)
+    disc(bb, tn.x + x, tn.y + y, math.floor(g.r * 0.5), mark)
     -- the arrow lies along the box's lines, turned with it
     local r = math.rad(self.editing_text.angle or 0)
     local c, s = math.cos(r), math.sin(r)
@@ -796,38 +836,49 @@ end
 function InkAwayView:paintTextOverlay(bb, x, y)
     local op = self.editing_text
     local lay, ctx = self:editTextLayout()
-    local r = self:textBoxScreenRect()   -- area-relative screen rect
-    local ox, oy = r.x + x, r.y + y      -- add the widget's paint origin
+    local z = self.view.zoom
+    local bw, bh = op.w * z, op.h * z
     local BLACKC = self:textInk()        -- black, white on a dark paper
     local on_dark = BLACKC == Blitbuffer.COLOR_WHITE
-    -- selection highlight (behind the glyphs)
-    if self.text_sel and not Text.selEmpty(self.text_sel) then
-        local a, b = Text.orderSel(self.text_sel)
-        for _, ln in ipairs(lay.lines) do
-            local lo = (ln.para > a.p or (ln.para == a.p and ln.o_end >= a.o)) and true or false
-            local hi = (ln.para < b.p or (ln.para == b.p and ln.o_start <= b.o)) and true or false
-            if lo and hi and ln.para >= a.p and ln.para <= b.p then
-                local xa = (ln.para == a.p) and math.max(ln.text_x, Text.caretX(ln, a.o, ctx)) or ln.text_x
-                local xb = (ln.para == b.p) and Text.caretX(ln, b.o, ctx) or (ln.text_x + Text.lineContentWidth(ln))
-                if xb > xa then
-                    bb:paintRect(math.floor(ox + xa), math.floor(oy + ln.top),
-                        math.ceil(xb - xa), math.ceil(ln.height),
-                        on_dark and Blitbuffer.Color8(0x55) or Blitbuffer.COLOR_LIGHT_GRAY)
+    -- the box upright, its top-left at (ox, oy) in dst
+    local function body(dst, ox, oy)
+        -- selection highlight (behind the glyphs)
+        if self.text_sel and not Text.selEmpty(self.text_sel) then
+            local a, b = Text.orderSel(self.text_sel)
+            for _, ln in ipairs(lay.lines) do
+                local lo = (ln.para > a.p or (ln.para == a.p and ln.o_end >= a.o)) and true or false
+                local hi = (ln.para < b.p or (ln.para == b.p and ln.o_start <= b.o)) and true or false
+                if lo and hi and ln.para >= a.p and ln.para <= b.p then
+                    local xa = (ln.para == a.p) and math.max(ln.text_x, Text.caretX(ln, a.o, ctx)) or ln.text_x
+                    local xb = (ln.para == b.p) and Text.caretX(ln, b.o, ctx) or (ln.text_x + Text.lineContentWidth(ln))
+                    if xb > xa then
+                        dst:paintRect(math.floor(ox + xa), math.floor(oy + ln.top),
+                            math.ceil(xb - xa), math.ceil(ln.height),
+                            on_dark and Blitbuffer.Color8(0x55) or Blitbuffer.COLOR_LIGHT_GRAY)
+                    end
                 end
             end
         end
+        -- the glyphs
+        Text.render(op, lay, dst, ox, oy, ctx, { color = BLACKC, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
+        -- the frame
+        Paint.outline(dst, math.floor(ox), math.floor(oy), math.ceil(bw), math.ceil(bh), BLACKC)
+        -- caret
+        if not (self.text_sel and not Text.selEmpty(self.text_sel)) then
+            local c = Text.caret(op, lay, self.text_cur, ctx)
+            dst:paintRect(math.floor(ox + c.x), math.floor(oy + c.y), 2, math.ceil(c.h), BLACKC)
+        end
     end
-    -- the glyphs
-    Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
-    -- the frame and its grips
-    local fx, fy, fw, fh = math.floor(ox), math.floor(oy), math.ceil(r.w), math.ceil(r.h)
-    Paint.outline(bb, fx, fy, fw, fh, BLACKC)
+    local sx, sy = self:textToScreen(0, 0)
+    if Text.turned(op) then
+        -- drawn upright, then put on the screen turned (see ink/turn.lua)
+        local c, s = Text.turn(op)
+        Turn.paint(bb, sx + x, sy + y, c, s, bw, bh, math.ceil(self:textOverhang(op) * z) + 3, body)
+    else
+        body(bb, sx + x, sy + y)
+    end
+    -- the grips, upright on the screen
     self:paintTextGrips(bb, x, y, BLACKC, on_dark and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE)
-    -- caret
-    if not (self.text_sel and not Text.selEmpty(self.text_sel)) then
-        local c = Text.caret(op, lay, self.text_cur, ctx)
-        bb:paintRect(math.floor(ox + c.x), math.floor(oy + c.y), 2, math.ceil(c.h), BLACKC)
-    end
     -- the always-visible Format and Done buttons (above the keyboard): rounded,
     -- Color8 fills so the corners are drawn in C (a colour accent is a cached
     -- image), and labels cached in the metrics

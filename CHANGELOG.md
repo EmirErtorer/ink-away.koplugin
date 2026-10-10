@@ -8,6 +8,14 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Text boxes turn to any angle. While a box is open, drag the ring on the stem
+  above it round its middle; it snaps to quarter turns. A box picked out with
+  a hold or the lasso turns with the selection's handle and its quarter turn
+  button too. A turned box is edited turned, with the caret, selection and
+  grips following its lines, and pages, thumbnails and exports show it the
+  same. The eraser and taps find it where it is drawn.
+
 ### Changed
 - A text box's grips are sized for a finger: about 9 mm to hit on any reader,
   just outside its corners so a tap near a letter still places the caret, and

@@ -3492,27 +3492,30 @@ do
     view:paintTo(Screen.bb, 0, 0)
     ok(BB.out_of_bounds <= base, "select: frame, handles and menu paint in bounds")
 
-    -- a quarter turn: drawings turn, the text box stays upright where its centre goes
+    -- a quarter turn: everything turns, the text box with it, about its place
+    local Text = require("ink/text")
     local t0 = view.canvas.ops[5]
-    local tcx, tcy = t0.x + t0.w / 2, t0.y + t0.h / 2
+    local tcx, tcy = Text.centre(t0)
     local b = view.selection.bbox
     local cx, cy = (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2
     view:selTurn90()
     local t1 = view.canvas.ops[5]
-    ok(t1.angle == nil and math.abs((t1.x + t1.w / 2) - (cx - (tcy - cy))) < 1e-6
-        and math.abs((t1.y + t1.h / 2) - (cy + (tcx - cx))) < 1e-6, "select: a text box turns to its place, upright")
+    local ncx, ncy = Text.centre(t1)
+    ok(t1.angle == 90 and math.abs(ncx - (cx - (tcy - cy))) < 1e-6
+        and math.abs(ncy - (cy + (tcx - cx))) < 1e-6, "select: a text box turns with it, to its place")
     ok(view.canvas.ops[4].angle == 90 and math.abs((view.canvas.ops[2].angle or 0) - math.pi / 2) < 1e-9,
         "select: the picture and the shape turn")
     ok(view.canvas:canUndo(), "select: one undo step")
     view:undo()
     ok(view.canvas.ops[5].x == 120 and view.selection == nil, "select: undo puts it all back and drops the frame")
 
-    -- text alone: no mirrors, no turning handle
+    -- text alone: it turns (the handle and a quarter turn) but is not mirrored
     view.canvas:setOps({ textOp(200, 200) })
     view:composeCanvas(); view:renderView()
     loop(180, 180, 400, 260)
-    ok(picked() == "text" and not findButton(view._sel_dialog, "\u{2194} Flip") and not view:selCanTurn(),
-        "select: text alone is not mirrored or turned")
+    ok(picked() == "text" and not findButton(view._sel_dialog, "\u{2194} Flip") and view:selCanTurn()
+        and findButton(view._sel_dialog, "\u{21BB} 90\u{00B0}"),
+        "select: text alone turns, and is not mirrored")
     ok(not findButton(view._sel_dialog, "Colour"), "select: nor coloured")
     -- resizing text scales its letters
     local size0 = view.canvas.ops[1].size

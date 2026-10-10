@@ -104,15 +104,35 @@ do
     ok(img.flip_v == true and near(img.angle, 90), "and the same up and down")
 end
 
--- text boxes stay upright
+-- text boxes turn about their corner, and mirror without their letters
 do
+    local Text = require("ink/text")
     local t = { kind = "text", x = 0, y = 0, w = 100, h = 40, size = 20 }
     Transform.rotate(t, 0, 0, math.pi)
-    ok(near(t.x, -100) and near(t.y, -40) and t.angle == nil, "a text box turns to where its centre goes, upright")
+    local x0, y0, x1, y1 = Text.bounds(t)
+    ok(near(t.x, 0) and near(t.y, 0) and t.angle == 180, "a half turn about its corner turns it upside down there")
+    ok(near(x0, -100) and near(y0, -40) and near(x1, 0) and near(y1, 0), "and it covers the turned box")
     Transform.flip(t, "h", 0)
-    ok(near(t.x, 0) and t.flip_h == nil, "and mirrors without its letters")
+    local cx, cy = Text.centre(t)
+    ok(near(cx, 50) and near(cy, -20) and t.angle == 180 and t.flip_h == nil,
+        "a mirror moves its centre across and keeps its letters readable")
     Transform.scale(t, 0, 0, 1.5)
     ok(t.w == 150 and t.h == 60 and t.size == 30, "its letters scale with it")
+    -- a quarter turn about its middle stays there, reading down
+    local q = { kind = "text", x = 100, y = 100, w = 200, h = 50, size = 20 }
+    local mx, my = Text.centre(q)
+    Transform.rotate(q, mx, my, math.pi / 2)
+    local nx, ny = Text.centre(q)
+    x0, y0, x1, y1 = Text.bounds(q)
+    ok(q.angle == 90 and near(nx, mx) and near(ny, my), "a quarter turn about the middle stays put")
+    ok(near(x1 - x0, 50) and near(y1 - y0, 200), "and stands it on end")
+    -- an angle that adds up to a whole turn is upright again
+    Transform.rotate(q, mx, my, -math.pi / 2)
+    ok(q.angle == nil and near(q.x, 100) and near(q.y, 100), "turning it back leaves it as it was")
+    -- a mirror of a turned box mirrors its angle
+    local m = { kind = "text", x = 0, y = 0, w = 100, h = 40, angle = 30 }
+    Transform.flip(m, "h", 200)
+    ok(near(m.angle, 330), "a mirror turns a 30 degree box to -30 degrees")
 end
 
 -- fills

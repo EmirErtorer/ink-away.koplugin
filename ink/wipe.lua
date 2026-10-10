@@ -9,6 +9,7 @@ local Canvas = require("ink/canvas")
 local Geom = require("ink/geom")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
+local Text = require("ink/text")
 
 local Wipe = {}
 
@@ -89,10 +90,8 @@ end
 function Wipe.hits(op, s, r, W, H, rows)
     local k = op.kind
     if k == "text" then
-        local x0, y0, x1, y1 = Canvas.opBox(op)
-        if not x0 then return false, false end
-        local x, y = s[3], s[4]
-        return false, x >= x0 - r and x <= x1 + r and y >= y0 - r and y <= y1 + r
+        if not (op.h and op.h > 0) then return false, false end
+        return false, Text.contains(op, s[3], s[4], r)   -- in its own frame, turned or not
     elseif k == "image" then
         return false, onPicture(op, s[3], s[4], r)
     end

@@ -22,6 +22,7 @@ Plain Lua, so the headless tests drive it.
 local Geom = require("ink/geom")
 local Shapes = require("ink/shapes")
 local Canvas = require("ink/canvas")
+local Text = require("ink/text")
 local Wash = require("ink/wash")
 
 local Cut = {}
@@ -270,6 +271,12 @@ function Cut.op(op, e, opts)
         local c = Canvas.cloneOp(nil, op)
         c.runs = runs
         return { c }
+    elseif k == "text" and opts.text and Text.turned(op) then
+        -- in the box's own frame, where it is a plain box
+        if not (op.h and op.h > 0) then return nil end
+        local lp = {}
+        for i = 1, #e.pts - 1, 2 do lp[i], lp[i + 1] = Text.toLocal(op, e.pts[i], e.pts[i + 1]) end
+        if reachesBox(eraser(lp, e.r), 0, 0, op.w or 0, op.h) then return {} end
     elseif (k == "text" and opts.text) or (k == "image" and opts.pictures) then
         local x0, y0, x1, y1 = Canvas.opBox(op)
         if x0 and reachesBox(e, x0, y0, x1, y1) then return {} end

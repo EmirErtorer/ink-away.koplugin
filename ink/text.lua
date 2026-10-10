@@ -10,6 +10,7 @@ through the same engine as everything else:
       font = <name|nil>,   -- nil uses the default font
       size = <px>,         -- base glyph size
       align = "left"|"center"|"right",
+      angle = <degrees>,   -- turned clockwise about (x, y); nil or 0 upright
       grid_snap = false,   -- snap each line to the ruling
       paras = {            -- paragraphs (a newline starts a new paragraph)
         { bullet = nil|"disc"|"number",
@@ -23,6 +24,11 @@ underline, s strikethrough, hl highlight; sz is a size multiplier (nil = 1).
 Layout and the edit operations are pure Lua and take an injected `ctx` for any
 measuring, so they run under the headless tests. Only render() touches KOReader
 (RenderText), and it is loaded lazily.
+
+A turned box keeps its own frame: x along its lines and y down them, from its
+top-left corner (x, y), about which it turns. Text.toPage and Text.toLocal map
+a point between that frame and the page, and Text.bounds is the page box it
+covers, so everything that finds, erases or redraws a box follows its angle.
 ]]
 
 local Text = {}
@@ -76,6 +82,74 @@ local function sameStyle(a, b)
         if (a[k] or false) ~= (b[k] or false) then return false end
     end
     return true
+end
+
+------------------------------------------------------------------------------
+-- A turned box's geometry
+------------------------------------------------------------------------------
+
+-- cos and sin of a box's angle (1, 0 when upright), exact for quarter turns.
+function Text.turn(op)
+    local a = (op.angle or 0) % 360
+    if a == 0 then return 1, 0 end
+    if a == 90 then return 0, 1 end
+    if a == 180 then return -1, 0 end
+    if a == 270 then return 0, -1 end
+    local r = math.rad(a)
+    return math.cos(r), math.sin(r)
+end
+
+function Text.turned(op) return ((op.angle or 0) % 360) ~= 0 end
+
+-- A point (lx, ly) of the box's own frame on the page.
+function Text.toPage(op, lx, ly)
+    local c, s = Text.turn(op)
+    return op.x + lx * c - ly * s, op.y + lx * s + ly * c
+end
+
+-- A page point in the box's own frame.
+function Text.toLocal(op, px, py)
+    local c, s = Text.turn(op)
+    local dx, dy = px - op.x, py - op.y
+    return dx * c + dy * s, -dx * s + dy * c
+end
+
+-- The page box x0, y0, x1, y1 the box covers, or nil before it is laid out.
+function Text.bounds(op)
+    local h = op.h
+    if not (h and h > 0) then return nil end   -- (also catches NaN)
+    local w = op.w or 0
+    if not Text.turned(op) then return op.x, op.y, op.x + w, op.y + h end
+    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    for _, p in ipairs({ { 0, 0 }, { w, 0 }, { 0, h }, { w, h } }) do
+        local x, y = Text.toPage(op, p[1], p[2])
+        x0, y0 = math.min(x0, x), math.min(y0, y)
+        x1, y1 = math.max(x1, x), math.max(y1, y)
+    end
+    return x0, y0, x1, y1
+end
+
+-- The middle of the box on the page.
+function Text.centre(op)
+    return Text.toPage(op, (op.w or 0) / 2, (op.h or 0) / 2)
+end
+
+-- Is the page point (px, py) on the box, within `slack` of it?
+function Text.contains(op, px, py, slack)
+    slack = slack or 0
+    local lx, ly = Text.toLocal(op, px, py)
+    return lx >= -slack and lx <= (op.w or 0) + slack and ly >= -slack and ly <= (op.h or 0) + slack
+end
+
+-- Turn the box to `deg` degrees about its middle (it stays where it is).
+function Text.turnTo(op, deg)
+    local cx, cy = Text.centre(op)
+    deg = deg % 360
+    if math.abs(deg - math.floor(deg + 0.5)) < 1e-6 then deg = math.floor(deg + 0.5) % 360 end
+    op.angle = deg ~= 0 and deg or nil
+    local c, s = Text.turn(op)
+    local hw, hh = (op.w or 0) / 2, (op.h or 0) / 2
+    op.x, op.y = cx - (hw * c - hh * s), cy - (hw * s + hh * c)
 end
 
 ------------------------------------------------------------------------------

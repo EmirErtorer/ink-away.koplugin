@@ -65,6 +65,14 @@ do
     -- a long straight eraser passing over a picture between its two points
     out = Cut.ops({ pic }, { 250, 340, 450, 340 }, 6, { pictures = true })
     ok(#out == 0, "gone: an eraser crossing a picture between its points reaches it")
+    -- a turned text box goes only where it is drawn, not anywhere in its page box
+    local turned = { kind = "text", x = 100, y = 100, w = 200, h = 20, angle = 45, size = 20 }
+    out = Cut.ops({ turned }, { 230, 110 }, 6, { text = true })
+    ok(#out == 1, "kept: an eraser in a turned box's page box but off its letters")
+    out = Cut.ops({ turned }, { 163, 178 }, 6, { text = true })
+    ok(#out == 0, "gone: an eraser on the turned box")
+    out = Cut.ops({ turned }, { 140, 260, 240, 140 }, 6, { text = true })
+    ok(#out == 0, "gone: a stroke across it between its points")
 end
 
 -- ---- a fill loses the pixels under the eraser, exactly ------------------------------

@@ -308,10 +308,12 @@ function InkAwayView:noPenDrag(len)
     UIManager:show(InfoMessage:new{ text = _(PenTest.NO_PEN_HINT) })
 end
 
--- A hold at `pos` by a navigating finger: open the picture's or shape's menu
--- there (duplicate, delete, flip...), as a hold does with the Move tool.
+-- A hold at `pos` by a navigating finger: open the picture's, shape's or text
+-- box's menu there (duplicate, delete, turn...), as a hold does with the Move
+-- tool.
 function InkAwayView:holdMenuAt(pos)
     local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+        or self:hitTestText(pos.x, pos.y)
     if hit and self:selectOps({ hit.idx }, "pan") then self:openSelectionMenu() end
 end
 

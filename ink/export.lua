@@ -148,15 +148,16 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put, wash_
 end
 
 -- Walk the glyph pixels of a text op. The view sets Export.text_raster to a
--- function(op) returning (uint8 level buffer, w, h), where 255 is untouched white
--- and lower values are ink and highlight shades. `cb(x, y, level)` gets each
--- non-white pixel in canvas coordinates. Without a rasteriser (the headless
--- tests have no fonts) text is skipped.
+-- function(op) returning (uint8 level buffer, w, h, x, y), where 255 is untouched
+-- white and lower values are ink and highlight shades, and (x, y) is where its
+-- top-left pixel goes for a turned box (op.x, op.y otherwise). `cb(x, y, level)`
+-- gets each non-white pixel in canvas coordinates. Without a rasteriser (the
+-- headless tests have no fonts) text is skipped.
 function Export.eachTextPixel(op, cb)
     if not Export.text_raster then return end
-    local raster, w, h = Export.text_raster(op)
+    local raster, w, h, rx, ry = Export.text_raster(op)
     if not raster then return end
-    local ox, oy = math.floor(op.x + 0.5), math.floor(op.y + 0.5)
+    local ox, oy = math.floor((rx or op.x) + 0.5), math.floor((ry or op.y) + 0.5)
     for py = 0, h - 1 do
         local row = py * w
         for px = 0, w - 1 do

@@ -140,12 +140,13 @@ function InkAwayView:lassoTap(pos)
     return true
 end
 
--- Select the picture or shape at screen `pos`, if there is one, and open its
--- menu: a tap or hold with the lasso picks one out as a hold with Pan does
--- (over a book, where there is no Pan, this is how they are picked again).
+-- Select the picture, shape or text box at screen `pos`, if there is one, and
+-- open its menu: a tap or hold with the lasso picks one out as a hold with Pan
+-- does (over a book, where there is no Pan, this is how they are picked again).
 function InkAwayView:selectAt(pos)
     if not (pos and self:inArea(pos.x, pos.y)) then return false end
     local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+        or self:hitTestText(pos.x, pos.y)
     if not (hit and self:selectOps({ hit.idx }, "lasso")) then return false end
     self:redraw()
     self:openSelectionMenu()
