@@ -6,6 +6,14 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
+## [Unreleased]
+
+### Fixed
+- On colour e-ink (Kobo Libra Colour and others) a shape being dragged out no
+  longer falls behind the pen. Each move asked the screen to redraw the whole
+  shape's box, and the screen queued every one of them; now each new outline
+  waits for the last to show, so it stays with the pen at any size.
+
 ## [4.0.1] - 2026-10-10
 
 Two fixes for pen and colour readers.
@@ -428,6 +436,7 @@ First stable version.
 
 The first public release.
 
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...HEAD
 [4.0.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.2.0...v3.3.0

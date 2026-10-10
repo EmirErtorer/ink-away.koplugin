@@ -47,8 +47,12 @@ end
 function M.stackCount()
     return #M._window_stack
 end
+-- Waiting for the panel to finish its last refresh: counted, as the mock has no panel.
+M.vsyncs = 0
+function M:waitForVSync() M.vsyncs = M.vsyncs + 1 end
 function M.reset()
     M.refreshes = {}; M.shown = nil; M.closed = false; M.scheduled = {}; M._window_stack = {}
+    M.vsyncs = 0
 end
 function M.last() return M.refreshes[#M.refreshes] end
 return M

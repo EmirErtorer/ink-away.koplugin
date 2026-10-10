@@ -13,6 +13,7 @@ local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
+local UIManager = require("ui/uimanager")
 
 local Screen = Device.screen
 local displayColor = Paint.displayColor
@@ -55,6 +56,17 @@ function InkAwayView:previewRect(op)
              x2 = math.ceil(x1 + pad), y2 = math.ceil(y1 + pad) }
 end
 
+-- Does a shape preview wait for the panel to finish showing the last one before
+-- sending the next? Each preview refresh covers the shape's whole box. Colour
+-- e-ink queues such overlapping updates one after another instead of dropping
+-- the stale ones, so with one per pen move the outline fell further behind the
+-- pen the bigger the shape. Waiting there lets the moves made meanwhile go out
+-- together, as one refresh of the newest outline. Grey e-ink keeps up as it is,
+-- and Android paces its refreshes its own way (see liveBox).
+function InkAwayView:previewWaits()
+    return self:colourPanel() and not self:instantColour() and not self:onAndroid()
+end
+
 -- Refresh the union of the previous and current preview rectangles, so the old
 -- outline is wiped (from the untouched base) and the new one drawn.
 function InkAwayView:refreshPreview()
@@ -71,6 +83,9 @@ function InkAwayView:refreshPreview()
     end
     self._preview_rect = r
     if not u then return end
+    -- the first outline of a drag shows at once; each later one waits for the
+    -- panel (see previewWaits)
+    if prev and UIManager.waitForVSync and self:previewWaits() then UIManager:waitForVSync() end
     local x0, y0, x1, y1 = self:liveBox("fast", u.x, u.y, u.x2, u.y2)
     -- Region fast path (see paintTo): while creating a shape (a live drag or the
     -- curve's bend stage), paint only this region instead of the whole view and

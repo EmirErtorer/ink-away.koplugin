@@ -144,6 +144,55 @@ do
     Device.hasKaleidoWfm = had
 end
 
+-- a shape dragged out on a colour panel: each later outline waits for the panel
+-- to finish the last (each covers the shape's whole box), so the moves made
+-- meanwhile go out as one refresh of the newest outline; grey e-ink, the
+-- emulator and Android send theirs as before
+do
+    local function drag(typ, setup)
+        local view, modes, tick, done = world(typ)
+        if setup then setup(view) end
+        local v = view.view
+        view:setTool("shape")
+        view.shape, view.shape_fill = "rect", false
+        view.pen_color = { 220, 20, 20 }
+        local x0, y0 = v.area_x + 100, v.area_y + 200
+        UIManager.vsyncs = 0
+        for k = 1, #modes do modes[k] = nil end
+        view:onIaTouch(nil, { pos = { x = x0, y = y0 } })
+        local n = 0
+        for i = 1, 60 do
+            tick(5); n = n + 1
+            view:onIaPan(nil, { pos = { x = x0 + 12 * i, y = y0 + 16 * i } })
+        end
+        local x1, y1 = x0 + 720, y0 + 960
+        -- the newest outline is what the next paint draws
+        view:paintShapePreview(Device.screen.bb, 0, 0)
+        local r, g = rgb(Device.screen.bb, x1, math.floor((y0 + y1) / 2))
+        local shown = (r < 200 or g < 200)
+        local vs = UIManager.vsyncs
+        view:onIaPanRelease(nil, { pos = { x = x1, y = y1 } }); view:flushPending()
+        local placed = view.canvas.ops[#view.canvas.ops]
+        view:onCloseWidget(); done()
+        return vs, n, count(modes, "fast"), shown, placed and placed.kind == "shape"
+    end
+    local vs, n, fast, shown, placed = drag(BB.TYPE_BBRGB32)
+    ok(vs == n, ("shape, colour: each outline after the first waits for the panel (%d of %d moves)"):format(vs, n))
+    ok(fast >= n and shown and placed, "shape, colour: every move is still drawn, the newest outline shows, the shape is placed")
+    vs, n, fast, shown, placed = drag(BB.TYPE_BB8)
+    ok(vs == 0 and fast >= n and shown and placed, "shape, grey e-ink: unchanged, no waiting")
+    local had = Device.isEmulator
+    Device.isEmulator = function() return true end
+    vs = drag(BB.TYPE_BBRGB32)
+    ok(vs == 0, "shape, emulator: no waiting where every refresh is instant")
+    Device.isEmulator = had
+    local hadA = Device.isAndroid
+    Device.isAndroid = function() return true end
+    vs = drag(BB.TYPE_BBRGB32)
+    ok(vs == 0, "shape, Android: no waiting, its own pacing stays")
+    Device.isAndroid = hadA
+end
+
 -- the emulator (or a screen that is not e-ink): the colour as drawn, no settle
 do
     local had = Device.isEmulator
