@@ -3,7 +3,6 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/EmirErtorer/ink-away.koplugin?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMyAzaDguNUwyMSAxMi41IDEyLjUgMjEgMyAxMS41ek03LjUgNS41YTIgMiAwIDEgMCAwIDQgMiAyIDAgMCAwIDAtNHoiLz48L3N2Zz4%3D&label=Latest%20Release&labelColor=rgb(159%2C%20214%2C%20101)&color=rgb(255%2C255%2C255))](https://github.com/EmirErtorer/ink-away.koplugin/releases/latest)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/EmirErtorer/ink-away.koplugin/total?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI%2BPHBhdGggZD0iTTExIDNoMnY5LjE3bDMuNTktMy41OEwxOCAxMGwtNiA2LTYtNiAxLjQxLTEuNDFMMTEgMTIuMTd6TTQgMTVoMnYzaDEydi0zaDJ2NUg0eiIvPjwvc3ZnPg%3D%3D&label=Total%20Downloads&labelColor=rgb(159%2C%20214%2C%20101)&color=rgb(255%2C255%2C255))](https://github.com/EmirErtorer/ink-away.koplugin/releases)
-[![Tests](https://img.shields.io/github/actions/workflow/status/EmirErtorer/ink-away.koplugin/tests.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Tests&labelColor=rgb(159%2C%20214%2C%20101))](https://github.com/EmirErtorer/ink-away.koplugin/actions/workflows/tests.yml)
 
 
 
@@ -34,7 +33,7 @@
     <td width="33%" valign="top"><a href="assets/screenshots/pdf-annotation.png"><img src="assets/screenshots/pdf-annotation.png" alt="PDF annotation"></a><br><sub>Open a PDF as a notebook and write on it, then export it with your ink.</sub></td>
   </tr>
   <tr>
-    <td width="33%" valign="top"><a href="assets/screenshots/pens.png"><img src="assets/screenshots/pens.png" alt="Pen case"></a><br><sub>Your pen case: fountain, calligraphy, pencil, highlighter, marker and watercolor, with pen pressure.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/pens.png"><img src="assets/screenshots/pens.png" alt="Pen case"></a><br><sub>Your pen case: fountain, calligraphy, pencil, highlighter, marker, watercolor that blends and smudge that swirls colours together like paint. With pen pressure.</sub></td>
     <td width="33%" valign="top"><a href="assets/screenshots/dark-mode.png"><img src="assets/screenshots/dark-mode.png" alt="Dark mode"></a><br><sub>Dark mode for the toolbars and menus, here over chalkboard paper.</sub></td>
     <td width="33%" valign="top"><a href="assets/screenshots/paper-colours.png"><img src="assets/screenshots/paper-colours.png" alt="Paper colours"></a><br><sub>Twelve paper colours, from cream and legal pad to kraft and blueprint.</sub></td>
   </tr>
