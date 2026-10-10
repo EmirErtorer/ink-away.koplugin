@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time. The more of this you fill in, the faster I can find it.
+  - type: input
+    id: inkaway
+    attributes:
+      label: Ink Away version
+      description: Settings, Updates shows it.
+      placeholder: "4.0.0"
+    validations:
+      required: true
+  - type: input
+    id: koreader
+    attributes:
+      label: KOReader version
+      description: Top menu, Help, Version. Nightlies look like v2026.07.2-145-g062a844ea.
+      placeholder: "v2026.07.1"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: "Kobo Libra Colour, Kindle Scribe, Boox Go 7..."
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      multiple: true
+      options:
+        - Drawing
+        - Notebook
+        - On a book
+        - Library
+        - Export
+        - Updates
+        - Somewhere else
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen
+      placeholder: |
+        1. Open a notebook
+        2. Pick the watercolor pen
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or files
+      description: A screenshot, a photo of the screen or the crash.log from the koreader folder all help. Drag them in here.

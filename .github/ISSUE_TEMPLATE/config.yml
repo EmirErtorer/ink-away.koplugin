@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/EmirErtorer/ink-away.koplugin/discussions
+    about: Ask how something works or talk an idea through first.
+  - name: Show what you made
+    url: https://github.com/EmirErtorer/ink-away.koplugin/discussions/categories/show-and-tell
+    about: Share a drawing, a notebook page or a book you wrote on.
+  - name: Security problem
+    url: https://github.com/EmirErtorer/ink-away.koplugin/security/advisories/new
+    about: Please report these privately, not as an issue.
