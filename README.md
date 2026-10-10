@@ -86,6 +86,7 @@
 | **Text** | Text boxes in any installed font, with bold, italic, underline, highlight, lists and sizes, snapped to a notebook's lines. |
 | **Pictures** | From a file or found online (Wikimedia or Openverse), then moved, resized, turned and cut out of their background. A picture can also sit behind a drawing to trace over. |
 | **Symmetry** | Draw mirrored left to right, top to bottom, or four ways. |
+| **Layers** | In a drawing, File, Layers splits it into layers: up to five, picked, shown, hidden, moved, merged or deleted from a small strip at the right. Only the layer you draw on is touched, and drawing stays as fast as on a plain page. |
 
 ### Select and edit
 

@@ -78,6 +78,7 @@ function InkAwayView:guideAction(id)
         trash = not book and function() self:openTrash() end or nil,
         export = not book and function() self:openExport() end or nil,
         pen_test = not book and function() self:openPenTest() end or nil,
+        layers = not book and not self.notebook and function() self:openDocumentSheet() end or nil,
         book_ink = self.reader_mode and function() self:openReaderSettings() end or nil,
     }
     return actions[id]

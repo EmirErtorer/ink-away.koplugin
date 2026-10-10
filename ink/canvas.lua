@@ -101,6 +101,8 @@ function Canvas:placeOp(op)
         local label = (id ~= 1) and id or nil
         if op.layer ~= label then op.layer = label end
         at = layers().insertIndex(self, id)
+    elseif op.layer ~= nil then
+        op.layer = nil   -- (pasted from a layered drawing into one without)
     end
     table.insert(self.ops, at, op)
     self.rev = self.rev + 1

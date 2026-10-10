@@ -189,6 +189,7 @@ function InkAwayView:leaveDocument()
     if self.editing_text then self:finishTextEdit(true) end
     self:resetLasso()   -- drop any selection first
     self:saveDocument()
+    self:layerCachesDrop()   -- a layered drawing's caches go with it
 end
 
 -- Start a new, empty document of `kind` in folder `dir` (the open document's by
@@ -209,6 +210,7 @@ function InkAwayView:loadOps(ops)
     self.canvas:setOps(ops)
     self:resetLasso()
     self:freeImageCache()
+    self:layerCachesDrop()
 end
 
 -- Load a project's ops into the canvas. Returns false when there are none.

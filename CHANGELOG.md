@@ -48,6 +48,19 @@ paper colours, a guide and updates from inside Ink Away.
 - A floating pen strip with your first saved pens, and the pen's colour under
   the Pen button.
 
+**Layers**
+- Drawings can be drawn in layers, up to five. File, Layers turns them on, and
+  what is drawn so far becomes the first layer.
+- A small strip at the right, shown only while layers are on, adds a layer and
+  picks the one to draw on; tap that one to show or hide it, rename, move,
+  merge down or delete it. Turning layers off merges them into one drawing.
+- Only the layer you draw on is touched: the lasso, both erasers and the paint
+  bucket leave the others alone, and the eraser shows the layers under it as
+  it goes. A stroke under other layers stays under them while it is drawn.
+- Hidden layers are left out of exports and thumbnails.
+- No layer is kept as a picture of its own, so drawing stays as fast as on a
+  plain page.
+
 **Gestures and pen buttons**
 - Choose what each gesture and pen button does, from one list of actions, with
   a warning when two would clash.

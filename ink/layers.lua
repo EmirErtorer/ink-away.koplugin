@@ -97,6 +97,14 @@ function Layers.enable(c)
     touch(c)
     if c.layers then return false end
     c:pushHistory()
+    -- (an op still labelled from another drawing joins the first layer)
+    for i, op in ipairs(c.ops) do
+        if op.layer ~= nil then
+            op = Canvas.cloneOp(nil, op)
+            op.layer = nil
+            c.ops[i] = op
+        end
+    end
     c.layers = { { id = 1, name = "Layer 1" } }
     c.active_layer = 1
     c.hidden_layers = {}

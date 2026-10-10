@@ -89,6 +89,8 @@ Guide.TOPICS = {
           text = "Image adds one from a file or from the web. Move, resize or turn it; Remove background cuts it out." },
         { glyph = "ges_hold", title = "Trace over a picture", when = "canvas",
           text = "Image, Background puts a picture behind the page. Hold New drawing to start a drawing from one." },
+        { icon = "file", title = "Layers", when = "canvas", show = "layers",
+          text = "File, Layers splits a drawing into layers. The strip at the right adds one or picks where you draw; tap that one for its menu." },
     } },
     { id = "select", title = "Select and edit", line = "The lasso, links and text", icon = "lasso", cards = {
         { icon = "lasso", title = "Lasso",

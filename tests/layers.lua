@@ -260,6 +260,19 @@ do
     ok(tags(g.ops) == "x@1 y@1", "an op of an unknown layer joins the first")
 end
 
+-- ---- ops pasted from a layered drawing ----------------------------------------------------
+do
+    local c = Canvas.new(100, 100)
+    local pasted = stroke("p"); pasted.layer = 4
+    c:pushHistory()
+    c:placeOp(pasted)
+    ok(pasted.layer == nil, "pasted into a drawing without layers: no layer label left")
+    local d = Canvas.new(100, 100)
+    d.ops = { { kind = "ink", width = 1, alpha = 255, pts = { 0, 0, 1, 1 }, layer = 3, tag = "x" } }
+    Layers.enable(d)
+    ok(tags(d.ops) == "x@1" and Layers.editable(d, d.ops[1]), "turning layers on takes a stray label into the first layer")
+end
+
 -- ---- loading resets ------------------------------------------------------------------------
 do
     local c = Canvas.new(100, 100)
