@@ -6,10 +6,10 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
-## [4.0.0] - Unreleased
+## [4.0.0] - 2026-10-10
 
-The biggest update yet: write on your books, a whole new set of pens, dark mode,
-paper colours, a guide and updates from inside Ink Away.
+The biggest update yet: write on your books, a whole new set of pens, layers,
+dark mode, paper colours, a guide and updates from inside Ink Away.
 
 ### Added
 
@@ -416,7 +416,7 @@ First stable version.
 
 The first public release.
 
-[4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...HEAD
+[4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.1.3...v3.2.0
 [3.1.3]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.1.2...v3.1.3
