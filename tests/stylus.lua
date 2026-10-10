@@ -72,8 +72,16 @@ do
         "wacom: rear eraser on pen slot -> pen (a real eraser)")
     ok(role({ slot = 0, tool = ERA, id = 7 }, wacom) == S.ROLE_PALM,
         "wacom: tool 2 on a finger slot -> palm (the bug: MT_TOOL_PALM==ERASER)")
-    ok(role({ slot = 1, tool = PEN, id = 7 }, wacom) == S.ROLE_PEN,
-        "wacom: a PEN tool is ALWAYS the pen (no finger/palm ever reports PEN)")
+    ok(role({ slot = 1, tool = PEN, id = 7 }, wacom) == S.ROLE_PALM,
+        "wacom: a PEN tool off the pen slot is the panel's guess, kept out like a palm (the pen is its own digitizer)")
+    ok(role({ slot = 1, tool = ERA, id = 7 }, { wacom = true, pen_slot = 5, learned_slot = 1 }) == S.ROLE_PALM,
+        "wacom: a learned panel slot is never the pen where the pen slot is known (a palm there drew)")
+    ok(role({ slot = 1, tool = FIN, id = 7 }, { wacom = true, pen_slot = 5, learned_slot = 1 }) == S.ROLE_TOUCH,
+        "wacom: nor does a finger there end the pen's stroke as if it left range")
+    ok(role({ slot = 0, tool = ERA, id = 7 }, { wacom = true, pen_slot = 5, eraser_latch = true }) == S.ROLE_PALM,
+        "wacom: a palm on the panel while the side button is held stays a palm")
+    ok(role({ slot = 5, tool = ERA, id = 1 }, { wacom = true, pen_slot = 5, eraser_latch = true }) == S.ROLE_PEN,
+        "wacom: the pen with its side button held is still the pen")
     ok(role({ slot = 2, tool = FIN, id = 7 }, wacom) == S.ROLE_TOUCH,
         "wacom: a plain finger off the pen slot -> touch")
     -- The dead-pen fix: even when the runtime never populated the pen slot, a real

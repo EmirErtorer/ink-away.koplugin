@@ -47,12 +47,12 @@ end
 -- MT_TOOL_PALM, the same value (2) as the eraser, so a resting palm arrives
 -- looking like the eraser.
 --
--- The tool type comes first. A pen tip always reports TOOL_PEN (1) and no finger
--- or palm ever does, so TOOL_PEN is trusted even where Input.pen_slot is never
--- set. The slot only settles the ambiguous eraser value: a stylus tool on the
--- pen's own slot (preset by the runtime, or learned from the first real pen
--- frame) or with a barrel-button latch is the pen; any other bare 2 or 3 is a
--- promoted palm.
+-- The tool type comes first. A pen tip always reports TOOL_PEN (1), so TOOL_PEN
+-- is trusted even where Input.pen_slot is never set; on a Wacom device whose
+-- pen slot is known, only that slot is the pen (see below). The slot settles the
+-- ambiguous eraser value: a stylus tool on the pen's own slot (preset by the
+-- runtime, or learned from the first real pen frame) or, off Wacom, with a
+-- barrel-button latch is the pen; any other bare 2 or 3 is a promoted palm.
 --
 -- `facts` carries what only the live Input object knows:
 --   pen_slot          the digitizer's dedicated slot number (or nil)
@@ -72,8 +72,15 @@ function Stylus.classify(slot, facts)
     local stylus_tool = Stylus.isPen(tool)
     local pen_slot = facts.pen_slot
     local learned = facts.learned_slot
+    -- A Wacom pen is a digitizer of its own, which KOReader always puts on the
+    -- pen slot (BTN_TOOL_PEN), so where that slot is known it is the only pen.
+    -- Any other slot is the touch panel's, and a pen tool there is only the
+    -- panel's guess about a small contact, such as a fingertip or the edge of a
+    -- hand at the side of the screen. Learning such a slot made a palm resting
+    -- on it draw, until a clean pen stroke learned the real slot again.
+    local wacom_slot = facts.wacom and pen_slot ~= nil
     local on_pen_slot = (pen_slot ~= nil and slot.slot == pen_slot)
-                     or (learned ~= nil and slot.slot == learned)
+                     or (not wacom_slot and learned ~= nil and slot.slot == learned)
 
     -- 0. On a Wacom device KOReader writes the finger tool into the pen's own
     --    slot when the pen leaves range (BTN_TOOL_PEN 0). That frame is the pen
@@ -82,15 +89,26 @@ function Stylus.classify(slot, facts)
     --    otherwise the next pen-down draws a line from the previous stroke.
     if facts.wacom and on_pen_slot and not stylus_tool then return Stylus.ROLE_PEN_OUT end
 
-    -- 1. A real pen tip is unambiguous on every device: always the pen.
-    if tool == Stylus.TOOL_PEN then return Stylus.ROLE_PEN end
+    -- 1. A real pen tip is the pen, except a pen tool off a known Wacom pen slot,
+    --    which is kept out like a palm: it never draws, and it is still kept from
+    --    the gesture detector as before, which without the pen bridge could
+    --    otherwise be left holding a contact whose lift went to another slot.
+    if tool == Stylus.TOOL_PEN then
+        if wacom_slot and not on_pen_slot then return Stylus.ROLE_PALM end
+        return Stylus.ROLE_PEN
+    end
     -- 2. On the pen's own slot (preset or learned) a stylus tool is the pen, its
     --    rear eraser, or a held barrel button.
     if on_pen_slot and stylus_tool then return Stylus.ROLE_PEN end
     -- 3. KOReader rewrites the pen's tool to ERASER or HIGHLIGHTER while a side
-    --    button is held; trust that latch even if the slot bookkeeping lags.
-    if tool == Stylus.TOOL_ERASER and facts.eraser_latch then return Stylus.ROLE_PEN end
-    if tool == Stylus.TOOL_HIGHLIGHTER and facts.highlighter_latch then return Stylus.ROLE_PEN end
+    --    button is held; trust that latch even if the slot bookkeeping lags. Not
+    --    on a known Wacom pen slot's device: there the held button's pen is on
+    --    that slot (rule 2), and a palm (MT_TOOL_PALM, the eraser's number) on
+    --    the panel while the button is held would otherwise draw.
+    if not wacom_slot then
+        if tool == Stylus.TOOL_ERASER and facts.eraser_latch then return Stylus.ROLE_PEN end
+        if tool == Stylus.TOOL_HIGHLIGHTER and facts.highlighter_latch then return Stylus.ROLE_PEN end
+    end
     -- 4. Any other stylus tool number is a promoted palm (a bare 2 or 3, or a
     --    stylus tool on a slot that is not the pen's). Everything else is an
     --    ordinary finger that only reached the callback in passing.

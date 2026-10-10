@@ -13,6 +13,11 @@ versions marked *Prerelease* were test builds.
   longer falls behind the pen. Each move asked the screen to redraw the whole
   shape's box, and the screen queued every one of them; now each new outline
   waits for the last to show, so it stays with the pen at any size.
+- On a Kindle Scribe a hand resting on the screen could draw lines, or keep the
+  pen from drawing, until a stroke or two were written with the hand lifted.
+  When the touch screen took the edge of the hand for a pen, Ink Away took it
+  for the real pen. Only the pen's own digitizer is the pen now, and a hand on
+  the screen while the side button is held is never taken for it either.
 
 ## [4.0.1] - 2026-10-10
 

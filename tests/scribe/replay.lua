@@ -187,6 +187,47 @@ run("S6", "4 short strokes with a resting palm (finger tool) jittering; then a f
     return "expected: 5 separate pen strokes (4 short + B), no connecting line, no palm mark"
 end)
 
+-- The touch panel takes a small contact (the edge of the hand at the side of the
+-- screen) for a pen and reports MT_TOOL_PEN on its slot 0. That slot must never
+-- become the pen's: the palm that then rests on it while the pen writes, as the
+-- palm (2) or a finger (0), drew lines and broke the pen's strokes until a clean
+-- pen stroke put things right (the Kindle Scribe 2024 report).
+run("S7", "the panel reports a hand's edge as a pen on slot 0; then the palm rests on slot 0 while writing", function(w)
+    panel.down(w, 0, 701, 560, 800, 1, 50)
+    for i = 1, 4 do panel.move(w, { { 0, 560 + i * 4, 800 + i * 2 } }, 7) end
+    panel.up(w, 0, 7)
+    pen.enter(w, AX0 - 5, AY0 - 5, 60)
+    pen.touch(w, AX0, AY0, 7)
+    pen.move(w, AX0 + 6, AY0 + 3, 7)
+    panel.down(w, 0, 702, 500, 700, 2, 3)
+    for i = 2, 14 do
+        pen.move(w, AX0 + i * 6, AY0 + i * 3, 4)
+        if i % 2 == 0 then panel.move(w, { { 0, 500 + i * 3, 700 + i * 2 } }, 3) end
+    end
+    pen.lift(w, 7)
+    panel.move(w, { { 0, 560, 760, 0 } }, 20)      -- the hand, now reported as a finger
+    pen.hover(w, 300, 330, 7)
+    panel.up(w, 0, 20)
+    pen.leave(w, 30)
+    strokeB(w)
+    return ("learned pen slot: %s (the pen's is %s)"):format(tostring(w.view._learned_pen_slot), tostring(w.input.pen_slot))
+end)
+
+run("S7b", "the hand's edge, reported as a pen, rests on the panel while the pen writes", function(w)
+    panel.down(w, 0, 711, 600, 800, 1, 50)
+    pen.enter(w, AX0 - 5, AY0 - 5, 10)
+    pen.touch(w, AX0, AY0, 7)
+    for i = 1, 14 do
+        pen.move(w, AX0 + i * 6, AY0 + i * 3, 4)
+        if i % 2 == 0 then panel.move(w, { { 0, 600 + i * 2, 800 + i } }, 3) end
+    end
+    pen.lift(w, 7)
+    pen.hover(w, 300, 330, 7)
+    panel.up(w, 0, 20)
+    pen.leave(w, 30)
+    strokeB(w)
+end)
+
 ---------------------------------------------------------------------------
 -- Pen taps menus and buttons: a pen contact that lands on the toolbar, a
 -- floating control, the notebook bar or a shown menu goes to the gesture
