@@ -1,0 +1,50 @@
+# The exact download count for the README badge. Once a day, when a release is
+# published, and when this file changes, the downloads of every release are
+# added up through GitHub's API and written to downloads.json on the "badges"
+# branch, which holds only that file. The badge reads it through shields.io's
+# endpoint badge, in the same style as the others.
+name: Download count
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  release:
+    types: [published]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/downloads.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: download-count
+  cancel-in-progress: false
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add up the downloads of every release
+        id: count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          total=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '[.[].assets[].download_count] | add // 0' | awk '{ s += $1 } END { print s + 0 }')
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "Downloads: $total"
+
+      - name: Write it to the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOTAL: ${{ steps.count.outputs.total }}
+        run: |
+          mkdir badges && cd badges
+          git init -q -b badges
+          printf '{"schemaVersion":1,"label":"Total Downloads","message":"%s","color":"white"}\n' "$TOTAL" > downloads.json
+          git add downloads.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Downloads: $TOTAL"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
