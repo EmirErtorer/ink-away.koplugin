@@ -70,5 +70,36 @@ ok(n == 4, "boxes: strokes, shapes and fills only")
 local sb = boxes[sym]
 ok(sb[1] == 0 and sb[3] == W, "boxes: a symmetric op gets the whole page")
 
+-- text boxes go unless protected, pictures with Erase pictures on
+local tbox = { kind = "text", x = 100, y = 100, w = 80, h = 30 }
+local pic = { kind = "image", x = 250, y = 100, w = 60, h = 40 }
+boxes = Wipe.boxes({ stroke, tbox, pic }, W, H, { text = true })
+ok(boxes[tbox] and not boxes[pic], "boxes: unprotected text can go, pictures need Erase pictures")
+boxes = Wipe.boxes({ stroke, tbox, pic }, W, H, { pictures = true })
+ok(not boxes[tbox] and boxes[pic], "boxes: protected text stays, pictures go with Erase pictures")
+ok(not Wipe.boxes({ { kind = "text", x = 0, y = 0, w = 50, h = 20, hidden = true } }, W, H, { text = true })[1],
+    "boxes: a hidden text box (being edited) is never taken")
+line, area = hits(tbox, { 90, 110, 120, 110 })
+ok(not line and area, "text: the eraser on a text box takes it as an area")
+line, area = hits(tbox, { 60, 110, 92, 110 })
+ok(not line and area, "text: reaching its edge within the eraser's radius counts")
+line, area = hits(tbox, { 60, 110, 70, 110 })
+ok(not line and not area, "text: well clear of it does not")
+line, area = hits({ kind = "text", x = 0, y = 0, w = 50 }, { 10, 10, 10, 10 })
+ok(not line and not area, "text: a box not laid out yet is skipped")
+line, area = hits(pic, { 280, 120, 280, 120 })
+ok(not line and area, "picture: the eraser on it")
+line, area = hits(pic, { 280, 60, 280, 60 })
+ok(not line and not area, "picture: above it")
+local turned = { kind = "image", x = 250, y = 100, w = 60, h = 40, angle = 90 }   -- 40 wide, 60 tall now
+line, area = hits(pic, { 280, 85, 280, 85 })
+ok(not line and not area, "picture: unturned, 15 px above it is clear")
+line, area = hits(turned, { 280, 85, 280, 85 })
+ok(not line and area, "picture: a turned picture counts where it is drawn")
+line, area = hits(turned, { 245, 120, 245, 120 })
+ok(not line and not area, "picture: not where it was before turning")
+line, area = hits(pic, { 245, 120, 245, 120 })
+ok(not line and area, "picture: (there it was, unturned)")
+
 print(("wipe: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

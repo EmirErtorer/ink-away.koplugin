@@ -14,8 +14,10 @@ local InkAwayView = {}
 -- Start an eraser stroke at screen (sx, sy).
 function InkAwayView:wipeBegin(sx, sy)
     local v = self.view
-    -- (in a layered drawing only the active layer's strokes can go)
-    self._wipe = { boxes = Wipe.boxes(self:editableOps(), v.canvas_w, v.canvas_h),
+    -- (in a layered drawing only the active layer's strokes can go; text unless
+    -- it is protected, pictures with Erase pictures on)
+    self._wipe = { boxes = Wipe.boxes(self:editableOps(), v.canvas_w, v.canvas_h,
+            { text = not self.text_erase_protect, pictures = self.erase_bg }),
         areas = {}, rows = {}, removed = 0 }
     self.capturing, self.pending_lift = true, nil
     self:wipeTo(sx, sy)
@@ -53,7 +55,9 @@ function InkAwayView:wipeRemove(i)
     w.removed = w.removed + 1
     w.boxes[op], w.areas[op] = nil, nil
     self:markDirty()
-    if op.sym and op.sym ~= "off" then   -- its copies can be anywhere on the page
+    -- its copies can be anywhere on the page; text and pictures also feed the
+    -- buffers the eraser reveals, which only a full compose rebuilds
+    if (op.sym and op.sym ~= "off") or op.kind == "text" or op.kind == "image" then
         self:recompose()
         return
     end

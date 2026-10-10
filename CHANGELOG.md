@@ -22,6 +22,11 @@ versions marked *Prerelease* were test builds.
   chevron, the pen or layer strip) is drawn instead of lost. A pen that lifts
   within about 1.3 mm of where it landed, and within KOReader's hold time,
   still presses the button.
+- With "Erase whole strokes" on, the eraser takes a text box it touches unless
+  text is protected, and a picture when "Erase pictures" is on. It used to
+  leave both alone whatever the settings said. As with a filled shape, rubbing
+  out writing on top of one keeps it. "Protect text from eraser" is in the
+  Eraser's sheet now as well as the Text sheet.
 
 ## [4.0.1] - 2026-10-10
 

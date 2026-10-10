@@ -116,8 +116,8 @@ function InkAwayView:confirmDeleteBrush(key, label)
     })
 end
 
--- The eraser sheet: a size slider, and the Erase pictures and Erase whole
--- strokes toggles.
+-- The eraser sheet: a size slider, the Erase pictures and Erase whole strokes
+-- toggles, and Protect text from eraser.
 function InkAwayView:openEraserSettings()
     if self:rebuildSheet("_eraser_dialog") then return end
     self:ensureUserIcons()
@@ -141,6 +141,13 @@ function InkAwayView:openEraserSettings()
         add(HorizontalGroup:new{ align = "center", pictures,
             HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
             whole })
+        add(vspan(10))
+        -- the same setting as in the Text sheet, here too since it is the eraser's
+        add(ToggleRow:new{ label = _("Protect text from eraser"), is_on = self.text_erase_protect,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.text_erase_protect = on; self:setSetting("inkaway_text_erase_protect", on)
+            end })
         return content
     end
     self:showSheet("_eraser_dialog", build)
