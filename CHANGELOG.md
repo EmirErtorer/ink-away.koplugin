@@ -6,6 +6,13 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
+## [Unreleased]
+
+### Fixed
+- With palm rejection on (the default on pen readers), a text box's Done and
+  Format buttons answered neither the pen nor a finger, so the keyboard could
+  not be closed. Both work now, and a finger tapping away closes the box.
+
 ## [4.0.0] - 2026-10-10
 
 The biggest update yet: write on your books, a whole new set of pens, layers,
@@ -416,6 +423,7 @@ First stable version.
 
 The first public release.
 
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...HEAD
 [4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.1.3...v3.2.0

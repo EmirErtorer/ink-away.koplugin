@@ -542,6 +542,10 @@ function InkAwayView:onIaTouch(_, ges)
         if m and m.dimen and InkGeom.inRect(pos.x, pos.y, m.dimen) then return true end
         self:dropSelection()
     end
+    -- an open text box is worked like a dialog: with the keyboard up the pen
+    -- reaches the page as a UI contact, and Done, Format and the box take a
+    -- finger too, so neither is a navigating finger here (see textToolTouch)
+    if self.editing_text and self.tool == "text" then return self:textToolTouch(pos) end
     local fmode = self:fingerOnPage()
     if fmode then   -- a finger navigates (or does nothing) while the pen writes
         self._finger_nav = { mode = fmode, x = pos.x, y = pos.y, lx = pos.x, ly = pos.y }

@@ -250,6 +250,48 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     table.remove(view.canvas.ops); table.remove(view.canvas.ops)
     view:setTool("pen")
 
+    -- with palm rejection on (a pen reader's default) an open text box still takes
+    -- the pen and a finger: Format and Done answer both, and a finger tapping away
+    -- closes the box without starting another
+    do
+        local Text = require("ink/text")
+        local formats = 0
+        local openFormat = view.openTextFormatMenu
+        view.openTextFormatMenu = function() formats = formats + 1 end
+        view.palm_reject = true
+        view:setTool("text")
+        local kb = { dimen = { x = 0, y = H - 300, w = W, h = 300 } }
+        local function open()
+            view.editing_text = Text.new{ x = tw + 40, y = 60, w = 400, size = 20 }
+            view.editing_text.h = 40
+            view.editing_is_new, view.text_cur = true, { p = 1, o = 0 }
+            view._text_kb = kb
+            UIManager:show(kb)
+        end
+        local function tap(x, y) view:onIaTouch(nil, pos(x, y)); view:onIaTap(nil, pos(x, y)) end
+        local function mid(r) return r.x + r.w / 2, r.y + r.h / 2 end
+        open()
+        local b = view:textEditButtons()
+        ok(view:penOnUI(mid(b.done)), tag .. ": with the keyboard up, the pen on the box is a UI contact")
+        tap(mid(b.format))
+        ok(formats == 1 and view.editing_text ~= nil, tag .. ": a finger opens Format")
+        tap(mid(b.done))
+        ok(view.editing_text == nil and view._text_kb == nil, tag .. ": a finger taps Done")
+        open()
+        local dx, dy = mid(b.done)
+        view._pen_ui = { x = dx, y = dy, x0 = dx, y0 = dy }
+        tap(dx, dy)
+        ok(view.editing_text == nil and view._text_kb == nil, tag .. ": so does the pen")
+        view._pen_ui = nil
+        open()
+        tap(tw + 300, H / 2 - 40)
+        ok(view.editing_text == nil and view._text_kb == nil and view._finger_nav == nil,
+            tag .. ": a finger tapping away closes the box, and opens no other")
+        view.openTextFormatMenu = openFormat
+        view.palm_reject = false
+        view:setTool("pen")
+    end
+
     -- deleting every annotation on the book: two confirmations, then gone at
     -- once into the trash, with nothing left to undo
     view:openReaderSettings()

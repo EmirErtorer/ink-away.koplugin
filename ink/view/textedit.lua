@@ -540,6 +540,8 @@ function InkAwayView:textToolTouch(pos)
             return true
         else
             self:finishTextEdit(true)   -- tapped away: commit and leave
+            -- a finger that palm rejection keeps from writing only closes the box
+            if self:navFinger(pos) then return true end
             -- fall through to maybe start a new box at this point
         end
     end

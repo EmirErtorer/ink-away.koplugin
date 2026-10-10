@@ -222,6 +222,13 @@ function InkAwayView:fingerOnPage()
     return self.finger_mode == "nothing" and "nothing" or "navigate"
 end
 
+-- Is a gesture at `pos` a finger that palm rejection keeps from writing? The pen,
+-- fed to the tool or tapping the UI, is not.
+function InkAwayView:navFinger(pos)
+    if not self:fingerOnPage() then return false end
+    return not (pos and self._pen_ui and self:penUiGesture(pos))
+end
+
 -- Is the page zoomed in past where it starts (filling the drawing area)?
 function InkAwayView:zoomedIn()
     return self.view.zoom > (self.zoom_min or 0) * 1.001
