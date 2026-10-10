@@ -22,6 +22,7 @@ Plain Lua, so the headless tests drive it.
 local Geom = require("ink/geom")
 local Shapes = require("ink/shapes")
 local Canvas = require("ink/canvas")
+local Wash = require("ink/wash")
 
 local Cut = {}
 
@@ -218,10 +219,34 @@ end
 function Cut.op(op, e, opts)
     local k = op.kind
     if k == "ink" and op.pts then
-        local runs = cutLine(op.pts, op.pr, (op.width or 1) / 2, e)
-        if not runs then return nil end
+        -- (a stroke cut before keeps its parts apart: each is cut on its own)
+        local runs, cut = {}, false
+        for _, part in ipairs(Geom.runs(op.pts, op.pr, op.breaks)) do
+            local left = cutLine(part.pts, part.pr, (op.width or 1) / 2, e)
+            if left then cut = true else left = { part } end
+            for _, r in ipairs(left) do runs[#runs + 1] = r end
+        end
+        if not cut then return nil end
+        if #runs == 0 then return {} end
+        if Wash.isWash(op) and #runs > 1 then
+            -- a see-through pen: its parts stay one stroke, drawn as one wash,
+            -- so where they overlap they do not glaze over each other
+            local pts, pr, breaks = {}, op.pr and {} or nil, {}
+            for _, r in ipairs(runs) do
+                if #pts > 0 then breaks[#breaks + 1] = #pts / 2 + 1 end
+                for i = 1, #r.pts do pts[#pts + 1] = r.pts[i] end
+                if pr then for i = 1, #(r.pr or {}) do pr[#pr + 1] = r.pr[i] end end
+            end
+            local c = piece(op, pts, pr)
+            c.breaks = breaks
+            return { c }
+        end
         local out = {}
-        for _, r in ipairs(runs) do out[#out + 1] = piece(op, r.pts, r.pr) end
+        for _, r in ipairs(runs) do
+            local c = piece(op, r.pts, r.pr)
+            c.breaks = nil
+            out[#out + 1] = c
+        end
         return out
     elseif k == "shape" then
         if not Shapes.reachedBy(op, e.pts, e.r) then return nil end

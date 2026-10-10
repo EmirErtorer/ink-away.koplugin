@@ -19,6 +19,7 @@ canvas pixels.
 ]]
 
 local ffi = require("ffi")
+local Geom = require("ink/geom")
 local Raster = require("ink/raster")
 local Symmetry = require("ink/symmetry")
 
@@ -194,8 +195,15 @@ end
 
 -- Stamp the stroke (or one piece of it) into mask m. pts and pr are canvas
 -- points and pressures; r the full radius; alpha the strength; sym the stroke's
--- symmetry on a W x H page.
-function Wash.stamp(m, st, pts, pr, r, alpha, sym, W, H)
+-- symmetry on a W x H page; `breaks` where it was lifted (a stroke the eraser
+-- cut keeps its parts as one stroke, so they never glaze over each other).
+function Wash.stamp(m, st, pts, pr, r, alpha, sym, W, H, breaks)
+    if breaks and #breaks > 0 then
+        for _i, run in ipairs(Geom.runs(pts, pr, breaks)) do
+            Wash.stamp(m, st, run.pts, run.pr, r, alpha, sym, W, H)
+        end
+        return
+    end
     local n = floor(#pts / 2)
     if n == 0 then return end
     if st.tip == "soft" then
@@ -278,7 +286,7 @@ function Wash.buildMask(op, st, W, H, scratch)
     else
         m = Wash.newMask(w, h, x0, y0)
     end
-    Wash.stamp(m, st, op.pts, op.pr, (op.width or 1) / 2, strength(op, st), op.sym, W, H)
+    Wash.stamp(m, st, op.pts, op.pr, (op.width or 1) / 2, strength(op, st), op.sym, W, H, op.breaks)
     return m, x0, y0, x1, y1
 end
 
@@ -292,7 +300,7 @@ local cache, cache_order, cache_bytes = {}, {}, 0
 local function signature(op, W, H)
     local pts = op.pts
     return table.concat({ #pts, pts[1] or 0, pts[2] or 0, pts[#pts] or 0, op.width or 0, op.alpha or 255,
-        op.sym or "", op.style or "", op.pr and #op.pr or 0, W, H }, "|")
+        op.sym or "", op.style or "", op.pr and #op.pr or 0, op.breaks and #op.breaks or 0, W, H }, "|")
 end
 
 function Wash.cachedMask(op, st, W, H)

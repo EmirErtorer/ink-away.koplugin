@@ -206,6 +206,56 @@ for _i, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
     for _j, op in ipairs(c.ops) do if op.layer == c.layers[2].id then greens = greens + 1 end end
     ok(greens == 1 and vsCompose(view) == 0, name .. ": one undo brings the line back whole")
 
+    -- ---- a watercolour scribble trimmed by the eraser keeps its look ---------------
+    -- (cut into pieces drawn as washes of their own, they would glaze over each
+    -- other where the scribble crossed itself)
+    view:layerSelect(c.layers[3].id)
+    pen("wash", 70, { 40, 110, 230 }, 160)
+    view.stabilizer = 0
+    local zig = {}
+    for k = 0, 11 do   -- legs closer than the stroke is wide: neighbours overlap
+        local x0, x1 = (k % 2 == 0) and 120 or 600, (k % 2 == 0) and 600 or 120
+        for t = 0, 11 do
+            zig[#zig + 1] = x0 + (x1 - x0) * t / 12; zig[#zig + 1] = 900 + k * 18 + 18 * t / 12
+        end
+    end
+    draw(zig)
+    local before_wash = BB.new(v.canvas_w, v.canvas_h, view.canvas_bb:getType())
+    before_wash:blitFrom(view.canvas_bb, 0, 0, 0, 0, v.canvas_w, v.canvas_h)
+    view:setTool("erase")
+    view.erase_whole, view.eraser_width = false, 30
+    draw(line(360, 850, 360, 1300, 20))   -- through the middle of every leg
+    local wash_ops, breaks = 0, 0
+    for _j, op in ipairs(c.ops) do
+        if op.layer == c.layers[3].id and op.style == "wash" then
+            wash_ops = wash_ops + 1
+            breaks = breaks + (op.breaks and #op.breaks or 0)
+        end
+    end
+    ok(wash_ops == 1 and breaks > 0, name .. ": the cut scribble stays one stroke, lifted where it was cut ("
+        .. wash_ops .. " ops, " .. breaks .. " lifts)")
+    local darker = 0
+    for y = 860, 1260, 2 do
+        for x = 120, 600, 2 do
+          if math.abs(x - 360) > 80 then   -- (the eraser's path and the stroke's width round it)
+            local r1, g1, b1 = rgb(before_wash, x, y)
+            local r2, g2, b2 = rgb(view.canvas_bb, x, y)
+            if math.abs(r1 - r2) > 24 or math.abs(g1 - g2) > 24 or math.abs(b1 - b2) > 24 then darker = darker + 1 end
+          end
+        end
+    end
+    local covered = 0
+    for y = 910, 1100, 4 do
+        local r1, g1, b1 = rgb(before_wash, 520, y)
+        if not (r1 == 255 and g1 == 255 and b1 == 255) then covered = covered + 1 end
+    end
+    ok(covered >= 45, name .. ": the scribble's legs overlap (" .. covered .. "/48 rows painted)")
+    ok(darker == 0, name .. ": away from the eraser the wash looks as it did (" .. darker .. " px changed)")
+    ok(vsCompose(view) == 0, name .. ": and equals the replay")
+    before_wash:free()
+    view:undo()
+    view:setTool("pen")
+
     -- ---- hidden layers ---------------------------------------------------------------
     view:layerToggleShown(c.layers[2].id)
     ok(not Layers.shown(c, c.layers[2].id), name .. ": layer 2 hidden")

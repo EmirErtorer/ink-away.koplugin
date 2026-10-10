@@ -12,7 +12,13 @@ local Symmetry = require("ink/symmetry")
 local Wipe = {}
 
 -- Does the stroke along `pts` come within `reach` of the segment s?
-local function nearStroke(pts, s, reach)
+local function nearStroke(pts, s, reach, breaks)
+    if breaks and #breaks > 0 then   -- a cut stroke: its parts, not the gaps between them
+        for _, run in ipairs(Geom.runs(pts, nil, breaks)) do
+            if nearStroke(run.pts, s, reach) then return true end
+        end
+        return false
+    end
     local r2 = reach * reach
     if #pts < 4 then
         return #pts >= 2 and Geom.segDist2(pts[1], pts[2], s[1], s[2], s[3], s[4]) <= r2
@@ -71,7 +77,7 @@ function Wipe.hits(op, s, r, W, H, rows)
         local p = Symmetry.flipPoints(s, f, W, H)
         local k = op.kind
         if k == "ink" or k == "smudge" then
-            if nearStroke(op.pts, p, r + (op.width or 1) / 2) then return true, false end
+            if nearStroke(op.pts, p, r + (op.width or 1) / 2, op.breaks) then return true, false end
         elseif k == "shape" and op.fill then
             if Shapes.reachedBy(op, p, r) then return false, true end
         elseif k == "shape" then

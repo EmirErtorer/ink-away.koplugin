@@ -74,6 +74,29 @@ end
 
 -- Bounding box of a flat point list {x1,y1,x2,y2,...}, aligned to the axes.
 -- Returns nil for an empty list.
+-- A stroke's runs: the parts between its pen lifts. `breaks` lists the point
+-- numbers (1-based) where a new run starts, as a see-through stroke the eraser
+-- cut keeps them (ink/cut.lua). Returns { { pts, pr }, ... }: the stroke itself
+-- when it has no breaks.
+function Geom.runs(pts, pr, breaks)
+    if not breaks or #breaks == 0 then return { { pts = pts, pr = pr } } end
+    local out, start = {}, 1
+    local n = math.floor(#pts / 2)
+    for k = 1, #breaks + 1 do
+        local stop = (breaks[k] or (n + 1)) - 1
+        if stop >= start then
+            local p, q = {}, pr and {} or nil
+            for i = start, stop do
+                p[#p + 1] = pts[2 * i - 1]; p[#p + 1] = pts[2 * i]
+                if q then q[#q + 1] = pr[i] end
+            end
+            out[#out + 1] = { pts = p, pr = q }
+        end
+        start = math.max(start, stop + 1)
+    end
+    return out
+end
+
 function Geom.bounds(pts)
     local n = math.floor(#pts / 2)
     if n == 0 then return nil end

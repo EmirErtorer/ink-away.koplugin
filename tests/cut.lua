@@ -111,5 +111,40 @@ do
     ok(same, "a cut shape's pieces stay on its layer")
 end
 
+-- ---- a see-through stroke stays one stroke, lifted where it was cut -------------------
+do
+    local Geom = require("ink/geom")
+    local Wipe = require("ink/wipe")
+    local wash = { kind = "ink", style = "wash", width = 20, alpha = 160, color = { 40, 110, 230 },
+                   pts = { 0, 0, 100, 0, 100, 20, 0, 20, 0, 40, 100, 40 }, pr = { 1, 2, 3, 4, 5, 6 } }
+    local out = Cut.ops({ wash }, { 50, -30, 50, 70 }, 6)
+    ok(#out == 1 and out[1].breaks and #out[1].breaks >= 2, "wash: one stroke with its lifts ("
+        .. #out .. " ops, " .. (out[1].breaks and #out[1].breaks or 0) .. " lifts)")
+    local runs = Geom.runs(out[1].pts, out[1].pr, out[1].breaks)
+    ok(#runs == #out[1].breaks + 1, "wash: as many parts as lifts plus one")
+    local clear = true
+    for _, r in ipairs(runs) do
+        for i = 1, #r.pts, 2 do
+            if math.abs(r.pts[i] - 50) < 6 + 10 - 1 then clear = false end
+        end
+        ok(#r.pr * 2 == #r.pts, "wash: each part keeps its pressures")
+    end
+    ok(clear, "wash: nothing of it left under the eraser")
+    -- cut again: the parts are cut on their own, the lifts kept
+    local again = Cut.ops(out, { 90, -30, 90, 70 }, 4)
+    ok(#again == 1 and #again[1].breaks > #out[1].breaks, "wash: cut again, more lifts")
+    -- the whole-stroke eraser passes through the gaps without taking it
+    local gap = { 50, -10, 50, 50 }
+    ok(not Wipe.hits(out[1], gap, 2, 200, 200, {}), "wash: the whole-stroke eraser along a gap leaves it")
+    ok(Wipe.hits(out[1], { 20, -10, 20, 50 }, 2, 200, 200, {}), "wash: across a part it takes it")
+    -- a plain pen's pieces are strokes of their own, as before
+    local ink = { kind = "ink", style = "solid", width = 6, alpha = 255, pts = { 0, 0, 100, 0 } }
+    local pieces = Cut.ops({ ink }, { 50, -30, 50, 30 }, 6)
+    ok(#pieces == 2 and not pieces[1].breaks, "ink: two strokes of its own")
+    -- one part left: no lifts
+    local one = Cut.ops({ wash }, { 100, 40, 100, 40 }, 4)
+    ok(#one == 1 and not one[1].breaks, "wash: one part left, no lifts")
+end
+
 print(("cut: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
