@@ -51,7 +51,7 @@ do
     c:addOp(stroke("a"))
     Layers.enable(c)
     local id2 = Layers.add(c)
-    ok(id2 == 2 and c.active_layer == 2 and c.layers[2].name == "Layer 2", "a new layer above, active")
+    ok(id2 == 2 and c.active_layer == 2 and Layers.label(c, id2) == "Layer 2", "a new layer above, active")
     c:addOp(stroke("b"))
     c.active_layer = 1
     c:addOp(stroke("c"))
@@ -209,21 +209,51 @@ do
     ok(Layers.on(c) and #c.layers == 2 and tags(c.ops) == "a@1 b@2" and c.active_layer == 2, "redo all the way back")
 end
 
--- ---- names, the cap ------------------------------------------------------------------------
+-- ---- names: the reader's own, else the place from the bottom; the cap -----------------------
 do
     local c = Canvas.new(100, 100)
     Layers.enable(c)
     for _i = 2, Layers.MAX do ok(Layers.add(c) ~= nil, "add layer up to the cap") end
     ok(Layers.add(c) == nil and #c.layers == Layers.MAX, "no more than " .. Layers.MAX)
-    ok(Layers.rename(c, c.layers[2].id, "  Ink  ") and c.layers[2].name == "Ink", "renamed (trimmed)")
-    ok(not Layers.rename(c, c.layers[2].id, "   "), "an empty name is refused")
-    Layers.remove(c, c.layers[3].id)
-    ok(Layers.add(c) and c.layers[#c.layers].name ~= nil, "a free number is used again")
-    local names = {}
-    for _i, l in ipairs(c.layers) do
-        ok(not names[l.name], "names are not repeated: " .. l.name)
-        names[l.name] = true
+    local function labels()
+        local t = {}
+        for _i, l in ipairs(c.layers) do t[#t + 1] = Layers.label(c, l.id) end
+        return table.concat(t, ",")
     end
+    ok(labels() == "Layer 1,Layer 2,Layer 3,Layer 4,Layer 5", "named by their place: " .. labels())
+    ok(Layers.rename(c, c.layers[2].id, "  Ink  ") and Layers.label(c, c.layers[2].id) == "Ink", "renamed (trimmed)")
+    ok(not Layers.rename(c, c.layers[2].id, "   "), "an empty name is refused")
+    Layers.remove(c, c.layers[1].id)
+    ok(labels() == "Ink,Layer 2,Layer 3,Layer 4", "one deleted: the others numbered again, a name kept: " .. labels())
+    ok(Layers.rename(c, c.layers[1].id, "Layer 9") and labels() == "Layer 1,Layer 2,Layer 3,Layer 4",
+        "renamed to \"Layer n\": named by its place again")
+end
+
+-- ---- merging down 4 into 3, then 3 into 2: the numbers close up ------------------------------
+do
+    local c = Canvas.new(100, 100)
+    Layers.enable(c)
+    Layers.add(c); Layers.add(c); Layers.add(c)
+    local function labels()
+        local t = {}
+        for _i, l in ipairs(c.layers) do t[#t + 1] = Layers.label(c, l.id) end
+        return table.concat(t, ",")
+    end
+    Layers.mergeDown(c, c.layers[4].id)
+    ok(labels() == "Layer 1,Layer 2,Layer 3", "4 into 3: " .. labels())
+    Layers.mergeDown(c, c.layers[3].id)
+    ok(labels() == "Layer 1,Layer 2", "then 3 into 2: " .. labels())
+    -- a layer added in the middle, and one moved: the numbers follow the places
+    c.active_layer = c.layers[1].id
+    Layers.add(c)
+    ok(labels() == "Layer 1,Layer 2,Layer 3", "added over layer 1: " .. labels())
+    Layers.move(c, c.layers[3].id, -1)
+    ok(labels() == "Layer 1,Layer 2,Layer 3", "moved: still in order")
+    -- a drawing saved with the old names reads them as places
+    local d = Canvas.new(100, 100)
+    d:setOps({})
+    Layers.load(d, { list = { { id = 1, name = "Layer 1" }, { id = 3, name = "Layer 3" } }, active = 3 })
+    ok(Layers.label(d, 3) == "Layer 2" and d.layers[2].name == nil, "an old file's \"Layer 3\" in second place is Layer 2")
 end
 
 -- ---- the file keeps the layers --------------------------------------------------------
@@ -241,7 +271,7 @@ do
     local d = Canvas.new(data.w, data.h)
     d:setOps(data.ops)
     Layers.load(d, data.layers)
-    ok(Layers.on(d) and #d.layers == 2 and d.layers[2].name == "Colour", "layers read back")
+    ok(Layers.on(d) and #d.layers == 2 and Layers.label(d, id2) == "Colour", "layers read back")
     ok(d.active_layer == 1 and not Layers.shown(d, 1) and Layers.shown(d, id2), "active and hidden read back")
     ok(tags(d.ops) == "a@1 b@2" and grouped(d), "ops read back in layer order")
     -- a drawing without layers stays without

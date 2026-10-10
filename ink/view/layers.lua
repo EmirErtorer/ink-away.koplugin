@@ -461,14 +461,14 @@ function InkAwayView:layerDelete(id)
     if (Layers.counts(c)[id] or 0) == 0 then return go() end
     local l = Layers.get(c, id)
     self:confirmSheet("_layer_confirm", _("Delete this layer?"),
-        T(_("%1 and everything on it are deleted. Undo brings them back."), l and l.name or ""),
+        T(_("%1 and everything on it are deleted. Undo brings them back."), l and Layers.label(c, id) or ""),
         _("Delete"), go)
 end
 
 function InkAwayView:layerRename(id)
     local l = Layers.get(self.canvas, id)
     if not l then return end
-    self:promptText{ title = _("Rename layer"), input = l.name, ok_text = _("Rename"),
+    self:promptText{ title = _("Rename layer"), input = Layers.label(self.canvas, id), ok_text = _("Rename"),
         on_ok = function(text)
             if Layers.rename(self.canvas, id, text) then self:layersChanged(false) end
         end }
@@ -490,7 +490,7 @@ function InkAwayView:openLayerMenu(id)
         local shown = Layers.shown(c, id)
         local pos = Layers.pos(c, id) or 1
         return VerticalGroup:new{ align = "left",
-            self:sheetTitle(l.name, content_w, _("Done"), closeSelf),
+            self:sheetTitle(Layers.label(c, id), content_w, _("Done"), closeSelf),
             VerticalSpan:new{ width = Screen:scaleBySize(6) },
             self:sheetHint(T(_("Layer %1 of %2. New drawing goes on this layer."), pos, #c.layers), content_w, 14),
             VerticalSpan:new{ width = Screen:scaleBySize(14) },
@@ -599,7 +599,7 @@ function InkAwayView:drawLayerStrip(bb, ox, oy, r)
             active_at = ry
         else
             local shown = Layers.shown(c, l.id)
-            label(shortName(l.name), x, ry, shown and GLYPH or FAINT, false)
+            label(shortName(Layers.label(c, l.id)), x, ry, shown and GLYPH or FAINT, false)
             if not shown then   -- a hidden layer: struck through
                 local t = math.max(2, Screen:scaleBySize(2))
                 local lx0, ly0 = x + inset * 2, ry + r.rh - inset * 2
@@ -621,7 +621,7 @@ function InkAwayView:drawLayerStrip(bb, ox, oy, r)
         if dark and not a.custom then bb:invertRect(x + inset, active_at + inset / 2, r.w - 2 * inset, r.rh - inset) end
         local l = Layers.get(c, c.active_layer)
         local shown = Layers.shown(c, c.active_layer)
-        label(shortName(l and l.name), x, active_at, (dark and not a.custom) and Blitbuffer.COLOR_BLACK or a.text, true)
+        label(shortName(l and Layers.label(c, l.id)), x, active_at, (dark and not a.custom) and Blitbuffer.COLOR_BLACK or a.text, true)
         if not shown then
             -- (the active layer hidden: shown again as soon as something is drawn)
             local t = math.max(2, Screen:scaleBySize(2))

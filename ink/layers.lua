@@ -10,7 +10,8 @@ layers in order without knowing about them, and merging layers or turning them
 off only relabels ops. An op's layer is op.layer, the layer's id (nil for the
 first layer, whose id is 1).
 
-  canvas.layers         nil, or { { id = n, name = "..." }, ... } bottom to top
+  canvas.layers         nil, or { { id = n, name = <the reader's name, or nil> }, ... }
+                        bottom to top (see Layers.label for what one is called)
                         (kept in the undo history)
   canvas.active_layer   the id that new ops go into, the only one edited
   canvas.hidden_layers  { [id] = true } for the layers not shown (not in the
@@ -70,7 +71,7 @@ function Layers.fix(c)
         c._hid = (c._hid or 0) + 1
         return
     end
-    if #c.layers == 0 then c.layers = { { id = 1, name = Layers.nameFor(c) } } end
+    if #c.layers == 0 then c.layers = { { id = 1 } } end
     if not Layers.pos(c, c.active_layer) then c.active_layer = c.layers[#c.layers].id end
     local hidden = {}
     for id in pairs(c.hidden_layers or {}) do
@@ -80,16 +81,21 @@ function Layers.fix(c)
     c._hid = (c._hid or 0) + 1
 end
 
--- "Layer n" with the smallest n no layer is called yet.
-function Layers.nameFor(c)
-    local used = {}
-    for _i, l in ipairs(c.layers or {}) do
-        local n = tonumber(tostring(l.name or ""):match("^Layer (%d+)$"))
-        if n then used[n] = true end
-    end
-    local n = 1
-    while used[n] do n = n + 1 end
-    return "Layer " .. n
+-- A layer's own name, or nil when it has none: "Layer n" is not a name of its
+-- own but its place (drawings saved before kept those as names).
+local function ownName(name)
+    if type(name) ~= "string" or name == "" or name:match("^Layer %d+$") then return nil end
+    return name
+end
+Layers.ownName = ownName
+
+-- What a layer is called: the name the reader gave it, else "Layer n" with n its
+-- place from the bottom, so the numbers always run 1, 2, 3 after a merge, a
+-- move or a delete.
+function Layers.label(c, id)
+    local p = Layers.pos(c, id)
+    if not p then return "" end
+    return ownName(c.layers[p].name) or ("Layer " .. p)
 end
 
 -- Turn layers on: everything drawn so far is the first layer, and the active one.
@@ -105,7 +111,7 @@ function Layers.enable(c)
             c.ops[i] = op
         end
     end
-    c.layers = { { id = 1, name = "Layer 1" } }
+    c.layers = { { id = 1 } }
     c.active_layer = 1
     c.hidden_layers = {}
     c._hid = (c._hid or 0) + 1
@@ -205,7 +211,7 @@ function Layers.add(c)
     id = id + 1
     local at = (Layers.pos(c, c.active_layer) or #c.layers) + 1
     local layers = Layers.copy(c.layers)
-    table.insert(layers, at, { id = id, name = Layers.nameFor(c) })
+    table.insert(layers, at, { id = id })
     c.layers = layers
     c.active_layer = id
     return id
@@ -257,10 +263,10 @@ end
 function Layers.rename(c, id, name)
     local p = Layers.pos(c, id)
     name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    if not p or name == "" or c.layers[p].name == name then return false end
+    if not p or name == "" or Layers.label(c, id) == name then return false end
     c:pushHistory()
     local layers = Layers.copy(c.layers)
-    layers[p].name = name
+    layers[p].name = ownName(name)   -- ("Layer n" again: named by its place)
     c.layers = layers
     return true
 end
@@ -379,7 +385,7 @@ function Layers.load(c, saved)
             local id = type(l) == "table" and tonumber(l.id)
             if id and id >= 1 and id == math.floor(id) and not seen[id] and #list < Layers.MAX then
                 seen[id] = true
-                list[#list + 1] = { id = id, name = type(l.name) == "string" and l.name or ("Layer " .. id) }
+                list[#list + 1] = { id = id, name = ownName(l.name) }
             end
         end
         if #list > 0 then
