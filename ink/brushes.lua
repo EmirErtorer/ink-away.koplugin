@@ -1,5 +1,6 @@
 --[[
-The brush list: the built-in styles plus the brushes the reader makes.
+The brushes the reader makes (the pen case lists them after the built-in
+kinds, see ink/penset.lua).
 
 A brush is the small table of numbers the rasterizer reads (see ink/raster.lua).
 Made brushes are kept in KOReader's settings, outside the plugin folder, so they
@@ -12,15 +13,6 @@ local Raster = require("ink/raster")
 local Brushes = {}
 
 local SETTING = "inkaway_brushes"
-
--- The built-in styles, in pen menu order.
-local BUILTIN = {
-    { key = "solid",   label = "Ink" },
-    { key = "pencil",  label = "Pencil" },
-    { key = "acrylic", label = "Acrylic" },
-    { key = "hatch",   label = "Hatch" },
-    { key = "stipple", label = "Stipple" },
-}
 
 -- The brush maker's sliders, each 0..1 unless noted, and how they map onto the
 -- rasterizer's fields. The ranges are modest because a large spread or tooth
@@ -50,17 +42,6 @@ function Brushes.loadAll(getSetting)
     for _, b in ipairs(Brushes.userList(getSetting)) do
         if b.name and b.params then Raster.registerStyle("user:" .. b.name, b.params) end
     end
-end
-
--- The pen menu's list: the built-in styles, then the made brushes, each as
--- { key, label, custom }.
-function Brushes.menu(getSetting)
-    local out = {}
-    for _, b in ipairs(BUILTIN) do out[#out + 1] = { key = b.key, label = b.label } end
-    for _, b in ipairs(Brushes.userList(getSetting)) do
-        if b.name then out[#out + 1] = { key = "user:" .. b.name, label = b.name, custom = true } end
-    end
-    return out
 end
 
 -- Save a brush by name (adding it, or replacing one of the same name), register

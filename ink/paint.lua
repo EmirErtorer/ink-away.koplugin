@@ -28,6 +28,49 @@ local function strengthToLevel(s)
     return lvl
 end
 
+-- How light {r,g,b} looks, 0 to 255.
+local function lum(rgb)
+    return 0.299 * rgb[1] + 0.587 * rgb[2] + 0.114 * rgb[3]
+end
+
+-- Is paper {r,g,b} dark (nil or false is white)? Black ink, text and the marks
+-- drawn over the page are white on it.
+local function darkPaper(rgb)
+    return type(rgb) == "table" and lum(rgb) < 110
+end
+
+-- The colour ink {r,g,b} (nil is black) shows in on paper {r,g,b}: itself,
+-- but black shows white on a dark paper, as text does, so what was written in
+-- black reads on any paper (and turns black again on a light one).
+local WHITE3 = { 255, 255, 255 }
+local function inkOnPaper(rgb, paper)
+    if darkPaper(paper) and (rgb == nil or (rgb[1] == 0 and rgb[2] == 0 and rgb[3] == 0)) then return WHITE3 end
+    return rgb
+end
+
+-- The colour of a ruling or grid of strength 1..100 on paper {r,g,b} (nil is
+-- white), as {r,g,b}: the paper taken toward black, or on a dark paper toward
+-- white, by as much as the strength's grey is from white. On white that is the
+-- grey itself, and the lines stand out as much on any paper.
+local function rulingRGB(paper, strength)
+    local lvl = strengthToLevel(strength)
+    local p = paper or { 255, 255, 255 }
+    local out = {}
+    if darkPaper(p) then
+        local k = (255 - lvl) / 255
+        for i = 1, 3 do out[i] = math.floor(p[i] + (255 - p[i]) * k + 0.5) end
+    else
+        for i = 1, 3 do out[i] = math.floor(p[i] * lvl / 255 + 0.5) end
+    end
+    return out
+end
+
+-- The colour of text and of the marks over the page (the lasso, a selection's
+-- frame) on paper {r,g,b}: black, or white on a dark paper.
+local function inkOn(paper)
+    return darkPaper(paper) and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+end
+
 -- The on-screen colour of ink {r,g,b} (black by default) at opacity `alpha`,
 -- composited over white so the display matches the export. A grey panel's
 -- blitter turns it into the right shade; a colour screen shows the colour.
@@ -140,7 +183,7 @@ local function brushSample(bb, st, ink, pad, r, amp, n)
 end
 
 -- Paint a notebook page's paper into `dst`: the picture or PDF page if there is
--- one (else the paper colour), then the ruling on top.
+-- one (else the paper colour, tmpl.paper, white when nil), then the ruling on top.
 local function paintPaper(dst, W, H, tmpl, bg)
     if bg then
         dst:blitFrom(bg, 0, 0, 0, 0, W, H)
@@ -150,8 +193,9 @@ local function paintPaper(dst, W, H, tmpl, bg)
         fillRect(dst, 0, 0, W, H, col, isChromatic(col))
     end
     if tmpl and tmpl.style and tmpl.style ~= "blank" then
-        local lvl = strengthToLevel(tmpl.strength)
-        local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF), nil)
+        -- the ruling in the paper's own shade (over a PDF page, grey as on white)
+        local c = rulingRGB(not bg and tmpl.paper or nil, tmpl.strength)
+        local put = spanWriter(dst, W, H, Blitbuffer.ColorRGB32(c[1], c[2], c[3], 0xFF), nil)
         Template.render(tmpl.style, W, H, tmpl.size or 40, put)
     end
 end
@@ -171,5 +215,10 @@ Paint.brushSample = brushSample
 Paint.spanWriter = spanWriter
 Paint.bgSpanWriter = bgSpanWriter
 Paint.paintPaper = paintPaper
+Paint.lum = lum
+Paint.darkPaper = darkPaper
+Paint.rulingRGB = rulingRGB
+Paint.inkOn = inkOn
+Paint.inkOnPaper = inkOnPaper
 
 return Paint

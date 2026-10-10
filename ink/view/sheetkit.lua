@@ -34,6 +34,7 @@ local Palette = require("ink/palette")
 local Raster = require("ink/raster")
 local Storage = require("ink/storage")
 local IconMenu = require("ink/ui/iconmenu")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -79,6 +80,11 @@ end
 
 -- Where a tool sheet's top should sit: just under the toolbar, so its options
 -- open right where the hand tapped (falls back to a small margin if unknown).
+-- Where sheets may go across: nil centres them on the screen; a mode with a
+-- toolbar down a side keeps them beside it.
+function InkAwayView:sheetLeftX() return nil end
+function InkAwayView:sheetRightX() return nil end
+
 function InkAwayView:sheetTopY()
     return (self._bar_h or 0) + Screen:scaleBySize(6)
 end
@@ -90,6 +96,13 @@ function InkAwayView:sheetWidth(cols)
     cols = cols or 4
     local gap = Screen:scaleBySize(12)
     local target = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.84)
+    -- beside a toolbar down the left side, narrow enough to fit next to it (the
+    -- sheet's frame adds its padding and border on each side, see IconMenu)
+    local left, right = self:sheetLeftX(), self:sheetRightX()
+    if left or right then
+        local frame = 2 * (Screen:scaleBySize(18) + Size.border.window) + 2 * Screen:scaleBySize(4)
+        target = math.min(target, (right or Screen:getWidth()) - (left or 0) - frame - 2)
+    end
     local col = math.floor((target - (cols - 1) * gap) / cols)
     return cols * col + (cols - 1) * gap, gap, col
 end
@@ -99,8 +112,12 @@ end
 -- opts.on_close runs when a tap outside it or Back closes it.
 function InkAwayView:showSheet(field, build, opts)
     opts = opts or {}
+    -- every field a sheet was shown in, so closing the view closes them all
+    self._sheet_fields = self._sheet_fields or {}
+    self._sheet_fields[field] = true
     self[field] = IconMenu:new{ build = build, flash = not self:colourPanel(),
         top_y = not opts.bottom_y and self:sheetTopY() or nil, bottom_y = opts.bottom_y,
+        left_x = self:sheetLeftX(), right_x = self:sheetRightX(),
         on_uncover = function() self:uncovered() end,
         on_close = function()
             self[field] = nil
@@ -143,7 +160,7 @@ function InkAwayView:accentButton(w, h, radius, content, cb, hold_cb)
         ImageWidget:new{ image = Accent.shape(w, h, radius), width = w, height = h, alpha = true,
             image_disposable = false },
         CenterContainer:new{ dimen = dimen, content } })
-    return b
+    return Theme.keep(b, radius)   -- the theme colour stays itself in dark
 end
 
 -- Path of a bundled icon.
@@ -240,7 +257,7 @@ function InkAwayView:paperTile(style, label, w, h, sel, cb)
     -- fgcolor is set for the tap highlight, which inverts it on a text button
     -- (see imageLabel); the group itself draws nothing with it
     local vg = VerticalGroup:new{ align = "center", fgcolor = sel and a.text or BLACK }
-    if ok and page then table.insert(vg, imageLabel(page, pw, ph)) end
+    if ok and page then table.insert(vg, Theme.keep(imageLabel(page, pw, ph))) end   -- the paper itself
     table.insert(vg, vspan(4))
     table.insert(vg, TextWidget:new{ text = label, face = Font:getFace("cfont", 15), bold = true,
         fgcolor = sel and a.text or BLACK })
@@ -255,11 +272,14 @@ end
 function InkAwayView:cachedPaperPreview(style, w, h)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
-    local id = table.concat({ "paper", style, w, h, Screen.bb:getType() }, "|")
+    -- on the notebook's paper colour (a new one's when there is none open)
+    local paper = (self.notebook and self:paperRGB() or self:defaultPaper()) or { 255, 255, 255 }
+    local id = table.concat({ "paper", style, w, h, Screen.bb:getType(), paper[1], paper[2], paper[3] }, "|")
     local e = cache[id]
     if e then return e.bb end
     local bb = Blitbuffer.new(w, h, Screen.bb:getType())
-    Paint.paintPaper(bb, w, h, { style = style, size = math.max(6, math.floor(h / 9)), strength = 70 }, nil)
+    Paint.paintPaper(bb, w, h, { style = style, size = math.max(6, math.floor(h / 9)), strength = 70,
+        paper = Palette.paperRGB(paper) }, nil)
     Paint.outline(bb, 0, 0, w, h, HINT, 1)
     cache[id] = { bb = bb }
     return bb
@@ -268,25 +288,54 @@ end
 -- Title row shared by every tool sheet: the sheet title on the left (cut short
 -- with an ellipsis when long) and a filled black pill (Done / Back) on the
 -- right, spanning content_w.
-function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size)
+function InkAwayView:sheetTitle(title, content_w, pill_label, pill_cb, title_size, extra)
     local a = Accent.get()
     local pill_w = Screen:scaleBySize(84)
+    local pill_h = Screen:scaleBySize(34)
+    local gap = Screen:scaleBySize(8)
+    -- `extra`: plain grey pills before the main one, each { label = , cb = } or
+    -- { icon = , cb = } (a small square one): the guide, the appearance
+    local extras, extras_w = {}, 0
+    if extra then
+        for _i, e in ipairs(extra[1] and extra or { extra }) do
+            local w = e.icon and pill_h or pill_w
+            local b = Button:new{ text = "", width = w, height = pill_h, bordersize = 0,
+                radius = Screen:scaleBySize(11), background = TILE_BG, margin = 0, padding = 0,
+                callback = e.cb, show_parent = self }
+            local lbl = e.icon and self:tileIcon(e.icon, math.floor(pill_h * 0.62))
+            if lbl then
+                -- fgcolor is set for the tap highlight, which inverts a text button's label
+                self:setButtonLabel(b, CenterContainer:new{ dimen = Geom:new{ w = w, h = pill_h }, fgcolor = BLACK, lbl })
+            else
+                self:setButtonLabel(b, TextWidget:new{ text = e.label or "", face = Font:getFace("cfont", 15),
+                    bold = true, fgcolor = BLACK })
+            end
+            extras[#extras + 1] = b
+            extras_w = extras_w + w + gap
+        end
+    end
     local titleW = TextWidget:new{ text = title, face = Font:getFace("cfont", title_size or 22), bold = true,
-        max_width = content_w - pill_w - Screen:scaleBySize(8) }
+        max_width = content_w - pill_w - gap - extras_w }
     local text = TextWidget:new{ text = pill_label or _("Done"), face = Font:getFace("cfont", 15),
         bold = true, fgcolor = a.text }
     local pill
     if a.chromatic then
-        pill = self:accentButton(pill_w, Screen:scaleBySize(34), Screen:scaleBySize(11), text, pill_cb)
+        pill = self:accentButton(pill_w, pill_h, Screen:scaleBySize(11), text, pill_cb)
     else
-        pill = Button:new{ text = "", width = pill_w, height = Screen:scaleBySize(34),
+        pill = Button:new{ text = "", width = pill_w, height = pill_h,
             bordersize = 0, radius = Screen:scaleBySize(11), background = a.fill, margin = 0, padding = 0,
             callback = pill_cb, show_parent = self }
         self:setButtonLabel(pill, text)
     end
-    local g = content_w - titleW:getSize().w - pill:getSize().w
-    return HorizontalGroup:new{ align = "center",
-        titleW, HorizontalSpan:new{ width = math.max(Screen:scaleBySize(8), g) }, pill }
+    local g = content_w - titleW:getSize().w - pill:getSize().w - extras_w
+    local row = HorizontalGroup:new{ align = "center",
+        titleW, HorizontalSpan:new{ width = math.max(gap, g) } }
+    for _i, b in ipairs(extras) do
+        row[#row + 1] = b
+        row[#row + 1] = HorizontalSpan:new{ width = gap }
+    end
+    row[#row + 1] = pill
+    return row
 end
 
 -- A small grey line of text in a sheet; a section heading when `bold`.
@@ -409,6 +458,41 @@ function InkAwayView:openActionSheet(field, title, note, rows)
     self:showSheet(field, build)
 end
 
+-- Ask before something that can't simply be undone: a title, the question in
+-- full under it, and Cancel beside the action (`ok_label`), which runs `on_ok`.
+-- Either closes the sheet first.
+function InkAwayView:confirmSheet(field, title, text, ok_label, on_ok)
+    self:closeSheet(field)
+    local content_w, gap = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local build = function()
+        local w = math.floor((content_w - gap) / 2)
+        return VerticalGroup:new{ align = "left",
+            self:sheetTitle(title, content_w, _("Cancel"), closeSelf),
+            VerticalSpan:new{ width = Screen:scaleBySize(10) },
+            TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) },
+            VerticalSpan:new{ width = Screen:scaleBySize(18) },
+            HorizontalGroup:new{ align = "center",
+                self:actionButton(_("Cancel"), w, closeSelf),
+                HorizontalSpan:new{ width = gap },
+                self:actionButton(ok_label, w, function() closeSelf(); on_ok() end, true) } }
+    end
+    self:showSheet(field, build)
+end
+
+-- Say something that needs reading, in a sheet with an OK pill.
+function InkAwayView:noticeSheet(field, title, text)
+    self:closeSheet(field)
+    local content_w = self:sheetWidth()
+    local build = function()
+        return VerticalGroup:new{ align = "left",
+            self:sheetTitle(title, content_w, _("OK"), function() self:closeSheet(field) end),
+            VerticalSpan:new{ width = Screen:scaleBySize(10) },
+            TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) } }
+    end
+    self:showSheet(field, build)
+end
+
 -- A row of equal buttons across `width`, one per { value, label } option, with
 -- the current one filled black. A tap calls onpick(value).
 function InkAwayView:segmentedRow(options, current, width, onpick)
@@ -428,10 +512,11 @@ end
 -- reused for every later paint.
 function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     local fill = uiFill(rgb)
+    -- a swatch is the colour it gives, in dark too
     if not isChromatic(fill) then
-        return Button:new{ text = "", width = w, height = h, background = fill,
+        return Theme.keep(Button:new{ text = "", width = w, height = h, background = fill,
             radius = radius, bordersize = 0, margin = 0, padding = 0,
-            callback = cb, hold_callback = hold_cb, show_parent = self }
+            callback = cb, hold_callback = hold_cb, show_parent = self }, radius)
     end
     -- white Color8 frame behind the image: the tap highlight inverts it (a nil
     -- background would crash the highlight)
@@ -444,7 +529,7 @@ function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     else
         b.frame.background = fill   -- fall back to the plain (slow) colour fill
     end
-    return b
+    return Theme.keep(b, radius)
 end
 
 function InkAwayView:cachedColourTile(rgb, w, h, radius)
@@ -493,6 +578,7 @@ function InkAwayView:wheelTile(w, h, cb)
         return bb
     end)
     if ok and wheel then self:setButtonLabel(b, imageLabel(wheel, d, d)) end
+    Theme.keep(b, radius)
     return FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = BLACK, radius = Screen:scaleBySize(14),
         padding = Screen:scaleBySize(3), margin = 0, b }
 end

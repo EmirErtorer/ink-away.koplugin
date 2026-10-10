@@ -403,7 +403,7 @@ function InkAwayView:imageBrowserAdd(index)
     local r = st.results[index]
     if not r or not r.full then return end
     UIManager:show(ConfirmBox:new{
-        text = _("Add this image to your drawing?"),
+        text = _("Add this image?"),
         ok_text = _("Add"),
         ok_callback = function() self:imageBrowserDownloadAndInsert(r) end,
     })

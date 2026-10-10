@@ -26,7 +26,6 @@ local InkGeom = require("ink/geom")
 local Text = require("ink/text")
 
 local Screen = Device.screen
-local WHITE = Blitbuffer.COLOR_WHITE
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
@@ -210,8 +209,10 @@ function InkAwayView:layoutText(op, scale)
 end
 
 -- Render a text op into a canvas-space bitmap at its own position; with
--- `region` (a canvas rect) only into that part of it.
-function InkAwayView:stampTextInto(dst, op, region)
+-- `region` (a canvas rect) only into that part of it. `ink` is the text's
+-- colour, the open document's (see textInk) by default: white on a dark paper,
+-- where a highlight under it is dark grey too.
+function InkAwayView:stampTextInto(dst, op, region, ink)
     local lay, ctx = self:layoutText(op, 1)
     if op.auto_h then op.h = lay.height end
     local x, y = op.x, op.y
@@ -219,7 +220,9 @@ function InkAwayView:stampTextInto(dst, op, region)
         dst = dst:viewport(region.x0, region.y0, region.x1 - region.x0, region.y1 - region.y0)
         x, y = x - region.x0, y - region.y0
     end
-    Text.render(op, lay, dst, x, y, ctx, { color = Blitbuffer.COLOR_BLACK })
+    ink = ink or self:textInk()
+    local on_dark = ink == Blitbuffer.COLOR_WHITE
+    Text.render(op, lay, dst, x, y, ctx, { color = ink, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
 end
 
 -- Rasterise a text op at 1:1 into an 8-bit level buffer (255 is untouched white,

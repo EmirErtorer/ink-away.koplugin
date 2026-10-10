@@ -19,6 +19,7 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Accent = require("ink/accent")
+local Theme = require("ink/ui/theme")
 local Paint = require("ink/paint")
 
 local Screen = Device.screen
@@ -222,6 +223,10 @@ function ThumbGrid:paintTo(bb, x, y)
     local sw, sh = self.sw, self.sh
     local S = function(px) return Screen:scaleBySize(px) end
     bb:paintRect(x, y, sw, sh, WHITE)
+    -- what keeps its colours in dark (see ink/ui/theme.lua): thumbnails, tab
+    -- colours, and anything in a theme colour
+    local keeps = {}
+    local function keep(kx, ky, kw, kh, kr) keeps[#keeps + 1] = { kx, ky, kw, kh, kr or 0 } end
     local function label(s, cx, cy, face, fgcolor, max_w, bold)
         local t = TextWidget:new{ text = s, face = face, fgcolor = fgcolor or BLACK, bold = bold,
             max_width = max_w }
@@ -245,7 +250,9 @@ function ThumbGrid:paintTo(bb, x, y)
         local w = icon and S(52) or math.max(glyph and S(52) or S(84), t:getSize().w + S(22))
         t:free()
         right = right - w
-        if dark then Accent.paintRounded(bb, right, pill_y, w, pill_h, S(11))
+        if dark then
+            Accent.paintRounded(bb, right, pill_y, w, pill_h, S(11))
+            if accent.custom then keep(right, pill_y, w, pill_h, S(11)) end
         else bb:paintRoundedRect(right, pill_y, w, pill_h, CARD, S(11)) end
         local ib = icon and not dark and self:iconTile(icon, S(22), "_icon " .. icon)
         if ib then
@@ -302,6 +309,7 @@ function ThumbGrid:paintTo(bb, x, y)
                 local rx, ry = x + r.x, y + r.y
                 if t.selected then
                     local fw = S(3)
+                    if accent.custom then keep(rx, ry, r.w - self.pad, r.h, S(12)) end
                     Accent.paintRounded(bb, rx, ry, r.w - self.pad, r.h, S(12))
                     bb:paintRoundedRect(rx + fw, ry + fw, r.w - self.pad - 2 * fw, r.h - 2 * fw, WHITE, S(12) - fw)
                 else
@@ -309,6 +317,7 @@ function ThumbGrid:paintTo(bb, x, y)
                 end
                 if t.color then   -- (a plain paintRect would draw a colour grey)
                     Paint.fillRect(bb, rx + S(4), ry + S(8), strip, r.h - S(16), t.color, Paint.isChromatic(t.color))
+                    if not (t.selected and accent.custom) then keep(rx + S(4), ry + S(8), strip, r.h - S(16)) end
                 end
                 local lx = rx + strip + S(10)
                 if t.folder then
@@ -342,6 +351,7 @@ function ThumbGrid:paintTo(bb, x, y)
         end
         for i, f in ipairs(L.foot) do
             Accent.paintRounded(bb, x + f.x, y + f.y, f.w, f.h, S(12))
+            if accent.custom then keep(x + f.x, y + f.y, f.w, f.h, S(12)) end
             label(self.tab_footer[i][1], x + f.x + f.w / 2, y + f.y + f.h / 2, tface, accent.text, f.w - S(8), true)
         end
         -- the line between the tabs and the grid
@@ -363,6 +373,8 @@ function ThumbGrid:paintTo(bb, x, y)
             local cx, cy = x + c.x, y + c.y
             -- a rounded light grey card; the selected one gets a border in the
             -- accent (an accent card with an inset grey card)
+            local kept = it.selected and accent.custom
+            if kept then keep(cx, cy, c.w, c.h, card_r) end
             if it.selected then
                 Accent.paintRounded(bb, cx, cy, c.w, c.h, card_r)
                 local ins = S(3)
@@ -374,8 +386,9 @@ function ThumbGrid:paintTo(bb, x, y)
                 or self.cache[it]
             if img then
                 local iw, ih = img:getWidth(), img:getHeight()
-                bb:blitFrom(img, cx + math.floor((c.w - iw) / 2),
-                    cy + math.floor((c.h - self.label_h - ih) / 2), 0, 0, iw, ih)
+                local ix, iy = cx + math.floor((c.w - iw) / 2), cy + math.floor((c.h - self.label_h - ih) / 2)
+                bb:blitFrom(img, ix, iy, 0, 0, iw, ih)
+                if not (kept or it.folder) then keep(ix, iy, iw, ih) end   -- a page as it is
             end
             local name = it.star and ("\u{2605} " .. it.label) or it.label
             label(name, cx + c.w / 2, cy + c.h - self.label_h / 2 - S(4), nface,
@@ -404,6 +417,10 @@ function ThumbGrid:paintTo(bb, x, y)
     if self:gridCount() > 1 then
         label(string.format("%d / %d", self.gpage + 1, self:gridCount()),
             x + sw / 2, pcy, Font:getFace("cfont", 15), LABEL)
+    end
+    if Theme.invert() then
+        bb:invertRect(x, y, sw, sh)
+        for _i, k in ipairs(keeps) do Theme.invertRounded(bb, k[1], k[2], k[3], k[4], k[5]) end
     end
 end
 

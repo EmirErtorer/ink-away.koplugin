@@ -7,11 +7,15 @@ Part of InkAwayView (see ink/view.lua).
 local Device = require("device")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
+local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local Accent = require("ink/accent")
+local PenTest = require("ink/pentest")
+local Theme = require("ink/ui/theme")
+local Palette = require("ink/palette")
 local Storage = require("ink/storage")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
@@ -245,8 +249,15 @@ function InkAwayView:openSettings()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
 
-        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf))
+        add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "appearance", cb = function() self:openAppearance() end },
+            { label = _("Guide"), cb = function() self:openGuide() end } }))
         add(vspan(16))
+        -- news from the update check, on top (where a long sheet never hides it)
+        if self:updateNews() then
+            add(self:updatesButton(content_w, closeSelf))
+            add(vspan(16))
+        end
 
         -- orientation: picking one closes the sheet, as the screen size changes
         if self:orientationSupported() then
@@ -272,15 +283,20 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
-        -- grid (canvas) or paper (notebook)
+        -- grid (canvas) or paper (notebook), and beside it the paper's colour
+        local half = math.floor((content_w - Screen:scaleBySize(12)) / 2)
+        local paper_name = Palette.paperName(self:paperRGB())
         if self.notebook then
             local t = self.notebook.template
-            add(act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), content_w, function()
-                self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
-                    t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
-                    self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
-                end }
-            end))
+            add(HorizontalGroup:new{ align = "center",
+                act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), half, function()
+                    self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
+                        t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
+                        self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
+                    end }
+                end),
+                HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+                self:paperColourButton(_("Colour: ") .. paper_name, half, function() self:openPaperColour() end) })
             add(vspan(12))
             add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
                 width = content_w, parent = menu, format = pxfmt,
@@ -300,8 +316,10 @@ function InkAwayView:openSettings()
                 daily = _("Daily"), weekcols = _("Week columns"), meeting = _("Meeting notes"),
                 habits = _("Habit tracker"), cornell = _("Cornell") }
             local cur = self.grid_on and self.grid_style or "off"
-            add(act(_("Grid: ") .. (GRID_LABEL[cur] or cur), content_w, function()
-                self:openGridSettings() end))
+            add(HorizontalGroup:new{ align = "center",
+                act(_("Grid: ") .. (GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end),
+                HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+                self:paperColourButton(_("Paper: ") .. paper_name, half, function() self:openPaperColour() end) })
         end
         add(vspan(16))
 
@@ -326,11 +344,13 @@ function InkAwayView:openSettings()
         -- where documents are kept, and what opening Ink Away shows
         add(self:sheetLabel(_("Files"), true))
         add(vspan(6))
-        add(act(_("Library folder: ") .. Storage.baseName(self:libraryDir()), content_w,
-            function() self:chooseLibraryRoot() end))
-        add(vspan(8))
-        add(act(_("Export folder: ") .. Storage.baseName(self:defaultExportDir()), content_w,
-            function() self:chooseExportRoot() end))
+        -- the library and export folders side by side, each named for its folder
+        add(HorizontalGroup:new{ align = "center",
+            act(_("Library: ") .. Storage.baseName(self:libraryDir()), half,
+                function() self:chooseLibraryRoot() end),
+            HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+            act(_("Exports: ") .. Storage.baseName(self:defaultExportDir()), half,
+                function() self:chooseExportRoot() end) })
         add(vspan(10))
         add(self:sheetLabel(_("When Ink Away opens")))
         add(vspan(6))
@@ -338,9 +358,80 @@ function InkAwayView:openSettings()
                 { "notebooks", _("Notebooks") } },
             self:getSetting("inkaway_start", "last"), content_w,
             function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
+        -- (palm rejection, the stabilizer and the pen test are in the Pen
+        -- sheet's Pen and input, set from where the pen is)
+        add(vspan(16))
+        -- the gestures, and beside them Updates (what is new, when there is news)
+        add(HorizontalGroup:new{ align = "center",
+            act(_("Gestures and pen buttons"), half, function()
+                self:closeSheet("_settings_dialog"); self:openGestureSettings() end),
+            HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+            self:actionButton(_("Updates"), half, function() closeSelf(); self:openUpdates() end) })
         return content
     end
     self:showSheet("_settings_dialog", build)
+end
+
+-- Light, dark or as KOReader's night mode: Ink Away's own controls (see
+-- ink/ui/theme.lua). The page is never changed.
+function InkAwayView:openAppearance()
+    self:closeSheet("_settings_dialog")
+    local content_w = self:sheetWidth()
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Appearance"), content_w, _("Done"), function() self:closeSheet("_appearance") end))
+        add(vspan(12))
+        add(self:segmentedRow({ { "light", _("Light") }, { "dark", _("Dark") }, { "system", _("System") } },
+            Theme.mode(), content_w, function(m)
+                self:setSetting(Theme.SETTING, m)
+                self._paint_all = true
+                self:rebuildSheet("_appearance")
+                UIManager:setDirty("all", "ui")
+            end))
+        add(vspan(6))
+        add(self:sheetHint(_("Dark turns Ink Away's toolbars and menus dark; the page stays as it is. System follows KOReader's night mode."), content_w))
+        return content
+    end
+    self:showSheet("_appearance", build)
+end
+
+-- The faster-drawing tip for this reader, or nil: none where KOReader drives
+-- the panel fully. When `auto` (shown unasked), none on a Boox either, where Ink
+-- Away asks for the fast refresh itself (unless the reader turned that off).
+function InkAwayView:deviceTipText(auto)
+    if not self:onAndroid() then return nil end
+    local ok, facts = pcall(function() return require("ink/ui/pentestscreen").deviceFacts() end)
+    if not ok then return nil end
+    if auto and facts.boox and self:getSetting("inkaway_boox_fast", true) ~= false then return nil end
+    return PenTest.androidTip(facts)
+end
+
+-- The faster-drawing tip for Android readers whose panel KOReader can't fully
+-- drive: shown once by itself where it is still needed, or again on request
+-- (`again`).
+function InkAwayView:deviceTips(again)
+    if not again and self:getSetting("inkaway_device_tip_shown") then return end
+    local tip = self:deviceTipText(not again)
+    if not tip then
+        if again then UIManager:show(InfoMessage:new{ text = _("This reader needs no special settings for Ink Away.") }) end
+        return
+    end
+    self:setSetting("inkaway_device_tip_shown", true)
+    UIManager:show(InfoMessage:new{ text = _(tip) })
+end
+
+-- The pen and touch test, full screen. The canvas stops drawing from fingers
+-- while it is open (the test watches them itself), and gets its pen back after.
+function InkAwayView:openPenTest()
+    self:closeSheet("_settings_dialog")
+    local PenTestScreen = require("ink/ui/pentestscreen")
+    local raw = self._raw_installed
+    if raw then self:uninstallRawFinger() end
+    UIManager:show(PenTestScreen:new{ on_close = function()
+        if raw and not self.closing then self:installRawFinger() end
+        self:applyPalmReject()
+    end })
 end
 
 return InkAwayView

@@ -98,22 +98,29 @@ function Stylus.classify(slot, facts)
     return Stylus.ROLE_TOUCH
 end
 
--- What a trusted pen contact should do, for slots already classified ROLE_PEN.
--- KOReader rewrites the tool to ERASER while the primary barrel button
--- (BTN_STYLUS, Input.stylus_eraser_active) is held, so the value 2 means either a
--- held side button or the pen's real rear eraser; the latch tells them apart:
---   primary side button held                  ACT_SELECT (lasso select)
---   rear eraser end (tool ERASER, no latch)   ACT_ERASE
---   anything else                             ACT_DRAW (the current tool)
-Stylus.ACT_DRAW   = "draw"
-Stylus.ACT_ERASE  = "erase"
-Stylus.ACT_SELECT = "select"
+-- Which part of a trusted pen is at work, for slots already classified ROLE_PEN;
+-- what each does is the reader's choice (see ink/actions.lua). KOReader rewrites
+-- the tool while a barrel button is held (ERASER for BTN_STYLUS, the Kindle
+-- Scribe's side button; HIGHLIGHTER for BTN_STYLUS2, the Kobo stylus's), so the
+-- latches tell a held button from the pen's real rear eraser:
+--   first side button held (eraser latch)       ACT_BUTTON1
+--   second side button held (highlighter latch) ACT_BUTTON2
+--   rear eraser end (tool ERASER, no latch)     ACT_ERASER_END
+--   anything else                               ACT_DRAW (the current tool)
+Stylus.ACT_DRAW       = "draw"
+Stylus.ACT_BUTTON1    = "button1"
+Stylus.ACT_BUTTON2    = "button2"
+Stylus.ACT_ERASER_END = "eraser_end"
 function Stylus.penAction(slot, facts)
     facts = facts or {}
-    if facts.eraser_latch then return Stylus.ACT_SELECT end   -- primary side button held
-    if slot and slot.tool == Stylus.TOOL_ERASER then return Stylus.ACT_ERASE end
+    if facts.eraser_latch then return Stylus.ACT_BUTTON1 end
+    if facts.highlighter_latch then return Stylus.ACT_BUTTON2 end
+    if slot and slot.tool == Stylus.TOOL_ERASER then return Stylus.ACT_ERASER_END end
     return Stylus.ACT_DRAW
 end
+
+-- The trigger (ink/actions.lua) for each part of the pen.
+Stylus.TRIGGER = { button1 = "pen_side", button2 = "pen_side2", eraser_end = "pen_eraser" }
 
 -- Kinematic palm filter: a real nib cannot teleport. Some Wacom panels (the
 -- Kindle Scribe among them) share one slot table between the pen digitizer and the

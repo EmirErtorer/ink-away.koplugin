@@ -260,7 +260,7 @@ function InkAwayView:hitTestImage(sx, sy)
     local ops = self.canvas.ops
     for i = #ops, 1, -1 do
         local op = ops[i]
-        if op.kind == "image" then
+        if op.kind == "image" and self:editableOp(op) then
             local bx, by, bw, bh = imageBBox(op)
             if cx >= bx and cx <= bx + bw and cy >= by and cy <= by + bh then
                 return { op = op, idx = i }
@@ -335,14 +335,15 @@ function InkAwayView:insertImage(path)
     local ccy = v.pan_y + (v.area_h / 2) / v.zoom
     op.x = math.max(0, math.min(v.canvas_w - op.w, ccx - op.w / 2))
     op.y = math.max(0, math.min(v.canvas_h - op.h, ccy - op.h / 2))
+    self:layerReady()
     self.canvas:pushHistory()
-    self.canvas.ops[#self.canvas.ops + 1] = op
+    local _op, at = self.canvas:placeOp(op)
     self:markDirty()
     -- Switch to Pan with the picture selected and its menu open, as if it had been
     -- tapped there, so a new image is ready to move, resize or delete at once.
     self:setTool("pan")
     self:recompose()
-    self:selectOps({ #self.canvas.ops }, "pan")
+    self:selectOps({ at }, "pan")
     self:openSelectionMenu()
 end
 
@@ -366,7 +367,7 @@ function InkAwayView:chooseImage()
         add(TextBoxWidget:new{ text = _("Browsing needs Wi-Fi. Ink Away itself never requires a connection."),
             face = Font:getFace("cfont", 13), width = content_w,
             fgcolor = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF) })
-        if not self.notebook then   -- a notebook's paper is its background
+        if not (self.notebook or self.reader_mode) then   -- a notebook's paper, or the book, is the background
             add(vspan(14))
             add(self:actionButton(_("Background\u{2026}"), content_w, function()
                 closeSelf(); self:openBackground() end))
@@ -390,7 +391,7 @@ function InkAwayView:openBackground()
             function() closeSelf(); self:chooseBackground() end))
         if self.bg_bb then
             add(vspan(8))
-            add(self:actionButton(_("Remove background"), content_w,
+            add(self:actionButton(_("Remove the background picture"), content_w,
                 function() closeSelf(); self:removeBackground() end, true))
         end
         add(vspan(12))

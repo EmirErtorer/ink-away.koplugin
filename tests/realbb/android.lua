@@ -171,6 +171,104 @@ do
 end
 
 ------------------------------------------------------------------------------
+-- A Boox on a KOReader from before Android pen types: Ink Away asks KOReader's
+-- Onyx driver for the fast waveform itself, settles grey once the pen rests, and
+-- keeps palm rejection off so the pen (a finger here) draws.
+------------------------------------------------------------------------------
+do
+    local EinkDrive = require("ink/einkdrive")
+    EinkDrive.reset()
+    local lib = setmetatable({}, { __index = function(_, k) error("missing declaration for symbol '" .. k .. "'") end })
+    package.loaded.android = {
+        isEink = function() return true, "qualcomm" end,
+        isEinkFull = function() return false end,
+        getEinkConstants = function() return 98, 2, 38, 2, 1, 250, 100, 0 end,
+        lib = lib,
+    }
+    local S = Device.screen
+    local asks, posts = {}, 0
+    S._updatePartial = function(_, mode, delay, x, y, w, h)
+        asks[#asks + 1] = { mode = mode, delay = delay, x = x, y = y, w = w, h = h }
+    end
+    local post = function() posts = posts + 1 end              -- the window post
+    S.refreshFastImp = post
+    local input = require("ink/view/input")
+    input._android_pen_types = nil
+    local saved = G_reader_settings.data.inkaway_palm_reject
+    G_reader_settings.data.inkaway_palm_reject = true          -- turned on before
+    local view, rs, clear, tick, done = world(true)
+    local v = view.view
+    local y = v.area_y + 400
+    ok(view:einkDriven() and view:fastLive(), "boox: Ink Away drives the fast refresh")
+    ok(rawget(S, "refreshFastImp") ~= post, "boox: the screen's fast refresh is hooked")
+    ok(not view:androidPenTypes() and not view.palm_reject, "boox: no pen types, so palm rejection stays off")
+    ok(view:fingerOnPage() == nil, "boox: and the pen, a finger here, draws instead of moving the page")
+
+    -- a grey pen: live with the fast waveform as a black copy, settled later in grey
+    view:setTool("pen")
+    view.pen_color = { 128, 128, 128 }
+    clear()
+    drag(view, tick, 200, 600, y, false)
+    ok(view._live_mode == "fast" and view._live_preview, "boox: a grey pen draws live with fast, in black")
+    local fast = 0
+    for _, r in ipairs(rs) do if r.mode == "fast" then fast = fast + 1 end end
+    ok(fast == #rs and #rs >= 10 and #rs <= 14, ("boox: its refreshes are fast and paced (%d)"):format(#rs))
+    local n0 = #asks
+    S:refreshFastImp(200, y - 3, 8, 6)                         -- UIManager posts one of them
+    ok(posts == 1 and #asks == n0 + 1 and asks[#asks].mode == 1, "boox: each fast refresh asks the panel for DU")
+    view:onIaPanRelease(nil, { pos = { x = 600, y = y } })
+    view:flushPending()
+    local tail = asks[#asks]
+    ok(tail.mode == 1 and tail.delay == EinkDrive.TAIL_DELAY_MS and tail.x <= 200 and tail.x + tail.w >= 600,
+        "boox: the whole stroke is asked for again after the lift")
+    local px = view.area_bb:getPixel(400 - v.area_x, y - v.area_y):getColorRGB32()
+    ok(px.r > 60 and px.r < 200, "boox: its true grey is back on screen for the settle")
+    ok(UIManager.scheduled[view._reconcile_cb], "boox: the settle is due")
+    clear()
+    view._reconcile_cb()
+    local settle = asks[#asks]
+    ok(#rs == 1 and rs[1].mode == "ui" and settle.mode == 2 and settle.delay == 100,
+        "boox: the settle posts once and asks for GC16")
+
+    -- a see-through pen (a highlighter) keeps the grey waveform: a black copy
+    -- would hide the text under it until the pen rests
+    view.pen_alpha = 120
+    tick(500)
+    view:onIaTouch(nil, { pos = { x = 200, y = y + 100 } })
+    tick(5); view:onIaPan(nil, { pos = { x = 240, y = y + 100 } })
+    ok(view._live_mode == "ui" and not view._live_preview, "boox: a see-through pen keeps the grey waveform")
+    local before = #asks
+    view:onIaPanRelease(nil, { pos = { x = 240, y = y + 100 } }); view:flushPending()
+    ok(#asks == before, "boox: and no fast tail is asked over it")
+    view.pen_alpha = 255
+    UIManager.fireScheduled()
+
+    -- the eraser over the page also shows at once and settles
+    view:setTool("erase")
+    clear()
+    drag(view, tick, 200, 600, y, true)
+    ok(view._live_mode == "fast", "boox: the eraser draws live with fast")
+    view:flushPending()
+
+    -- off in Pen and input: back to the window posts alone
+    view:stopEinkDrive()
+    ok(not view:einkDriven() and rawget(S, "refreshFastImp") == post, "boox: turned off, the screen is as it was")
+    view:setTool("pen")
+    tick(500)
+    view:onIaTouch(nil, { pos = { x = 200, y = y + 200 } })
+    tick(5); view:onIaPan(nil, { pos = { x = 204, y = y + 200 } })
+    ok(view._live_mode == "ui", "boox: off, a grey pen is live with ui again")
+    view:onIaPanRelease(nil, { pos = { x = 204, y = y + 200 } }); view:flushPending()
+    done()
+    ok(not EinkDrive.active(), "boox: closing leaves nothing hooked")
+    S._updatePartial, S.refreshFastImp = nil, nil
+    package.loaded.android = nil
+    input._android_pen_types = nil
+    EinkDrive.reset()
+    G_reader_settings.data.inkaway_palm_reject = saved
+end
+
+------------------------------------------------------------------------------
 -- Grey e-ink, not Android (Kindle, Kobo): unchanged, one refresh per sample
 ------------------------------------------------------------------------------
 do

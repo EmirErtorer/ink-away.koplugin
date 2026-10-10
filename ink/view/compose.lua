@@ -8,6 +8,9 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Paint = require("ink/paint")
+local Palette = require("ink/palette")
+local Smudge = require("ink/smudge")
+local Wash = require("ink/wash")
 local Symmetry = require("ink/symmetry")
 
 local WHITE = Blitbuffer.COLOR_WHITE
@@ -18,11 +21,14 @@ local paintPaper = Paint.paintPaper
 
 local InkAwayView = {}
 
--- The colour a committed op is drawn with on screen (ink shade at its opacity,
--- or the background for an eraser).
-function InkAwayView:opColor(op)
+-- The colour a committed op is drawn with on screen: its ink at its opacity,
+-- black showing white on a dark paper (`paper`, the open document's when nil;
+-- false is white). An eraser is white: on any other paper it reveals the
+-- paper's buffer instead.
+function InkAwayView:opColor(op, paper)
     if op.kind == "erase" then return WHITE end
-    return displayColor(op.color, op.alpha or 255)
+    if paper == nil then paper = self:paperRGB() end
+    return displayColor(Paint.inkOnPaper(op.color, paper), op.alpha or 255)
 end
 
 -- A span writer clipped to `region` (a canvas rect {x0, y0, x1, y1}), or put
@@ -47,20 +53,32 @@ local function meets(op, region)
     return x0 < region.x1 and region.x0 < x1 and y0 < region.y1 and region.y0 < y1
 end
 
--- Compose a page into `dst` (a canvas-sized bitmap): white paper, optional
--- background picture, notebook ruling, then the ops. The master and the page
+-- Compose a page into `dst` (a canvas-sized bitmap): the paper, optional
+-- background picture, notebook ruling, then the ops. Without a template `bg_bb`
+-- is the open document's page (a drawing's paper or picture, a notebook's
+-- ruled paper); a template (a notebook page, or another drawing's paper)
+-- paints its own. The master and the page
 -- thumbnails both use it, so a thumbnail always matches its page.
 -- `reveal_resolved` means the caller already built the reveal buffers (see
 -- composeCanvas) and the reveal_pic and reveal_text it passed are final (nil when
 -- not needed); otherwise composeInto builds its own, as the thumbnails do. With
--- `region` only that rect of dst is rebuilt (see composeRegion).
-function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare, region)
+-- `region` only that rect of dst is rebuilt (see composeRegion). With `keep` the
+-- ops are drawn over what dst already holds (the layer caches, view/layers.lua).
+function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_pic, reveal_resolved, bare, region, keep)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local found = Canvas.scanOps(ops)
+    -- the paper, and the text on it: black, or white on a dark paper
+    local paper
+    if template then paper = Palette.paperRGB(template.paper) else paper = self:paperRGB() end
+    local text_ink = Paint.inkOn(paper)
+    -- a smudge reads the page around it, so a page with one is always built whole
+    if found.smudge then region = nil end
     local page_copy, owns_bare = nil, false
     if region then
         local rw, rh = region.x1 - region.x0, region.y1 - region.y0
-        dst:paintRect(region.x0, region.y0, rw, rh, WHITE)
+        -- (a lifted selection's card is drawn on the paper, with no bg_bb)
+        local fill = Paint.uiFill(paper or { 255, 255, 255 })
+        Paint.fillRect(dst, region.x0, region.y0, rw, rh, fill, Paint.isChromatic(fill))
         if bg_bb then dst:blitFrom(bg_bb, region.x0, region.y0, region.x0, region.y0, rw, rh) end
     elseif template then
         -- a notebook page composed on its own (a thumbnail): paper colour or the
@@ -86,7 +104,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                 bare = pageCopy()
             end
         end
-    else
+    elseif not keep then
         dst:paintRect(0, 0, W, H, WHITE)
         if bg_bb then dst:blitFrom(bg_bb, 0, 0, 0, 0, W, H) end
     end
@@ -107,21 +125,31 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
     if not reveal_resolved and not reveal_text and found.text and found.spare_text then
         reveal_text = Blitbuffer.new(W, H, dst:getType())
         reveal_text:blitFrom(reveal_pic or dst, 0, 0, 0, 0, W, H)   -- keep images under it too
-        self:stampOps(reveal_text, ops, "text")
+        self:stampOps(reveal_text, ops, "text", text_ink)
         owns_rt = true
     end
+    -- the page without ink, for a smudge to tell ink from paper (see ink/smudge.lua)
+    local smudge_base
+    if found.smudge then smudge_base = self:smudgeBase(dst, ops, text_ink) end
     local refx, refy = Symmetry.canvasRefs(W, H)
     -- a selection being moved or resized is lifted off the page (it follows the
     -- finger on its own card, see view/selection.lua)
     local lifted = self._lifted
     for _, op in ipairs(ops) do
-        if op.kind == "link" then
+        if op.kind == "link" then   -- luacheck: ignore 542
             -- a link draws nothing into the page (see ink/links.lua)
         elseif not op.hidden and not (lifted and lifted[op]) and (not region or meets(op, region)) then
+            local wash, wst = Wash.isWash(op)
             if op.kind == "text" then
-                self:stampTextInto(dst, op, region)   -- glyphs, drawn straight into dst (z-order)
+                self:stampTextInto(dst, op, region, text_ink)   -- glyphs, drawn straight into dst (z-order)
             elseif op.kind == "image" then
                 self:blitImageInto(dst, op, region)   -- placed picture, alpha-blended (z-order)
+            elseif wash then
+                self:washInto(dst, op, wst, region)   -- see-through pen, blended (z-order)
+            elseif op.kind == "smudge" then
+                if smudge_base then
+                    Smudge.apply(Smudge.surfaceOf(dst), Smudge.surfaceOf(smudge_base), op, W, H)
+                end
             else
                 local put, fill_put
                 if op.kind == "erase" and op.spare_text and reveal_text then
@@ -131,40 +159,66 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                 elseif op.kind == "erase" and op.ebg and bare then
                     put = bgSpanWriter(dst, bare, W, H, nil)  -- notebook: bare paper, ruling kept
                 else
-                    put = spanWriter(dst, W, H, self:opColor(op), nil)
+                    put = spanWriter(dst, W, H, self:opColor(op, paper or false), nil)
                 end
                 if op.kind == "shape" and op.fill_color and not op.fill then
                     fill_put = Symmetry.wrap(inRegion(
-                        spanWriter(dst, W, H, displayColor(op.fill_color, op.fill_alpha or 255), nil), region),
+                        spanWriter(dst, W, H, displayColor(Paint.inkOnPaper(op.fill_color, paper),
+                            op.fill_alpha or 255), nil), region),
                         op.sym, refx, refy)
                 end
                 Export.paintGeom(op, Symmetry.wrap(inRegion(put, region), op.sym, refx, refy), fill_put)
             end
         end
     end
+    if smudge_base then smudge_base:free() end
     if owns_rt then reveal_text:free() end
     if owns_rp then reveal_pic:free() end
     if page_copy then page_copy:free() end
     if owns_bare then bare:free() end
 end
 
+-- The page without ink (its paper, ruling and background as dst holds them now,
+-- then the pictures and text of `ops`), which a smudge never picks up.
+function InkAwayView:smudgeBase(dst, ops, text_ink)
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local b = Blitbuffer.new(W, H, dst:getType())
+    b:blitFrom(dst, 0, 0, 0, 0, W, H)
+    self:stampOps(b, ops, "image")
+    self:stampOps(b, ops, "text", text_ink)
+    return b
+end
+
+-- Blend a see-through pen's stroke into dst (a canvas-sized bitmap), within
+-- `region` when given. Its mask comes from the cache (see Wash.cachedMask).
+function InkAwayView:washInto(dst, op, st, region)
+    local W, H = self.view.canvas_w, self.view.canvas_h
+    local m = Wash.cachedMask(op, st, W, H)
+    if not m then return end
+    if region then Wash.blendBB(dst, m, op, st, region.x0, region.y0, region.x1, region.y1)
+    else Wash.blendBB(dst, m, op, st) end
+end
+
 -- The buffer the eraser reveals under the ink. In a notebook that is the paper
 -- (colour, ruling and any PDF page), so erasing never removes the ruling; in a
--- drawing it is the background image, or nil for white.
+-- drawing it is the background image, else its paper, or nil for white.
 function InkAwayView:eraseRevealBB()
+    -- in a layered drawing: the page without the active layer (view/layers.lua)
+    if self.canvas.layers then return self:layerRest() end
     -- while protection is on, a live erase stroke spares text, so it reveals the
     -- page-with-text buffer; otherwise it reveals the plain page
     if self.text_erase_protect and self._reveal_text_bb then return self._reveal_text_bb end
     if self._reveal_pic_bb then return self._reveal_pic_bb end   -- keep placed images under a soft erase
     if self.notebook then return self._paper_bb end
-    return self.bg_bb
+    return self.bg_bb or self:plainPaperBB()
 end
 
--- Draw the visible ops of one kind ("image" or "text") into `bb`.
-function InkAwayView:stampOps(bb, ops, kind)
+-- Draw the visible ops of one kind ("image" or "text") into `bb`, text in
+-- `text_ink` (the open document's, see textInk, by default).
+function InkAwayView:stampOps(bb, ops, kind, text_ink)
     for _, op in ipairs(ops) do
         if not op.hidden and op.kind == kind then
-            if kind == "text" then self:stampTextInto(bb, op) else self:blitImageInto(bb, op) end
+            if kind == "text" then self:stampTextInto(bb, op, nil, text_ink) else self:blitImageInto(bb, op) end
         end
     end
 end
@@ -184,14 +238,16 @@ function InkAwayView:buildRevealBuffer(field, needed, base, kind)
         self[field] = bb
     end
     if base then bb:blitFrom(base, 0, 0, 0, 0, W, H) else bb:paintRect(0, 0, W, H, WHITE) end
-    self:stampOps(bb, self.canvas.ops, kind)
+    self:stampOps(bb, self:drawnOps(), kind)
 end
 
 -- What a hard erase (Erase pictures on) reveals in a notebook: the bare paper,
 -- colour and ruling, without the picture or PDF page. Without a picture that is
--- the paper buffer itself; with one, a second buffer is built on first use.
+-- the paper buffer itself; with one, a second buffer is built on first use. In
+-- a drawing it is its paper (nil on white).
 function InkAwayView:barePaperBB()
-    if not (self.notebook and self.canvas_bb) then return nil end
+    if not self.notebook then return self:plainPaperBB() end
+    if not self.canvas_bb then return nil end
     if not self.bg_bb then
         if self._bare_paper_bb then self._bare_paper_bb:free(); self._bare_paper_bb = nil end
         return self._paper_bb
@@ -233,8 +289,11 @@ end
 -- drawn, not the zoom; it runs on open, undo, clear and resize.
 function InkAwayView:composeCanvas()
     if not self.canvas_bb then return end
-    local found = Canvas.scanOps(self.canvas.ops)
-    local base, bare = self.bg_bb, nil
+    local ops = self:drawnOps()   -- (without a hidden layer's)
+    local found = Canvas.scanOps(ops)
+    -- a drawing's picture, else its paper (nil on white)
+    local base, bare = self.bg_bb or self:plainPaperBB(), nil
+    if found.hard_erase and not self.notebook then bare = self:barePaperBB() end
     if self.notebook then
         -- the paper (with ruling) is both the base and what the eraser reveals
         self:buildNotebookPaper()
@@ -247,7 +306,7 @@ function InkAwayView:composeCanvas()
     self:buildRevealBuffer("_reveal_pic_bb", found.image, base, "image")
     self:buildRevealBuffer("_reveal_text_bb", found.text and (self.text_erase_protect or found.spare_text),
         self._reveal_pic_bb or base, "text")   -- text reveal keeps images too
-    self:composeInto(self.canvas_bb, self.canvas.ops, base, nil,
+    self:composeInto(self.canvas_bb, ops, base, nil,
         self._reveal_text_bb, self._reveal_pic_bb, true, bare)   -- reveal buffers already resolved
     -- the whole master was rebuilt: resync the panel-order mirror on the next render
     self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
@@ -262,13 +321,17 @@ function InkAwayView:composeRegion(x0, y0, x1, y1)
     x0, y0 = math.max(0, math.floor(x0)), math.max(0, math.floor(y0))
     x1, y1 = math.min(W, math.ceil(x1)), math.min(H, math.ceil(y1))
     if x1 <= x0 or y1 <= y0 then return end
-    local base, bare = self.bg_bb, nil
+    local base, bare = self.bg_bb or self:plainPaperBB(), nil
+    local ops = self:drawnOps()
+    local found = Canvas.scanOps(ops)
+    if found.smudge then return self:composeCanvas() end
+    if not self.notebook and found.hard_erase then bare = self:barePaperBB() end
     if self.notebook then
         if not self._paper_bb then return self:composeCanvas() end
         base = self._paper_bb
-        if Canvas.scanOps(self.canvas.ops).hard_erase then bare = self:barePaperBB() end
+        if found.hard_erase then bare = self:barePaperBB() end
     end
-    self:composeInto(self.canvas_bb, self.canvas.ops, base, nil, self._reveal_text_bb,
+    self:composeInto(self.canvas_bb, ops, base, nil, self._reveal_text_bb,
         self._reveal_pic_bb, true, bare, { x0 = x0, y0 = y0, x1 = x1, y1 = y1 })
     self:markCanvasDirty(x0, y0, x1, y1)
 end
@@ -283,6 +346,15 @@ function InkAwayView:stampOpIntoCanvas(op)
         self:markCanvasDirty(0, 0, self.view.canvas_w, self.view.canvas_h)
         return
     end
+    if op.kind == "smudge" then return self:composeCanvas() end   -- it reads the page around it
+    local wash, wst = Wash.isWash(op)
+    if wash then
+        self:washInto(self.canvas_bb, op, wst)
+        local x0, y0, x1, y1 = Wash.box(op)
+        if op.sym and op.sym ~= "off" then x0, y0, x1, y1 = 0, 0, self.view.canvas_w, self.view.canvas_h end
+        self:markCanvasDirty(math.max(0, x0), math.max(0, y0), x1, y1)
+        return
+    end
     -- one acc grows over every span written (base and symmetry mirrors), so the
     -- panel-order mirror is resynced over exactly the op's footprint
     local cacc = { x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
@@ -291,7 +363,7 @@ function InkAwayView:stampOpIntoCanvas(op)
     local fill_put
     if op.kind == "shape" and op.fill_color and not op.fill then
         fill_put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
-            displayColor(op.fill_color, op.fill_alpha or 255), cacc)
+            displayColor(Paint.inkOnPaper(op.fill_color, self:paperRGB()), op.fill_alpha or 255), cacc)
     end
     if op.sym and op.sym ~= "off" then
         local refx, refy = Symmetry.canvasRefs(self.view.canvas_w, self.view.canvas_h)

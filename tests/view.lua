@@ -1052,18 +1052,34 @@ do
     pen(-1, midx, yy, 2)
     ok(view.tool == prev, "palm: the tool is restored after the eraser-tip stroke")
 
-    -- the primary side (barrel) button is a lasso-select modifier. KOReader routes
-    -- the pen slot with the tool overridden to ERASER (2) AND the eraser latch set;
-    -- that must become lasso select, not erase, and the tool restores on lift.
+    -- the primary side (barrel) button acts while held: by default it highlights.
+    -- KOReader routes the pen slot with the tool overridden to ERASER (2) AND the
+    -- eraser latch set; that must become the button's action, not erase, and the
+    -- pen restores on lift.
     view:setTool("pen")
     local prev_sel = view.tool
+    local prev_style, prev_width = view.pen_style, view.pen_width
     Device.input.stylus_eraser_active = true
     pen(0, midx, yy, 2)                          -- side button held: tool 2 + latch
-    ok(view.tool == "lasso", "palm: the side button switches to lasso select")
+    ok(view.tool == "pen" and view.pen_style == "highlighter",
+        "palm: the side button highlights while held (the default)")
+    pen(0, midx + 60, yy + 4, 2)
+    pen(-1, midx + 60, yy + 4, 2)                -- lift
+    Device.input.stylus_eraser_active = false
+    UIManager.fireScheduled()
+    ok(view.pen_style == prev_style and view.pen_width == prev_width and view.tool == prev_sel,
+        "palm: the pen is back as it was after the side-button stroke")
+    ok(view.canvas.ops[#view.canvas.ops].style == "highlighter", "palm: and the stroke is a highlighter stroke")
+    -- set to Lasso, the button selects instead
+    view:gestureBindings().pen_side = "lasso"
+    Device.input.stylus_eraser_active = true
+    pen(0, midx, yy, 2)
+    ok(view.tool == "lasso", "palm: set to Lasso, the side button switches to lasso select")
     ok(view.lassoing, "palm: the side-button stroke drives the lasso")
     pen(-1, midx, yy, 2)                         -- lift
     Device.input.stylus_eraser_active = false
     ok(view.tool == prev_sel, "palm: the tool is restored after the side-button stroke")
+    view:gestureBindings().pen_side = "highlighter"
     UIManager.fireScheduled()
 
     -- THE REGRESSION: a resting palm is routed to the stylus callback wearing tool
@@ -1227,22 +1243,25 @@ do
         end
         return walk(root)
     end
-    view:openPenSettings()
-    local tg = findToggle(view._pen_dialog, "Pen taps menus and buttons")
-    ok(tg ~= nil and tg.is_on == true, "pen ui: the pen sheet has the toggle, on")
+    view:openPenInput()
+    local tg = findToggle(view._peninput_dialog, "Pen taps menus and buttons")
+    ok(tg ~= nil and tg.is_on == true, "pen ui: the Pen and input sheet has the toggle, on")
     if tg then tg:onTap() end
     ok(view.pen_ui == false and _G.G_reader_settings.data.inkaway_pen_ui == false,
         "pen ui: the toggle turns it off and saves it")
     if tg then tg:onTap() end
     ok(view.pen_ui == true, "pen ui: and back on")
-    view:closeSheet("_pen_dialog")
+    view:closeSheet("_peninput_dialog")
     -- a narrow sheet still lays them all out
     local sw = view.sheetWidth
     view.sheetWidth = function() return 120, 12, 27 end
-    view:openPenSettings()
-    ok(findToggle(view._pen_dialog, "Pen taps menus and buttons") ~= nil
-        and findToggle(view._pen_dialog, "Palm rejection") ~= nil,
+    view:openPenInput()
+    ok(findToggle(view._peninput_dialog, "Pen taps menus and buttons") ~= nil
+        and findToggle(view._peninput_dialog, "Palm rejection") ~= nil,
         "pen ui: a narrow sheet still has every toggle")
+    view:closeSheet("_peninput_dialog")
+    view:openPenSettings()
+    ok(view._pen_dialog ~= nil, "pen ui: a narrow pen case still opens")
     view:closeSheet("_pen_dialog")
     view.sheetWidth = sw
 
@@ -1274,6 +1293,15 @@ do
     sr:onSlPan(nil, { pos = { x = sr.dimen.x + sr._track_dx - 50, y = sr.dimen.y + 5 } })
     ok(sr.value == 0, "slider: drag past the left end -> min value")
     ok(sr._valw.text == sr:_fmt(0), "slider: value text updated to min in place")
+    -- a quick drag ends as a swipe (pos = start, end_pos = lift): the slider
+    -- claims it, so the sheet around it does not move
+    ok(sr.ges_events.SlSwipe ~= nil and sr.ges_events.SlMultiSwipe ~= nil,
+        "slider: listens for swipes and multiswipes")
+    local mid = sr.dimen.x + sr._track_dx + math.floor(sr._track_w / 2)
+    local taken = sr:onSlSwipe(nil, { pos = { x = sr.dimen.x + sr._track_dx + 2, y = sr.dimen.y + 5 },
+        end_pos = { x = mid, y = sr.dimen.y + 5 }, direction = "east", distance = 100 })
+    ok(taken == true, "slider: a swipe starting on it is consumed")
+    ok(sr.value == 50, "slider: a swipe sets the value from where it lifted")
 end
 
 -- ---- straightening rebuilds the master over the footprint only ------------
@@ -1494,28 +1522,469 @@ do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
 end
 
--- ---- pen input diagnostic runs cleanly and captures what it sees -------------
--- The on-device test (for palm-rejection debugging on stylus devices we can't
--- reproduce) must arm a capture, count stylus events vs finger touches, and finish
--- without error whether or not palm rejection is on.
+-- ---- the pen and touch test takes the pen and fingers, and gives them back ----
+-- Settings > Test pen and touch opens a full-screen test that owns the stylus
+-- callback and watches finger frames while it is open; closing it puts the
+-- canvas's own callback and finger tracking back.
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
     UIManager.reset()
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
-    view.palm_reject = false
-    local ok1 = pcall(function() view:startPenInputTest() end)
-    ok(ok1 and view._pen_capture ~= nil, "pentest: starts and arms the capture")
-    -- one stylus event and one finger touch land during the window
-    view:onStylusSlot(Device.input, { slot = 4, id = 7, tool = 1, x = 100, y = 100, timev = 1 })
-    view:onIaTouch(nil, pos(100, 300))
-    ok(view._pen_capture.styl >= 1, "pentest: captured the stylus event")
-    ok(view._pen_capture.fingers >= 1, "pentest: counted the finger touch")
-    local ok2 = pcall(function() view:finishPenInputTest() end)
-    ok(ok2, "pentest: finishes without error")
-    ok(view._pen_capture == nil, "pentest: clears the capture when done")
+    view.palm_reject = true
+    view:applyPalmReject()
+    local mine = Device.input.stylus_callback
+    ok(mine ~= nil, "pentest: palm rejection registered the canvas's callback")
+    local okc = pcall(function() view:openPenTest() end)
+    ok(okc, "pentest: opens from the canvas")
+    local screen = UIManager.shown
+    ok(screen ~= nil and screen.st ~= nil, "pentest: the test screen is shown")
+    if screen then
+        ok(Device.input.stylus_callback ~= mine, "pentest: the test owns the stylus callback")
+        Device.input.stylus_callback(Device.input, { slot = 4, id = 7, tool = 1, x = 100, y = 100, pressure = 50 })
+        ok(screen.st.pen == 1 and #screen.dots == 1, "pentest: a pen frame is counted and dotted")
+        ok(#view.canvas.ops == 0 and not view._pen_started, "pentest: the canvas did not draw")
+        local okp = pcall(function() screen:paintTo(BB.new(1072, 1448), 0, 0) end)
+        ok(okp, "pentest: paints")
+        screen:onCloseWidget()
+        ok(Device.input.stylus_callback == mine, "pentest: the canvas's callback is back after closing")
+    end
     view:onCloseWidget()
+end
+
+-- ---- no pen seen: a hint after a few finger drags, never after a real pen ----
+-- With palm rejection on, a finger moves the page. On a reader whose pen arrives
+-- as a finger, that is all the reader ever sees, so after a few drags without a
+-- single pen frame Ink Away says so, once per KOReader session.
+do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    InkAwayView._no_pen_hinted = nil
+    local view = InkAwayView:new{}
+    view.palm_reject, view.finger_mode = true, "navigate"
+    local v = view.view
+    local function drag()
+        view:onIaTouch(nil, pos(300, v.area_y + 300))
+        for i = 1, 5 do view:onIaPan(nil, pos(300, v.area_y + 300 + i * 30)) end
+        view:onIaPanRelease(nil, pos(300, v.area_y + 450))
+        UIManager.fireScheduled()
+    end
+    UIManager.shown = nil
+    drag(); drag()
+    ok(UIManager.shown == nil, "no pen: two drags say nothing yet")
+    drag()
+    local msg = UIManager.shown and UIManager.shown.text or ""
+    ok(msg:find("No pen has been seen"), "no pen: the third drag shows the hint")
+    UIManager.shown = nil
+    drag(); drag(); drag()
+    ok(UIManager.shown == nil, "no pen: only once per session")
+    view:onCloseWidget()
+    -- a real pen frame first: never
+    InkAwayView._no_pen_hinted = nil
+    UIManager.reset()
+    local view2 = InkAwayView:new{}
+    view2.palm_reject, view2.finger_mode = true, "navigate"
+    view2:applyPalmReject()
+    view2:onStylusSlot(Device.input, { slot = 4, id = 7, tool = 1, x = 100, y = 900, timev = 1 })
+    view2:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, x = 100, y = 900, timev = 2 })
+    UIManager.fireScheduled()
+    view = view2; v = view2.view
+    UIManager.shown = nil
+    drag(); drag(); drag(); drag()
+    ok(not (UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("No pen")),
+        "no pen: a reader with a working pen never sees it")
+    view2:onCloseWidget()
+end
+
+-- ---- device tips: once by themselves where still needed, again on request ----
+do
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    view._android = true
+    local PTS = require("ink/ui/pentestscreen")
+    local real = PTS.deviceFacts
+    -- a Boox: Ink Away asks for the fast refresh itself, so nothing unasked
+    PTS.deviceFacts = function() return { android = true, eink = true, eink_full = false, boox = true } end
+    view:setSetting("inkaway_device_tip_shown", nil)
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown == nil, "tips: a Boox needs none unasked")
+    view:deviceTips(true)
+    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: a Boox's on request")
+    view:setSetting("inkaway_boox_fast", false)
+    view:setSetting("inkaway_device_tip_shown", nil)
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown and UIManager.shown.text:find("Drawing on a Boox"), "tips: a Boox with the fast refresh off gets it once")
+    view:setSetting("inkaway_boox_fast", nil)
+    -- another Android reader KOReader can't drive: once by itself
+    PTS.deviceFacts = function() return { android = true, eink = false } end
+    view:setSetting("inkaway_device_tip_shown", nil)
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown and UIManager.shown.text:find("per%-app refresh"), "tips: shown once by themselves")
+    UIManager.shown = nil
+    view:deviceTips(false)
+    ok(UIManager.shown == nil, "tips: not a second time")
+    view:deviceTips(true)
+    ok(UIManager.shown and UIManager.shown.text:find("per%-app refresh"), "tips: again on request")
+    PTS.deviceFacts = function() return { android = true, eink = true, eink_full = true } end
+    view:deviceTips(true)
+    ok(UIManager.shown.text:find("needs no special settings"), "tips: a fully driven reader needs none")
+    PTS.deviceFacts = real
+    view:onCloseWidget()
+end
+
+-- ---- the notice the first time Ink Away opens: once, and the device tip with it ----
+do
+    UIManager.reset()
+    G_reader_settings.data.inkaway_welcome_seen = nil
+    G_reader_settings.data.inkaway_entry_gestures = { placed = {
+        booknotes = { gesture_reader = "two_finger_swipe_northwest", gesture_fm = "two_finger_swipe_northwest" },
+        annotate = { gesture_reader = "two_finger_swipe_southwest" } }, held = {} }
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(view._welcome_sheet ~= nil, "welcome: shown the first time Ink Away opens")
+    ok(G_reader_settings.data.inkaway_welcome_seen == true, "welcome: marked seen as it opens")
+    view:closeSheet("_welcome_sheet")       -- Got it
+    view:onCloseWidget()
+    UIManager.reset()
+    local view2 = InkAwayView:new{}
+    UIManager:show(view2)
+    ok(view2._welcome_sheet == nil, "welcome: never again")
+    view2:onCloseWidget()
+    -- on an Android reader that still needs the tip, it comes with the notice
+    G_reader_settings.data.inkaway_welcome_seen, G_reader_settings.data.inkaway_device_tip_shown = nil, nil
+    local PTS = require("ink/ui/pentestscreen")
+    local real = PTS.deviceFacts
+    PTS.deviceFacts = function() return { android = true, eink = false } end
+    UIManager.reset()
+    local view3 = InkAwayView:new{}
+    view3._android = true
+    UIManager:show(view3)
+    ok(view3._welcome_sheet ~= nil, "welcome: shown on Android too")
+    view3:closeSheet("_welcome_sheet")
+    ok(G_reader_settings.data.inkaway_device_tip_shown == true, "welcome: the device tip went with it")
+    PTS.deviceFacts = real
+    view3:onCloseWidget()
+    G_reader_settings.data.inkaway_welcome_seen = true
+    G_reader_settings.data.inkaway_entry_gestures = nil
+end
+
+-- ---- the guide: beside Done in Settings, topics, cards a page at a time, Show me ----
+do
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:openSettings()
+    local function walkFind(w, pred, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return nil end
+        seen[w] = true
+        if pred(w) then return w end
+        for k, c in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = walkFind(c, pred, seen)
+                if f then return f end
+            end
+        end
+    end
+    local function button(w, text)
+        return walkFind(w, function(t)
+            return type(t.callback) == "function" and walkFind(t, function(x) return x.text == text end) ~= nil
+                and not walkFind(t, function(x) return x ~= t and type(x.callback) == "function" end)
+        end)
+    end
+    local g = button(view._settings_dialog, "Guide")
+    ok(g ~= nil, "guide: a Guide button beside Done in Settings")
+    ok(walkFind(view._settings_dialog, function(x) return x.text == "Device tips" end) == nil,
+        "guide: Settings no longer holds the device tips")
+    g.callback()
+    ok(view._guide ~= nil and view._settings_dialog == nil, "guide: opens in place of Settings")
+    ok(walkFind(view._guide, function(x) return x.text == "Pens" end) ~= nil
+        and walkFind(view._guide, function(x) return x.text == "Books" end) == nil, "guide: the topics here, no book topic")
+    button(view._guide, "Pens").callback()
+    ok(view._guide_topic == "pens" and walkFind(view._guide, function(x) return x.text == "Take up a pen" end) ~= nil,
+        "guide: a topic shows its cards")
+    local show = button(view._guide, "Show me")
+    ok(show ~= nil, "guide: a card with something to open has Show me")
+    show.callback()
+    ok(view._guide == nil and view._pen_dialog ~= nil, "guide: Show me opens the pen menu")
+    view:closeSheet("_pen_dialog")
+    view:openGuide("pens")
+    button(view._guide, "Back").callback()
+    ok(view._guide_topic == nil and walkFind(view._guide, function(x) return x.text == "Export" end) ~= nil,
+        "guide: Back returns to the topics")
+    -- every button in the guide, the first-open notice and the new sheets takes a
+    -- tap (KOReader's tap highlight inverts a text button's label colour)
+    local function buttons(w, out, seen)
+        if type(w) ~= "table" or seen[w] then return out end
+        seen[w] = true
+        if getmetatable(w) and w.highlightSafe then out[#out + 1] = w end
+        for k, val in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then buttons(val, out, seen) end
+        end
+        return out
+    end
+    local bad, n = 0, 0
+    local function check(field)
+        for _, b in ipairs(buttons(view[field], {}, {})) do
+            n = n + 1
+            if not b:highlightSafe() then bad = bad + 1 end
+        end
+    end
+    view:openGuide(); check("_guide")
+    for _, t in ipairs(require("ink/guide").TOPICS) do
+        view:guideGo(t.id); check("_guide")
+        if (view._guide_pages or 1) > 1 then view._guide_page = 1; view:rebuildSheet("_guide"); check("_guide") end
+    end
+    view:closeSheet("_guide")
+    view:openSettings(); check("_settings_dialog"); view:closeSheet("_settings_dialog")
+    view:showWelcome(); check("_welcome_sheet"); view:closeSheet("_welcome_sheet")
+    view:confirmSheet("_c", "T", "text", "Delete", function() end); check("_c"); view:closeSheet("_c")
+    view:noticeSheet("_c", "T", "text"); check("_c"); view:closeSheet("_c")
+    ok(n > 40 and bad == 0, ("guide: every button can be tapped (%d of %d not)"):format(bad, n))
+    view:closeSheet("_guide")
+    -- closing the view closes every sheet it opened, the new ones too: one left
+    -- over the reader would take the gestures meant for it
+    view:openGuide(); view:noticeSheet("_delete_ink", "T", "text")
+    local left = { view._guide, view._delete_ink }
+    UIManager:close(view)
+    local stray = 0
+    for _, e in ipairs(UIManager._window_stack) do
+        for _, w in ipairs(left) do if e.widget == w then stray = stray + 1 end end
+    end
+    ok(stray == 0, "sheets: none outlives the view (" .. stray .. ")")
+end
+
+-- ---- the pen menu's +: always after the last pen, however many there are ----
+do
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local Penset = require("ink/penset")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local function plus()
+        view:openPenSettings()
+        local found
+        local seen = {}
+        local function walk(t)
+            if type(t) ~= "table" or seen[t] or found then return end
+            seen[t] = true
+            if t.text == "+" and type(t.callback) == "function" then found = t; return end
+            for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then walk(c) end end
+        end
+        walk(view._pen_dialog)
+        return found
+    end
+    local case = view:penset()
+    local start = #case.favs
+    -- holding a saved pen names it
+    view:editSavedPen(2)
+    local named = false
+    local seen2 = {}
+    local function find(t) if type(t) ~= "table" or seen2[t] then return end; seen2[t] = true
+        if t.text == "Ballpoint" then named = true end
+        for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then find(c) end end end
+    find(view._penfav_menu)
+    ok(named, "pens: holding a saved pen shows its name")
+    view:closeSheet("_penfav_menu")
+    -- over a book the smudge is left out
+    view.reader_mode = true
+    ok(not view:selectPen(7) and view.pen_style ~= "smudge", "pens: no smudge over a book")
+    view.reader_mode = nil
+    for _i = 1, 3 do
+        local p = plus()
+        ok(p ~= nil, ("pens: + is there with %d pens"):format(#case.favs))
+        p.callback()
+        view:addPen("ballpoint")
+        view:closeSheet("_pen_dialog")
+    end
+    ok(#case.favs == start + 3 and plus() ~= nil, "pens: still there after adding three")
+    while #case.favs < Penset.FAV_CAP do view:addPen("pencil") end
+    UIManager.shown = nil
+    local p = plus()
+    ok(p ~= nil, "pens: + stays with the menu full")
+    p.callback()
+    ok(UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("Remove it to make room"),
+        "pens: and says how to make room")
+    view:closeSheet("_pen_dialog")
+    view:onCloseWidget()
+    G_reader_settings.data.inkaway_pens, G_reader_settings.data.inkaway_pen_style = nil, nil
+end
+
+-- ---- pen pressure: from the pen's frames into the stroke, and off on request ---
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    view.palm_reject = true
+    view:applyPalmReject()
+    view:setTool("pen")
+    view.pen_style, view.pen_width = "ballpoint", 12
+    view._pressure_probe = { lo = 0, hi = 4095 }
+    local v = view.view
+    local function penStroke(pressures)
+        local id = math.random(100, 100000)
+        for i, p in ipairs(pressures) do
+            view:onStylusSlot(Device.input, { slot = 4, id = id, tool = 1, x = 200 + i * 25, y = v.area_y + 400,
+                pressure = p, timev = i * 8000 })
+        end
+        view:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, x = 200, y = v.area_y + 400, timev = 999999 })
+        UIManager.fireScheduled()
+    end
+    penStroke({ 400, 900, 1600, 2400, 3200, 4000, 4000, 4000 })
+    local op = view.canvas.ops[#view.canvas.ops]
+    ok(op and op.style == "ballpoint" and op.pr ~= nil, "pressure: a ballpoint stroke keeps the pen's pressure")
+    ok(op and op.pr and op.pr[1] < op.pr[#op.pr], "pressure: harder at the end than the start")
+    view.pen_pressure = false
+    penStroke({ 400, 4000, 400, 4000 })
+    local op2 = view.canvas.ops[#view.canvas.ops]
+    ok(op2 ~= op and op2.pr == nil, "pressure: off in the pen settings, strokes keep none")
+    view.pen_pressure = true
+    view.pen_style = "solid"
+    penStroke({ 400, 4000 })
+    ok(view.canvas.ops[#view.canvas.ops].pr == nil, "pressure: a fineliner ignores pressure")
+    -- a finger (no sensor): the fountain pen simulates it from speed
+    view.palm_reject = false
+    view:applyPalmReject()
+    view.pen_style = "fountain"
+    local n0 = #view.canvas.ops
+    view:feedPen("down", 300, v.area_y + 600)
+    for i = 1, 10 do view:feedPen("move", 300 + i * 30, v.area_y + 600 + i * 5) end
+    view:feedPen("up", 600, v.area_y + 650)
+    UIManager.fireScheduled()
+    local op3 = view.canvas.ops[#view.canvas.ops]
+    ok(#view.canvas.ops == n0 + 1 and op3.pr ~= nil, "pressure: a finger with the fountain pen gets a simulated pressure")
+    view:onCloseWidget()
+end
+
+-- ---- the pen case: saved pens, kinds that remember, sizes that persist -------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    _G.G_reader_settings.data.inkaway_pens = nil
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    ok(view.pen_style == "solid" and view.pen_width >= 15 and view.pen_width <= 30,
+        "pen case: a new reader starts with the 1.8 mm fineliner (" .. view.pen_width .. " px)")
+    view:openPenSettings()
+    ok(view._pen_dialog ~= nil and view._pen_strip ~= nil, "pen case: opens with its true-size preview")
+    view:closeSheet("_pen_dialog")
+    view:choosePenType("highlighter")
+    ok(view.pen_style == "highlighter" and view.pen_width > 30, "pen case: the highlighter is wide")
+    view.pen_width = 70; view:penChanged("width", 70)
+    view:choosePenType("solid")
+    view.pen_width = 9; view:penChanged("width", 9)
+    view:choosePenType("highlighter")
+    ok(view.pen_width == 70, "pen case: the highlighter kept its own size")
+    ok(view:swapPen() and view.pen_style == "solid" and view.pen_width == 9, "pen case: swap back to the fineliner")
+    view:onCloseWidget()
+    -- a restart: the pen in hand comes back as it was
+    local view2 = InkAwayView:new{}
+    ok(view2.pen_style == "solid" and view2.pen_width == 9, "pen case: the size survives closing Ink Away")
+    for i, p in ipairs(view2:penset().favs) do if p.style == "highlighter" then view2:selectPen(i) end end
+    ok(view2.pen_style == "highlighter", "pen case: a saved pen is one tap")
+    view2:onCloseWidget()
+    -- 4.0's setting
+    _G.G_reader_settings.data.inkaway_pens = nil
+    _G.G_reader_settings.data.inkaway_pen_style = "pencil"
+    local view3 = InkAwayView:new{}
+    ok(view3.pen_style == "pencil", "pen case: 4.0's pen style is kept")
+    view3:onCloseWidget()
+    _G.G_reader_settings.data.inkaway_pens = nil
+    _G.G_reader_settings.data.inkaway_pen_style = nil
+end
+
+-- ---- gestures and pen buttons, as the reader set them -------------------------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    _G.G_reader_settings.data.inkaway_gestures = nil
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local v = view.view
+    view:setTool("pen")
+    local b = view:gestureBindings()
+    -- a two-finger tap set to Lasso, with no double tap: at once
+    b.two_tap, b.two_double_tap = "lasso", "nothing"
+    view:onIaTwoTap()
+    ok(view.tool == "lasso", "gestures: a two-finger tap set to Lasso takes the lasso at once")
+    view:onIaTwoTap()
+    ok(view.tool == "pen", "gestures: and again back to the pen")
+    -- with a double tap set too, the single tap waits for a second one
+    b.two_tap, b.two_double_tap = "eraser", "library"
+    local opened = 0
+    local real_lib = view.openLibrary
+    view.openLibrary = function() opened = opened + 1 end
+    view:onIaTwoTap()
+    ok(view.tool == "pen", "gestures: a single tap waits a moment when a double tap is set")
+    UIManager.fireScheduled()
+    ok(view.tool == "erase", "gestures: then does its action")
+    view:setTool("pen")
+    view:onIaTwoTap(); view:onIaTwoTap()
+    UIManager.fireScheduled()
+    ok(opened == 1 and view.tool == "pen", "gestures: two quick taps do the double tap's action only")
+    -- swipes
+    b.two_swipe_up, b.two_swipe_down = "nothing", "library"
+    local cx, top = v.area_x + 300, v.area_y + 100
+    view:onIaTwoSwipe(nil, { pos = { x = cx, y = top }, end_pos = { x = cx, y = top + v.area_h * 0.5 } })
+    ok(opened == 2, "gestures: a long swipe down set to Library opens it")
+    view:onIaTwoSwipe(nil, { pos = { x = cx, y = top + v.area_h * 0.6 }, end_pos = { x = cx, y = top } })
+    ok(opened == 2, "gestures: a long swipe up set to Nothing does nothing")
+    view.openLibrary = real_lib
+    -- the second side button (a Kobo stylus): highlights while held by default
+    view.palm_reject = true
+    view:applyPalmReject()
+    local style0 = view.pen_style
+    Device.input.stylus_highlighter_active = true
+    local function pen(id, x, y, tool)
+        return Device.input.stylus_callback(Device.input,
+            { slot = Device.input.pen_slot, id = id, x = x, y = y, tool = tool or 1 })
+    end
+    pen(0, cx, top + 300, 3)
+    ok(view.pen_style == "highlighter", "pen buttons: the Kobo side button highlights while held")
+    pen(0, cx + 80, top + 300, 3)
+    pen(-1, cx + 80, top + 300, 3)
+    Device.input.stylus_highlighter_active = false
+    UIManager.fireScheduled()
+    ok(view.pen_style == style0, "pen buttons: and the pen is back at the lift")
+    -- the settings sheet, and an overlap asked about
+    view:openGestureSettings()
+    ok(view._gestures_dialog ~= nil, "gestures: the settings sheet opens")
+    view:chooseGestureAction(require("ink/actions").trigger("two_swipe_down"))
+    ok(view._gesture_pick ~= nil and view._gestures_dialog == nil, "gestures: choosing opens the action grid")
+    -- pick Undo for the swipe down: the two-finger tap already undoes, so it asks
+    b.two_tap = "undo"
+    local function findButton(w, text, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return nil end
+        seen[w] = true
+        if type(w.callback) == "function" and (w.text == text
+                or (w.label_widget and w.label_widget.text == text)) then return w end
+        for k, c in pairs(w) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = findButton(c, text, seen); if f then return f end
+            end
+        end
+    end
+    local undo_btn = findButton(view._gesture_pick, "Undo")
+    ok(undo_btn ~= nil, "gestures: the grid offers Undo")
+    UIManager.shown = nil
+    if undo_btn then undo_btn.callback() end
+    local box = UIManager.shown
+    ok(box and box.ok_text == "Only this one" and box.cancel_text == "Both",
+        "gestures: an overlap asks: only this one, or both")
+    if box and box.ok_callback then box.ok_callback() end
+    ok(b.two_swipe_down == "undo" and b.two_tap == "nothing", "gestures: only this one moves it")
+    view:onCloseWidget()
+    _G.G_reader_settings.data.inkaway_gestures = nil
 end
 
 -- ---- lifecycle leak: landscape<->portrait cycles + close leave nothing behind --
@@ -2277,7 +2746,7 @@ do
     eo.fmt, eo.transparent = "png", false
     ok(view:pngOptions().template and view:pngOptions().template.style == "grid", "export: and in a PNG on white")
     eo.transparent = true
-    ok(view:pngOptions().template == nil, "export: a transparent PNG never has the grid")
+    ok(view:pngOptions().template.style == "blank", "export: a transparent PNG never has the grid")
     eo.transparent = false
     view.grid_style = "thirds"
     ok(view:pngOptions().template.style == "thirds", "export: the thirds guide can be included too")
@@ -2301,7 +2770,7 @@ do
     ok(not sheetHas("Include the grid"), "export: but not for a transparent PNG")
     eo.transparent = false
     view.grid_on = false
-    ok(view:pngOptions().template == nil, "export: no grid shown, none exported")
+    ok(view:pngOptions().template.style == "blank", "export: no grid shown, none exported")
     eo.include_grid, eo.fmt = nil, "pdf"
     do
         local n = 0
@@ -3442,7 +3911,50 @@ do
     sweep("page paper", "_chooser_dialog", function() view:nbPagePaper() end)
     sweep("page", "_page_dialog", function() view:openPageMenu() end)
     sweep("settings", "_settings_dialog", function() view:openSettings() end)
+    sweep("paper colour", "_paper_colour", function() view:openPaperColour() end)
+    -- the paper colour sheet: the papers this screen offers, a tap puts the page on one
+    do
+        local Palette = require("ink/palette")
+        local colour = view:colorScreen()
+        view:openPaperColour()
+        local tiles = buttons(view._paper_colour, {}, {})
+        ok(#tiles == #Palette.papers(colour) + 1, ("paper: a tile for each paper and Done (%d)"):format(#tiles))
+        local black
+        for _, p in ipairs(Palette.papers(colour)) do if p.key == "black" then black = p.rgb end end
+        local found
+        for _, b in ipairs(tiles) do
+            local seen, hit = {}, false
+            local function has(w)
+                if type(w) ~= "table" or seen[w] then return end
+                seen[w] = true
+                if w.text == "Black" then hit = true end
+                for k, v in pairs(w) do if k ~= "show_parent" and k ~= "parent" then has(v) end end
+            end
+            has(b)
+            if hit then found = b end
+        end
+        ok(found ~= nil, "paper: Black is offered")
+        if found then found.callback() end
+        ok(Palette.sameColor(view:paperRGB(), black), "paper: a tap puts the notebook on it")
+        ok(view._paper_colour ~= nil, "paper: the sheet stays to try another")
+        view:closeSheet("_paper_colour")
+        view:openSettings()
+        local seen, label = {}, nil
+        local function find(w)
+            if type(w) ~= "table" or seen[w] then return end
+            seen[w] = true
+            if type(w.text) == "string" and w.text:match("^Colour: ") then label = w.text end
+            for k, v in pairs(w) do if k ~= "show_parent" and k ~= "parent" then find(v) end end
+        end
+        find(view._settings_dialog)
+        ok(label == "Colour: Black", "paper: Settings names it beside the paper (" .. tostring(label) .. ")")
+        view:closeSheet("_settings_dialog")
+        view:setPaper(nil)
+        ok(view:paperRGB() == nil, "paper: and back to white")
+    end
     sweep("pen", "_pen_dialog", function() view:openPenSettings() end)
+    sweep("pen input", "_peninput_dialog", function() view:openPenInput() end)
+    sweep("pen types", "_pentypes_dialog", function() view:openPenTypes() end)
     sweep("eraser", "_eraser_dialog", function() view:openEraserSettings() end)
     sweep("shapes", "_shape_dialog", function() view:openShapePicker() end)
     sweep("text", "_text_settings", function() view:openTextSettings() end)
@@ -3553,7 +4065,8 @@ do
             { "_new_dialog", function() view:openNotebookPaper() end },
             { "_shape_dialog", function() view:openShapePicker() end },
             { "_eraser_dialog", function() view:openEraserSettings() end },
-            { "_grid_dialog", function() view:openGridSettings() end } }) do
+            { "_grid_dialog", function() view:openGridSettings() end },
+            { "_paper_colour", function() view:openPaperColour() end } }) do
         s[2]()
         for _, btn in ipairs(buttons(view[s[1]], {}, {})) do if not btn:highlightSafe() then bad = bad + 1 end end
         view:closeSheet(s[1])
@@ -4600,10 +5113,11 @@ do
     UIManager.reset()
     local view = dofile("ink/view.lua"):new{}
     UIManager:show(view)
-    view:openPenSettings()
-    ok(find(view._pen_dialog or UIManager.shown, labelled("Shape assist")) == nil
-        and find(view._pen_dialog or UIManager.shown, labelled("Palm rejection")) ~= nil,
-        "pen sheet: no Shape assist toggle (hold to straighten does it), Palm rejection stays")
+    view:openPenInput()
+    ok(find(view._peninput_dialog or UIManager.shown, labelled("Shape assist")) == nil
+        and find(view._peninput_dialog or UIManager.shown, labelled("Palm rejection")) ~= nil,
+        "pen input: no Shape assist toggle (hold to straighten does it), Palm rejection stays")
+    view:closeSheet("_peninput_dialog")
     ok(view.shape_assist == nil, "pen sheet: and no shape assist setting is read")
     view:closeSheet("_pen_dialog")
     view:openSettings()

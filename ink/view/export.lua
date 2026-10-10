@@ -6,7 +6,6 @@ bookshelf ornaments.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Blitbuffer = require("ffi/blitbuffer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
@@ -18,6 +17,7 @@ local _ = require("gettext")
 local RenderImage = require("ui/renderimage")
 local Export = require("ink/export")
 local ImageProc = require("ink/imageproc")
+local Layers = require("ink/layers")
 local Links = require("ink/links")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
@@ -27,13 +27,36 @@ local Storage = require("ink/storage")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
-local PAPERS = Palette.PAPERS
 local existingDir = Storage.existingDir
 local strengthToLevel = Paint.strengthToLevel
 local bbToRGBA = ImageProc.bbToRGBA
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
 
 local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
+
+-- The paper an export lays a page of paper `p` on ({r,g,b}, nil for white): `p`
+-- itself, unless the export is set to White (`choice`) or the paper is left out
+-- (`kept` false). A dark paper always stays, or the white ink on it would not
+-- show.
+local function exportPaperFor(p, choice, kept)
+    p = Palette.paperRGB(p)
+    if not p or Paint.darkPaper(p) then return p end
+    if choice == "white" or not kept then return nil end
+    return p
+end
+
+-- Give export template t the page's look (see ink/export.lua): paper `paper`
+-- (nil for white), its ruling of `strength` in the paper's shade, and the text
+-- black, or white on a dark paper.
+local function dress(t, paper, strength)
+    t.paper = paper or { 255, 255, 255 }
+    t.gray = strengthToLevel(strength)
+    t.rule = Paint.rulingRGB(paper, strength)
+    t.dark = Paint.darkPaper(paper)
+    local ink = t.dark and 255 or 0
+    t.ink = { ink, ink, ink }
+    return t
+end
 
 local InkAwayView = {}
 
@@ -89,7 +112,7 @@ function InkAwayView:exportOptions()
     if not self.export_opts then
         local nb = self.notebook
         self.export_opts = { fmt = nb and "pdf" or "png", scope = "all", transparent = not nb,
-            include_bg = true, paper = "white", numbers = false }
+            include_bg = true, on_paper = "page", numbers = false }
     end
     return self.export_opts
 end
@@ -194,11 +217,17 @@ function InkAwayView:openExport()
                 add(self:sheetHint(string.format(_("A PNG holds the page shown, page %d."), nb.index), content_w))
             end
         else
-            add(vspan(12))
-            add(self:sheetLabel(_("Paper"), true))
-            add(vspan(6))
-            add(self:segmentedRow({ { "white", _("White") }, { "sand", _("Sandpaper") } }, o.paper, content_w,
-                function(v) o.paper = v; reopen() end))
+            -- a light paper can print on white instead (a dark one always goes,
+            -- or its white ink would not show)
+            local p = self:paperRGB()
+            if p and not Paint.darkPaper(p) then
+                add(vspan(12))
+                add(self:sheetLabel(_("Paper"), true))
+                add(vspan(6))
+                add(self:segmentedRow({ { "page", Palette.paperName(p) }, { "white", _("White") } },
+                    o.on_paper == "white" and "white" or "page", content_w,
+                    function(v) o.on_paper = v; reopen() end))
+            end
         end
         if nb then
             -- an imported PDF always prints its own pages into a PDF
@@ -316,30 +345,36 @@ end
 -- out. A copy, so nothing sticks to the notebook.
 function InkAwayView:exportTemplate(i)
     local o = self:exportOptions()
-    return self:pageExportTemplate(self.notebook, i, o.paper, o.include_bg)
+    return self:pageExportTemplate(self.notebook, i, o.on_paper, o.include_bg)
 end
 
--- The export template of page i of notebook nb, on paper colour `paper`, with or
--- without its ruling (`ruled`).
-function InkAwayView:pageExportTemplate(nb, i, paper, ruled)
+-- The export template of page i of notebook nb: its paper (or white when
+-- `choice` is "white"), with or without its paper and ruling (`ruled`).
+function InkAwayView:pageExportTemplate(nb, i, choice, ruled)
     local template = {}
     for k, v in pairs(nb.template) do template[k] = v end
     template.style = nb:pageTemplate(i).style
-    template.paper = PAPERS[paper or "white"] or PAPERS.white
-    template.gray = strengthToLevel(template.strength)
+    dress(template, exportPaperFor(nb.template.paper, choice, ruled), template.strength)
     if not ruled and not template.pdf_path then template.style = "blank" end
     return template
 end
 
--- The drawing's grid as an export template on paper colour `paper`, or nil when
--- the grid is off or left out of the export.
-function InkAwayView:drawingGridTemplate(paper)
+-- The drawing's grid as an export template, on its paper (or white when
+-- `choice` is "white"), or nil when the grid is off or left out of the export.
+function InkAwayView:drawingGridTemplate(choice)
     local o = self:exportOptions()
     if self.notebook or not (o.include_grid and self.grid_on) then return nil end
     local style = self.grid_style or "square"
     if style == "square" then style = "grid" end
-    return { style = style, size = self.grid_size, gray = strengthToLevel(self.grid_strength),
-        paper = PAPERS[paper or "white"] or PAPERS.white }
+    return dress({ style = style, size = self.grid_size },
+        exportPaperFor(self.paper, choice or o.on_paper, true), self.grid_strength)
+end
+
+-- A drawing's export template without a grid: its paper (or white when
+-- `choice` is "white") and the text's colour on it.
+function InkAwayView:drawingPaperTemplate(choice)
+    local o = self:exportOptions()
+    return dress({ style = "blank" }, exportPaperFor(self.paper, choice or o.on_paper, true))
 end
 
 -- Bookmarks for the titled pages among `pages` (notebook pages, in export
@@ -362,11 +397,16 @@ function InkAwayView:pngOptions()
         if self.bg_bb then opts.bg = self.bg_rgba or self:buildBgRGBA() end
     end
     if not o.transparent then opts.template = opts.template or self:drawingGridTemplate() end
+    -- else the page's paper, to lay it on (and for the text's colour)
+    if not opts.template then
+        opts.template = self.notebook and dress({ style = "blank" },
+            exportPaperFor(self.notebook.template.paper, o.on_paper, o.include_bg)) or self:drawingPaperTemplate()
+    end
     return opts
 end
 
 function InkAwayView:writePNG(path)
-    local ok, err = Export.savePNG(self.canvas, path, self:pngOptions())
+    local ok, err = Export.savePNG(self:drawnCanvas(), path, self:pngOptions())
     if ok then
         self:markDirty()   -- keep the export settings with the document
         local ow = self.save_area and self.save_area.w or self.canvas.w
@@ -422,10 +462,9 @@ function InkAwayView:writePDF(path)
             bg_opaque, quality = true, 90   -- rendered PDF pages are drawn on white
         end
     else
-        pages_ops = { self.canvas.ops }
+        pages_ops = { self:drawnOps() }
         w, h = self.canvas.w, self.canvas.h
-        template = self:drawingGridTemplate(o.paper)
-            or { style = "blank", paper = PAPERS[o.paper or "white"] or PAPERS.white }
+        template = self:drawingGridTemplate() or self:drawingPaperTemplate()
         if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
     end
     self:runPdfJob(path, { pages = pages_ops, w = w, h = h, template = template, bg = bg,
@@ -455,16 +494,16 @@ function InkAwayView:collectFolderPages(dir, acc)
                 for i, page in ipairs(nb.pages) do
                     pages[#pages + 1] = page.ops
                     acc.places[#pages] = { path = d.path, id = page.id }
-                    templates[#pages] = self:pageExportTemplate(nb, i, "white", true)
+                    templates[#pages] = self:pageExportTemplate(nb, i, "page", true)
                     if nb.template.pdf_path and page.src then
                         sources[#pages] = { pdf = nb.template.pdf_path, src = page.src }
                     end
                     if page.title then item.kids[#item.kids + 1] = { title = page.title, page = #pages } end
                 end
             else
-                pages[#pages + 1] = data.ops or {}
+                pages[#pages + 1] = Layers.drawnOfFile(data.ops or {}, data.layers)
                 acc.places[#pages] = { path = d.path }
-                templates[#pages] = { style = "blank", paper = PAPERS.white }
+                templates[#pages] = dress({ style = "blank" }, Palette.paperRGB(data.paper))
                 if type(data.bg) == "string" and Storage.exists(data.bg) then sources[#pages] = { image = data.bg } end
             end
             outline[#outline + 1] = item
@@ -703,7 +742,7 @@ function InkAwayView:writeOrnament(dir, name)
     local opts = self:pngOptions()
     opts.white = nil   -- an ornament is always transparent
     if not self.notebook then opts.template = nil end   -- and has no grid
-    local ok, err = Export.savePNG(self.canvas, path, opts)
+    local ok, err = Export.savePNG(self:drawnCanvas(), path, opts)
     if ok then
         UIManager:show(InfoMessage:new{ text = string.format(_("Saved bookshelf ornament:\n%s"), path) })
     else
@@ -724,7 +763,7 @@ function InkAwayView:paintCropOverlay(bb, x, y)
     local cy1 = math.max(y + v.area_y, math.min(y + v.area_y + v.area_h, c.y1))
     if cx1 < cx0 then cx0, cx1 = cx1, cx0 end
     if cy1 < cy0 then cy0, cy1 = cy1, cy0 end
-    Paint.outline(bb, cx0, cy0, cx1 - cx0, cy1 - cy0, Blitbuffer.COLOR_BLACK, 2)
+    Paint.outline(bb, cx0, cy0, cx1 - cx0, cy1 - cy0, self:textInk(), 2)
 end
 
 return InkAwayView

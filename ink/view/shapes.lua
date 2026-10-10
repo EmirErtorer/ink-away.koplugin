@@ -6,6 +6,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local bit = require("bit")
+local Device = require("device")
 local Export = require("ink/export")
 local Fill = require("ink/fill")
 local InkGeom = require("ink/geom")
@@ -13,6 +14,7 @@ local Paint = require("ink/paint")
 local Shapes = require("ink/shapes")
 local Symmetry = require("ink/symmetry")
 
+local Screen = Device.screen
 local displayColor = Paint.displayColor
 
 local InkAwayView = {}
@@ -262,7 +264,7 @@ end
 function InkAwayView:shapeUnderPoint(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "shape" and Shapes.contains(op, cx, cy) then
+        if op.kind == "shape" and self:editableOp(op) and Shapes.contains(op, cx, cy) then
             return { op = op, idx = i }
         end
     end
@@ -271,6 +273,7 @@ end
 
 function InkAwayView:doFill(pos)
     self:flushPending()
+    self:layerReady()
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     -- A tap inside a shape fills that shape: the colour is stored on the shape
     -- (under its outline), so it moves, rotates, duplicates and deletes with it.
@@ -285,7 +288,8 @@ function InkAwayView:doFill(pos)
         self:afterCommit()
         return
     end
-    local gray = Export.buildGray(self.canvas)
+    local paper = self:paperRGB()
+    local gray = Export.buildGray(self:drawnCanvas(), paper and Paint.lum(paper), Paint.darkPaper(paper))
     local runs = Fill.compute(gray, self.view.canvas_w, self.view.canvas_h,
         math.floor(cx), math.floor(cy), 40)
     if not runs or #runs == 0 then return end
@@ -309,8 +313,9 @@ function InkAwayView:hitTestShape(sx, sy)
     local cx, cy = InkGeom.toCanvas(self.view, sx, sy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "shape" then
-            local tol = (op.width or 6) / 2 + 8 / self.view.zoom
+        if op.kind == "shape" and self:editableOp(op) then
+            -- about 1.5 mm either side of the line, so a fingertip finds it
+            local tol = (op.width or 6) / 2 + Screen:scaleBySize(10) / self.view.zoom
             if Shapes.hit(op, cx, cy, tol) and not self:shapeErased(i) then
                 return { op = op, idx = i }
             end
@@ -369,9 +374,9 @@ function InkAwayView:paintShapePreview(bb, x, y)
     end
     local sp = self.shape_preview
     if sp.fill_color and not sp.fill then
-        Shapes.fill(sp, makePut(displayColor(sp.fill_color, sp.fill_alpha)))
+        Shapes.fill(sp, makePut(displayColor(Paint.inkOnPaper(sp.fill_color, self:paperRGB()), sp.fill_alpha)))
     end
-    Shapes.render(sp, makePut(displayColor(sp.color, sp.alpha)))
+    Shapes.render(sp, makePut(displayColor(Paint.inkOnPaper(sp.color, self:paperRGB()), sp.alpha)))
 end
 
 return InkAwayView

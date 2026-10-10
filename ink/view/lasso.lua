@@ -6,7 +6,6 @@ ink/view/selection.lua: its frame, handles and menu.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Blitbuffer = require("ffi/blitbuffer")
 local GeomUI = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
@@ -38,7 +37,9 @@ function InkAwayView:computeSelection(poly)
     local idxs = {}
     local slop = self:lassoSlop()
     for i, op in ipairs(self.canvas.ops) do
-        if op.kind ~= "erase" and opInPoly(op, poly, slop) then idxs[#idxs + 1] = i end
+        if op.kind ~= "erase" and op.kind ~= "smudge" and self:editableOp(op) and opInPoly(op, poly, slop) then
+            idxs[#idxs + 1] = i
+        end
     end
     return self:selectOps(idxs, "lasso")
 end
@@ -73,11 +74,12 @@ function InkAwayView:pasteAt(pos)
     local cx, cy
     if pos then cx, cy = InkGeom.toCanvas(self.view, pos.x, pos.y) end
     self:flushPending()
+    self:layerReady()
     self.canvas:pushHistory()
     local idxs = {}
     for _, op in ipairs(Clipboard.take(cx, cy)) do
-        self.canvas.ops[#self.canvas.ops + 1] = op
-        idxs[#idxs + 1] = #self.canvas.ops
+        local _op, at = self.canvas:placeOp(op)   -- (onto the active layer)
+        idxs[#idxs + 1] = at
     end
     if self.tool ~= "lasso" then self.tool = "lasso"; self:refreshToolLabels() end
     self:selectOps(idxs, "lasso")
@@ -130,8 +132,23 @@ function InkAwayView:lassoRelease(pos)
 end
 
 function InkAwayView:lassoTap(pos)
-    if self.lassoing then self:lassoFinish(); return true end
+    local scr = self.lasso_scr
+    if self.lassoing and scr and #scr >= 6 then self:lassoFinish(); return true end
+    self.lassoing, self.lasso_scr = false, nil   -- a tap, not a loop
+    if pos and self:selectAt(pos) then return true end
     if pos and Clipboard.count() > 0 then self:openPasteMenu(pos) end
+    return true
+end
+
+-- Select the picture or shape at screen `pos`, if there is one, and open its
+-- menu: a tap or hold with the lasso picks one out as a hold with Pan does
+-- (over a book, where there is no Pan, this is how they are picked again).
+function InkAwayView:selectAt(pos)
+    if not (pos and self:inArea(pos.x, pos.y)) then return false end
+    local hit = self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y)
+    if not (hit and self:selectOps({ hit.idx }, "lasso")) then return false end
+    self:redraw()
+    self:openSelectionMenu()
     return true
 end
 
@@ -140,7 +157,7 @@ function InkAwayView:paintLassoLoop(bb, x, y)
     local v = self.view
     local pts = self.lasso_scr
     if not pts then return end
-    local BLACKC = Blitbuffer.COLOR_BLACK
+    local BLACKC = self:textInk()   -- black, white on a dark paper
     local ax0, ay0 = x + v.area_x, y + v.area_y
     local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
     local function dot(px, py)

@@ -115,6 +115,178 @@ function Raster.path(pts, r, put)
     end
 end
 
+-- Disc rows for a radius rounded to a quarter pixel, for paths whose width
+-- changes along the way (pressure, a fountain pen's nib). Keyed by the quarter
+-- count; the table is cleared if a session ever collects too many radii.
+local QCACHE_MAX = 512
+local qcache, qcount = {}, 0
+local function discSpansQ(r)
+    local k = floor(r * 4 + 0.5)
+    if k < 2 then k = 2 end
+    local t = qcache[k]
+    if t then return t end
+    if qcount >= QCACHE_MAX then qcache, qcount = {}, 0 end
+    local rr = k / 4
+    local r2 = rr * rr
+    local ir = floor(rr)
+    t = { ir = ir }
+    for dy = 0, ir do t[dy] = floor(sqrt(r2 - dy * dy) + 0.5) end
+    qcache[k] = t
+    qcount = qcount + 1
+    return t
+end
+
+-- Raster.path with a radius that changes along the path. `rs` holds two radii
+-- per segment, at its start and its end (rs[2k-1], rs[2k] for the segment from
+-- point k to k+1), so a pen whose width depends on the segment's direction
+-- draws each segment on its own terms; a single point uses rs[1]. Discs are
+-- stamped about every pixel with the radius blended along the segment, and each
+-- segment's discs are merged into one span per row, as on the solid path.
+function Raster.pathVar(pts, rs, put)
+    local n = floor(#pts / 2)
+    if n == 0 then return end
+    if n == 1 then
+        local t = discSpansQ(rs[1] or 0.5)
+        local icx, icy = floor(pts[1] + 0.5), floor(pts[2] + 0.5)
+        for dy = -t.ir, t.ir do
+            local span = t[dy < 0 and -dy or dy]
+            put(icx - span, icy + dy, 2 * span + 1)
+        end
+        return
+    end
+    local px, py = pts[1], pts[2]
+    for i = 2, n do
+        local nx, ny = pts[2 * i - 1], pts[2 * i]
+        local r0 = rs[2 * i - 3] or 0.5
+        local r1 = rs[2 * i - 2] or r0
+        if r0 < 0.5 then r0 = 0.5 end
+        if r1 < 0.5 then r1 = 0.5 end
+        local dx, dy = nx - px, ny - py
+        local steps = ceil(sqrt(dx * dx + dy * dy))
+        if steps < 1 then steps = 1 end
+        local inv = 1 / steps
+        local irmax = floor(r0 > r1 and r0 or r1) + 1
+        local ya, yb = floor(py + 0.5), floor(ny + 0.5)
+        if ya > yb then ya, yb = yb, ya end
+        local y0 = ya - irmax - 1
+        local rows = (yb + irmax + 1) - y0
+        for k = 0, rows do rowL[k] = huge; rowR[k] = -huge end
+        for s = 0, steps do
+            local f = s * inv
+            local t = discSpansQ(r0 + (r1 - r0) * f)
+            local ir = t.ir
+            local icx = floor(px + dx * f + 0.5)
+            local base = floor(py + dy * f + 0.5) - y0
+            for ddy = -ir, ir do
+                local span = t[ddy < 0 and -ddy or ddy]
+                local k = base + ddy
+                local a, b = icx - span, icx + span
+                if a < rowL[k] then rowL[k] = a end
+                if b > rowR[k] then rowR[k] = b end
+            end
+        end
+        for k = 0, rows do
+            local a = rowL[k]
+            if a ~= huge then put(a, y0 + k, rowR[k] - a + 1) end
+        end
+        px, py = nx, ny
+    end
+end
+
+-- Fill a convex polygon given as flat {x1,y1, x2,y2, ...}: every pixel whose
+-- centre lies inside goes out as one span per row.
+function Raster.convexFill(poly, put)
+    local n = floor(#poly / 2)
+    if n < 3 then return end
+    local ymin, ymax = huge, -huge
+    for i = 1, n do
+        local y = poly[2 * i]
+        if y < ymin then ymin = y end
+        if y > ymax then ymax = y end
+    end
+    for y = ceil(ymin - 0.5), floor(ymax - 0.5) do
+        local yc = y + 0.5
+        local xl, xr = huge, -huge
+        local jx, jy = poly[2 * n - 1], poly[2 * n]
+        for i = 1, n do
+            local ix, iy = poly[2 * i - 1], poly[2 * i]
+            if (iy <= yc and jy > yc) or (jy <= yc and iy > yc) then
+                local x = ix + (yc - iy) * (jx - ix) / (jy - iy)
+                if x < xl then xl = x end
+                if x > xr then xr = x end
+            end
+            jx, jy = ix, iy
+        end
+        if xl <= xr then
+            local a, b = ceil(xl - 0.5), floor(xr - 0.5)
+            if b >= a then put(a, y, b - a + 1) end
+        end
+    end
+end
+
+-- The convex hull of a few points (flat list), counter-clockwise; Andrew's
+-- monotone chain, for the handful of corners a nib sweep has.
+local function hull(p)
+    local n = floor(#p / 2)
+    local idx = {}
+    for i = 1, n do idx[i] = i end
+    table.sort(idx, function(a, b)
+        local ax, bx = p[2 * a - 1], p[2 * b - 1]
+        if ax ~= bx then return ax < bx end
+        return p[2 * a] < p[2 * b]
+    end)
+    local function cross(o, a, b)
+        return (p[2 * a - 1] - p[2 * o - 1]) * (p[2 * b] - p[2 * o])
+             - (p[2 * a] - p[2 * o]) * (p[2 * b - 1] - p[2 * o - 1])
+    end
+    local h = {}
+    for _i, i in ipairs(idx) do
+        while #h >= 2 and cross(h[#h - 1], h[#h], i) <= 0 do h[#h] = nil end
+        h[#h + 1] = i
+    end
+    local lower = #h + 1
+    for j = n - 1, 1, -1 do
+        local i = idx[j]
+        while #h >= lower and cross(h[#h - 1], h[#h], i) <= 0 do h[#h] = nil end
+        h[#h + 1] = i
+    end
+    h[#h] = nil
+    local out = {}
+    for _i, i in ipairs(h) do out[#out + 1] = p[2 * i - 1]; out[#out + 1] = p[2 * i] end
+    return out
+end
+
+-- A flat calligraphy nib swept along the path: the nib is a thin rectangle
+-- `len` long and `thick` wide, held at `angle` (radians, fixed on the page), so
+-- strokes across the nib come out broad and strokes along it thin. `lens`
+-- optionally gives the nib's length at each point (pressure). Each segment is
+-- the convex hull of the nib at its two ends.
+function Raster.pathNib(pts, len, thick, angle, put, lens)
+    local n = floor(#pts / 2)
+    if n == 0 then return end
+    local ca, sa = math.cos(angle), math.sin(angle)
+    local th = (thick or 1) / 2
+    local function corners(out, x, y, l)
+        local hx, hy = ca * l / 2, sa * l / 2       -- along the nib
+        local tx, ty = -sa * th, ca * th            -- across it
+        out[#out + 1] = x + hx + tx; out[#out + 1] = y + hy + ty
+        out[#out + 1] = x + hx - tx; out[#out + 1] = y + hy - ty
+        out[#out + 1] = x - hx - tx; out[#out + 1] = y - hy - ty
+        out[#out + 1] = x - hx + tx; out[#out + 1] = y - hy + ty
+    end
+    if n == 1 then
+        local c = {}
+        corners(c, pts[1], pts[2], lens and lens[1] or len)
+        return Raster.convexFill(c, put)
+    end
+    for i = 2, n do
+        local c = {}
+        corners(c, pts[2 * i - 3], pts[2 * i - 2], lens and lens[i - 1] or len)
+        corners(c, pts[2 * i - 1], pts[2 * i], lens and lens[i] or len)
+        Raster.convexFill(hull(c), put)
+    end
+end
+
 -- Textured pen styles. Each is a per-pixel test on the pixel, its distance from
 -- the stamp centre and the stable hash, deciding whether to ink it: on e-ink a
 -- lighter texture is fewer inked pixels. Fields:
@@ -227,6 +399,30 @@ function Raster.pathTex(pts, r, put, st, seed)
             end
         else
             Raster.discTex(nx, ny, r, put, st, seed)
+        end
+        px, py = nx, ny
+    end
+end
+
+-- Raster.pathTex with a radius that changes along the path, `rs` as in
+-- Raster.pathVar: a textured pencil pressed harder draws wider.
+function Raster.pathTexVar(pts, rs, put, st, seed)
+    local n = floor(#pts / 2)
+    if n == 0 then return end
+    local px, py = pts[1], pts[2]
+    Raster.discTex(px, py, rs[1] or 0.5, put, st, seed)
+    for i = 2, n do
+        local nx, ny = pts[2 * i - 1], pts[2 * i]
+        local r0 = rs[2 * i - 3] or 0.5
+        local r1 = rs[2 * i - 2] or r0
+        local dx, dy = nx - px, ny - py
+        local dist = sqrt(dx * dx + dy * dy)
+        local step = max(1, (r0 < r1 and r0 or r1) * 0.4)
+        local steps = max(1, ceil(dist / step))
+        local inv = 1 / steps
+        for s = 1, steps do
+            local f = s * inv
+            Raster.discTex(px + dx * f, py + dy * f, r0 + (r1 - r0) * f, put, st, seed)
         end
         px, py = nx, ny
     end

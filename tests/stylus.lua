@@ -179,16 +179,16 @@ end
 do
     local PENt, ERAt, HILt = S.TOOL_PEN, S.TOOL_ERASER, S.TOOL_HIGHLIGHTER
     ok(S.penAction({ tool = PENt }, {}) == S.ACT_DRAW, "penAction: a plain pen tip draws")
-    ok(S.penAction({ tool = ERAt }, {}) == S.ACT_ERASE,
-        "penAction: the rear eraser end (tool 2, no latch) erases")
-    ok(S.penAction({ tool = ERAt }, { eraser_latch = true }) == S.ACT_SELECT,
-        "penAction: the side button (eraser latch) is lasso select, not erase")
-    ok(S.penAction({ tool = PENt }, { eraser_latch = true }) == S.ACT_SELECT,
+    ok(S.penAction({ tool = ERAt }, {}) == S.ACT_ERASER_END,
+        "penAction: the rear eraser end (tool 2, no latch) is the eraser end")
+    ok(S.penAction({ tool = ERAt }, { eraser_latch = true }) == S.ACT_BUTTON1,
+        "penAction: the side button (eraser latch) is button 1, not the eraser end")
+    ok(S.penAction({ tool = PENt }, { eraser_latch = true }) == S.ACT_BUTTON1,
         "penAction: the side-button latch wins even if the tool still reads pen")
-    ok(S.penAction({ tool = HILt }, { highlighter_latch = true }) == S.ACT_DRAW,
-        "penAction: the second barrel button draws with the current tool")
-    ok(S.penAction({ tool = ERAt }, nil) == S.ACT_ERASE,
-        "penAction: with no facts the rear tip still erases")
+    ok(S.penAction({ tool = HILt }, { highlighter_latch = true }) == S.ACT_BUTTON2,
+        "penAction: the second barrel button (Kobo) is button 2")
+    ok(S.penAction({ tool = ERAt }, nil) == S.ACT_ERASER_END,
+        "penAction: with no facts the rear tip is still the eraser end")
 end
 
 print(string.format("stylus: %d checks, %d failures", checks, failures))

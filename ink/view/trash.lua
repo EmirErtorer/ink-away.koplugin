@@ -99,6 +99,17 @@ function InkAwayView:restoreTrashItem(it)
         UIManager:show(InfoMessage:new{ text = _("Could not put it back.\n") .. tostring(err) })
         return
     end
+    if it.kind == "bookink" then
+        self:bookInkBack(it)
+        if it.book and not Storage.exists(it.book) then
+            UIManager:show(InfoMessage:new{ text = string.format(
+                _("The annotations of %s are back where the book was. They show again when the book is back in that place."),
+                it.name or "") })
+        else
+            self:showNotice(string.format(_("Put back on %s"), it.name or ""))
+        end
+        return
+    end
     if self._library then self:refreshLibrary() end
     if self._overview then
         if self._ov then
@@ -109,6 +120,16 @@ function InkAwayView:restoreTrashItem(it)
     self:dropThumbs(back)
     self:showNotice(string.format(_("Put back in %s"), self:searchPlace(Storage.dirName(back))
         .. " \u{203A} " .. Storage.stem(back)))
+end
+
+-- A book's annotations came back from the trash: if that book is open in the
+-- reader, show them again.
+function InkAwayView:bookInkBack(it)
+    local ok, ReaderUI = pcall(require, "apps/reader/readerui")
+    local ui = ok and ReaderUI and ReaderUI.instance
+    local plugin = ui and (ui["ink-away"] or ui.inkaway)
+    local book = plugin and plugin.book
+    if book and ui.document and ui.document.file == it.book then book:reload() end
 end
 
 ------------------------------------------------------------------------------
@@ -123,6 +144,9 @@ function InkAwayView:trashRow(it)
     if it.kind == "page" then
         local title = (it.name and it.name ~= "") and it.name or string.format(_("Page %d"), it.page or 1)
         return "file", title, { string.format(_("Page %d of %s"), it.page or 1, it.notebook or "?"), when }
+    end
+    if it.kind == "bookink" then
+        return "highlighter", it.name, { it.gone and _("Annotations of a deleted book") or _("Annotations on this book"), when }
     end
     local place = string.format(_("From %s"), self:searchPlace(Storage.dirName(it.from)))
     if it.kind == "folder" then return "folder", it.name, { place, when } end

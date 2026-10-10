@@ -13,6 +13,7 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local MovableContainer = require("ui/widget/container/movablecontainer")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 
@@ -43,6 +44,9 @@ local IconMenu = InputContainer:extend{
     anchor = nil,              -- function() -> { x, y, w, h, gap }: sit beside this
                                -- screen rect (above it when there is room, else
                                -- below, else at the foot of the screen), `gap` away
+    left_x = nil,              -- if set, centre the sheet in the screen right of
+                               -- this x (beside a toolbar down the left side)
+    right_x = nil,             -- and left of this x (beside one down the right)
     tap_pos = nil,             -- where the tap that closed it landed, if one did
     on_uncover = nil,          -- function(): the sheet left part of the screen to be
                                -- painted again under it (it closed, or a rebuild
@@ -147,10 +151,14 @@ end
 -- Paint the sheet centred horizontally and, with top_y or bottom_y, pinned there
 -- and clamped to the screen. MovableContainer sets its .dimen from where it is
 -- painted, which is used for hit tests and refresh regions.
-function IconMenu:paintTo(bb, x, y)
+function IconMenu:paintTo(bb, _x, _y)
     local sz = self.movable:getSize()
     local pad = Screen:scaleBySize(4)
     local px = math.floor((Screen:getWidth() - sz.w) / 2)
+    local lx, rx = self.left_x or 0, self.right_x or Screen:getWidth()
+    if (self.left_x or self.right_x) and sz.w + 2 * pad <= rx - lx then
+        px = lx + math.floor((rx - lx - sz.w) / 2)
+    end
     local py
     local r = self.anchor and self.anchor()
     if r then
@@ -175,6 +183,9 @@ function IconMenu:paintTo(bb, x, y)
     end
     self.movable:paintTo(bb, px, py)
     self.dimen = self.movable.dimen
+    -- dark: the panel inverted, round its corners, its colours given back
+    local d = self.dimen
+    if d and self.frame then Theme.apply(bb, self.frame, d.x, d.y, d.w, d.h, self.frame.radius or 0) end
 end
 
 function IconMenu:onTapClose(_, ges)

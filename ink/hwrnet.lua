@@ -150,12 +150,11 @@ end
 -- Working buffers, sized for the largest layer.
 function HwrNet:allocate()
     local most = SIZE * SIZE
-    local c = 1
     local h = SIZE
     for _, L in ipairs(self.layers) do
         if L.kind == 1 then
             most = max(most, (h + 2) * (h + 2) * L.nin, L.nout * h * h)
-            c, h = L.nout, floor(h / 2)
+            h = floor(h / 2)
         else
             most = max(most, L.nin, L.nout)
         end

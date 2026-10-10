@@ -13,7 +13,9 @@ end
 
 function lfs.attributes(path, field)
     local out = sh("if [ -d " .. q(path) .. " ]; then echo directory; elif [ -e " .. q(path) .. " ]; then echo file; fi; "
-        .. "stat -f '%m %z' " .. q(path) .. " || stat -c '%Y %s' " .. q(path))
+        -- GNU stat first: on Linux "stat -f" means file-system status and
+        -- prints something else instead of failing
+        .. "stat -c '%Y %s' " .. q(path) .. " || stat -f '%m %z' " .. q(path))
     local mode, mtime, size = out:match("^(%a+)\n(%d+) (%d+)")
     if not mode then return nil end
     local attr = { mode = mode, modification = tonumber(mtime), size = tonumber(size) }

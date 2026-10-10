@@ -10,6 +10,7 @@ local Device = require("device")
 local UIManager = require("ui/uimanager")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
+local Pens = require("ink/pens")
 local Raster = require("ink/raster")
 local Recognize = require("ink/recognize")
 local Symmetry = require("ink/symmetry")
@@ -39,7 +40,7 @@ local InkAwayView = {}
 -- Current live ink colour and width, from the active tool.
 function InkAwayView:liveColor()
     if self.tool == "erase" then return WHITE end
-    return displayColor(self.pen_color, self.pen_alpha)
+    return displayColor(Paint.inkOnPaper(self.pen_color, self:paperRGB()), self.pen_alpha)
 end
 function InkAwayView:liveWidth()
     return (self.tool == "erase") and self.eraser_width or self.pen_width
@@ -55,8 +56,16 @@ function InkAwayView:setupLiveWriters()
     local st = style and Raster.STYLES[style]
     local textured = st and not st.solid
     local seed = self.live_seed or 0
-    self._lw_stroke = function(seg, r, put)
-        if textured then Raster.pathTex(seg, r, put, st, seed) else Raster.path(seg, r, put) end
+    if st and (st.engine or (st.pressure and self._live_pressured)) then
+        -- a pen whose width changes: each segment with its two pressures
+        local nib = st.engine == "nib" and Pens.nibAngle(self.pen_nib) or nil
+        self._lw_stroke = function(seg, r, put, p0, p1, t0, t1)
+            Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1, nib)
+        end
+    else
+        self._lw_stroke = function(seg, r, put)
+            if textured then Raster.pathTex(seg, r, put, st, seed) else Raster.path(seg, r, put) end
+        end
     end
     -- the buffers these writers target, so stampLive can rebuild them if a relayout
     -- reallocated one mid-stroke (rather than draw into a freed buffer)
@@ -75,10 +84,12 @@ function InkAwayView:setupLiveWriters()
     -- refresh settles the true colour once the pen rests. With that setting off
     -- the screen copy of a non-black pen is drawn black, which that waveform shows
     -- sharply, and its colour comes back on lift. The master always keeps it.
+    -- A grey Boox that Ink Away drives (see fastLive) always draws that black
+    -- copy: the fast waveform would show light grey ink as white.
     local area_color = color
     self._live_preview = false
-    if self:colourPanel() and not self.live_colour and self.tool ~= "erase"
-            and self._live_mode == "fast" and not self:pureBlackPen() then
+    local preview = self:colourPanel() and not self.live_colour or (not self:colourPanel() and self:einkDriven())
+    if preview and self.tool ~= "erase" and self._live_mode == "fast" and not self:pureBlackPen() then
         area_color, self._live_preview = PREVIEW_INK, true
     end
     -- master (1:1) writer
@@ -142,15 +153,19 @@ end
 -- so a later re-render is right) and into the on-screen buffer at the current
 -- zoom (so drawing is immediate), refreshing only what changed. `fresh` starts a
 -- new segment with no line back.
-function InkAwayView:stampLive(cx, cy, fresh)
+function InkAwayView:stampLive(cx, cy, fresh, p)
     if self.tool == "erase" then
-        -- a soft erase reveals the page; in a notebook even a hard erase reveals the
-        -- bare paper, so the ruling can never be rubbed out
+        -- a soft erase reveals the page; a hard erase the bare paper (in a notebook
+        -- with its ruling, so the ruling can never be rubbed out), or white
         local reveal
-        if self.erase_bg then reveal = self.notebook and self:barePaperBB() or nil
+        if self.erase_bg and not self.canvas.layers then reveal = self:barePaperBB()
         else reveal = self:eraseRevealBB() end
         if reveal then return self:stampEraseRestore(cx, cy, fresh, reveal) end
     end
+    -- a see-through pen blends its whole stroke so far (see view/wash.lua), and
+    -- the smudge moves the ink under it (view/smudge.lua)
+    if self._wl then return self:washPoint(cx, cy, fresh, p) end
+    if self._sm then return self:smudgePoint(cx, cy, fresh) end
     -- rebuild the writers if they are missing or a buffer was reallocated
     if not self._lw_stroke or self._lw_area_bb ~= self.area_bb
             or self._lw_canvas_bb ~= self.canvas_bb then
@@ -158,17 +173,35 @@ function InkAwayView:stampLive(cx, cy, fresh)
     end
     local width = self:liveWidth()
     local strokeFn = self._lw_stroke
+    local p0 = (not fresh) and self._live_p or nil
+    -- how far along the stroke this piece is, in widths (a tapered pen thins at
+    -- its start)
+    local t0 = (not fresh) and self._live_t or 0
+    local t1 = t0
+    if self.last_cx and not fresh then
+        local dx, dy = cx - self.last_cx, cy - self.last_cy
+        t1 = t0 + math.sqrt(dx * dx + dy * dy) / math.max(1, width)
+    end
+    self._live_t = t1
 
     -- master, at 1:1
     if self.canvas_bb then
+        local lx, ly = cx, cy
         if self.last_cx and not fresh then
+            lx, ly = self.last_cx, self.last_cy
             local seg = self._lw_seg_c
             seg[1], seg[2], seg[3], seg[4] = self.last_cx, self.last_cy, cx, cy
-            strokeFn(seg, width / 2, self._lw_cput)
+            strokeFn(seg, width / 2, self._lw_cput, p0, p, t0, t1)
         else
-            strokeFn({ cx, cy }, width / 2, self._lw_cput)
+            strokeFn({ cx, cy }, width / 2, self._lw_cput, p, p)
         end
         self.last_cx, self.last_cy = cx, cy
+        -- on a layer under others: they stay over it (see view/layers.lua)
+        if self._lay_over then
+            local pad = width / 2 + 2
+            self:layerCover(math.min(lx, cx) - pad, math.min(ly, cy) - pad,
+                math.max(lx, cx) + pad, math.max(ly, cy) + pad, self.symmetry)
+        end
     end
 
     -- on screen, at the current zoom; acc tracks the base image only (see
@@ -179,16 +212,22 @@ function InkAwayView:stampLive(cx, cy, fresh)
     if self.last_ax and not fresh then
         local seg = self._lw_seg_a
         seg[1], seg[2], seg[3], seg[4] = self.last_ax, self.last_ay, ax, ay
-        strokeFn(seg, (width * self.view.zoom) / 2, self._lw_aput)
+        strokeFn(seg, (width * self.view.zoom) / 2, self._lw_aput, p0, p, t0, t1)
     else
-        strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput)
+        strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput, p, p)
     end
     self.last_ax, self.last_ay = ax, ay
+    self._live_p = p
     if acc.x1 >= acc.x0 then
         -- grow the whole stroke's base rect for the refresh at the end
         self._stroke_rect = InkGeom.growRect(self._stroke_rect, acc.x0, acc.y0, acc.x1, acc.y1)
         local rects, nr = self:symAreaRects(acc)
         for i = 1, nr do
+            -- (under other layers: the screen's rect from the master, which has them on top)
+            if self._lay_over then
+                local rr = rects[i]
+                self:renderViewRect(rr.x0 - 1, rr.y0 - 1, rr.x1 + 1, rr.y1 + 1)
+            end
             self:liveDirty(self._live_mode or "fast", rects[i], 1)
         end
     end
@@ -196,19 +235,45 @@ end
 
 -- Add a screen point to the live stroke (kept in canvas coords) and draw it.
 -- The stabilizer pulls the point towards the previous one, turning wobble into a
--- clean line; strength 0 draws the raw point.
-function InkAwayView:addScreenPoint(sx, sy, fresh)
+-- clean line; strength 0 draws the raw point. The `lift` point is taken as it
+-- is: the smoothed line trails the pen, and would otherwise stop short of where
+-- the pen left (a quick highlighter stroke missed the last word).
+function InkAwayView:addScreenPoint(sx, sy, fresh, lift)
     if self._wipe then return self:wipeTo(sx, sy) end   -- the whole-stroke eraser
     local cx, cy = self:toCanvasClamped(sx, sy)
-    if fresh then
+    if fresh or lift then
         self.sm_x, self.sm_y = cx, cy
     else
         local a = InkGeom.stabilizerAlpha(self.stabilizer)
         self.sm_x, self.sm_y = InkGeom.ema(self.sm_x, self.sm_y, cx, cy, a)
         cx, cy = self.sm_x, self.sm_y
     end
-    self.canvas:addPoint(cx, cy)
-    self:stampLive(cx, cy, fresh)
+    local p = self._live_pressured and self:livePressure(sx, sy, fresh) or nil
+    self.canvas:addPoint(cx, cy, p)
+    self:stampLive(cx, cy, fresh, p)
+end
+
+-- The pressure (0-255) for a new point of a pressured stroke: the pen's own when
+-- it reports one (see ink/pressure.lua), else for pens that want it simulated
+-- from the speed, else full. Eased along the distance so it never jumps.
+function InkAwayView:livePressure(sx, sy, fresh)
+    local now = self:nowMs()
+    local dpi = Screen.getDPI and Screen:getDPI() or 300
+    local last = self._lp_at
+    local dist_mm = (last and not fresh) and Pens.mm(sx - last.x, sy - last.y, dpi) or 0
+    local p
+    local raw = self._pen_raw_pressure
+    if raw ~= nil then
+        p = Pens.fromRaw(raw, self:pressureMax(), self.pressure_curve)
+    elseif self._live_sim and last and not fresh then
+        local dt = math.max(1, now - last.t)
+        p = Pens.fromSpeed(dist_mm / dt)
+    else
+        p = fresh and (self._live_sim and 200 or 255) or self._live_p or 255
+    end
+    if not fresh then p = Pens.smooth(self._live_p, p, dist_mm) end
+    if last then last.x, last.y, last.t = sx, sy, now else self._lp_at = { x = sx, y = sy, t = now } end
+    return p
 end
 
 -- Is the pen solid, fully opaque, pure black (what the fast waveform shows as is)?
@@ -221,6 +286,8 @@ function InkAwayView:pureBlackPen()
 end
 
 function InkAwayView:beginStroke(sx, sy)
+    -- in a layered drawing: the active layer shown, what lies above it at hand
+    self:layerStrokeBegin(self.tool == "erase")
     if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
     local is_erase = self.tool == "erase"
     self.live_seed = math.random(1, 1000000)
@@ -232,18 +299,32 @@ function InkAwayView:beginStroke(sx, sy)
     if is_erase then
         -- fast can only show white, so it suits erasing to a blank page; over a
         -- notebook ruling or a picture the erased path needs the grey-capable "ui"
-        local reveal = self.erase_bg and (self.notebook and self:barePaperBB()) or self:eraseRevealBB()
-        self._live_mode = reveal and "ui" or "fast"
+        local reveal = (self.erase_bg and self:barePaperBB()) or self:eraseRevealBB()
+        self._live_mode = (reveal and not self:einkDriven()) and "ui" or "fast"
     else
-        -- on a colour panel every pen draws with "fast" (a black preview, see
-        -- setupLiveWriters) because the grey-capable waveform blocks each refresh
-        self._live_mode = (self:pureBlackPen() or self:colourPanel()) and "fast" or "ui"
+        -- on a colour panel every pen draws with "fast", and on a grey Boox Ink
+        -- Away drives every opaque one (see fastLive and setupLiveWriters), settled
+        -- once the pen rests; a see-through pen there would show as a black bar
+        -- over the text until then
+        local opaque = (self.pen_alpha or 255) >= 255
+        self._live_mode = (self:pureBlackPen() or self:colourPanel()
+            or (opaque and self:einkDriven())) and "fast" or "ui"
     end
     -- a new stroke pushes back the pending colour settle (see queueReconcile)
     if self._reconcile then UIManager:unschedule(self._reconcile_cb) end
-    self.canvas:startStroke(is_erase and "erase" or "ink",
-        self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed)
+    -- pens whose width changes keep a pressure per point: the pen's own, or for
+    -- some pens one simulated from the drawing speed
+    local st = style and Raster.STYLES[style]
+    self._live_pressured = (not is_erase) and self.pen_pressure ~= false and Pens.usesPressure(style) or false
+    self._live_sim = self._live_pressured and st and st.sim and self._pen_raw_pressure == nil or false
+    self._live_p, self._lp_at = nil, nil
+    local smudge = (not is_erase) and style == "smudge"
+    if smudge and not self:colourPanel() then self._live_mode = "ui" end   -- smudged ink is grey
+    self.canvas:startStroke(is_erase and "erase" or (smudge and "smudge" or "ink"),
+        self:liveWidth(), self.pen_alpha, self.pen_color, style, self.live_seed, self._live_pressured)
     if self.symmetry ~= "off" and self.canvas.live then self.canvas.live.sym = self.symmetry end
+    -- a calligraphy nib keeps the angle it was drawn with
+    if st and st.engine == "nib" and self.pen_nib and self.canvas.live then self.canvas.live.nib = self.pen_nib end
     -- a "hard" erase also removes pictures; the soft default leaves them
     if is_erase and self.erase_bg and self.canvas.live then self.canvas.live.ebg = true end
     self.capturing = true
@@ -256,6 +337,10 @@ function InkAwayView:beginStroke(sx, sy)
         self._lw_cacc.x1, self._lw_cacc.y1 = -math.huge, -math.huge
     end
     self:setupLiveWriters()
+    self._wl, self._sm = nil, nil
+    local wst = (not is_erase) and self:washStyle(style)
+    if wst then self:washBegin(wst) end
+    if smudge then self:smudgeBegin() end
     self:addScreenPoint(sx, sy, true)
 end
 
@@ -290,11 +375,11 @@ function InkAwayView:beautifyStroke(raw, committed)
         committed.closed = shape.closed
         committed.fill = false
         committed.angle = 0
-        committed.style, committed.seed = nil, nil   -- ink-only fields; a shape ignores them
+        committed.style, committed.seed, committed.pr = nil, nil, nil   -- ink-only fields; a shape ignores them
     else
         -- any other straightened path (an L, a polygon) stays ink with the same
-        -- brush; only its points change
-        committed.pts = pts
+        -- brush; only its points change (a pressure per old point no longer fits)
+        committed.pts, committed.pr = pts, nil
     end
     self:markDirty()
     if not self:beautifyRecompose(raw, committed) then
@@ -409,6 +494,15 @@ function InkAwayView:finalizeStroke()
         for i = 1, #lp do raw[i] = lp[i] end
     end
     local committed = self.canvas:finishStroke()
+    if self._wl then self:washEnd() end   -- the page under it is drawn again from the op below
+    if self._sm then self:smudgeEnd() end
+    self:layerStrokeEnd(committed)   -- under other layers: the page there drawn again
+    -- a mode may take the stroke over (the annotation mode makes a highlighter
+    -- stroke along a line of text the reader's own highlight)
+    if committed and self.takeStroke and self:takeStroke(committed) then
+        self._stroke_rect = nil
+        return
+    end
     -- An erase records whether text was protected when it was made, so changing
     -- the setting later never erases or restores text retroactively.
     if committed and committed.kind == "erase" then
@@ -421,16 +515,34 @@ function InkAwayView:finalizeStroke()
     end
     self:markDirty()
     local sr = self._stroke_rect
-    if self:colourPanel() then
+    -- A pen whose width changes is drawn live sample by sample, and saved
+    -- simplified; draw its footprint again from the saved op, so what shows is
+    -- exactly what thumbnails and exports will show.
+    local st = committed and committed.kind == "ink" and committed.style and Raster.STYLES[committed.style]
+    if st and (st.engine or committed.pr) and self.canvas_bb then
+        local c = self._lw_cacc
+        if c and c.x1 > c.x0 and self:beautifyRecompose({ c.x0, c.y0, c.x1, c.y1 }, committed) and sr then
+            local rects, nr = self:symAreaRects(sr)
+            for i = 1, nr do
+                local rr = rects[i]
+                self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
+                if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+            end
+        end
+    end
+    if self:fastLive() then
         -- show the last samples now, put the real colours back where the black
         -- preview was, and let one refresh settle them once the pen rests (not
-        -- needed where every refresh already shows the colour as drawn)
+        -- needed where every refresh already shows the colour as drawn). A
+        -- driven Boox is asked for the whole stroke again, in case a live
+        -- request reached the panel before its frame.
         self:liveFlush()
         local settle = self._live_preview or not self:instantColour()
         if sr then
             local rects, nr = self:symAreaRects(sr)
             for i = 1, nr do
                 local rr = rects[i]
+                if self._live_mode == "fast" then self:einkAsk("fast", rr, 2) end
                 if self._live_preview then self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1) end
                 if settle then self:queueReconcile(rr, 2) end
             end

@@ -1,7 +1,8 @@
 --[[
 Ink Away, a drawing canvas and notebook for e-ink readers. This file only plugs
-it into KOReader (the Tools menu entry and two gesture actions) and opens the view;
-everything else lives under ink/.
+it into KOReader (the Tools menu entry and the gesture actions) and opens the
+view; everything else lives under ink/. In the reader it also brings the open
+book's ink (ink/reader/): shown over the pages, and drawn in the annotation mode.
 ]]
 
 local Dispatcher = require("dispatcher")
@@ -27,11 +28,45 @@ function InkAway:onDispatcherRegisterActions()
         title = _("Ink Away library"),
         general = true,
     })
+    -- in a book: draw on it; book notes, or Ink Away itself outside a book
+    Dispatcher:registerAction("inkaway_annotate", {
+        category = "none",
+        event = "InkAwayAnnotate",
+        title = _("Ink Away: annotate the book"),
+        reader = true,
+    })
+    Dispatcher:registerAction("inkaway_booknotes", {
+        category = "none",
+        event = "InkAwayBookNotes",
+        title = _("Ink Away: book notes (Ink Away outside a book)"),
+        general = true,
+    })
 end
 
 function InkAway:init()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
+    -- Ink Away's gesture actions reach it even when another window covers the
+    -- file browser (a home screen plugin): KOReader gives such windows' unused
+    -- events to the modules listed here, as it does for screenshots
+    if type(self.ui.active_widgets) == "table" then table.insert(self.ui.active_widgets, self) end
+    -- book ink follows its book when KOReader moves, copies or deletes it
+    local bok, BookInk = pcall(require, "ink/reader/bookink")
+    if bok then BookInk.installFollow() end
+    -- in the reader: the book's ink, painted over its pages (a book without ink
+    -- costs a file check here and nothing per page)
+    if self.ui.document and self.ui.view and self.ui.view.registerViewModule then
+        local ok, Book = pcall(require, "ink/reader/book")
+        if ok then
+            self.book = Book.new(self.ui)
+            self.book.plugin = self
+            self.ui.view:registerViewModule("inkaway", self.book:overlay())
+        end
+    end
+    -- the book gestures, once, after every plugin (the gesture manager too) is up
+    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 2 then
+        UIManager:nextTick(function() self:setupEntryGestures() end)
+    end
     -- emulator hook: INKAWAY_AUTOOPEN opens the canvas straight away, once; the
     -- variable is never set on a device
     if os.getenv("INKAWAY_AUTOOPEN") and not InkAway._autoopened then
@@ -41,12 +76,81 @@ function InkAway:init()
 end
 
 function InkAway:addToMainMenu(menu_items)
+    if self.book then
+        menu_items.inkaway = {
+            text = _("Ink Away"),
+            sorting_hint = "tools",
+            sub_item_table = {
+                { text = _("Annotate the book"), keep_menu_open = false,
+                  callback = function() self:onInkAwayAnnotate() end },
+                { text = _("Book notes"), keep_menu_open = false,
+                  callback = function() self:onInkAwayBookNotes() end },
+                { text = _("Open Ink Away"), keep_menu_open = false,
+                  callback = function() self:openCanvas() end },
+            },
+        }
+        return
+    end
     menu_items.inkaway = {
         text = _("Ink Away (drawing canvas)"),
         sorting_hint = "tools",   -- top level of the Tools tab, not buried in "More tools"
         keep_menu_open = false,
         callback = function() self:openCanvas() end,
     }
+end
+
+-- Set the book gestures in KOReader's gesture manager, where they are free
+-- (see ink/reader/entrygestures.lua), and keep what was placed, and what held
+-- the gestures that weren't, for the notice the first time Ink Away opens
+-- (see ink/view/welcome.lua). With the gesture manager off that is all the
+-- notice can say, and the setup runs again once it is on.
+function InkAway:setupEntryGestures()
+    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) >= 2 then return end
+    local g = self.ui and self.ui.gestures
+    if not (g and type(g.data) == "table") then
+        G_reader_settings:saveSetting("inkaway_entry_gestures", { off = true })
+        return
+    end
+    local EntryGestures = require("ink/reader/entrygestures")
+    local placed, busy, n = EntryGestures.apply(g.data)
+    if n > 0 then
+        g.updated = true
+        pcall(g.onFlushSettings, g)
+    end
+    local held = {}
+    for _i, b in ipairs(busy) do
+        local what = ""
+        pcall(function() what = Dispatcher:menuTextFunc(b.current) end)
+        what = what:gsub(":.*$", "")   -- the action, without its settings
+        held[#held + 1] = { feature = b.feature, section = b.section, ges = b.ges, what = what }
+    end
+    G_reader_settings:saveSetting("inkaway_entry_gestures", { placed = placed, held = held })
+    G_reader_settings:saveSetting("inkaway_gestures_setup", 2)
+end
+
+-- Draw on the book being read (does nothing outside a book).
+function InkAway:onInkAwayAnnotate()
+    if self.book then self.book:annotate() end
+    return true
+end
+
+-- The book's notes in a book; anywhere else, Ink Away as its settings open it.
+function InkAway:onInkAwayBookNotes()
+    if self.book and self.book.openNotes then
+        self.book:openNotes()
+    else self:openCanvas() end
+    return true
+end
+
+-- The screen turned (or was resized) under the book: what Ink Away had open
+-- over it was laid out for the old size, so it closes, keeping everything.
+function InkAway:onSetDimensions()
+    if self.book then self.book:closeViews() end
+end
+
+-- The book is closing: leave nothing of ours open over it.
+function InkAway:onCloseDocument()
+    if self.book then self.book:close() end
 end
 
 -- The gesture actions, when a gesture is mapped to Ink Away or its library.

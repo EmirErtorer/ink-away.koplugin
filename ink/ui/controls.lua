@@ -18,6 +18,7 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local Accent = require("ink/accent")
+local Theme = require("ink/ui/theme")
 local Paint = require("ink/paint")
 
 local Screen = Device.screen
@@ -36,6 +37,7 @@ end
 local AccentPill = WidgetContainer:extend{ bar = false }
 function AccentPill:getSize() return self.dimen end
 function AccentPill:paintTo(bb, x, y)
+    self.dimen.x, self.dimen.y = x, y     -- where it is, for dark (see Theme.restore)
     local w, h = self.dimen.w, self.dimen.h
     if self.bar then Accent.paintBar(bb, x, y, w, h)
     else Accent.paintRounded(bb, x, y, w, h, math.floor(h / 2)) end
@@ -44,7 +46,8 @@ end
 -- A bar in the accent: black by default, as before.
 local function accentPill(w, h, bar)
     if not Accent.get().custom then return pill(w, h, Blitbuffer.COLOR_BLACK) end
-    return AccentPill:new{ dimen = GeomUI:new{ w = w, h = h }, bar = bar }
+    -- a theme colour stays itself in dark
+    return Theme.keep(AccentPill:new{ dimen = GeomUI:new{ w = w, h = h }, bar = bar }, bar and 0 or math.floor(h / 2))
 end
 
 -- The round white knob of diameter d, with a thin grey rim.
@@ -111,7 +114,7 @@ end
 -- the middle, and the value on the right. Tap or drag the track to set it; the
 -- value flips in place. `parent` is the shown widget used as the repaint target.
 local SliderRow = InputContainer:extend{
-    label = "", value = 0, width = nil, on_set = nil, parent = nil,
+    label = "", value = 0, width = nil, on_set = nil, parent = nil, on_release = nil,
     min = 0, max = 100, step = 1, format = nil,   -- format(v) -> value text (default "N%")
 }
 function SliderRow:_fmt(v) return self.format and self.format(v) or string.format("%d%%", v) end
@@ -127,6 +130,11 @@ function SliderRow:init()
             SlPanRelease = { GestureRange:new{ ges = "pan_release", range = range } },
             SlHold = { GestureRange:new{ ges = "hold", range = range } },
             SlHoldPan = { GestureRange:new{ ges = "hold_pan", range = range } },
+            -- KOReader ends any drag lifted within ~0.9 s as a swipe (or a
+            -- multiswipe if it changed direction) instead of a pan release.
+            -- Unclaimed, the sheet's MovableContainer moves the whole sheet on it.
+            SlSwipe = { GestureRange:new{ ges = "swipe", range = range } },
+            SlMultiSwipe = { GestureRange:new{ ges = "multiswipe", range = range } },
         }
     end
 end
@@ -137,8 +145,11 @@ function SliderRow:_build()
         face = Font:getFace("cfont", 16), bold = true }
     -- a fixed width for the value (measured at the max), so the track stays put
     -- as the digits change
-    local wmax = TextWidget:new{ text = self:_fmt(self.max), face = Font:getFace("cfont", 16), bold = true }
-    local val_w = math.max(wmax:getSize().w, Screen:scaleBySize(40)); wmax:free()
+    local val_w = Screen:scaleBySize(40)
+    for _i, v in ipairs({ self.max, self.min, self.value }) do
+        local t = TextWidget:new{ text = self:_fmt(v), face = Font:getFace("cfont", 16), bold = true }
+        val_w = math.max(val_w, t:getSize().w + Screen:scaleBySize(2)); t:free()
+    end
     local track_w = self.width - labelw:getSize().w - val_w - 2 * gap
     self._track_w = track_w
     self._track_dx = labelw:getSize().w + gap
@@ -193,12 +204,25 @@ function SliderRow:_setFromX(x, mode)
         UIManager:setDirty(self.parent or self, mode or "ui", band)
     end
 end
-function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x, "ui"); return true end
+function SliderRow:_released()
+    if self.on_release then self.on_release(self.value) end
+end
+function SliderRow:onSlTap(_, ges) self:_setFromX(ges.pos.x, "ui"); self:_released(); return true end
 function SliderRow:onSlPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
 function SliderRow:onSlHold(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
 function SliderRow:onSlHoldPan(_, ges) self:_setFromX(ges.pos.x, "fast"); return true end
+-- A swipe's pos is where it started (on the slider); the value comes from where
+-- it lifted.
+function SliderRow:onSlSwipe(_, ges)
+    local p = ges and (ges.end_pos or ges.pos)
+    if p then self:_setFromX(p.x, "ui") end
+    UIManager:setDirty(self.parent or self, "ui", self.dimen)
+    self:_released()
+    return true
+end
+SliderRow.onSlMultiSwipe = SliderRow.onSlSwipe
 function SliderRow:onSlPanRelease(_, ges) if ges and ges.pos then self:_setFromX(ges.pos.x, "ui")
-    else UIManager:setDirty(self.parent or self, "ui", self.dimen) end; return true end
+    else UIManager:setDirty(self.parent or self, "ui", self.dimen) end; self:_released(); return true end
 function SliderRow:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     InputContainer.paintTo(self, bb, x, y)

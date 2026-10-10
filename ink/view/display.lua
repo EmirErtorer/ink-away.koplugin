@@ -9,6 +9,8 @@ local Device = require("device")
 local GeomUI = require("ui/geometry")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
+local logger = require("logger")
+local EinkDrive = require("ink/einkdrive")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
@@ -17,7 +19,6 @@ local Template = require("ink/template")
 local Screen = Device.screen
 local WHITE = Blitbuffer.COLOR_WHITE
 local FRAME = Blitbuffer.COLOR_GRAY
-local strengthToLevel = Paint.strengthToLevel
 local growRect = InkGeom.growRect
 
 -- A w x h buffer stored in the panel's pixel order: physically turned by `rot`
@@ -322,6 +323,38 @@ function InkAwayView:onAndroid()
     return self._android
 end
 
+-- On a Boox, ask the panel for the fast waveform for live ink, which KOReader
+-- leaves to the reader's refresh mode there (see ink/einkdrive.lua), unless the
+-- reader turned it off. Each view holds the drive while it is open.
+function InkAwayView:startEinkDrive()
+    if self._eink_drive or self.closing or not self:onAndroid() then return end
+    if self:getSetting("inkaway_boox_fast", true) == false then return end
+    local c = EinkDrive.detect()
+    if c and EinkDrive.acquire(Screen, c, function() return self:nowMs() end,
+            function(...) logger.warn(...) end) then
+        self._eink_drive = true
+    end
+end
+
+function InkAwayView:stopEinkDrive()
+    if not self._eink_drive then return end
+    self._eink_drive = nil
+    EinkDrive.release()
+end
+
+-- Is Ink Away asking the panel for its waveforms itself?
+function InkAwayView:einkDriven()
+    return self._eink_drive == true and EinkDrive.active()
+end
+
+-- Is live ink shown with the fast black-and-white waveform whatever the pen,
+-- with one refresh settling grey and colour once the pen rests? On a colour panel,
+-- where the colour waveform blocks on each sample, and on a Boox Ink Away drives.
+function InkAwayView:fastLive()
+    return self:colourPanel() or self:einkDriven()
+end
+
+
 -- setDirty, except that on a colour panel a "full" refresh becomes a non-flashing
 -- "ui" one over the same region. Use it where only the pixels need updating (tool
 -- switches, bar toggles, page turns, committing a text box); keep a plain "full"
@@ -391,6 +424,15 @@ function InkAwayView:dirtyAreaRect(mode, r, pad)
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end
     UIManager:setDirty(self, mode, GeomUI:new{
         x = v.area_x + x0, y = v.area_y + y0, w = x1 - x0, h = y1 - y0 })
+end
+
+-- Ask a driven panel (see einkDriven) for `kind` ("fast" or "ui") over an
+-- area-local rect that has been or is about to be posted.
+function InkAwayView:einkAsk(kind, r, pad)
+    if not self:einkDriven() then return end
+    local v = self.view
+    local x0, y0, x1, y1 = clipToArea(v, r, pad)
+    if x0 then EinkDrive.ask(kind, v.area_x + x0, v.area_y + y0, x1 - x0, y1 - y0) end
 end
 
 -- Milliseconds on a monotonic clock (KOReader's ui/time), for refresh pacing.
@@ -491,6 +533,7 @@ function InkAwayView:runReconcile()
     if q then
         self._area_only = true          -- only drawing-area pixels changed
         self:dirtyAreaRect("ui", q, 0)
+        self:einkAsk("ui", q, 0)        -- a Boox: the grey waveform, whatever its mode
     end
 end
 
@@ -604,9 +647,11 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
     local aw, ah = v.area_w, v.area_h
     local g = self.grid_size
     local style = self.grid_style or "square"
-    -- strength 1..100 maps to a grey, from a faint guide to as dark as ink
-    local lvl = strengthToLevel(self.grid_strength)
-    local col = Blitbuffer.ColorRGB32(lvl, lvl, lvl, 0xFF)
+    -- strength 1..100 maps to a shade of the paper, from a faint guide to as
+    -- dark as ink (as light as chalk on a dark paper)
+    local rc = Paint.rulingRGB(self:paperRGB(), self.grid_strength)
+    local col = Blitbuffer.ColorRGB32(rc[1], rc[2], rc[3], 0xFF)
+    local chromatic = Paint.isChromatic(col)
     -- clip box in area coords (the whole area without a clip)
     local bx0 = clip and math.max(0, math.floor(clip.x0)) or 0
     local by0 = clip and math.max(0, math.floor(clip.y0)) or 0
@@ -619,7 +664,7 @@ function InkAwayView:drawGrid(bb, ox, oy, clip)
     local function rect(px, py, w, h, c)
         local x0 = math.max(px, bx0); local y0 = math.max(py, by0)
         local x1 = math.min(px + w, bx1); local y1 = math.min(py + h, by1)
-        if x1 > x0 and y1 > y0 then bb:paintRect(ox + x0, oy + y0, x1 - x0, y1 - y0, c) end
+        if x1 > x0 and y1 > y0 then Paint.fillRect(bb, ox + x0, oy + y0, x1 - x0, y1 - y0, c, chromatic) end
     end
     -- the canvas span behind the clip box, so the loops below visit only the lines
     -- that can land inside it

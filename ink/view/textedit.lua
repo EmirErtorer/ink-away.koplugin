@@ -55,9 +55,20 @@ end
 -- peel back (or, for redo, to replay)? Returns idx, hist or nil.
 function InkAwayView:topTextHist()
     local ops = self.canvas.ops
-    local top = ops[#ops]
+    local idx = #ops
+    if self.canvas.layers then
+        -- in a layered drawing the newest op can sit under another layer's: the
+        -- one placed last, or the box being peeled (a new op at each step)
+        local want = { [self.canvas.last_placed or false] = true, [self._peel_op or false] = true }
+        idx = nil
+        for i = #ops, 1, -1 do
+            if want[ops[i]] then idx = i; break end
+        end
+        if not idx then return nil end
+    end
+    local top = ops[idx]
     local h = top and top.kind == "text" and self._text_hist[top]
-    if h then return #ops, h end
+    if h then return idx, h end
 end
 
 ------------------------------------------------------------------------------
@@ -202,7 +213,7 @@ end
 -- Default size and width for a new box on this page.
 function InkAwayView:newTextAt(pos)
     local v = self.view
-    local cx, cy = self:toCanvasClamped(pos.x, pos.y)
+    local _cx, cy = self:toCanvasClamped(pos.x, pos.y)
     -- span the full page (the grid runs edge to edge) with only a small margin
     local margin = math.max(6, math.floor(v.canvas_w * 0.02))
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
@@ -298,8 +309,9 @@ function InkAwayView:finishTextEdit(commit)
     local committed_op   -- the op that ended up on the ops list (for undo history)
     if self.editing_is_new then
         if commit and not Text.isEmpty(op) then
+            self:layerReady()
             self.canvas:pushHistory()
-            self.canvas.ops[#self.canvas.ops + 1] = op
+            self.canvas:placeOp(op)
             committed_op = op
         end
     else
@@ -480,7 +492,7 @@ end
 function InkAwayView:textOpAt(cx, cy)
     for i = #self.canvas.ops, 1, -1 do
         local op = self.canvas.ops[i]
-        if op.kind == "text" and cx >= op.x and cx <= op.x + op.w
+        if op.kind == "text" and self:editableOp(op) and cx >= op.x and cx <= op.x + op.w
            and cy >= op.y and cy <= op.y + (op.h or 0) then
             return op, i
         end
@@ -635,7 +647,8 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     local lay, ctx = self:editTextLayout()
     local r = self:textBoxScreenRect()   -- area-relative screen rect
     local ox, oy = r.x + x, r.y + y      -- add the widget's paint origin
-    local BLACKC = Blitbuffer.COLOR_BLACK
+    local BLACKC = self:textInk()        -- black, white on a dark paper
+    local on_dark = BLACKC == Blitbuffer.COLOR_WHITE
     -- selection highlight (behind the glyphs)
     if self.text_sel and not Text.selEmpty(self.text_sel) then
         local a, b = Text.orderSel(self.text_sel)
@@ -647,13 +660,14 @@ function InkAwayView:paintTextOverlay(bb, x, y)
                 local xb = (ln.para == b.p) and Text.caretX(ln, b.o, ctx) or (ln.text_x + Text.lineContentWidth(ln))
                 if xb > xa then
                     bb:paintRect(math.floor(ox + xa), math.floor(oy + ln.top),
-                        math.ceil(xb - xa), math.ceil(ln.height), Blitbuffer.COLOR_LIGHT_GRAY)
+                        math.ceil(xb - xa), math.ceil(ln.height),
+                        on_dark and Blitbuffer.Color8(0x55) or Blitbuffer.COLOR_LIGHT_GRAY)
                 end
             end
         end
     end
     -- the glyphs
-    Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC })
+    Text.render(op, lay, bb, ox, oy, ctx, { color = BLACKC, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
     -- the frame
     local fx, fy, fw, fh = math.floor(ox), math.floor(oy), math.ceil(r.w), math.ceil(r.h)
     Paint.outline(bb, fx, fy, fw, fh, BLACKC)

@@ -33,6 +33,7 @@ local _ = require("gettext")
 local Canvas = require("ink/canvas")
 local Clipboard = require("ink/clipboard")
 local InkGeom = require("ink/geom")
+local Layers = require("ink/layers")
 local Palette = require("ink/palette")
 local Shapes = require("ink/shapes")
 local Transform = require("ink/transform")
@@ -606,12 +607,17 @@ function InkAwayView:selToFront()
     for i, idx in ipairs(sel.idxs) do idxs[i] = idx end
     table.sort(idxs)
     local ops = self.canvas.ops
-    if idxs[#idxs] == #ops and idxs[1] == #ops - #idxs + 1 then return end   -- already on top
+    -- the top of the list, or of the active layer in a layered drawing
+    local top = self.canvas.layers and (Layers.insertIndex(self.canvas, self.canvas.active_layer) - 1) or #ops
+    if idxs[#idxs] == top and idxs[1] == top - #idxs + 1 then return end   -- already on top
     self.canvas:pushHistory()
     local moved = {}
     for k = #idxs, 1, -1 do table.insert(moved, 1, table.remove(ops, idxs[k])) end
     local new = {}
-    for _, op in ipairs(moved) do ops[#ops + 1] = op; new[#new + 1] = #ops end
+    for _, op in ipairs(moved) do
+        local _op, at = self.canvas:placeOp(op)
+        new[#new + 1] = at
+    end
     sel.idxs = new
     self:markDirty()
     self:repaintCanvasBoxes({ sel.bbox }, self:selNeedsFullCompose(moved))
@@ -628,8 +634,8 @@ function InkAwayView:selDuplicate()
     for _, op in ipairs(self:selectionOps()) do
         local c = self.canvas:cloneOp(op)
         translateOp(c, off, off)
-        self.canvas.ops[#self.canvas.ops + 1] = c
-        new[#new + 1] = #self.canvas.ops
+        local _op, at = self.canvas:placeOp(c)
+        new[#new + 1] = at
     end
     sel.idxs = new
     self:recomputeSelectionBBox()
@@ -768,7 +774,7 @@ function InkAwayView:openSelectionMenu(panel)
                               if idx then self:followLink(self.canvas.ops[idx]) end
                           end),
                           act(_("Remove link"), function() self:selUnlink() end) }))
-            else
+            elseif not self.reader_mode then   -- over a book there are no pages to link to
                 add(self:actionButton(_("Link to page\u{2026}"), content_w, function() self:selLink() end,
                     false, "small"))
             end
@@ -810,12 +816,12 @@ end
 ------------------------------------------------------------------------------
 
 -- A one-pixel line of dots from (x0, y0) to (x1, y1), clipped to the box.
-local function line(bb, x0, y0, x1, y1, t, cx0, cy0, cx1, cy1)
+local function line(bb, x0, y0, x1, y1, t, cx0, cy0, cx1, cy1, c)
     local n = math.max(1, math.floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0))))
     for i = 0, n do
         local px = math.floor(x0 + (x1 - x0) * i / n)
         local py = math.floor(y0 + (y1 - y0) * i / n)
-        if px >= cx0 and py >= cy0 and px + t <= cx1 and py + t <= cy1 then bb:paintRect(px, py, t, t, BLACK) end
+        if px >= cx0 and py >= cy0 and px + t <= cx1 and py + t <= cy1 then bb:paintRect(px, py, t, t, c or BLACK) end
     end
 end
 
@@ -838,6 +844,9 @@ function InkAwayView:paintSelection(bb, x, y)
     local ax1, ay1 = ax0 + v.area_w, ay0 + v.area_h
     local c = self:selDragCorners()
     if not c then return end
+    -- black marks, white on a dark paper
+    local ink = self:textInk()
+    local back = ink == BLACK and WHITE or BLACK
     for i = 1, 8, 2 do c[i], c[i + 1] = c[i] + x, c[i + 1] + y end
     -- the lifted card
     if d and d.began and d.card and d.kind ~= "turn" then
@@ -868,7 +877,7 @@ function InkAwayView:paintSelection(bb, x, y)
     if d and d.began and d.kind == "turn" then
         for i = 1, 8, 2 do
             local j = (i + 2 > 8) and 1 or i + 2
-            line(bb, c[i], c[i + 1], c[j], c[j + 1], t, ax0, ay0, ax1, ay1)
+            line(bb, c[i], c[i + 1], c[j], c[j + 1], t, ax0, ay0, ax1, ay1, ink)
         end
     else
         local fx0, fy0 = math.floor(math.min(c[1], c[5])), math.floor(math.min(c[2], c[6]))
@@ -876,7 +885,7 @@ function InkAwayView:paintSelection(bb, x, y)
         local function bar(bx, by, bw, bh)
             local cx0, cy0 = math.max(bx, ax0), math.max(by, ay0)
             local cx1, cy1 = math.min(bx + bw, ax1), math.min(by + bh, ay1)
-            if cx1 > cx0 and cy1 > cy0 then bb:paintRect(cx0, cy0, cx1 - cx0, cy1 - cy0, BLACK) end
+            if cx1 > cx0 and cy1 > cy0 then bb:paintRect(cx0, cy0, cx1 - cx0, cy1 - cy0, ink) end
         end
         bar(fx0, fy0, fx1 - fx0 + t, t); bar(fx0, fy1, fx1 - fx0 + t, t)
         bar(fx0, fy0, t, fy1 - fy0 + t); bar(fx1, fy0, t, fy1 - fy0 + t)
@@ -885,12 +894,12 @@ function InkAwayView:paintSelection(bb, x, y)
         -- how far it has turned, by the knob
         local deg = math.floor(math.deg(d.a) + 0.5)
         local label = TextWidget:new{ text = string.format("%d\u{00B0}", deg), face = Font:getFace("cfont", 15),
-            bold = true }
+            bold = true, fgcolor = ink }
         local sz = label:getSize()
         local lx = math.floor(d.x + x + S(18))
         local ly = math.floor(d.y + y - sz.h / 2)
         if lx + sz.w <= ax1 and ly >= ay0 and ly + sz.h <= ay1 then
-            bb:paintRect(lx - S(4), ly, sz.w + S(8), sz.h, WHITE)
+            bb:paintRect(lx - S(4), ly, sz.w + S(8), sz.h, back)
             label:paintTo(bb, lx, ly)
         end
         label:free()
@@ -902,14 +911,14 @@ function InkAwayView:paintSelection(bb, x, y)
     for i = 1, 8, 2 do
         local px = math.max(ax0, math.min(ax1 - hs, math.floor(c[i] - hs / 2)))
         local py = math.max(ay0, math.min(ay1 - hs, math.floor(c[i + 1] - hs / 2)))
-        bb:paintRect(px, py, hs, hs, BLACK)
+        bb:paintRect(px, py, hs, hs, ink)
     end
     if self:selCanTurn() then
         local kx, ky, ey = self:selKnob()
         kx, ky, ey = kx + x, ky + y, ey + y
-        line(bb, kx, ey, kx, ky, t, ax0, ay0, ax1, ay1)
-        disc(bb, kx, ky, S(11), BLACK, ax0, ay0, ax1, ay1)
-        disc(bb, kx, ky, S(6), WHITE, ax0, ay0, ax1, ay1)
+        line(bb, kx, ey, kx, ky, t, ax0, ay0, ax1, ay1, ink)
+        disc(bb, kx, ky, S(11), ink, ax0, ay0, ax1, ay1)
+        disc(bb, kx, ky, S(6), back, ax0, ay0, ax1, ay1)
     end
 end
 

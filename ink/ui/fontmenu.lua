@@ -8,6 +8,7 @@ local Device = require("device")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Menu = require("ui/widget/menu")
 local UIManager = require("ui/uimanager")
+local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
 
@@ -27,6 +28,9 @@ function FontMenu:init()
 end
 function FontMenu:paintTo(bb, x, y)
     InputContainer.paintTo(self, bb, x + (self._ox or 0), y + (self._oy or 0))
+    -- dark (see ink/ui/theme.lua): the whole popup, each row in its font
+    local d = self.dimen
+    if d then Theme.apply(bb, self, d.x, d.y, d.w, d.h, self[1] and self[1].radius or 0) end
 end
 function FontMenu:updateItems(select_number, no_recalculate_dimen)
     self.layout = {}

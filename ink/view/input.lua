@@ -11,6 +11,8 @@ local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
 local PenBridge = require("ink/penbridge")
+local PenTest = require("ink/pentest")
+local Pressure = require("ink/pressure")
 local Stylus = require("ink/stylus")
 
 local Screen = Device.screen
@@ -56,10 +58,23 @@ local InkAwayView = {}
 -- so a resting palm never draws. See ink/stylus.lua for the pure pieces.
 ------------------------------------------------------------------------------
 
--- Can this KOReader build deliver raw stylus events? On a finger-only reader the
--- callback simply never fires, so the setting is harmless there.
+-- Can this KOReader build deliver raw stylus events, and tell the pen from a
+-- finger? On a finger-only reader the callback simply never fires, so the setting
+-- is harmless there.
 function InkAwayView:penCapable()
-    return Device.input and type(Device.input.registerStylusCallback) == "function"
+    if not (Device.input and type(Device.input.registerStylusCallback) == "function") then return false end
+    return not self:onAndroid() or self:androidPenTypes()
+end
+
+-- Does this KOReader say which touches are a pen on Android? Up to 2026.07.1 it
+-- reports every touch there as a finger (pen types came in August 2026), so palm
+-- rejection would take the pen for a hand and move the page with it.
+function InkAwayView:androidPenTypes()
+    if InkAwayView._android_pen_types == nil then
+        local ok, r = pcall(function() return require("android").lib.AMOTION_EVENT_TOOL_TYPE_STYLUS ~= nil end)
+        InkAwayView._android_pen_types = (ok and r) and true or false
+    end
+    return InkAwayView._android_pen_types
 end
 
 -- Does the device have a stylus? This only picks the default of the palm
@@ -85,6 +100,7 @@ function InkAwayView:applyPalmReject()
             local ok, h = pcall(PenBridge.install, Device.input)
             self._pen_bridge = ok and h or nil
         end
+        self:installPressure()
     else
         self:removePenBridge()
         if self._stylus_cb then
@@ -95,83 +111,62 @@ function InkAwayView:applyPalmReject()
     end
 end
 
+-- Keep the pen's pressure where KOReader drops it (a Kobo stylus); on a Wacom
+-- pen the bridge above already keeps it. See ink/pressure.lua.
+function InkAwayView:installPressure()
+    if self._pressure_hook or self.closing or self.pen_pressure == false then return end
+    local inp = Device.input
+    if inp and not inp.wacom_protocol then
+        local ok, h = pcall(Pressure.install, inp)
+        self._pressure_hook = ok and h or nil
+    end
+end
+
+function InkAwayView:removePressure()
+    if self._pressure_hook then pcall(Pressure.uninstall, self._pressure_hook); self._pressure_hook = nil end
+    if self._pressure_sensor then self._pressure_sensor:close(); self._pressure_sensor = nil end
+end
+
+-- The pressure range's top, from the kernel when it says, else the largest value
+-- seen so far (at least 255).
+function InkAwayView:pressureMax()
+    local p = self._pressure_probe
+    if p == nil then
+        local ok, r = pcall(Pressure.probe)
+        p = ok and r or {}
+        self._pressure_probe = p
+    end
+    if p.hi then return p.hi - (p.lo or 0) end
+    return math.max(255, self._pressure_seen or 0)
+end
+
+-- A pen slot's raw pressure above the range's bottom, or nil when the pen gives
+-- none. A Wacom firmware that sends no pressure events is asked directly.
+function InkAwayView:slotPressure(slot)
+    if self.pen_pressure == false then return nil end
+    local raw = slot.pressure
+    if type(raw) ~= "number" then
+        local inp = self._stylus_input or Device.input
+        if not (inp and inp.wacom_protocol) then return nil end
+        if self._pressure_sensor == nil then
+            local ok, s = pcall(Pressure.openSensor)
+            self._pressure_sensor = (ok and s) or false
+        end
+        raw = self._pressure_sensor and self._pressure_sensor:read()
+        if type(raw) ~= "number" then return nil end
+    end
+    local lo = (self._pressure_probe and self._pressure_probe.lo) or 0
+    raw = raw - lo
+    if raw > (self._pressure_seen or 0) then self._pressure_seen = raw end
+    return raw
+end
+
 function InkAwayView:removePenBridge()
+    self:removePressure()
     if self._pen_bridge then
         pcall(PenBridge.uninstall, self._pen_bridge)
         self._pen_bridge = nil
     end
-end
-
-------------------------------------------------------------------------------
--- Pen input test (debug tool, hidden unless show_pen_test is set)
---
--- Palm rejection needs KOReader to hand the pen over as a stylus, which it does
--- only when the kernel tags the slot with a pen tool (BTN_TOOL_PEN or
--- ABS_MT_TOOL_TYPE). Where the pen arrives as an ordinary finger it cannot be
--- told from a palm. This records a few seconds of what the device sends and shows
--- a summary a tester can screenshot.
-------------------------------------------------------------------------------
-
-function InkAwayView:penCaptureRecord(slot)
-    local cap = self._pen_capture
-    if not cap then return end
-    cap.styl = cap.styl + 1
-    local key = "tool=" .. tostring(slot.tool) .. " slot=" .. tostring(slot.slot)
-    cap.combos[key] = (cap.combos[key] or 0) + 1
-    if slot.timev ~= nil then cap.has_timev = true end
-end
-
-function InkAwayView:startPenInputTest()
-    if self._pen_capture then return end   -- already running
-    -- register the stylus hook even with palm rejection off, so the test sees
-    -- what the device sends either way
-    self._pen_test_temp_cb = false
-    if self:penCapable() and not self._stylus_cb then
-        self._stylus_cb = function(inp, slot) return self:onStylusSlot(inp, slot) end
-        pcall(function() Device.input:registerStylusCallback(self._stylus_cb) end)
-        self._pen_test_temp_cb = true
-    end
-    self._pen_capture = { combos = {}, styl = 0, fingers = 0, has_timev = false }
-    self._pen_test_stop = self._pen_test_stop or function() self:finishPenInputTest() end
-    UIManager:show(InfoMessage:new{ text = _(
-        "Pen input test (about 6 seconds):\n\nDraw a few lines with your PEN, and rest your PALM on the screen while you do. A result will appear when it finishes."),
-        timeout = 5 })
-    UIManager:scheduleIn(6, self._pen_test_stop)
-end
-
-function InkAwayView:finishPenInputTest()
-    if self._pen_test_stop then UIManager:unschedule(self._pen_test_stop) end
-    local cap = self._pen_capture
-    self._pen_capture = nil
-    if self._pen_test_temp_cb then
-        pcall(function() Device.input:unregisterStylusCallback() end)
-        self._stylus_cb = nil
-        self._pen_test_temp_cb = false
-        self:applyPalmReject()   -- put the real hook back if palm rejection is on
-    end
-    if not cap then return end
-    local f = self:stylusFacts()
-    local lines = {
-        string.format("Stylus events: %d    Finger touches: %d", cap.styl, cap.fingers),
-        string.format("wacom=%s  pen_slot=%s  timev=%s  bridge=%s",
-            tostring(f.wacom), tostring(f.pen_slot), tostring(cap.has_timev),
-            self._pen_bridge and "on" or "off"),
-    }
-    if cap.styl > 0 then
-        lines[#lines + 1] = "Seen (tool / slot):"
-        for k, n in pairs(cap.combos) do lines[#lines + 1] = "  " .. k .. "   x" .. n end
-    end
-    lines[#lines + 1] = ""
-    if cap.styl == 0 and cap.fingers > 0 then
-        lines[#lines + 1] = "Your pen is arriving as an ordinary finger, so a palm can't be told apart from it. This needs pen support at the KOReader level for this device -- the plugin can't separate them on its own."
-    elseif cap.styl > 0 then
-        lines[#lines + 1] = "The pen IS seen as a stylus. Please screenshot this and send it, so the tool/slot values can be checked."
-    else
-        lines[#lines + 1] = "No input was captured. Please run it again and make sure you draw during the test."
-    end
-    local msg = table.concat(lines, "\n")
-    logger.info("Ink Away pen input test:\n" .. msg)
-    UIManager:show(InfoMessage:new{ text = msg })
 end
 
 ------------------------------------------------------------------------------
@@ -183,7 +178,7 @@ end
 -- so turning it off mid-stroke never leaves the tool stuck on erase or lasso.
 function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_clear)
-    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self:restoreHeld()
     self._pen_state = Stylus.new()
     self._pen_started = false
     self._pen_feeding = false
@@ -271,6 +266,7 @@ end
 function InkAwayView:fingerNavEnd(pos, dir)
     local n = self._finger_nav
     self._finger_nav = nil
+    if n.mode == "navigate" and pos then self:noPenDrag(math.abs(pos.x - n.x) + math.abs(pos.y - n.y)) end
     if self._view_stale then self:liveFlush() end   -- show where the pan ended
     if n.mode ~= "navigate" or not self:pageSwipes() then return true end
     if dir == "west" or dir == "east" then
@@ -282,6 +278,17 @@ function InkAwayView:fingerNavEnd(pos, dir)
         end
     end
     return true
+end
+
+-- A finger dragged the page `len` px while palm rejection waited for a pen that
+-- never came. A few such drags in a session and no pen at all mean the pen most
+-- likely arrives as a finger here: say so once per KOReader session.
+function InkAwayView:noPenDrag(len)
+    if self._pen_seen or InkAwayView._no_pen_hinted or len < Screen:scaleBySize(40) then return end
+    self._no_pen_drags = (self._no_pen_drags or 0) + 1
+    if self._no_pen_drags < PenTest.NO_PEN_DRAGS then return end
+    InkAwayView._no_pen_hinted = true
+    UIManager:show(InfoMessage:new{ text = _(PenTest.NO_PEN_HINT) })
 end
 
 -- A hold at `pos` by a navigating finger: open the picture's or shape's menu
@@ -393,7 +400,6 @@ end
 -- slot; that includes a resting palm (MT_TOOL_PALM == ERASER == 2), so slots are
 -- classified first and only a trusted pen drives the drawing.
 function InkAwayView:onStylusSlot(inp, slot)
-    if self._pen_capture then self:penCaptureRecord(slot) end
     if not self.palm_reject or self.closing then return false end
     local input = inp or Device.input
     self._stylus_input = input
@@ -403,6 +409,7 @@ function InkAwayView:onStylusSlot(inp, slot)
     -- and a held barrel button (which report the ambiguous ERASER value) are trusted
     -- on that same slot even when the runtime never set Input.pen_slot. The pen slot
     -- is fixed per device, so once learned it stays until palm rejection is reset.
+    if role == Stylus.ROLE_PEN then self._pen_seen = true end
     if role == Stylus.ROLE_PEN and slot.tool == Stylus.TOOL_PEN and slot.slot ~= nil
             and (self._pen_owner == nil or slot.slot == self._pen_owner) then
         self._learned_pen_slot = slot.slot
@@ -488,6 +495,8 @@ function InkAwayView:penDropFingerOps()
         self.pending_lift = nil
         self.capturing = false
         if self._wipe then self:wipeCancel() end
+        if self._wl then self:washEnd() end
+        if self._sm then self:smudgeEnd() end
         self.canvas:cancelStroke()
         self.last_cx, self.last_cy = nil, nil
         self:recompose()
@@ -499,26 +508,20 @@ end
 
 function InkAwayView:penDown(slot, facts)
     -- restore a tool swapped in for the eraser end or side button if the last lift was lost
-    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self:restoreHeld()
     self._reject_finger = true
     self._pen_started = false      -- the stroke opens on the first point with coordinates
     self._pen_kin = {}             -- fresh kinematic-filter state for this stroke
     self._pen_last_ms = nil
     UIManager:unschedule(self._pen_clear)
     self:penDropFingerOps()
-    -- The rear eraser end erases, the primary side (barrel) button selects with the
-    -- lasso, and anything else draws with the current tool. The tool is swapped in
-    -- for this stroke only and restored on lift, so both act as held modifiers. A
-    -- lasso selection lives in self.selection, so it survives the restore and can
-    -- be moved by holding the side button again.
+    -- The side buttons and the rear eraser end do what the reader chose (by
+    -- default: highlight while a button is held, erase with the eraser end), for
+    -- this stroke only: the tool or pen swapped in is put back at the lift, so
+    -- they act as held modifiers. A lasso selection lives in self.selection, so it
+    -- survives the restore and can be moved by holding the button again.
     local act = Stylus.penAction(slot, facts)
-    if act == Stylus.ACT_SELECT and self.tool ~= "lasso" then
-        self._pen_prev_tool = self.tool
-        self.tool = "lasso"
-    elseif act == Stylus.ACT_ERASE and self.tool ~= "erase" then
-        self._pen_prev_tool = self.tool
-        self.tool = "erase"
-    end
+    if act ~= Stylus.ACT_DRAW then self:holdAction(act) end
     self:penMove(slot)             -- if this frame already carries coordinates, open here
 end
 
@@ -542,6 +545,7 @@ function InkAwayView:penMove(slot)
         end
     end
     self._pen_last_x, self._pen_last_y = x, y
+    self._pen_raw_pressure = self:slotPressure(slot)
     -- Some pen protocols announce the contact one frame before the first
     -- coordinates, so the stroke is opened by whichever frame first has a point.
     if not self._pen_started then
@@ -565,6 +569,7 @@ function InkAwayView:penMove(slot)
 end
 
 function InkAwayView:penUp()
+    self._pen_raw_pressure = nil
     if self._pen_hold_at then
         self._pen_hold_at = nil
         UIManager:unschedule(self._pen_hold_cb)
@@ -574,7 +579,7 @@ function InkAwayView:penUp()
         self:flushPending()      -- the pen lift is clean; commit now, no coalesce wait
         self._pen_started = false
     end
-    if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    self:restoreHeld()
     -- keep ignoring fingers briefly: a palm often lifts a moment after the pen
     UIManager:unschedule(self._pen_clear)
     UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
@@ -619,7 +624,7 @@ function InkAwayView:penUiStart(sn, x, y)
     if self._pen_state.down then
         self._pen_state = Stylus.new()
         self._pen_owner, self._pen_kin = nil, nil
-        if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+        self:restoreHeld()
     end
     self._pen_ui_contact = true
     self._pen_ui = { slot = sn, x0 = x, y0 = y, x = x, y = y }

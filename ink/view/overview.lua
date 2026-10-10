@@ -346,8 +346,9 @@ function InkAwayView:openPageThumb(i, maxw, maxh)
     local page = nb and nb.pages[i]
     if not page then return nil end
     local t = nb:pageTemplate(i)
+    local paper = type(t.paper) == "table" and table.concat(t.paper, ",") or "white"
     local sig = table.concat({ maxw, maxh, tostring(t.style), tostring(t.size), tostring(t.strength),
-        tostring(t.pdf_path), tostring(page.src) }, "|")
+        tostring(t.pdf_path), tostring(page.src), paper }, "|")
     local kept = self._page_thumbs
     if not kept then kept = { order = {} }; self._page_thumbs = kept end
     local e = kept[page]
