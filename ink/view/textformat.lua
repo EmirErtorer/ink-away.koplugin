@@ -466,25 +466,35 @@ function InkAwayView:textSetSpacing(spacing)
     self:refreshRectUnion(old, self:textOverlayRect(), 2, "ui")
 end
 
--- Turn the box across (0), reading down (90) or reading up (270). It turns about
--- its top-left corner as it shows on the page, which stays put, so a box started
--- in a margin stays in it; a line too long for the page there is shortened.
+-- Turn the box across (0), reading down (90) or reading up (270). Its top-left
+-- corner as it shows on the page stays put; a new box stood on end starts where
+-- it was tapped instead (a box started in a book's margin is moved in from the
+-- edge so it is not a sliver, and would otherwise stand on the text). A line too
+-- long for the page there is shortened, and the box is kept on the page.
 function InkAwayView:textSetTurn(deg)
     local op = self.editing_text
     if ((op.angle or 0) % 360) == deg then return end
     local old = self:textOverlayRect()
     local x0, y0 = Text.bounds(op)
     if not x0 then x0, y0 = op.x, op.y end
+    local tap = self._text_tap_at
+    if deg ~= 0 and tap and tap.op == op then x0, y0 = tap.x, tap.y end
     op.angle = deg ~= 0 and deg or nil
     local v = self.view
-    local margin = math.max(6, math.floor(math.min(v.canvas_w, v.canvas_h) * 0.02))
-    local room = (deg == 0) and (v.canvas_w - margin - x0) or (v.canvas_h - margin - y0)
+    local W, H = v.canvas_w, v.canvas_h
+    local margin = math.max(6, math.floor(math.min(W, H) * 0.02))
+    local room = (deg == 0) and (W - margin - x0) or (H - margin - y0)
     local least = math.max(40, math.floor((op.size or 32) * 4))
     if op.w > room then op.w = math.max(least, room) end
     self:invalidateLayout(); self:editTextLayout()
-    -- the corner it shows at stays where the box began
+    -- the corner it shows at goes there, then the box is kept on the page
     local nx0, ny0 = Text.bounds(op)
-    op.x, op.y = op.x + (x0 - nx0), op.y + (y0 - ny0)
+    local dx, dy = x0 - nx0, y0 - ny0
+    local bx0, by0, bx1, by1 = nx0 + dx, ny0 + dy, select(3, Text.bounds(op))
+    bx1, by1 = bx1 + dx, by1 + dy
+    if bx1 > W then dx = dx - (bx1 - W) elseif bx0 < 0 then dx = dx - bx0 end
+    if by1 > H then dy = dy - (by1 - H) elseif by0 < 0 then dy = dy - by0 end
+    op.x, op.y = op.x + dx, op.y + dy
     if deg == 0 then self:snapTextBoxToGrid(op) end
     self:ensureCaretVisible()
     self:refreshRectUnion(old, self:textOverlayRect(), 2, "flashui")

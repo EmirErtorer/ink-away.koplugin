@@ -27,9 +27,24 @@ local Screen = Device.screen
 
 local VBar = {}
 
+-- The thinnest and thickest a bar sized to a book's margin may be (see
+-- VBar.fitThickness): thin enough for a modest margin, thick enough that its
+-- icons stay big enough to tap.
+function VBar.fitRange()
+    return Screen:scaleBySize(26), Screen:scaleBySize(64)
+end
+
+-- The bar's thickness for a margin `m` px wide, kept within fitRange.
+function VBar.fitThickness(m)
+    local lo, hi = VBar.fitRange()
+    return math.max(lo, math.min(hi, math.floor(m)))
+end
+
 -- The bar of buttons, `len` long, along `side` (left by default): specs are
--- { id, icon, tool, cb }.
-function VBar:buildVBar(specs, len, side)
+-- { id, icon, tool, cb }. `fit`, when given, is the thickness to take (the
+-- book's margin there, see VBar.fitThickness) instead of the usual one; the
+-- icons are sized to it.
+function VBar:buildVBar(specs, len, side, fit)
     self:ensureUserIcons()
     side = side or "left"
     local across = side == "top" or side == "bottom"
@@ -37,11 +52,11 @@ function VBar:buildVBar(specs, len, side)
     local cell = math.floor(len / n)
     local thick, isz
     if across then
-        thick = math.max(Screen:scaleBySize(32), math.min(Screen:scaleBySize(46), math.floor(cell * 0.9)))
-        isz = math.max(18, math.min(math.floor(thick * 0.62), math.floor(cell * 0.6)))
+        thick = fit or math.max(Screen:scaleBySize(32), math.min(Screen:scaleBySize(46), math.floor(cell * 0.9)))
+        isz = math.max(14, math.min(math.floor(thick * 0.62), math.floor(cell * 0.6)))
     else
-        thick = math.max(Screen:scaleBySize(36), math.min(Screen:scaleBySize(50), math.floor(cell * 1.15)))
-        isz = math.max(18, math.min(math.floor(thick * 0.6), math.floor(cell * 0.62)))
+        thick = fit or math.max(Screen:scaleBySize(36), math.min(Screen:scaleBySize(50), math.floor(cell * 1.15)))
+        isz = math.max(14, math.min(math.floor(thick * 0.6), math.floor(cell * 0.62)))
     end
     self._vb_side, self._vb_cell, self._vb_thick, self._vbar_h = side, cell, thick, len
     self._btn_h, self._bar_w, self._icon_sz = cell, thick, isz

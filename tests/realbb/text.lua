@@ -498,15 +498,25 @@ do
     ok(op.spacing == nil, "and back to normal")
     ok(press(view, "\u{2713} Checklist") and op.paras[1].bullet == "check", "a checklist")
     ok(findButton(view._text_fmt, "Font: Default") ~= nil, "the font is one tap away")
-    -- turning across, down and up keeps the box's corner where it was
-    local bx0, by0 = Text.bounds(op)
+    -- a new box stood on end starts where it was tapped (in a book's margin it
+    -- would otherwise stand on the text)
+    local tx, ty = view:toCanvasClamped(200, 300)
     ok(press(view, "Reads down") and op.angle == 90, "reading down")
     local nx0, ny0 = Text.bounds(op)
-    ok(math.abs(nx0 - bx0) < 1 and math.abs(ny0 - by0) < 1, "its top-left stays where the box was")
+    ok(math.abs(nx0 - tx) < 1 and math.abs(ny0 - ty) < 1, "its top-left is where the box was tapped")
     local _a, _b, _c, ny1 = Text.bounds(op)
     ok(ny1 <= view.view.canvas_h, "a line too long for the page there is shortened")
     ok(press(view, "Reads up") and op.angle == 270, "reading up")
     ok(press(view, "Across") and op.angle == nil, "and across again")
+    local ax0, ay0, ax1 = Text.bounds(op)
+    ok(ax0 >= 0 and ax1 <= view.view.canvas_w and ay0 >= 0, "kept on the page")
+    -- an old box keeps its top-left where it shows
+    view._text_tap_at = nil
+    local bx0, by0 = Text.bounds(op)
+    press(view, "Reads up")
+    nx0, ny0 = Text.bounds(op)
+    ok(op.angle == 270 and math.abs(nx0 - bx0) < 1 and math.abs(ny0 - by0) < 1, "a box opened again turns where it shows")
+    press(view, "Across")
     -- the Edit tab
     ok(press(view, "Edit"), "an Edit tab")
     ok(press(view, "Select all") and Text.plainRange(op, view.text_sel) == "one two three", "Select all")

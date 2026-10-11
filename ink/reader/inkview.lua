@@ -311,6 +311,7 @@ function ReaderInkView:newTextAt(pos)
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
     local op = Text.new{ x = x, y = cy, w = right - x, size = size,
         font = self.text_font, align = "left" }
+    self._text_tap_at = { op = op, x = math.floor(cx), y = cy }   -- where a turn on end starts it
     self:startTextEdit(op, { p = 1, o = 0 }, true, nil)
 end
 
@@ -381,7 +382,47 @@ function ReaderInkView:buildToolbar()
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
     }
     local across = self._bar_side == "top" or self._bar_side == "bottom"
-    self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side)
+    self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side, self:toolbarFit())
+end
+
+-- Is the toolbar sized to the book's margin (Book ink settings, off by default)?
+function ReaderInkView:fitsMargin()
+    return self:getSetting("inkaway_book_toolbar_fit", false) == true
+end
+
+-- The book's margin on `side`, in screen px, as the reader lays the text out:
+-- its own margin setting, with the header above the text at the top and the
+-- status bar under it at the bottom. nil for a book without margins of its
+-- own (a PDF or a comic, whose margins are part of the page).
+function ReaderInkView:bookMargin(side)
+    local ui = self.book and self.book.ui
+    local doc = ui and ui.document
+    if not (doc and ui.rolling and doc.getPageMargins) then return nil end
+    local ok, m = pcall(doc.getPageMargins, doc)
+    if not (ok and type(m) == "table" and tonumber(m[side])) then return nil end
+    local px = tonumber(m[side])
+    if side == "top" and doc.getHeaderHeight then
+        local okh, hh = pcall(doc.getHeaderHeight, doc)
+        if okh and tonumber(hh) then px = px + tonumber(hh) end
+    end
+    return px
+end
+
+-- The toolbar's thickness when it fits the margin on its side, or nil for the
+-- usual size (the setting off, or a book without margins).
+function ReaderInkView:toolbarFit()
+    if not self:fitsMargin() then return nil end
+    local m = self:bookMargin(self._bar_side or "left")
+    return m and VBar.fitThickness(m) or nil
+end
+
+-- Turn the margin fit on or off (from the book's settings).
+function ReaderInkView:setToolbarFit(on)
+    self:flushPending()
+    self:setSetting("inkaway_book_toolbar_fit", on and true or false)
+    self:buildToolbar()
+    self:placeToolbar()
+    self:areaChanged()
 end
 
 -- The highlighter has its own button here.
@@ -490,6 +531,12 @@ function ReaderInkView:openReaderSettings()
         add(self:segmentedRow({ { "left", _("Left") }, { "right", _("Right") }, { "top", _("Top") },
                 { "bottom", _("Bottom") } }, self._bar_side, content_w,
             function(side) closeSelf(); self:setToolbarSide(side); self:openReaderSettings() end))
+        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
+        add(ToggleRow:new{ label = _("Fit the toolbar in the margin"), is_on = self:fitsMargin(),
+            width = content_w, parent = menu,
+            callback = function(on) self:setToolbarFit(on) end })
+        add(VerticalSpan:new{ width = Screen:scaleBySize(4) })
+        add(self:sheetHint(_("The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."), content_w))
         -- (Pen and input is in the Pen sheet, where the pen is)
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
         add(self:actionButton(_("Gestures and pen buttons"), content_w, function()

@@ -308,7 +308,7 @@ end
 -- Default size and width for a new box on this page.
 function InkAwayView:newTextAt(pos)
     local v = self.view
-    local _cx, cy = self:toCanvasClamped(pos.x, pos.y)
+    local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     -- span the full page (the grid runs edge to edge) with only a small margin
     local margin = math.max(6, math.floor(v.canvas_w * 0.02))
     local size = self.text_size or math.max(16, math.floor(v.canvas_w / 32))
@@ -316,6 +316,7 @@ function InkAwayView:newTextAt(pos)
         font = self.text_font, align = "left", grid_snap = self.text_grid_snap }
     -- snap the box origin to the ruling when grid alignment is on
     if self.text_grid_snap then self:snapTextBoxToGrid(op) end
+    self._text_tap_at = { op = op, x = cx, y = cy }   -- where a turn on end starts it
     self:startTextEdit(op, { p = 1, o = 0 }, true, nil)
 end
 
@@ -430,6 +431,7 @@ function InkAwayView:finishTextEdit(commit)
         self._text_hist[committed_op] = { undo = self._text_undo, redo = self._text_redo or {} }
     end
     self._peel_op = nil
+    self._text_tap_at = nil
     self.editing_text, self._text_orig = nil, nil
     self.editing_idx, self.editing_is_new = nil, nil
     self.text_cur, self.text_sel = nil, nil

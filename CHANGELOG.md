@@ -28,8 +28,14 @@ versions marked *Prerelease* were test builds.
   font) and Edit (copy, cut, paste, select all and today's date).
 - Alignment: left, centre or right, for each box.
 - Line spacing: tight, normal or loose, for each box.
-- Reads down and Reads up turn a box on end where it is, for a book's
-  margins; a line too long for the page there is shortened.
+- Reads down and Reads up turn a box on end, for a book's margins: a new box
+  stands where it was tapped, an older one where it shows, and a line too
+  long for the page there is shortened.
+- The book annotation toolbar can fit in the book's margin: "Fit the toolbar
+  in the margin" in Book ink settings (off by default) makes it as wide as
+  the margin on its side, with its icons sized to it, so it stays clear of the
+  text. It stays thick enough to tap, so a narrow margin needs widening in the
+  reader's settings; PDFs and comics keep the usual toolbar.
 - Checklists: a list with a box before each line. Tap a box to tick it, with
   the text open or closed (one undo step); a ticked item greys out.
 - A second tap on a word in the text being written selects it, and the

@@ -326,5 +326,50 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     ok(book.saved > saved and book.repainted, tag .. ": closing saves the page and repaints the book")
 end
 
+-- The toolbar fitted in the book's margin (Book ink settings, off by default):
+-- as thick as the margin on its side (the header counts at the top, the status
+-- bar at the bottom), within a tappable range; a PDF keeps the usual toolbar.
+do
+    local W, H = 1072, 1448
+    Screen:setSize(W, H)
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    package.loaded["ink/reader/inkview"] = nil
+    local ReaderInkView = require("ink/reader/inkview")
+    local VBar = require("ink/reader/vbar")
+    local book = standInBook()
+    book.ui = { rolling = {}, document = {
+        getPageMargins = function() return { left = 60, right = 10, top = 15, bottom = 200 } end,
+        getHeaderHeight = function() return 30 end } }
+    G_reader_settings.data.inkaway_book_toolbar_side = "left"
+    local view = ReaderInkView:new{ book = book }
+    local v = view.view
+    local usual = view._vb_thick
+    ok(not view:fitsMargin() and view:toolbarFit() == nil, "fit: off by default, the usual toolbar")
+    view:openReaderSettings()
+    local fit = findButton(view._settings_dialog, "Fit the toolbar in the margin")
+    ok(fit ~= nil, "fit: Book ink offers it")
+    view:closeSheet("_settings_dialog")
+    view:setToolbarFit(true)
+    ok(view:fitsMargin() and view._vb_thick == 60 and v.area_x == 60, "fit: as wide as a 60 px left margin, the page beside it")
+    local lo, hi = VBar.fitRange()
+    view:setToolbarSide("right")
+    ok(view._vb_thick == lo and v.area_w == W - lo, "fit: a margin too thin for icons gets the thinnest tappable toolbar")
+    view:setToolbarSide("top")
+    ok(view._vb_thick == 45 and v.area_y == 45, "fit: at the top the header counts too")
+    view:setToolbarSide("bottom")
+    ok(view._vb_thick == hi, "fit: a wide margin gets no more than the thickest")
+    local isz = view._icon_sz
+    ok(isz >= 14 and isz <= math.floor(hi * 0.62), "fit: its icons sized to it")
+    view:paintTo(Screen.bb, 0, 0)
+    -- a PDF has no margins of its own: the usual toolbar
+    book.ui = { paging = {}, document = {} }
+    view:setToolbarSide("left")
+    ok(view._vb_thick == usual and view:toolbarFit() == nil, "fit: a PDF keeps the usual toolbar")
+    view:setToolbarFit(false)
+    G_reader_settings.data.inkaway_book_toolbar_side = nil
+    view:closeCanvas()
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
