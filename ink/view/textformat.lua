@@ -676,7 +676,8 @@ function InkAwayView:openTextFormatMenu()
                 for _, c in ipairs(self:textSavedColours("ink")) do inkTile(c, true) end
                 list[#list + 1] = self:wheelTile(sw, swh, function()
                     self:openTextColourWheel("ink", cur_c and Text.unpackRGB(cur_c) or nil, function(rgb)
-                        self:textSetStyle("c", Text.packRGB(rgb)); again()
+                        local packed = Text.packRGB(rgb)
+                        self:textSetStyle("c", packed ~= 0 and packed or nil); again()   -- (black is the page's ink)
                     end)
                 end)
             end

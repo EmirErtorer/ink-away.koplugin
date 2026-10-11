@@ -251,6 +251,20 @@ do
     ok(probe:getPixel(35, 25):getColor8().a == 0 and probe:getPixel(29, 25):getColor8().a == 255
         and probe:getPixel(35, 31):getColor8().a == 255, "Turn.paint: a 20 x 10 block turned is 10 x 20")
     probe:free()
+    -- on a turned bitmap (the screen in landscape) it lands in the same place,
+    -- in the bitmap's own coordinates
+    for _, typ in ipairs({ BB.TYPE_BB8, BB.TYPE_BBRGB32 }) do
+        for rot = 1, 3 do
+            local scr = BB.new(60, 80, typ)
+            scr:setRotation(rot)
+            scr:fill(BB.COLOR_WHITE)
+            Turn.paint(scr, 40, 10, 0, 1, 20, 10, 0, function(b, x, y) b:paintRect(x, y, 20, 10, BB.COLOR_BLACK) end)
+            ok(scr:getPixel(35, 25):getColorRGB32().r == 0 and scr:getPixel(29, 25):getColorRGB32().r == 255
+                and scr:getPixel(35, 31):getColorRGB32().r == 255,
+                ("Turn.paint: on a bitmap turned %d, same place (%s)"):format(rot * 90, typ == BB.TYPE_BB8 and "grey" or "colour"))
+            scr:free()
+        end
+    end
 end
 
 ------------------------------------------------------------------------------
