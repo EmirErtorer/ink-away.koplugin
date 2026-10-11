@@ -267,7 +267,7 @@ function InkAwayView:init()
     self:initFabs()
     -- The exporter has no fonts or image decoder; it renders text and pictures
     -- through these.
-    Export.text_raster = function(op) return self:exportTextRaster(op) end
+    Export.text_raster = function(op, paper, ink) return self:exportTextRaster(op, paper, ink) end
     Export.image_raster = function(op) return self:exportImageRaster(op) end
 
     self:initLayout(W, H)

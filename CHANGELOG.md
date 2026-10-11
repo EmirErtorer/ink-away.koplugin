@@ -15,8 +15,30 @@ versions marked *Prerelease* were test builds.
   button too. A turned box is edited turned, with the caret, selection and
   grips following its lines, and pages, thumbnails and exports show it the
   same. The eraser and taps find it where it is drawn.
+- Text colours. On a colour screen a word or a selection can be coloured
+  (black, two greys, red, orange, green, blue, purple and up to three colours
+  of your own from the colour wheel); a grey screen offers the greys.
+- Highlight colours. Text highlights come in yellow (the default, which
+  highlights made before take too), orange, blue, green and pink, plus up to
+  three of your own; hold one you added to remove it. A grey screen keeps
+  its grey, and on a dark paper a highlight is toned down so white letters
+  read on it. Exports show the colours as the screen does.
+- The Format sheet has tabs: Text (styles, size, colour, highlight and Plain
+  to clear them), Paragraph (alignment, lists, line spacing, direction and the
+  font) and Edit (copy, cut, paste, select all and today's date).
+- Alignment: left, centre or right, for each box.
+- Line spacing: tight, normal or loose, for each box.
+- Reads down and Reads up turn a box on end where it is, for a book's
+  margins; a line too long for the page there is shortened.
+- Checklists: a list with a box before each line. Tap a box to tick it, with
+  the text open or closed (one undo step); a ticked item greys out.
+- A second tap on a word in the text being written selects it, and the
+  keyboard stays to type over it.
 
 ### Changed
+- The Format sheet stays open while you pick options, so several can follow
+  one another; Done, Format or a tap outside brings the keyboard back. The
+  font can be changed there too, so it is at hand over a book while writing.
 - A text box's grips are sized for a finger: about 9 mm to hit on any reader,
   just outside its corners so a tap near a letter still places the caret, and
   always whole on the screen. Dragging the band around the frame moves the box

@@ -217,7 +217,7 @@ for _i, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
             local tp = at3(110, 1205)
             ok(near(tp, dark and { r = 255, g = 255, b = 255 } or { r = 0, g = 0, b = 0 }),
                 tag .. ": exported text is " .. (dark and "white" or "black"))
-            Export.text_raster = function(op) return view:exportTextRaster(op) end
+            Export.text_raster = function(op, paper, ink) return view:exportTextRaster(op, paper, ink) end
             view.canvas:setOps({})   -- (no fonts here to draw the text on the page)
             -- a thumbnail of a drawing is on its paper
             if not nb then

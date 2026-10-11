@@ -26,6 +26,17 @@ local COLORS = {
     { name = _("Purple"), rgb = { 0x80, 0x00, 0xB0 } },
 }
 
+-- Highlights for text, offered on colour screens: the first is the default (and
+-- what a highlight made before there were colours shows in). Light enough that
+-- black letters read on each.
+local HIGHLIGHTS = {
+    { name = _("Yellow"), rgb = { 0xFF, 0xEB, 0x3B } },
+    { name = _("Orange"), rgb = { 0xFF, 0xA7, 0x26 } },
+    { name = _("Blue"),   rgb = { 0x64, 0xB5, 0xF6 } },
+    { name = _("Green"),  rgb = { 0x81, 0xD4, 0x62 } },
+    { name = _("Pink"),   rgb = { 0xF4, 0x8F, 0xB1 } },
+}
+
 -- Paper colours: the page under the ink, chosen in Settings beside the paper
 -- (or the grid). A grey screen offers white and black (GREY_PAPERS); a colour
 -- one all of them. Light to dark; the dark ones take white ink and text.
@@ -52,6 +63,7 @@ end
 
 Palette.SHADES = SHADES
 Palette.COLORS = COLORS
+Palette.HIGHLIGHTS = HIGHLIGHTS
 Palette.PAPERS = PAPERS
 Palette.sameColor = sameColor
 

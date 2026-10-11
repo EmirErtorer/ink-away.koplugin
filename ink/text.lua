@@ -12,14 +12,17 @@ through the same engine as everything else:
       align = "left"|"center"|"right",
       angle = <degrees>,   -- turned clockwise about (x, y); nil or 0 upright
       grid_snap = false,   -- snap each line to the ruling
+      spacing = nil|"tight"|"loose",   -- line spacing (nil is normal)
       paras = {            -- paragraphs (a newline starts a new paragraph)
-        { bullet = nil|"disc"|"number",
-          spans = { { t = "text", b=, i=, u=, s=, hl=, sz= }, ... } },
+        { bullet = nil|"disc"|"number"|"check", checked = true|nil,
+          spans = { { t = "text", b=, i=, u=, s=, hl=, sz=, c= }, ... } },
         ...
       } }
 
 A span is a maximal run of one style. Style flags: b bold, i italic, u
-underline, s strikethrough, hl highlight; sz is a size multiplier (nil = 1).
+underline, s strikethrough; hl highlight (true for the default colour, or a
+colour packed as 0xRRGGBB); c the letters' colour, packed the same (nil is the
+page's ink); sz is a size multiplier (nil = 1).
 
 Layout and the edit operations are pure Lua and take an injected `ctx` for any
 measuring, so they run under the headless tests. Only render() touches KOReader
@@ -69,7 +72,18 @@ Text.chars, Text.ulen, Text.usub = chars, ulen, usub
 -- Style helpers
 ------------------------------------------------------------------------------
 
-local STYLE_KEYS = { "b", "i", "u", "s", "hl", "sz" }
+local STYLE_KEYS = { "b", "i", "u", "s", "hl", "sz", "c" }
+
+-- A colour {r, g, b} packed into one number (as style.c and style.hl keep it),
+-- and back.
+function Text.packRGB(rgb)
+    return rgb[1] * 65536 + rgb[2] * 256 + rgb[3]
+end
+
+function Text.unpackRGB(n)
+    n = math.floor(n)
+    return { math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256 }
+end
 
 local function copyStyle(st)
     local o = {}
@@ -444,10 +458,32 @@ function Text.styleCovers(op, sel, key)
 end
 
 -- Set the bullet type of every paragraph the selection touches. `kind` is nil,
--- "disc" or "number". Toggling the same kind off is the caller's job.
+-- "disc", "number" or "check" (a box to tick). Toggling the same kind off is
+-- the caller's job.
 function Text.setBullet(op, sel, kind)
     local a, b = Text.orderSel(sel)
-    for pi = a.p, b.p do op.paras[pi].bullet = kind end
+    for pi = a.p, b.p do
+        op.paras[pi].bullet = kind
+        if kind ~= "check" then op.paras[pi].checked = nil end
+    end
+end
+
+-- The size of a checklist's box, and the indent of its text, for a paragraph
+-- whose letters have ascent `asc`.
+function Text.checkMetrics(asc)
+    local box = math.max(6, math.floor(asc * 0.8 + 0.5))
+    return box, box + math.max(4, math.floor(asc * 0.5 + 0.5))
+end
+
+-- The checklist box on a laid-out line at op-local (lx, ly), as the paragraph
+-- index, or nil. The box's whole indent counts, and the line's height.
+function Text.checkAt(layout, lx, ly)
+    for _, ln in ipairs(layout.lines) do
+        if ln.bullet and ln.bullet.check and ly >= ln.top and ly < ln.top + ln.height
+                and lx >= ln.bullet.x - 2 and lx <= ln.text_x then
+            return ln.para
+        end
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -539,8 +575,14 @@ function Text.layout(op, ctx)
     local lines = {}
     local y = 0
     for pi, p in ipairs(op.paras) do
-        local indent, bulletLabel, bulletStyle = 0, nil, nil
-        if p.bullet and ctx.bulletLabel then
+        local indent, bulletLabel, bulletStyle, check = 0, nil, nil, nil
+        if p.bullet == "check" then
+            -- a box drawn by the renderer, sized to the letters (no font needed)
+            bulletStyle = p.spans[1]
+            local box
+            box, indent = Text.checkMetrics(ctx.ascent(bulletStyle))
+            check = { box = box }
+        elseif p.bullet and ctx.bulletLabel then
             bulletLabel = ctx.bulletLabel(p, pi)
             bulletStyle = p.spans[1]
             indent = ctx.measure(bulletLabel, bulletStyle)
@@ -587,7 +629,10 @@ function Text.layout(op, ctx)
                 para = pi, first = is_first, top = top, height = adv, baseline = baseline,
                 text_x = text_x, o_start = o_start, o_end = o_end, segs = segs,
             }
-            if is_first and bulletLabel then
+            if is_first and check then
+                line.bullet = { check = true, checked = p.checked or false, box = check.box,
+                    style = bulletStyle, x = 0 }
+            elseif is_first and bulletLabel then
                 line.bullet = { text = bulletLabel, style = bulletStyle, x = 0 }
             end
             lines[#lines + 1] = line
@@ -685,12 +730,15 @@ end
 ------------------------------------------------------------------------------
 -- Rendering. Draws the laid-out text into a blitbuffer at (ox, oy) in that
 -- buffer's pixels. `rctx` supplies KOReader bits so layout stays testable:
---   rctx.face(style)   -> font face for a style
---   rctx.bold(style)   -> bold flag for RenderText
---   rctx.color         -> fg colour (Blitbuffer colour)
+--   rctx.color         -> the letters' colour (Blitbuffer colour)
+--   rctx.highlight     -> the highlight's colour
+--   rctx.ink(c)        -> for a span with a colour c (packed): its colour, and
+--                         whether it is a real colour to keep (optional)
+--   rctx.mark(hl)      -> the same for a span's highlight (optional)
 --   rctx.lineWidth     -> px thickness for underline / strike / bullet rules
 -- Underline, strikethrough and highlight are drawn by us; bold/size come from
--- the face; italic uses an italic face when rctx.face provides one.
+-- the face (ctx.face, ctx.bold); italic is slanted here. A colour is kept on a
+-- colour (RGB32) bitmap; on any other KOReader shows it as its grey.
 ------------------------------------------------------------------------------
 
 function Text.render(_op, layout, bb, ox, oy, ctx, rctx)
@@ -699,51 +747,116 @@ function Text.render(_op, layout, bb, ox, oy, ctx, rctx)
     local fg = rctx.color or Blitbuffer.COLOR_BLACK
     local hlcolor = rctx.highlight or Blitbuffer.COLOR_LIGHT_GRAY
     local lw = math.max(1, rctx.lineWidth or 2)
-    local function drawSeg(sg, baseline)
-        local face = ctx.face(sg.style)
-        local bold = ctx.bold and ctx.bold(sg.style) or false
-        local asc = ctx.ascent(sg.style)
-        if sg.style.hl then
-            local h = ctx.lineHeight(sg.style)
-            bb:paintRect(math.floor(ox + sg.x), math.floor(oy + baseline - asc),
-                math.ceil(sg.w), math.ceil(h), hlcolor)
+    local rgb32 = bb:getType() == Blitbuffer.TYPE_BBRGB32 and bb.paintRectRGB32 ~= nil
+    -- a span's letters and its highlight: the colour, and whether to keep its hue
+    local function inkOf(st)
+        if st.c == false then return rctx.done or Blitbuffer.Color8(0x99), false end   -- (a ticked item)
+        if st.c and rctx.ink then
+            local c, chroma = rctx.ink(st.c)
+            return c, chroma and rgb32
         end
-        if sg.style.i and sg.t ~= "" then
-            -- synthetic italic: render the run to a coverage buffer, then blit it
-            -- one row at a time with a slant offset (no italic font needed)
-            local h = math.ceil(ctx.lineHeight(sg.style))
-            local slant = 0.2
-            local wseg = math.ceil(sg.w) + 2
-            local tmp = Blitbuffer.new(wseg, h, Blitbuffer.TYPE_BB8)
-            tmp:fill(Blitbuffer.COLOR_BLACK)   -- 0 = no coverage
-            RenderText:renderUtf8Text(tmp, 0, asc, face, sg.t, true, bold, Blitbuffer.COLOR_WHITE)
-            local top = baseline - asc
+        return fg, false
+    end
+    local function markOf(st)
+        if rctx.mark then
+            local c, chroma = rctx.mark(st.hl)
+            return c, chroma and rgb32
+        end
+        return hlcolor, false
+    end
+    local function fill(x, y, w, h, c, chroma)
+        if chroma then bb:paintRectRGB32(x, y, w, h, c) else bb:paintRect(x, y, w, h, c) end
+    end
+    -- One run of text in one style, its baseline at (x, baseline). A slanted
+    -- (italic) or coloured run is rendered to a coverage buffer first, then
+    -- blitted in its colour (row by row with a slant offset for italic, so no
+    -- italic font is needed).
+    local function run(text, st, x, baseline, w)
+        local face = ctx.face(st)
+        local bold = ctx.bold and ctx.bold(st) or false
+        local color, chroma = inkOf(st)
+        if text == "" then return color, chroma end
+        if not (st.i or chroma) then
+            RenderText:renderUtf8Text(bb, math.floor(x), math.floor(baseline), face, text, true, bold, color)
+            return color, chroma
+        end
+        local asc = ctx.ascent(st)
+        local h = math.ceil(ctx.lineHeight(st))
+        local slant = st.i and 0.2 or 0
+        local wseg = math.ceil(w) + 2 + (st.i and math.ceil(slant * asc) or 0)
+        local tmp = Blitbuffer.new(wseg, h, Blitbuffer.TYPE_BB8)
+        tmp:fill(Blitbuffer.COLOR_BLACK)   -- 0 = no coverage
+        RenderText:renderUtf8Text(tmp, 0, asc, face, text, true, bold, Blitbuffer.COLOR_WHITE)
+        local top = baseline - asc
+        local blit = chroma and bb.colorblitFromRGB32 or bb.colorblitFrom
+        if slant == 0 then
+            blit(bb, tmp, math.floor(x), math.floor(top), 0, 0, wseg, h, color)
+        else
             for row = 0, h - 1 do
                 local dx = math.floor(slant * (asc - row) + 0.5)
-                bb:colorblitFrom(tmp, math.floor(ox + sg.x + dx), math.floor(oy + top + row),
-                    0, row, wseg, 1, fg)
+                blit(bb, tmp, math.floor(x + dx), math.floor(top + row), 0, row, wseg, 1, color)
             end
-            tmp:free()
-        else
-            RenderText:renderUtf8Text(bb, math.floor(ox + sg.x), math.floor(oy + baseline),
-                face, sg.t, true, bold, fg)
         end
+        tmp:free()
+        return color, chroma
+    end
+    local done_ink = rctx.done or Blitbuffer.Color8(0x99)   -- a ticked item's letters
+    local function drawSeg(sg, baseline)
+        local asc = ctx.ascent(sg.style)
+        if sg.style.hl then
+            local hc, hchroma = markOf(sg.style)
+            fill(math.floor(ox + sg.x), math.floor(oy + baseline - asc),
+                math.ceil(sg.w), math.ceil(ctx.lineHeight(sg.style)), hc, hchroma)
+        end
+        local st = sg.style
+        if sg.ticked then   -- a ticked item reads as done: greyed, in no colour
+            st = setmetatable({ c = false }, { __index = sg.style })
+        end
+        local color, chroma = run(sg.t, st, ox + sg.x, oy + baseline, sg.w)
+        if sg.ticked then color, chroma = done_ink, false end
         if sg.style.u then
-            local uy = math.floor(oy + baseline + math.max(1, ctx.ascent(sg.style) * 0.12))
-            bb:paintRect(math.floor(ox + sg.x), uy, math.ceil(sg.w), lw, fg)
+            local uy = math.floor(oy + baseline + math.max(1, asc * 0.12))
+            fill(math.floor(ox + sg.x), uy, math.ceil(sg.w), lw, color, chroma)
         end
         if sg.style.s then
-            local sy = math.floor(oy + baseline - ctx.ascent(sg.style) * 0.32)
-            bb:paintRect(math.floor(ox + sg.x), sy, math.ceil(sg.w), lw, fg)
+            local sy = math.floor(oy + baseline - asc * 0.32)
+            fill(math.floor(ox + sg.x), sy, math.ceil(sg.w), lw, color, chroma)
         end
     end
     for _, ln in ipairs(layout.lines) do
-        if ln.bullet then
-            RenderText:renderUtf8Text(bb, math.floor(ox + ln.bullet.x), math.floor(oy + ln.baseline),
-                ctx.face(ln.bullet.style), ln.bullet.text, true,
-                ctx.bold and ctx.bold(ln.bullet.style) or false, fg)
+        local bl = ln.bullet
+        if bl and bl.check then
+            -- the checklist's box, on the letters' x-height, ticked when done
+            local asc = ctx.ascent(bl.style)
+            local color, chroma = inkOf(bl.style)
+            local b = bl.box
+            local bx = math.floor(ox + bl.x + 1)
+            local by = math.floor(oy + ln.baseline - asc * 0.5 - b / 2 + 0.5)
+            local t = math.max(1, math.floor(b / 9 + 0.5))
+            fill(bx, by, b, t, color, chroma); fill(bx, by + b - t, b, t, color, chroma)
+            fill(bx, by, t, b, color, chroma); fill(bx + b - t, by, t, b, color, chroma)
+            if bl.checked then
+                -- the tick: a short stroke down, a long one up
+                local function seg(x0, y0, x1, y1)
+                    local n = math.max(1, math.floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0))))
+                    for k = 0, n do
+                        fill(math.floor(x0 + (x1 - x0) * k / n), math.floor(y0 + (y1 - y0) * k / n),
+                            t + 1, t + 1, color, chroma)
+                    end
+                end
+                seg(bx + b * 0.22, by + b * 0.52, bx + b * 0.42, by + b * 0.72)
+                seg(bx + b * 0.42, by + b * 0.72, bx + b * 0.80, by + b * 0.26)
+            end
+        elseif bl then
+            local st = bl.style
+            local plain = { b = st.b, sz = st.sz, c = st.c }   -- a bullet is never slanted
+            run(bl.text, plain, ox + bl.x, oy + ln.baseline, ctx.measure(bl.text, plain))
         end
-        for _, sg in ipairs(ln.segs) do drawSeg(sg, ln.baseline) end
+        local ticked = _op.paras and _op.paras[ln.para] and _op.paras[ln.para].checked
+        for _, sg in ipairs(ln.segs) do
+            sg.ticked = ticked or nil
+            drawSeg(sg, ln.baseline)
+        end
     end
 end
 

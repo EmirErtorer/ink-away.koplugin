@@ -13,6 +13,7 @@ dofile(REPO .. "/tests/realbb/realtext.lua").install()
 local Device = require("device")
 local UIManager = require("ui/uimanager")
 local Text = require("ink/text")
+local Palette = require("ink/palette")
 
 local checks, failures = 0, 0
 local function ok(c, what) checks = checks + 1; if not c then failures = failures + 1; print("FAIL: " .. what) end end
@@ -39,6 +40,33 @@ local function drag(view, x0, y0, x1, y1)
         view:onIaPan(nil, { pos = { x = x0 + (x1 - x0) * i / 8, y = y0 + (y1 - y0) * i / 8 } })
     end
     view:onIaPanRelease(nil, { pos = { x = x1, y = y1 } })
+end
+local function findButton(w, text)
+    local function has(t, seen)
+        if _G.type(t) ~= "table" or seen[t] then return false end
+        seen[t] = true
+        if t.text == text then return true end
+        for k, val in pairs(t) do
+            if k ~= "show_parent" and k ~= "parent" and has(val, seen) then return true end
+        end
+        return false
+    end
+    local function find(t, seen)
+        if _G.type(t) ~= "table" or seen[t] then return nil end
+        seen[t] = true
+        if _G.type(t.callback) == "function" and has(t, {}) then return t end
+        for k, val in pairs(t) do
+            if k ~= "show_parent" and k ~= "parent" then
+                local f = find(val, seen); if f then return f end
+            end
+        end
+    end
+    return find(w, {})
+end
+local function press(view, label)
+    local b = findButton(view._text_fmt, label)
+    if b then b.callback() end
+    return b ~= nil
 end
 local function type(view, s) for c in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do view:textAddChars(c) end end
 -- How many dark pixels a bitmap has in a box (all of it by default).
@@ -204,7 +232,7 @@ do
     local raster, rw, rh, rx, ry = view:exportTextRaster(op)
     local hits, misses = 0, 0
     for j = 0, rh - 1 do for i = 0, rw - 1 do
-        if raster[j * rw + i] < 128 then
+        if raster[(j * rw + i) * 3] < 128 then
             if turned:getPixel(rx + i, ry + j):getColor8().a < 128 then hits = hits + 1 else misses = misses + 1 end
         end
     end end
@@ -352,6 +380,230 @@ do
         ok(g[k][1] == 0, k .. ", grey e-ink: no waiting")
         ok(e[k][1] == 0, k .. ", emulator: no waiting")
     end
+end
+
+------------------------------------------------------------------------------
+-- Colours: a word in a colour, highlights in colours, on colour and grey
+-- screens and on a dark paper, and in exports
+------------------------------------------------------------------------------
+do
+    local Export = require("ink/export")
+    local function rgbAt(bb, x, y) local c = bb:getPixel(x, y):getColorRGB32(); return c.r, c.g, c.b end
+    local function boxOf(op) return math.floor(op.x), math.floor(op.y), math.ceil(op.x + op.w), math.ceil(op.y + op.h) end
+    -- counts pixels of a kind in a box
+    local function countIn(bb, x0, y0, x1, y1, pred)
+        local n = 0
+        for y = y0, y1 - 1 do for x = x0, x1 - 1 do if pred(rgbAt(bb, x, y)) then n = n + 1 end end end
+        return n
+    end
+    local function reddish(r, g, b) return r > 150 and g < 90 and b < 90 end
+    local function yellowish(r, g, b) return r > 200 and g > 190 and b < 120 end
+    local function blueish(r, g, b) return b > 200 and r < 140 end
+    for _, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
+        local colour = typ == BB.TYPE_BBRGB32
+        local tag = colour and "colour" or "grey"
+        local view = newView(typ)
+        local op = Text.new{ x = 100, y = 200, w = 700, size = 40 }
+        Text.insert(op, { p = 1, o = 0 }, "Red word, yellow mark, blue mark")
+        Text.applyStyle(op, { a = { p = 1, o = 0 }, b = { p = 1, o = 8 } }, "c", Text.packRGB({ 0xD0, 0, 0 }))
+        Text.applyStyle(op, { a = { p = 1, o = 10 }, b = { p = 1, o = 21 } }, "hl", true)
+        Text.applyStyle(op, { a = { p = 1, o = 23 }, b = { p = 1, o = 32 } }, "hl", Text.packRGB(Palette.HIGHLIGHTS[3].rgb))
+        local page = BB.new(1000, 600, typ); page:fill(BB.COLOR_WHITE)
+        view:stampTextInto(page, op)
+        local x0, y0, x1, y1 = boxOf(op)
+        local red, yellow, blue = countIn(page, x0, y0, x1, y1, reddish), countIn(page, x0, y0, x1, y1, yellowish),
+            countIn(page, x0, y0, x1, y1, blueish)
+        if colour then
+            ok(red > 50, tag .. ": the red word is red")
+            ok(yellow > 500 and blue > 500, tag .. ": the default highlight is yellow and the other blue")
+        else
+            local grey = countIn(page, x0, y0, x1, y1, function(r) return r > 150 and r < 215 end)
+            ok(red == 0 and yellow == 0 and blue == 0 and grey > 1000, tag .. ": colours show as grey, highlights the one grey")
+
+        end
+        -- the letters on a highlight stay black
+        local dark = countIn(page, x0, y0, x1, y1, function(r, g, b) return r < 60 and g < 60 and b < 60 end)
+        ok(dark > 200, tag .. ": the letters stay dark")
+        -- the export draws the colours as the screen does
+        Export.text_raster = function(o, paper, ink) return view:exportTextRaster(o, paper, ink) end
+        local c = require("ink/canvas").new(1000, 600)
+        c.ops = { op }
+        local rgb = Export.buildRGB(c)
+        local function px3(x, y) local o = (y * 1000 + x) * 3; return rgb[o], rgb[o + 1], rgb[o + 2] end
+        local ered, eyel = 0, 0
+        for y = y0, y1 - 1 do for x = x0, x1 - 1 do
+            local r, g, b = px3(x, y)
+            if reddish(r, g, b) then ered = ered + 1 end
+            if yellowish(r, g, b) then eyel = eyel + 1 end
+        end end
+        ok(colour and (ered > 50 and eyel > 500) or (not colour and ered == 0 and eyel == 0),
+            tag .. ": the export shows the same colours")
+        Export.text_raster = nil
+        page:free()
+        view:onCloseWidget()
+    end
+    -- on a dark paper the highlight is toned down and the letters are white
+    local view = newView(BB.TYPE_BBRGB32)
+    view.paperRGB = function() return { 0, 0, 0 } end
+    local op = Text.new{ x = 50, y = 50, w = 600, size = 40 }
+    Text.insert(op, { p = 1, o = 0 }, "Marked on black")
+    Text.applyStyle(op, { a = { p = 1, o = 0 }, b = { p = 1, o = 6 } }, "hl", true)
+    local page = BB.new(800, 300, BB.TYPE_BBRGB32); page:fill(BB.COLOR_BLACK)
+    view:stampTextInto(page, op, nil, BB.COLOR_WHITE)
+    local mark = countIn(page, 50, 50, 650, 50 + math.ceil(op.h), function(r, g, b) return r > 90 and r < 140 and g > 90 and b < 60 end)
+    local white = countIn(page, 50, 50, 650, 50 + math.ceil(op.h), function(r, g, b) return r > 220 and g > 220 and b > 220 end)
+    ok(mark > 300 and white > 100, "dark paper: a toned-down highlight under white letters")
+    page:free()
+    view:onCloseWidget()
+end
+
+------------------------------------------------------------------------------
+-- The Format sheet stays open while options are picked; Done brings the
+-- keyboard back. Its tabs: Text, Paragraph, Edit.
+------------------------------------------------------------------------------
+do
+    local view = newView(BB.TYPE_BBRGB32)
+    tap(view, 200, 300)
+    type(view, "one two three")
+    local op = view.editing_text
+    view:openTextFormatMenu()
+    ok(view._text_fmt ~= nil and view._text_kb == nil, "Format takes the keyboard's place")
+    -- the caret is after "three": Bold applies to that word, and the sheet stays
+    ok(press(view, "Bold"), "the Text tab has Bold")
+    ok(view._text_fmt ~= nil and view._text_kb == nil, "picking an option keeps the sheet open")
+    ok(press(view, "Italic") and view._text_fmt ~= nil, "so a second one can follow")
+    local st = Text.styleAt(op, { p = 1, o = 12 })
+    ok(st.b and st.i and not Text.styleAt(op, { p = 1, o = 3 }).b, "both went on the word under the caret")
+    press(view, "A+")
+    ok((Text.styleAt(op, { p = 1, o = 12 }).sz or 1) > 1.1, "A+ grows it, sheet still open")
+    press(view, "Plain")
+    st = Text.styleAt(op, { p = 1, o = 12 })
+    ok(not (st.b or st.i or st.sz), "Plain takes every style off")
+    -- colours through the same path the swatches use
+    view:textSetStyle("c", Text.packRGB({ 0, 0x50, 0xD0 }))
+    view:textSetStyle("hl", Text.packRGB(Palette.HIGHLIGHTS[4].rgb))
+    ok(view:textStyleValue("c") == Text.packRGB({ 0, 0x50, 0xD0 }) and view:textStyleValue("hl") == Text.packRGB(Palette.HIGHLIGHTS[4].rgb),
+        "a colour and a highlight on the word")
+    view:textSetStyle("hl", nil)
+    ok(view:textStyleValue("hl") == nil, "None takes the highlight off")
+    -- the Paragraph tab
+    ok(press(view, "Paragraph"), "a Paragraph tab")
+    ok(press(view, "Centre") and op.align == "center", "alignment: centre")
+    ok(press(view, "Right") and op.align == "right", "alignment: right")
+    ok(press(view, "Loose") and op.spacing == "loose", "line spacing: loose")
+    local h_loose = op.h
+    press(view, "Tight")
+    ok(op.spacing == "tight" and op.h < h_loose, "tight lines take less room")
+    press(view, "Normal")
+    ok(op.spacing == nil, "and back to normal")
+    ok(press(view, "\u{2713} Checklist") and op.paras[1].bullet == "check", "a checklist")
+    ok(findButton(view._text_fmt, "Font: Default") ~= nil, "the font is one tap away")
+    -- turning across, down and up keeps the box's corner where it was
+    local bx0, by0 = Text.bounds(op)
+    ok(press(view, "Reads down") and op.angle == 90, "reading down")
+    local nx0, ny0 = Text.bounds(op)
+    ok(math.abs(nx0 - bx0) < 1 and math.abs(ny0 - by0) < 1, "its top-left stays where the box was")
+    local _a, _b, _c, ny1 = Text.bounds(op)
+    ok(ny1 <= view.view.canvas_h, "a line too long for the page there is shortened")
+    ok(press(view, "Reads up") and op.angle == 270, "reading up")
+    ok(press(view, "Across") and op.angle == nil, "and across again")
+    -- the Edit tab
+    ok(press(view, "Edit"), "an Edit tab")
+    ok(press(view, "Select all") and Text.plainRange(op, view.text_sel) == "one two three", "Select all")
+    view.text_sel = nil
+    view.text_cur = { p = 1, o = 0 }
+    ok(press(view, "Date") and #Text.plain(op) > #"one two three" + 6, "the date is typed at the caret")
+    -- Done brings the keyboard back
+    local done = findButton(view._text_fmt, "Done")
+    done.callback()
+    ok(view._text_fmt == nil and view._text_kb ~= nil, "Done closes Format and brings the keyboard back")
+    -- a tap outside it does too
+    view:openTextFormatMenu()
+    view._text_fmt:onCloseMenu()
+    ok(view._text_kb ~= nil, "closing it any other way brings the keyboard back too")
+    view:finishTextEdit(true)
+    view:onCloseWidget()
+end
+
+------------------------------------------------------------------------------
+-- Checklists: a tap on the box ticks it, in an open box and on a saved one (an
+-- undo step); a double tap on a word selects it
+------------------------------------------------------------------------------
+do
+    local view = newView()
+    tap(view, 200, 300)
+    type(view, "milk")
+    view:textAddChars("\n")
+    type(view, "eggs")
+    local op = view.editing_text
+    Text.setBullet(op, { a = { p = 1, o = 0 }, b = { p = 2, o = 0 } }, "check")
+    view:invalidateLayout()
+    local lay = view:editTextLayout()
+    local ln1
+    for _, ln in ipairs(lay.lines) do if ln.para == 1 then ln1 = ln; break end end
+    ok(ln1 and ln1.bullet and ln1.bullet.check and ln1.text_x > 0, "a checklist item has its box and indent")
+    local bx, by = view:textToScreen(ln1.bullet.box / 2 + 1, ln1.top + ln1.height / 2)
+    tap(view, bx, by)
+    ok(op.paras[1].checked == true and not op.paras[2].checked, "a tap on its box ticks the item")
+    ok(view.text_cur.p == 2, "and leaves the caret where it was")
+    -- the ticked item draws its box with a tick and greyed letters
+    local shot = BB.new(W, H, BB.TYPE_BB8); shot:fill(BB.COLOR_WHITE)
+    view:paintTextOverlay(shot, 0, 0)
+    local r = view:textBoxScreenRect()
+    local grey = 0
+    for y = math.floor(r.y), math.floor(r.y + ln1.height) do
+        for x = math.floor(r.x + ln1.text_x), math.floor(r.x + r.w) do
+            local a = shot:getPixel(x, y):getColor8().a
+            if a > 100 and a < 200 then grey = grey + 1 end
+        end
+    end
+    ok(grey > 30, "a ticked item's letters are greyed")
+    shot:free()
+    view:textUndo()
+    ok(not op.paras[1].checked, "undo unticks it")
+    view:finishTextEdit(true)
+    -- on the saved box: a tap on the second item's box ticks it without opening
+    local saved = view.canvas.ops[1]
+    local slay = view:layoutText(saved, 1)
+    local l2
+    for _, ln in ipairs(slay.lines) do if ln.para == 2 then l2 = ln end end
+    local px, py = Text.toPage(saved, l2.bullet.box / 2 + 1, l2.top + l2.height / 2)
+    local sx, sy = require("ink/geom").toScreen(view.view, px, py)
+    tap(view, sx, sy)
+    ok(view.editing_text == nil and view.canvas.ops[1].paras[2].checked == true, "a tap on a saved box's item ticks it, the box stays closed")
+    ok(saved.paras[2].checked == nil, "the old box is kept for undo")
+    view:undo()
+    ok(not view.canvas.ops[1].paras[2].checked, "one undo unticks it")
+    -- a double tap on a word selects it, and keeps the keyboard
+    local wx, wy = Text.toPage(view.canvas.ops[1], l2.text_x + 10, l2.top + l2.height / 2)
+    sx, sy = require("ink/geom").toScreen(view.view, wx, wy)
+    tap(view, sx, sy)
+    ok(view.editing_text ~= nil, "a tap on the word opens the box")
+    view:showPendingKeyboard()
+    tap(view, sx, sy)
+    ok(view.text_sel and Text.plainRange(view.editing_text, view.text_sel) == "eggs", "a second tap selects the word")
+    ok(view._text_fmt == nil and view._text_kb ~= nil, "and the keyboard stays, to type over it")
+    view:textAddChars("X")
+    ok(Text.plain(view.editing_text) == "milk\nX", "typing replaces the word")
+    view:finishTextEdit(true)
+    view:onCloseWidget()
+end
+
+------------------------------------------------------------------------------
+-- Saved text and highlight colours: up to three of each, the oldest goes
+------------------------------------------------------------------------------
+do
+    local view = newView(BB.TYPE_BBRGB32)
+    for i = 1, 4 do view:textSaveColour("mark", { i * 40, 100, 100 }) end
+    local list = view:textSavedColours("mark")
+    ok(#list == 3 and list[1][1] == 80 and list[3][1] == 160, "three highlight colours kept, the oldest gone")
+    view:textSaveColour("mark", { 120, 100, 100 })
+    ok(#view:textSavedColours("mark") == 3, "saving one already kept adds nothing")
+    view:textForgetColour("mark", { 120, 100, 100 })
+    list = view:textSavedColours("mark")
+    ok(#list == 2 and list[1][1] == 80 and list[2][1] == 160, "a hold removes one")
+    ok(#view:textSavedColours("ink") == 0, "text colours are kept apart")
+    view:onCloseWidget()
 end
 
 print(("realbb text: %d checks, %d failures"):format(checks, failures))

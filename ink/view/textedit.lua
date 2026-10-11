@@ -22,6 +22,8 @@ local TILE_BG = Paint.TILE_BG
 
 -- A length in millimetres as screen pixels, so the box's grips are as big under
 -- a finger on any reader.
+local TEXT_DOUBLE_TAP_MS = 400   -- a second tap this soon on the same spot selects the word
+
 local function mm(v)
     local px = v * 160 / 25.4
     if Screen.scaleByDPI then return math.max(1, math.floor(Screen:scaleByDPI(px) + 0.5)) end
@@ -636,14 +638,38 @@ function InkAwayView:textToolTouch(pos)
                 grab = math.atan2(pos.y - sy, pos.x - sx), a0 = self.editing_text.angle or 0 }
             return true
         elseif zone == "inside" then
-            -- place the caret; a following pan turns it into a selection
             local lay = self:editTextLayout()
             local lx, ly = self:textLocal(pos.x, pos.y)
+            -- a checklist's box ticks or unticks its item
+            local pi = Text.checkAt(lay, lx, ly)
+            if pi then
+                self:pushTextHistory(); self:textBreakCoalesce()
+                local p = self.editing_text.paras[pi]
+                p.checked = (not p.checked) or nil
+                self:invalidateLayout()
+                self:refreshTextBox("ui")
+                self._text_drag = { kind = "tick" }
+                return true
+            end
+            -- place the caret; a following pan turns it into a selection
             local cur = Text.hit(self.editing_text, lay, lx, ly,
                 self:textCtx(self.editing_text, self.view.zoom))
+            -- a second tap on the same spot soon after selects the word there
+            local now, last = self:nowMs(), self._text_last_tap
+            local again = last and now - last.t <= TEXT_DOUBLE_TAP_MS
+                and math.abs(pos.x - last.x) + math.abs(pos.y - last.y) <= mm(3)
+            self._text_last_tap = not again and { t = now, x = pos.x, y = pos.y } or nil
             self.text_cur = cur
             self.text_sel = nil
             self._text_drag = { kind = "select", anchor = cur }
+            if again then
+                local w = self:wordSelAtCursor()
+                if w then
+                    self.text_sel = w
+                    self.text_cur = w.b
+                    self._text_drag.word = true   -- (the release does not open Format)
+                end
+            end
             self:textBreakCoalesce()   -- typing at a new spot is a new undo step
             self:refreshTextBox("ui")
             return true
@@ -657,13 +683,16 @@ function InkAwayView:textToolTouch(pos)
             if not self:textOpAt(cx, cy) then return true end
         end
     end
-    -- not editing (or just finished): edit an existing box, or start a new one
+    -- not editing (or just finished): tick a checklist's box, edit an existing
+    -- box, or start a new one
     local cx, cy = self:toCanvasClamped(pos.x, pos.y)
     local op, idx = self:textOpAt(cx, cy)
+    if op and self:tickCheckAt(op, idx, cx, cy) then return true end
     self._kb_defer = true   -- the keyboard appears when this finger lifts
     if op then
         -- pass the tap so the caret lands there before the first scroll pass
         self:startTextEdit(op, { p = 1, o = 0 }, false, idx, pos)
+        self._text_last_tap = { t = self:nowMs(), x = pos.x, y = pos.y }   -- (a second selects the word)
     else
         self:newTextAt(pos)
     end
@@ -771,10 +800,31 @@ function InkAwayView:textToolRelease(pos)
     elseif d.kind == "select" then
         if self.text_sel and Text.selEmpty(self.text_sel) then
             self.text_sel = nil
-        elseif self:textHasSel() then
-            self:openTextFormatMenu()   -- a real selection: offer the format menu
+        elseif self:textHasSel() and not (d.word and not d.last) then
+            -- a dragged selection: offer the format menu (a word picked by a
+            -- double tap keeps the keyboard, to type over it)
+            self:openTextFormatMenu()
         end
     end
+    return true
+end
+
+-- A tap at canvas (cx, cy) on a saved box `op` (ops[idx]): on a checklist's box
+-- it ticks or unticks the item, as one undo step, without opening the box.
+-- Returns whether it did.
+function InkAwayView:tickCheckAt(op, idx, cx, cy)
+    local has
+    for _, p in ipairs(op.paras or {}) do if p.bullet == "check" then has = true; break end end
+    if not has then return false end
+    local lay = self:layoutText(op, 1)
+    local lx, ly = Text.toLocal(op, cx, cy)
+    local pi = Text.checkAt(lay, lx, ly)
+    if not pi then return false end
+    self:editOp(idx, op, function(c)
+        c.paras = Notebook.deepcopy(op.paras)
+        c.paras[pi].checked = (not c.paras[pi].checked) or nil
+    end)
+    self:recompose()
     return true
 end
 
@@ -846,6 +896,7 @@ function InkAwayView:paintTextOverlay(bb, x, y)
     local bw, bh = op.w * z, op.h * z
     local BLACKC = self:textInk()        -- black, white on a dark paper
     local on_dark = BLACKC == Blitbuffer.COLOR_WHITE
+    local paints = self:textPaints(BLACKC, self:colorScreen(), self:paperRGB())
     -- the box upright, its top-left at (ox, oy) in dst
     local function body(dst, ox, oy)
         -- selection highlight (behind the glyphs)
@@ -866,7 +917,7 @@ function InkAwayView:paintTextOverlay(bb, x, y)
             end
         end
         -- the glyphs
-        Text.render(op, lay, dst, ox, oy, ctx, { color = BLACKC, highlight = on_dark and Blitbuffer.Color8(0x55) or nil })
+        Text.render(op, lay, dst, ox, oy, ctx, paints)
         -- the frame
         Paint.outline(dst, math.floor(ox), math.floor(oy), math.ceil(bw), math.ceil(bh), BLACKC)
         -- caret

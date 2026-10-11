@@ -147,22 +147,45 @@ local function replay(canvas, ink_put, erase_put_for, text_put, image_put, wash_
     end
 end
 
+-- A template (or a page's export options) carries the page's look:
+--   paper  {r,g,b} under the ink, white when nil
+--   rule   {r,g,b} of the ruling (else `gray`, a grey level)
+--   ink    {r,g,b} of the text, black when nil (white on a dark paper)
+--   dark   the paper is dark: black ink shows white on it
+local WHITE3, BLACK3 = { 255, 255, 255 }, { 0, 0, 0 }
+local function paperOf(template) return template and template.paper or WHITE3 end
+
 -- Walk the glyph pixels of a text op. The view sets Export.text_raster to a
--- function(op) returning (uint8 level buffer, w, h, x, y), where 255 is untouched
--- white and lower values are ink and highlight shades, and (x, y) is where its
--- top-left pixel goes for a turned box (op.x, op.y otherwise). `cb(x, y, level)`
--- gets each non-white pixel in canvas coordinates. Without a rasteriser (the
--- headless tests have no fonts) text is skipped.
-function Export.eachTextPixel(op, cb)
+-- function(op, paper, ink) returning (buffer, w, h, x, y, bpp): with bpp 3 the
+-- text drawn as on the screen on `paper` {r,g,b} in `ink` {r,g,b}, packed RGB,
+-- where a pixel still the paper's colour is not drawn on; with bpp 1 (or nil)
+-- 8-bit levels, 255 untouched and lower values the ink's shades. (x, y) is
+-- where its top-left pixel goes (op.x, op.y when nil). `cb(x, y, r, g, b)`
+-- gets each drawn pixel in canvas coordinates, in its colour on that paper.
+-- Without a rasteriser (the headless tests have no fonts) text is skipped.
+function Export.eachTextPixel(op, cb, template)
     if not Export.text_raster then return end
-    local raster, w, h, rx, ry = Export.text_raster(op)
+    local paper = paperOf(template)
+    local ink = template and template.ink or BLACK3
+    local raster, w, h, rx, ry, bpp = Export.text_raster(op, paper, ink)
     if not raster then return end
     local ox, oy = math.floor((rx or op.x) + 0.5), math.floor((ry or op.y) + 0.5)
+    local pr, pg, pb, ir, ig, ib = paper[1], paper[2], paper[3], ink[1], ink[2], ink[3]
     for py = 0, h - 1 do
         local row = py * w
         for px = 0, w - 1 do
-            local L = raster[row + px]
-            if L < 255 then cb(ox + px, oy + py, L) end
+            if bpp == 3 then
+                local o = (row + px) * 3
+                local r, g, b = raster[o], raster[o + 1], raster[o + 2]
+                if r ~= pr or g ~= pg or b ~= pb then cb(ox + px, oy + py, r, g, b) end
+            else
+                local L = raster[row + px]
+                if L < 255 then
+                    local k = L / 255
+                    cb(ox + px, oy + py, math.floor(ir + (pr - ir) * k + 0.5),
+                        math.floor(ig + (pg - ig) * k + 0.5), math.floor(ib + (pb - ib) * k + 0.5))
+                end
+            end
         end
     end
 end
@@ -201,13 +224,6 @@ local function ruled(template)
     return template and template.style and template.style ~= "blank"
 end
 
--- A template (or a page's export options) carries the page's look:
---   paper  {r,g,b} under the ink, white when nil
---   rule   {r,g,b} of the ruling (else `gray`, a grey level)
---   ink    {r,g,b} of the text, black when nil (white on a dark paper)
---   dark   the paper is dark: black ink shows white on it
-local WHITE3, BLACK3 = { 255, 255, 255 }, { 0, 0, 0 }
-local function paperOf(template) return template and template.paper or WHITE3 end
 local function ruleOf(template)
     if template.rule then return template.rule[1], template.rule[2], template.rule[3] end
     local g = template.gray or 210
@@ -263,21 +279,14 @@ local function copyRun(buf, src, ow, bpp, clip)
     end
 end
 
--- A pixel writer for text, opaque: level L (255 is the paper, 0 the text's
--- full ink) as the text's ink over the template's paper. On white with black
--- text that is the grey L itself.
-local function textPixel(buf, ow, bpp, clip, template)
-    local p = paperOf(template)
-    local ink = template and template.ink or BLACK3
-    local pr, pg, pb, ir, ig, ib = p[1], p[2], p[3], ink[1], ink[2], ink[3]
-    return function(x, y, L)
+-- A pixel writer for text, opaque: each pixel Export.eachTextPixel gives, in
+-- its colour.
+local function textPixel(buf, ow, bpp, clip)
+    return function(x, y, r, g, b)
         local cx, cy = clip(x, y, 1)
         if not cx then return end
         local o = (cy * ow + cx) * bpp
-        local k = L / 255
-        buf[o] = math.floor(ir + (pr - ir) * k + 0.5)
-        buf[o + 1] = math.floor(ig + (pg - ig) * k + 0.5)
-        buf[o + 2] = math.floor(ib + (pb - ib) * k + 0.5)
+        buf[o], buf[o + 1], buf[o + 2] = r, g, b
         if bpp == 4 then buf[o + 3] = 255 end
     end
 end
@@ -299,9 +308,9 @@ local function revealSources(canvas, buf, n, ow, bpp, clip, putImage, template)
     if flags.spare_text and flags.text then
         text = ffi.new("uint8_t[?]", n)
         ffi.copy(text, base, n)
-        local px = textPixel(text, ow, bpp, clip, template)
+        local px = textPixel(text, ow, bpp, clip)
         for _, op in ipairs(canvas.ops) do
-            if not op.hidden and op.kind == "text" then Export.eachTextPixel(op, px) end
+            if not op.hidden and op.kind == "text" then Export.eachTextPixel(op, px, template) end
         end
     end
     return base, text
@@ -313,10 +322,10 @@ local function smudgeBase(canvas, buf, n, ow, bpp, clip, putImage, template)
     if not Canvas.scanOps(canvas.ops).smudge then return nil end
     local base = ffi.new("uint8_t[?]", n)
     ffi.copy(base, buf, n)
-    local px = textPixel(base, ow, bpp, clip, template)
+    local px = textPixel(base, ow, bpp, clip)
     for _, op in ipairs(canvas.ops) do
         if not op.hidden and op.kind == "image" then putImage(base, op)
-        elseif not op.hidden and op.kind == "text" then Export.eachTextPixel(op, px) end
+        elseif not op.hidden and op.kind == "text" then Export.eachTextPixel(op, px, template) end
     end
     return base
 end
@@ -388,7 +397,7 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
     end
     local plain_erase = base_buf and copyRun(buf, base_buf, ow, 4, clip)
     local spare_erase = text_buf and copyRun(buf, text_buf, ow, 4, clip) or plain_erase
-    local text_px = textPixel(buf, ow, 4, clip, template)
+    local text_px = textPixel(buf, ow, 4, clip)
     replay(canvas,
         function(r, g, b, alpha) return fillRun(buf, ow, 4, clip, r, g, b, alpha) end,
         function(op)
@@ -396,7 +405,7 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
             if op.spare_text and spare_erase then return spare_erase end
             return plain_erase or hard_erase
         end,
-        function(op) Export.eachTextPixel(op, text_px) end,
+        function(op) Export.eachTextPixel(op, text_px, template) end,
         function(op) putImage(buf, op) end,
         function(op) Export.washInto(buf, ow, oh, 4, offx, offy, canvas, op) end,
         smudger(canvas, buf, smudge_base, ow, oh, 4, offx, offy), template and template.dark)
@@ -464,7 +473,7 @@ function Export.buildRGB(canvas, rect, template)
     local plain_erase = base_buf and copyRun(buf, base_buf, ow, 3, clip)
     local spare_erase = text_buf and copyRun(buf, text_buf, ow, 3, clip) or plain_erase
     local paper_erase = fillRun(buf, ow, 3, clip, pr, pg, pb)
-    local text_px = textPixel(buf, ow, 3, clip, template)
+    local text_px = textPixel(buf, ow, 3, clip)
     -- JPEG has no alpha, so ink is laid over white: each channel becomes
     -- 255 - alpha * (255 - c) / 255, which is how the ink looks on the white canvas.
     replay(canvas,
@@ -476,7 +485,7 @@ function Export.buildRGB(canvas, rect, template)
             if op.spare_text and spare_erase then return spare_erase end
             return plain_erase or paper_erase
         end,
-        function(op) Export.eachTextPixel(op, text_px) end,
+        function(op) Export.eachTextPixel(op, text_px, template) end,
         function(op) putImage(buf, op) end,
         function(op) Export.washInto(buf, ow, oh, 3, offx, offy, canvas, op) end,
         smudger(canvas, buf, smudge_base, ow, oh, 3, offx, offy), template and template.dark)
