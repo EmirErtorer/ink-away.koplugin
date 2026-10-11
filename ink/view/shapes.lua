@@ -67,6 +67,13 @@ function InkAwayView:previewWaits()
     return self:colourPanel() and not self:instantColour() and not self:onAndroid()
 end
 
+-- Before the next refresh of a drag that redraws a whole box each move (a
+-- shape's outline, a text box moved, resized or turned, the export box): on
+-- colour e-ink, wait for the panel to show the last one (see previewWaits).
+function InkAwayView:waitForPanel()
+    if UIManager.waitForVSync and self:previewWaits() then UIManager:waitForVSync() end
+end
+
 -- Refresh the union of the previous and current preview rectangles, so the old
 -- outline is wiped (from the untouched base) and the new one drawn.
 function InkAwayView:refreshPreview()
@@ -85,7 +92,7 @@ function InkAwayView:refreshPreview()
     if not u then return end
     -- the first outline of a drag shows at once; each later one waits for the
     -- panel (see previewWaits)
-    if prev and UIManager.waitForVSync and self:previewWaits() then UIManager:waitForVSync() end
+    if prev then self:waitForPanel() end
     local x0, y0, x1, y1 = self:liveBox("fast", u.x, u.y, u.x2, u.y2)
     -- Region fast path (see paintTo): while creating a shape (a live drag or the
     -- curve's bend stage), paint only this region instead of the whole view and

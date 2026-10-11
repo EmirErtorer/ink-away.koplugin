@@ -279,6 +279,81 @@ do
     view:onCloseWidget()
 end
 
+------------------------------------------------------------------------------
+-- On colour e-ink, dragging a text box (moving, resizing, turning) and the
+-- export box waits for the panel before each refresh after the first, as a
+-- shape's outline does: each covers the whole box, and the panel would queue
+-- them. Grey e-ink and the emulator do not wait.
+------------------------------------------------------------------------------
+do
+    local function drags(typ, emulator)
+        local had = Device.isEmulator
+        if emulator then Device.isEmulator = function() return true end end
+        local view = newView(typ)
+        tap(view, 300, 400)
+        type(view, "Paced")
+        local out = {}
+        local function count(kind, fn)
+            UIManager.vsyncs = 0
+            local n = fn()
+            out[kind] = { UIManager.vsyncs, n }
+        end
+        count("move", function()
+            local pts = view:textGripPoints()
+            view:onIaTouch(nil, { pos = { x = pts.move.x, y = pts.move.y } })
+            for i = 1, 20 do view:onIaPan(nil, { pos = { x = pts.move.x + 6 * i, y = pts.move.y + 4 * i } }) end
+            view:onIaPanRelease(nil, { pos = { x = pts.move.x + 120, y = pts.move.y + 80 } })
+            return 20
+        end)
+        count("resize", function()
+            local pts = view:textGripPoints()
+            view:onIaTouch(nil, { pos = { x = pts.resize.x, y = pts.resize.y } })
+            for i = 1, 20 do view:onIaPan(nil, { pos = { x = pts.resize.x - 5 * i, y = pts.resize.y } }) end
+            view:onIaPanRelease(nil, { pos = { x = pts.resize.x - 100, y = pts.resize.y } })
+            return 20
+        end)
+        count("turn", function()
+            local pts = view:textGripPoints()
+            local cx, cy = Text.centre(view.editing_text)
+            local sx, sy = require("ink/geom").toScreen(view.view, cx, cy)
+            local rad = math.sqrt((pts.turn.x - sx) ^ 2 + (pts.turn.y - sy) ^ 2)
+            local a0 = math.atan2(pts.turn.y - sy, pts.turn.x - sx)
+            view:onIaTouch(nil, { pos = { x = pts.turn.x, y = pts.turn.y } })
+            for i = 1, 20 do
+                local a = a0 + math.rad(2 * i)
+                view:onIaPan(nil, { pos = { x = sx + rad * math.cos(a), y = sy + rad * math.sin(a) } })
+            end
+            view:onIaPanRelease(nil, { pos = { x = sx, y = sy - rad } })
+            return 20
+        end)
+        local turned = view.editing_text.angle
+        view:finishTextEdit(true)
+        count("export", function()
+            local v = view.view
+            view:cropTouch({ x = v.area_x + 50, y = v.area_y + 50 })
+            for i = 1, 20 do view:cropMove({ x = v.area_x + 50 + 20 * i, y = v.area_y + 50 + 30 * i }) end
+            view:cropRelease({ x = v.area_x + 450, y = v.area_y + 650 })
+            return 20
+        end)
+        view:onCloseWidget()
+        Device.isEmulator = had
+        return out, turned
+    end
+    local c, turned = drags(BB.TYPE_BBRGB32)
+    ok(turned and turned > 30 and turned < 50, "the turn drag turned the box")
+    for _, k in ipairs({ "move", "resize", "turn", "export" }) do
+        local w, n = c[k][1], c[k][2]
+        -- (the first moves within a finger's wobble are no drag yet)
+        ok(w >= n - 6 and w < n, ("%s, colour: each refresh after the first waits for the panel (%d of %d moves)"):format(k, w, n))
+    end
+    local g = drags(BB.TYPE_BB8)
+    local e = drags(BB.TYPE_BBRGB32, true)
+    for _, k in ipairs({ "move", "resize", "turn", "export" }) do
+        ok(g[k][1] == 0, k .. ", grey e-ink: no waiting")
+        ok(e[k][1] == 0, k .. ", emulator: no waiting")
+    end
+end
+
 print(("realbb text: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

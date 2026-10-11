@@ -686,10 +686,16 @@ function InkAwayView:textToolPan(pos)
     if self:inKeyboard(pos) and not self._text_drag then return true end
     local d = self._text_drag
     if not d then return true end
-    if (d.kind == "move" or d.kind == "resize" or d.kind == "turn") and not d.moved then
-        -- a finger's wobble is not a drag yet (a tap on the band closes the box)
-        if math.abs(pos.x - d.sx) + math.abs(pos.y - d.sy) < mm(1.5) then return true end
-        d.moved = true
+    if d.kind == "move" or d.kind == "resize" or d.kind == "turn" then
+        if not d.moved then
+            -- a finger's wobble is not a drag yet (a tap on the band closes the box)
+            if math.abs(pos.x - d.sx) + math.abs(pos.y - d.sy) < mm(1.5) then return true end
+            d.moved = true
+        else
+            -- each refresh covers the whole box: on colour e-ink the next waits
+            -- for the panel, so the moves made meanwhile go out as one
+            self:waitForPanel()
+        end
     end
     if d.kind == "move" then
         local dx = (pos.x - d.sx) / self.view.zoom

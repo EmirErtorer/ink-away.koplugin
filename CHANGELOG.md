@@ -39,6 +39,9 @@ versions marked *Prerelease* were test builds.
   chevron, the pen or layer strip) is drawn instead of lost. A pen that lifts
   within about 1.3 mm of where it landed, and within KOReader's hold time,
   still presses the button.
+- On colour e-ink, moving, resizing or turning a text box and dragging out the
+  export area keep up with the finger, as shapes now do: each refresh waits
+  for the panel to show the last.
 - With "Erase whole strokes" on, the eraser takes a text box it touches unless
   text is protected, and a picture when "Erase pictures" is on. It used to
   leave both alone whatever the settings said. As with a filled shape, rubbing

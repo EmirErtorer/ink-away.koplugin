@@ -76,7 +76,9 @@ function InkAwayView:cropMove(pos)
     local ox0, oy0, ox1, oy1 = c.x0, c.y0, c.x1, c.y1   -- previous box
     c.x1, c.y1 = pos.x, pos.y
     -- refresh only the union of the old and new boxes, with the fast waveform,
-    -- so dragging stays smooth
+    -- so dragging stays smooth (on colour e-ink, once the panel showed the last)
+    if c.shown then self:waitForPanel() end
+    c.shown = true
     self:liveBox("fast", math.min(ox0, ox1, c.x0, c.x1) - 3, math.min(oy0, oy1, c.y0, c.y1) - 3,
         math.max(ox0, ox1, c.x0, c.x1) + 3, math.max(oy0, oy1, c.y0, c.y1) + 3)
     return true
