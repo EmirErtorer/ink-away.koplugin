@@ -1,7 +1,8 @@
 # Emulator toolkit
 
-Run Ink Away on your Mac in KOReader's own desktop emulator, at the exact screen
-size and DPI of a chosen device, so you can try changes without a real reader.
+Run Ink Away on your computer (macOS, or Linux; on Windows, inside WSL) in
+KOReader's own desktop emulator, at the exact screen size and DPI of a chosen
+device, so you can try changes without a real reader.
 
 KOReader ships an SDL emulator that simulates an e-ink screen (you even see the
 fast and flashing refreshes). This toolkit installs the build tools, clones and
@@ -14,10 +15,18 @@ you pick. Mouse is treated as a single finger.
 ./tools/emulator/koemu.sh setup
 ```
 
-That installs the Homebrew build packages, clones KOReader to `~/koreader-emulator`,
-fetches its third-party sources, and builds the emulator. The first build takes a
-while and downloads a couple of gigabytes. Put the checkout elsewhere with
-`KOEMU_DIR=/some/path`.
+On macOS that installs the Homebrew build packages. On Linux it checks for the
+build tools instead (installing them needs root and the package names differ
+between distributions): install the prerequisites for yours from KOReader's
+[build guide](https://github.com/koreader/koreader/blob/master/doc/Building.md),
+plus rsync, and it tells you if any are still missing. Then it clones KOReader
+to `~/koreader-emulator`, fetches its third-party sources, and builds the
+emulator. The first build takes a while and downloads a couple of gigabytes. Put
+the checkout elsewhere with `KOEMU_DIR=/some/path`.
+
+On Windows, install a Linux distribution in WSL and follow the Linux steps
+there. KOReader's guide has a note on WSL's PATH, which the build needs cleaned
+up.
 
 ## Run it
 
@@ -40,7 +49,7 @@ Each run copies the current plugin files in first, so just edit and re-run.
   emulator's mouse is a faithful stand-in for the pen. There is no pressure or
   tilt to build on; do not design around it.
 - **Sandboxed files.** The desktop emulator is a real app and its file browser
-  can see your whole Mac, so each run points its home at `<KOEMU_DIR>/sandbox` and
+  can see your whole computer, so each run points its home at `<KOEMU_DIR>/sandbox` and
   opens there. It never shows your real home or desktop. Exported drawings land in
   the KOReader folder under `ink away/drawings`.
 - **Rebuild** after pulling a new KOReader: `./tools/emulator/koemu.sh update`.

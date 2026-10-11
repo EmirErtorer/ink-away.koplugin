@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # koemu.sh - run Ink Away in KOReader's own desktop emulator, with a device
-# picker (Kindle, Kobo, Scribe, and colour e-ink models).
+# picker (Kindle, Kobo, Scribe, and colour e-ink models). macOS and Linux (on
+# Windows, inside WSL).
 #
 # KOReader ships an SDL emulator that simulates an e-ink screen. This wraps it:
 # it installs the build deps, clones and builds KOReader once, copies this
@@ -17,6 +18,8 @@
 #
 # The KOReader checkout lives outside this repo (default ~/koreader-emulator),
 # override with:  KOEMU_DIR=/some/path ./tools/emulator/koemu.sh ...
+# On macOS setup installs the build tools with Homebrew; on Linux it checks for
+# them and points to KOReader's build guide if any are missing.
 
 set -euo pipefail
 
@@ -91,7 +94,17 @@ sync_plugin() {
 }
 
 # --- commands ---------------------------------------------------------------
+BUILD_GUIDE="https://github.com/koreader/koreader/blob/master/doc/Building.md"
+
 cmd_deps() {
+    case "$(uname -s)" in
+        Darwin) deps_macos ;;
+        Linux)  deps_linux ;;
+        *)      die "This toolkit runs on macOS and Linux. On Windows, run it inside WSL (see $BUILD_GUIDE)." ;;
+    esac
+}
+
+deps_macos() {
     command -v brew >/dev/null || die "Homebrew is required: https://brew.sh"
     say "Installing build dependencies with Homebrew..."
     # wget is not in KOReader's documented list but its build downloads
@@ -99,6 +112,32 @@ cmd_deps() {
     brew install autoconf automake bash binutils cmake coreutils findutils \
         gettext gnu-getopt libtool make meson nasm ninja pkgconf sdl3 \
         util-linux wget
+}
+
+# Linux: the tools KOReader's build guide lists (plus rsync, which this script
+# uses), each by a command it puts on PATH. Installing them takes root and the
+# package names differ between distributions, so this only checks.
+deps_linux() {
+    local missing=() t
+    for t in autoconf automake awk bash cmake find git libtoolize make meson \
+             msgfmt nasm patch python3 rsync unzip wget; do
+        command -v "$t" >/dev/null 2>&1 || missing+=("$t")
+    done
+    command -v ninja >/dev/null 2>&1 || command -v ninja-build >/dev/null 2>&1 || missing+=("ninja")
+    command -v pkg-config >/dev/null 2>&1 || command -v pkgconf >/dev/null 2>&1 || missing+=("pkg-config")
+    { command -v gcc >/dev/null 2>&1 && command -v g++ >/dev/null 2>&1; } \
+        || { command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; } \
+        || missing+=("gcc and g++")
+    if [ "${#missing[@]}" -gt 0 ]; then
+        warn "Missing: ${missing[*]}"
+        die "Install KOReader's prerequisites for your distribution (the 'Prerequisites' section of $BUILD_GUIDE), plus rsync, then run setup again."
+    fi
+    # WSL appends Windows folders (with spaces in their names) to PATH, which
+    # KOReader's build does not cope with
+    if grep -qi microsoft /proc/version 2>/dev/null && [[ "$PATH" == *"/mnt/c/"* ]]; then
+        warn "On WSL, Windows folders on PATH can break KOReader's build. If it fails, see the WSL note in $BUILD_GUIDE"
+    fi
+    say "Build tools found. (Too old a meson or cmake shows up in the build; the guide has the versions.)"
 }
 
 cmd_setup() {
@@ -146,7 +185,8 @@ cmd_run() {
     # KOREADER_WINDOW_POS_X/Y (the SDL_* vars are ignored). Centre it horizontally
     # on the main display and pin it near the top so the most of a tall device
     # shows. Override with KOEMU_WIN_X / KOEMU_WIN_Y.
-    local desk_w; desk_w="$(osascript -e 'tell application "Finder" to get item 3 of (get bounds of window of desktop)' 2>/dev/null)"
+    # (macOS only: elsewhere osascript is missing and the default is used)
+    local desk_w; desk_w="$(osascript -e 'tell application "Finder" to get item 3 of (get bounds of window of desktop)' 2>/dev/null || true)"
     [ -n "$desk_w" ] || desk_w=1440
     local pos_x="${KOEMU_WIN_X:-$(( (desk_w - w) / 2 ))}"
     [ "$pos_x" -lt 0 ] 2>/dev/null && pos_x=0
@@ -170,6 +210,6 @@ case "${1:-}" in
     list)   list_devices ;;
     run)    shift; cmd_run "${1:-paperwhite}" ;;
     ""|-h|--help|help)
-        sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+        awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}" ;;
     *) die "Unknown command '$1'. Run: $0 --help" ;;
 esac
