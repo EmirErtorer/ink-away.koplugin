@@ -80,7 +80,7 @@ Export a transparent or white PNG, or a paged PDF, at your exact screen size.
 | **Hold to straighten** | Hold the pen still at the end of a stroke and a rough line, box, ellipse or triangle snaps clean. Writing is left alone. |
 | **Shapes** | Lines, curves, single and double arrows, rectangles, ellipses and triangles, filled or outlined, snapped to the grid or to 45°. A paint bucket fills an area in one tap. |
 | **Eraser** | Clears ink back to transparent, or removes whole strokes. It leaves pictures alone unless you ask, and can spare text too. |
-| **Text** | Text boxes in any installed font, with bold, italic, underline, highlight, lists and sizes, snapped to a notebook's lines. |
+| **Text** | Text boxes in any installed font, with bold, italic, underline, sizes, alignment, line spacing, lists and checklists you tick with a tap, snapped to a notebook's lines. On colour screens, coloured text and highlights in yellow, orange, blue, green, pink or your own colours. Turn a box to any angle, or stand it on end for a book's margin. |
 | **Pictures** | From a file or found online (Wikimedia or Openverse), then moved, resized, turned and cut out of their background. A picture can also sit behind a drawing to trace over. |
 | **Symmetry** | Draw mirrored left to right, top to bottom, or four ways. |
 
@@ -122,7 +122,7 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | **Ink follows the text** | On a reflowing book each stroke is anchored to the words beside it, so it stays with them when you change the font size, margins or orientation. On PDFs and comics it keeps its place on the page. |
 | **Smart highlighter** | A highlighter stroke over text becomes KOReader's own highlight in the pen's colour and shows in your highlights list. Strokes that wobble or run into the margin still snap; over empty space it stays ink. |
 | **Book notes** | A notebook for each book with a page for each chapter, in a window over the page that expands to full screen. |
-| **Toolbar** | On any side of the screen, and it folds away. |
+| **Toolbar** | On any side of the screen, and it folds away. It can also fit in the book's margin, clear of the text. |
 | **Kept with the book** | Annotations live beside the book's own KOReader data and follow it when it is moved or renamed. Deleting them puts them in Ink Away's trash for 30 days. |
 
 ### Organize and find

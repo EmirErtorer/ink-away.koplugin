@@ -8,6 +8,12 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-11 *Prerelease*
+
+A text tool update, with fixes for colour readers and the Kindle Scribe. A
+prerelease, as most of it could only be tested in the emulator: reports from
+colour and pen readers are very welcome.
+
 ### Added
 - Text boxes turn to any angle. While a box is open, drag the ring on the stem
   above it round its middle; it snaps to quarter turns. A box picked out with
@@ -498,7 +504,8 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...v4.1.0
 [4.0.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.2.0...v3.3.0
