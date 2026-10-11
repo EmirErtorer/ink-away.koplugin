@@ -200,10 +200,12 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 <details>
 <summary><b>Getting started</b></summary>
 
-1. **Open a book and swipe down the right edge.** The toolbar comes up and you write right on the page. If your reader uses that edge for its light, swipe with two fingers from the top right corner toward the bottom left instead. Close with ✕ and your ink stays with the book.
-2. **Tap a tool, then tap it again** for its settings: size, colour, kind of pen and so on.
-3. **Not sure how something works?** The Guide button in Settings has a short card for it, with "Show me".
-4. **Want different gestures?** Open a book first, then KOReader's Settings, Taps and gestures, Gesture manager. A book has its own gestures, apart from the file browser's. The actions are "Ink Away: annotate the book" and "Ink Away: book notes", and "Open Ink Away" under General.
+1. **To draw or take notes, swipe up the right edge** in KOReader's file browser. The first time, Ink Away opens on a blank drawing; File, New notebook gives you lined, grid or planner pages instead.
+2. **To write on a book, open it and swipe down the right edge.** The toolbar comes up and you write right on the page. Close with ✕ and your ink stays with the book.
+3. **If your reader uses the right edge for its light,** these are two finger swipes instead: from the bottom right corner toward the top left to open Ink Away, and from the top right toward the bottom left on a book.
+4. **Tap a tool, then tap it again** for its settings: size, colour, kind of pen and so on.
+5. **Not sure how something works?** The Guide button in Settings has a short card for it, with "Show me".
+6. **Want different gestures?** Use KOReader's Settings, Taps and gestures, Gesture manager. A book has its own gestures, apart from the file browser's, so open a book first to change the book ones. The actions are "Ink Away: annotate the book" and "Ink Away: book notes", and "Open Ink Away" under General.
 
 </details>
 
