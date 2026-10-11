@@ -204,6 +204,10 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 - Settings → "When Ink Away opens" picks what you see first: the last document, the library, or Notebooks (the notebook browser on your last notebook, for note-taking).
 - On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.
 
+## Contributing
+
+Bug reports, testing prereleases on your reader, ideas and pull requests are all welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to get started.
+
 ## License
 
 MIT (see [`LICENSE`](LICENSE)). PNG/JPEG use KOReader's bundled lodepng and libjpeg-turbo.
