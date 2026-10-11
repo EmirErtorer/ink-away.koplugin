@@ -205,6 +205,10 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 - Settings → "When Ink Away opens" picks what you see first: the last document, the library, or Notebooks (the notebook browser on your last notebook, for note-taking).
 - On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.
 
+## How it's made
+
+I'm a computer science and engineering graduate, and I design and test Ink Away on my Kindle Paperwhite. Its code is written with Claude Code, an AI coding assistant, with me directing every change around what these devices can do: slow processors and screens that redraw slowly, so nothing redraws more of the screen than it needs to. Every change runs against about 4,000 automated checks, and anything I can't test there goes out as a prerelease first, so your reports shape the fix before it reaches everyone.
+
 ## Contributing
 
 Bug reports, testing prereleases on your reader, ideas and pull requests are all welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to get started.
