@@ -311,7 +311,7 @@ function InkAwayView:init()
     self:renderView()
     -- the library or the notebooks on top, when asked for (the library's gesture)
     -- or chosen in the settings; they open as the canvas is shown (see onShow)
-    if not self.over_book then
+    if not self.over_book and not self.open_path then
         local start = self:getSetting("inkaway_start")
         self._library_on_show = self.show_library or start == "library"
         self._overview_on_show = not self._library_on_show and start == "notebooks"
@@ -481,6 +481,9 @@ function InkAwayView:onCloseWidget()
     -- Leave the screen clean (refresh avoids the slow full flash on colour panels);
     -- over a book the reader repaints its page, with the ink, under a plain one.
     if self.over_book then UIManager:setDirty("all", "ui") else self:refresh(nil, "full") end
+    -- opened from a Bookshelf shelf: it redraws, as the saved notebook may
+    -- have a new cover
+    if self.after_close then pcall(self.after_close) end
 end
 
 function InkAwayView:onIaClose()

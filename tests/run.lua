@@ -1,6 +1,6 @@
 -- Run the whole Ink Away test suite:  luajit tests/run.lua
 -- (core logic under real FFI, then the view against a mock KOReader env)
-local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua", "tests/links.lua", "tests/pentest.lua", "tests/pens.lua", "tests/wash.lua", "tests/smudge.lua", "tests/penset.lua", "tests/actions.lua", "tests/bookink.lua", "tests/cut.lua", "tests/readerview.lua", "tests/einkdrive.lua", "tests/guide.lua", "tests/snap.lua", "tests/update.lua", "tests/layers.lua" }
+local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua", "tests/links.lua", "tests/pentest.lua", "tests/pens.lua", "tests/wash.lua", "tests/smudge.lua", "tests/penset.lua", "tests/actions.lua", "tests/bookink.lua", "tests/cut.lua", "tests/readerview.lua", "tests/einkdrive.lua", "tests/guide.lua", "tests/snap.lua", "tests/update.lua", "tests/layers.lua", "tests/bookshelf.lua" }
 -- Some suites need a KOReader checkout with the emulator built in it:
 -- ~/koreader-emulator unless KO_SRC says otherwise (see tests/README.md).
 local KO_SRC = os.getenv("KO_SRC") or (os.getenv("HOME") .. "/koreader-emulator")
@@ -29,7 +29,8 @@ if exists(EMU .. "/luajit") then
         "tests/realbb/wipe.lua", "tests/realbb/accent.lua", "tests/realbb/selection.lua",
         "tests/realbb/android.lua", "tests/realbb/wash.lua", "tests/realbb/smudge.lua", "tests/realbb/greylive.lua",
         "tests/realbb/theme.lua", "tests/realbb/paper.lua", "tests/realbb/layers.lua",
-        "tests/realbb/update.lua", "tests/realbb/text.lua" }) do
+        "tests/realbb/update.lua", "tests/realbb/text.lua",
+        "tests/realbb/notebookcover.lua" }) do
         suites[#suites + 1] = t
         REAL[t] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. t .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
     end

@@ -67,6 +67,12 @@ function InkAway:init()
     if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 2 then
         UIManager:nextTick(function() self:setupEntryGestures() end)
     end
+    -- the notebooks as a shelf source of the Bookshelf plugin, when it is
+    -- installed; plugins load in name order, so it may come up after this one
+    local Shelf = require("ink/bookshelf")
+    if not Shelf.register(self.ui, self) then
+        UIManager:nextTick(function() Shelf.register(self.ui, self) end)
+    end
     -- emulator hook: INKAWAY_AUTOOPEN opens the canvas straight away, once; the
     -- variable is never set on a device
     if os.getenv("INKAWAY_AUTOOPEN") and not InkAway._autoopened then
@@ -164,8 +170,9 @@ function InkAway:onInkAwayLibrary()
     return true
 end
 
--- Open the canvas, with the library on top when `library` is set.
-function InkAway:openCanvas(library)
+-- Open the canvas, with the library on top when `library` is set, or on the
+-- document at `path`. Returns the view.
+function InkAway:openCanvas(library, path)
     -- Close any Ink Away view still open before opening a fresh one: a buried
     -- copy would keep painting and running its timers, and a reopen should start
     -- clean even if one got stuck. The stack is copied, as close() changes it.
@@ -177,7 +184,9 @@ function InkAway:openCanvas(library)
     end
     for _, w in ipairs(existing) do UIManager:close(w) end
     local InkAwayView = require("ink/view")
-    UIManager:show(InkAwayView:new{ show_library = library or nil })
+    local view = InkAwayView:new{ show_library = library or nil, open_path = path }
+    UIManager:show(view)
+    return view
 end
 
 return InkAway

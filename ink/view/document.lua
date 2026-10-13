@@ -266,6 +266,8 @@ end
 -- version (once), else the last notebook when it starts on Notebooks, else the
 -- last document, else a new drawing.
 function InkAwayView:openStartDocument()
+    -- a document asked for by path (a notebook tapped on a Bookshelf shelf)
+    if self.open_path and Storage.exists(self.open_path) and self:openDocument(self.open_path) then return end
     self:mergeLegacyFolders()
     local path = self:adoptOldSession()
     if not path and self:getSetting("inkaway_start") == "notebooks" then
