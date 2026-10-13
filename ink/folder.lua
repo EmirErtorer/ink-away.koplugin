@@ -1,6 +1,7 @@
 --[[
 A library folder seen as a binder: its documents in the order the reader gave
-them, each with a tab colour. Kept in a small hidden file in the folder, read in
+them, each with a tab colour (and, for a notebook on a Bookshelf shelf, the
+cover it was given there). Kept in a small hidden file in the folder, read in
 a sandbox like a project. A new document joins the end when it is first saved;
 documents the file does not know (copied in from a computer) come after the
 known ones, oldest first, and are remembered from then on.
@@ -14,7 +15,8 @@ local Folder = {}
 
 Folder.FILE = ".inkaway-folder"
 
--- The folder's binder data: { order = { file names }, colors = { name = {r,g,b} } }.
+-- The folder's binder data: { order = { file names }, colors = { name = {r,g,b} },
+-- covers = { name = { style, color = {r,g,b} } } }.
 function Folder.load(dir)
     local f = io.open(Storage.join(dir, Folder.FILE), "rb")
     local data
@@ -25,6 +27,7 @@ function Folder.load(dir)
     if type(data) ~= "table" then data = {} end
     if type(data.order) ~= "table" then data.order = {} end
     if type(data.colors) ~= "table" then data.colors = {} end
+    if type(data.covers) ~= "table" then data.covers = {} end
     return data
 end
 
@@ -82,11 +85,13 @@ function Folder.add(data, name)
     data.order[#data.order + 1] = name
 end
 
--- A document was renamed from `old` to `new`: keep its place and colour.
+-- A document was renamed from `old` to `new`: keep its place, colour and cover.
 function Folder.rename(data, old, new)
     for i, name in ipairs(data.order) do if name == old then data.order[i] = new end end
     local c = data.colors[old]
     if c ~= nil then data.colors[new], data.colors[old] = c, nil end
+    local cv = data.covers and data.covers[old]
+    if cv ~= nil then data.covers[new], data.covers[old] = cv, nil end
 end
 
 -- Does `data` know every document in `arranged`, and nothing else?
@@ -107,6 +112,7 @@ end
 function Folder.forget(data, name)
     for i = #data.order, 1, -1 do if data.order[i] == name then table.remove(data.order, i) end end
     data.colors[name] = nil
+    if data.covers then data.covers[name] = nil end
 end
 
 return Folder

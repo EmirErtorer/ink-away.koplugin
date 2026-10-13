@@ -77,10 +77,10 @@ local function newId(root, data)
 end
 
 -- Where `name` sits in folder `dir`'s binder: the names before and after it,
--- its index and its tab colour.
+-- its index, its tab colour and its Bookshelf cover.
 local function binderPlace(dir, name)
     local data = Folder.load(dir)
-    local place = { color = data.colors[name] }
+    local place = { color = data.colors[name], cover = data.covers[name] }
     for i, n in ipairs(data.order) do
         if n == name then
             place.i, place.prev, place.next = i, data.order[i - 1], data.order[i + 1]
@@ -104,6 +104,7 @@ local function rebind(dir, name, place)
         if not at and place and place.i then at = math.min(place.i, #d.order + 1) end
         table.insert(d.order, at or #d.order + 1, name)
         if place and place.color ~= nil then d.colors[name] = place.color end
+        if place and place.cover ~= nil then d.covers[name] = place.cover end
     end)
 end
 

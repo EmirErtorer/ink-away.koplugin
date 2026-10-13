@@ -567,14 +567,21 @@ function InkAwayView:overviewTabMenu(tab)
             if tab.path == self.doc_path or self:openDocument(tab.path) then self:openExport() end
         end)
     end
-    dialog = ButtonDialog:new{ title = tab.label, buttons = {
+    local buttons = {
         { open, export },
         { act(_("Rename\u{2026}"), function() self:overviewRenameTab(it) end),
           act(_("Colour\u{2026}"), function() self:overviewTabColour(tab) end) },
         { act(_("Move up"), function() self:overviewMoveTab(tab, -1) end),
           act(_("Move down"), function() self:overviewMoveTab(tab, 1) end) },
         { act(_("Delete\u{2026}"), function() self:overviewDeleteTab(it) end) },
-    } }
+    }
+    -- a notebook's cover on a Bookshelf shelf, when Bookshelf is installed
+    if not tab.folder and require("ink/bookshelf").registered and Library.isNotebookFile(tab.path) then
+        table.insert(buttons, #buttons, { act(_("Cover on the shelf\u{2026}"), function()
+            require("ink/coverpicker").show{ path = tab.path, view = self }
+        end) })
+    end
+    dialog = ButtonDialog:new{ title = tab.label, buttons = buttons }
     UIManager:show(dialog)
 end
 

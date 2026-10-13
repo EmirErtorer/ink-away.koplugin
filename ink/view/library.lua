@@ -155,6 +155,12 @@ function InkAwayView:libraryItemMenu(it)
         end)
         rows[#rows + 1] = { act(_("Duplicate"), function() self:duplicateItem(it) end),
             act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
+        -- a notebook's cover on a Bookshelf shelf, when Bookshelf is installed
+        if require("ink/bookshelf").registered and Library.isNotebookFile(it.path) then
+            rows[#rows + 1] = { act(_("Cover on the shelf\u{2026}"), function()
+                require("ink/coverpicker").show{ path = it.path, view = self }
+            end) }
+        end
     end
     dialog = ButtonDialog:new{ title = it.label, buttons = rows }
     UIManager:show(dialog)
@@ -262,8 +268,16 @@ function InkAwayView:moveItem(it)
             return
         end
         if new ~= it.path then
-            Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, Storage.baseName(it.path)) end)
-            Folder.update(dir, function(d) Folder.add(d, Storage.baseName(new)) end)
+            -- its tab colour and Bookshelf cover go with it
+            local old_name, new_name = Storage.baseName(it.path), Storage.baseName(new)
+            local from = Folder.load(Storage.dirName(it.path))
+            local color, cover = from.colors[old_name], from.covers[old_name]
+            Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, old_name) end)
+            Folder.update(dir, function(d)
+                Folder.add(d, new_name)
+                if color ~= nil then d.colors[new_name] = color end
+                if cover ~= nil then d.covers[new_name] = cover end
+            end)
         end
         self:pathMoved(it.path, new)
         self:refreshLibrary()

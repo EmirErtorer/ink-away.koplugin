@@ -3,14 +3,18 @@ Ink Away's notebooks on a shelf of the Bookshelf plugin (AndyHazz's
 bookshelf.koplugin), through the shelf source interface it offers other plugins
 (its SOURCE_API.md, version 1). The reader adds a shelf, picks "Ink Away
 notebooks" as its source, and every notebook in the library stands on it face
-out, on a cover drawn from its first page (ink/notebookcover.lua). A tap opens
-the notebook in Ink Away.
+out, on a cover in one of six styles (ink/notebookcover.lua). A tap opens the
+notebook in Ink Away; a long press lets the reader pick its cover style and
+colour (ink/coverpicker.lua). Those choices are kept in the folder's binder
+file (ink/folder.lua), so they follow the notebook when it is renamed or moved.
 
 Nothing here runs without Bookshelf: register() looks for it and gives up
 quietly. The listing, the records and the cover queue are plain Lua with the
 KOReader parts handed in, so the headless tests drive them.
 ]]
 
+local Cover = require("ink/notebookcover")
+local Folder = require("ink/folder")
 local Library = require("ink/library")
 local Storage = require("ink/storage")
 
@@ -39,6 +43,81 @@ end
 -- The cover cache folder's name, under Ink Away's cache folder.
 Shelf.COVER_DIR = "covers"
 
+-- How long a cover a notebook no longer uses stays on disk, in seconds:
+-- Bookshelf may still be holding a record that points at it, and a cover that
+-- went missing under it would be drawn as a blank and stay blank.
+Shelf.STALE_AFTER = 60
+
+-- The setting holding the cover style notebooks get unless given their own.
+Shelf.DEFAULT_KEY = "inkaway_shelf_cover"
+
+-- KOReader's settings, or nil outside KOReader.
+local function settings() return rawget(_G, "G_reader_settings") end
+
+-- The cover style notebooks get unless given their own.
+function Shelf.defaultStyle()
+    local G = settings()
+    return Cover.styleOf(G and G:readSetting(Shelf.DEFAULT_KEY))
+end
+
+-- Make `style` the one notebooks get unless given their own.
+function Shelf.setDefaultStyle(style)
+    local G = settings()
+    if G then G:saveSetting(Shelf.DEFAULT_KEY, Cover.styleOf(style)) end
+end
+
+-- A colour {r,g,b} from a kept value, or nil when it is not one.
+local function rgbOf(v)
+    if type(v) ~= "table" then return nil end
+    local r, g, b = tonumber(v[1]), tonumber(v[2]), tonumber(v[3])
+    if not (r and g and b) then return nil end
+    return { math.floor(r), math.floor(g), math.floor(b) }
+end
+
+-- The look of the notebook at `path`: { style, colour, own_style, own_colour,
+-- tab }. Its own style, else the default; its own colour, else its tab colour,
+-- else one picked from its path. `binders` caches folders' binder data by
+-- folder for a run of notebooks.
+function Shelf.lookOf(path, binders)
+    local dir, name = Storage.dirName(path), Storage.baseName(path)
+    local data = binders and binders[dir]
+    if not data then
+        data = Folder.load(dir)
+        if binders then binders[dir] = data end
+    end
+    local mine = type(data.covers[name]) == "table" and data.covers[name] or {}
+    local tab = rgbOf(data.colors[name])
+    local own = rgbOf(mine.color)
+    local style = mine.style and Cover.styleOf(mine.style)
+    return {
+        style = style or Shelf.defaultStyle(),
+        colour = own or tab or Cover.boardOf(path),
+        own_style = style ~= nil,
+        own_colour = own ~= nil,
+        tab = tab,
+    }
+end
+
+-- Give the notebook at `path` its own cover style and colour: `style` (false
+-- to take the default again) and `color` ({r,g,b}, or false to follow its tab
+-- colour again); either left nil stays as it is.
+function Shelf.setLook(path, style, color)
+    local name = Storage.baseName(path)
+    return Folder.update(Storage.dirName(path), function(d)
+        local c = type(d.covers[name]) == "table" and d.covers[name] or {}
+        if style == false then c.style = nil elseif style then c.style = Cover.styleOf(style) end
+        if color == false then c.color = nil elseif color then c.color = rgbOf(color) end
+        d.covers[name] = (c.style or c.color) and c or nil
+    end)
+end
+
+-- A short code for a look, so a cover drawn in another style or colour has
+-- another file name.
+function Shelf.lookKey(look)
+    local c = look.colour or { 0, 0, 0 }
+    return Library.pathCode(string.format("%s:%d,%d,%d", look.style or "", c[1], c[2], c[3]))
+end
+
 -- Whether each document is a notebook, by path, kept while its file is
 -- unchanged: { mtime, notebook }. Asked on every redraw of the shelf, so a
 -- document's start is read once, not each time.
@@ -55,13 +134,20 @@ end
 
 -- Every notebook in library folder `root` and its folders, as { path, name,
 -- mtime }, newest first. Hidden entries and Ink Away's own folders (exports,
--- downloaded pictures) are left out, as the library leaves them out.
+-- downloaded pictures) are left out, as the library leaves them out. What is
+-- known of documents no longer there is dropped, so it never piles up.
 function Shelf.notebooks(root)
     local out = {}
+    local known = kinds
+    kinds = {}
+    local function isNotebookNow(path, mtime)
+        kinds[path] = known[path]
+        return isNotebook(path, mtime)
+    end
     local function walk(dir, depth)
         local folders, docs = Library.list(dir, root)
         for _, e in ipairs(docs) do
-            if isNotebook(e.path, e.mtime) then
+            if isNotebookNow(e.path, e.mtime) then
                 out[#out + 1] = { path = e.path, name = Storage.stem(e.path), mtime = e.mtime }
             end
         end
@@ -82,10 +168,11 @@ function Shelf.forget(path)
     if path then kinds[path] = nil else kinds = {} end
 end
 
--- The cover file name for a notebook: its path code and when it last changed,
--- so an edited notebook gets a new cover and the shelf never shows a stale one.
-function Shelf.coverName(path, mtime)
-    return string.format("%s-%d.png", Library.pathCode(path), mtime or 0)
+-- The cover file name for a notebook: its path code, when it last changed and
+-- its look's code, so an edited or restyled notebook gets a new cover and the
+-- shelf never shows a stale one.
+function Shelf.coverName(path, mtime, key)
+    return string.format("%s-%d-%s.png", Library.pathCode(path), mtime or 0, key or "0")
 end
 
 -- The record Bookshelf shows for notebook `nb` ({ path, name, mtime }), with
@@ -97,6 +184,10 @@ function Shelf.record(nb, cover)
         title = nb.name,
         display_title = nb.name,
         cover_image_path = cover,
+        -- said outright: Bookshelf fills in a record without it from the file,
+        -- and keeps what it found then, so a notebook first listed before its
+        -- cover was drawn would stay coverless
+        has_cover = cover ~= nil,
         format = "INKAWAY",
         added_time = nb.mtime,
         last_opened = nb.mtime,
@@ -106,10 +197,13 @@ function Shelf.record(nb, cover)
 end
 
 -- The cover queue. `opts` gives the KOReader parts: cacheDir() (made if
--- missing), render(path, file, view) drawing a notebook's cover to PNG `file`,
--- its page by Ink Away view `view` when given (returns ok), schedule(seconds, fn), unschedule(fn) and changed() (the
--- shelf redraws). Covers are drawn one at a time between redraws, newest
--- notebook first, so the shelf stays responsive while a library is covered.
+-- missing), render(path, file, look, view) drawing a notebook's cover in
+-- `look` to PNG `file`, its page by Ink Away view `view` when given (returns
+-- ok), schedule(seconds, fn), unschedule(fn) and changed() (the shelf
+-- redraws). Covers are drawn one at a time between redraws, newest notebook
+-- first, so the shelf stays responsive while a library is covered. A notebook
+-- here carries { path, mtime, look, key }. A cover a notebook no longer uses
+-- is left for prune() to remove once it has gone stale, never deleted at once.
 function Shelf.newCovers(opts)
     local C = { queue = {}, queued = {}, failed = {} }
 
@@ -123,6 +217,7 @@ function Shelf.newCovers(opts)
 
     -- The redraw after covers land, once for a run of them.
     local function changed() opts.changed() end
+    C.changed = changed
 
     -- Draw the next queued cover, then come back for the one after.
     local function step()
@@ -131,24 +226,29 @@ function Shelf.newCovers(opts)
         C.queued[nb.path] = nil
         local dir = C.dir()
         if dir then
-            local file = Storage.join(dir, Shelf.coverName(nb.path, nb.mtime))
-            if opts.render(nb.path, file) then
-                C.drop(nb.path, file)
+            local file = Storage.join(dir, Shelf.coverName(nb.path, nb.mtime, nb.key))
+            if opts.render(nb.path, file, nb.look) then
                 opts.unschedule(changed)
                 opts.schedule(#C.queue > 0 and 1 or 0.1, changed)
             else
-                C.failed[nb.path] = nb.mtime   -- not again until the notebook changes
+                -- not again until the notebook or its look changes
+                C.failed[nb.path] = nb.mtime .. ":" .. tostring(nb.key)
             end
         end
         if #C.queue > 0 then opts.schedule(0.05, step) end
     end
     C.step = step
 
+    -- Has the cover of `nb` failed to draw (and it has not changed since)?
+    function C.hasFailed(nb)
+        return C.failed[nb.path] == nb.mtime .. ":" .. tostring(nb.key)
+    end
+
     -- The cover file for `nb` if it is drawn, else nil, and `nb` queued.
     function C.get(nb, dir)
-        local file = dir and Storage.join(dir, Shelf.coverName(nb.path, nb.mtime))
+        local file = dir and Storage.join(dir, Shelf.coverName(nb.path, nb.mtime, nb.key))
         if file and Storage.exists(file) then return file end
-        if dir and not C.queued[nb.path] and C.failed[nb.path] ~= nb.mtime then
+        if dir and not C.queued[nb.path] and C.failed[nb.path] ~= nb.mtime .. ":" .. tostring(nb.key) then
             C.queued[nb.path] = true
             C.queue[#C.queue + 1] = nb
             if #C.queue == 1 then opts.schedule(0.2, step) end
@@ -156,50 +256,53 @@ function Shelf.newCovers(opts)
         return nil
     end
 
-    -- Draw the cover of the notebook at `path` now with Ink Away view `view`
-    -- (closing on it, so text and pictures are drawn too), then redraw the shelf.
+    -- Draw the cover of the notebook at `path` now (after a new look was
+    -- picked, or with Ink Away view `view` as it closes on the notebook, so
+    -- text and pictures are drawn too), then redraw the shelf.
     function C.redraw(path, view)
         local dir, mtime = C.dir(), Storage.mtime(path)
         if dir and mtime then
-            local file = Storage.join(dir, Shelf.coverName(path, mtime))
-            if opts.render(path, file, view) then
-                C.drop(path, file)
-                C.failed[path] = nil
-            end
+            local look = Shelf.lookOf(path)
+            local file = Storage.join(dir, Shelf.coverName(path, mtime, Shelf.lookKey(look)))
+            if opts.render(path, file, look, view) then C.failed[path] = nil end
         end
         changed()
     end
 
-    -- Delete the covers of the notebook at `path`, except `keep`.
-    function C.drop(path, keep)
-        local dir = C.dir()
+    -- Delete the covers no notebook in `nbs` uses (each carries its current
+    -- mtime and key): those of notebooks edited, restyled, renamed, moved or
+    -- deleted, and half-written ones, once they are older than
+    -- Shelf.STALE_AFTER at time `now`.
+    function C.prune(nbs, dir, now)
         if not dir then return end
-        local code = Library.pathCode(path) .. "-"
+        local current = {}
+        for _, nb in ipairs(nbs) do current[Shelf.coverName(nb.path, nb.mtime, nb.key)] = true end
         for _, e in ipairs(Storage.list(dir)) do
-            if e.name:sub(1, #code) == code and e.path ~= keep then os.remove(e.path) end
+            if e.mode == "file" and not current[e.name] and (e.name:match("%.png$") or e.name:match("%.tmp$"))
+                    and (now or os.time()) - (e.mtime or 0) >= Shelf.STALE_AFTER then
+                os.remove(e.path)
+            end
         end
     end
 
-    -- Delete covers of notebooks no longer in `nbs` (renamed, moved or deleted).
-    function C.prune(nbs, dir)
-        if not dir then return end
+    -- Forget the failed covers of notebooks no longer in `nbs`, so the list
+    -- of them never outgrows the library.
+    function C.forgetGone(nbs)
         local live = {}
-        for _, nb in ipairs(nbs) do live[Library.pathCode(nb.path)] = true end
-        for _, e in ipairs(Storage.list(dir)) do
-            local code = e.name:match("^(%x+)%-%d+%.png$")
-            if code and not live[code] then os.remove(e.path) end
-        end
+        for _, nb in ipairs(nbs) do live[nb.path] = true end
+        for path in pairs(C.failed) do if not live[path] then C.failed[path] = nil end end
     end
 
     return C
 end
 
 -- The source spec Bookshelf is given. `opts`: root() (the library folder),
--- covers (from newCovers), open(path) (opens the notebook in Ink Away) and
--- `_` (gettext).
+-- covers (from newCovers), open(path) (opens the notebook in Ink Away),
+-- choose(path) (the cover sheet, on a long press) and `_` (gettext).
 function Shelf.spec(opts)
     local _ = opts._ or function(s) return s end
-    local pruned = false
+    local now = opts.now or os.time
+    local pruned_at = nil
     return {
         api = 1,
         remote_prefix = Shelf.PREFIX,
@@ -210,9 +313,24 @@ function Shelf.spec(opts)
         list = function()
             local nbs = Shelf.notebooks(opts.root())
             local dir = opts.covers.dir()
-            if not pruned then pruned = true; opts.covers.prune(nbs, dir) end
-            local out = {}
-            for i, nb in ipairs(nbs) do out[i] = Shelf.record(nb, opts.covers.get(nb, dir)) end
+            opts.covers.forgetGone(nbs)
+            local binders, out = {}, {}
+            for _, nb in ipairs(nbs) do
+                nb.look = Shelf.lookOf(nb.path, binders)
+                nb.key = Shelf.lookKey(nb.look)
+                -- A notebook joins the shelf with its cover: Bookshelf keeps
+                -- what it first drew for a book, so one listed before its
+                -- cover would stay blank. Covers are drawn in moments, each
+                -- redrawing the shelf; one that can't be drawn still shows.
+                local cover = opts.covers.get(nb, dir)
+                if cover or opts.covers.hasFailed(nb) then out[#out + 1] = Shelf.record(nb, cover) end
+            end
+            -- covers no longer used, cleared away now and then
+            local t = now()
+            if not pruned_at or t - pruned_at >= Shelf.STALE_AFTER then
+                pruned_at = t
+                opts.covers.prune(nbs, dir, t)
+            end
             return out
         end,
         -- A new shelf of notebooks stands them all face out on the plank, where
@@ -233,6 +351,11 @@ function Shelf.spec(opts)
             local path = Shelf.notebookPath(book.filepath)
             if path then opts.open(path) end
             return true
+        end,
+        -- a long press: the notebook's cover style and colour
+        info = function(book)
+            local path = Shelf.notebookPath(book.filepath)
+            if path and opts.choose then opts.choose(path) end
         end,
         -- a book changed (any book, or all of them when nil); only ours matter
         invalidate = function(filepath)
@@ -258,10 +381,17 @@ function Shelf.register(ui, plugin)
     if not covers then
         covers = Shelf.newCovers{
             cacheDir = Storage.cacheDir,
-            render = function(path, file, view) return require("ink/notebookcover").write(path, file, view) end,
+            -- each cover's buffers (several MB for a big page) go at once,
+            -- not whenever the collector gets round to them
+            render = function(path, file, look, view)
+                local done = Cover.write(path, file, { style = look and look.style,
+                    colour = look and look.colour, view = view })
+                collectgarbage()
+                return done
+            end,
             schedule = function(s, fn) UIManager:scheduleIn(s, fn) end,
             unschedule = function(fn) UIManager:unschedule(fn) end,
-            changed = function() pcall(function() bs:sourceChanged(Shelf.ID) end) end,
+            changed = function() Shelf.redrawShelf(bs) end,
         }
         Shelf.covers = covers
     end
@@ -273,16 +403,52 @@ function Shelf.register(ui, plugin)
                 return Library.root(G and G:readSetting("inkaway_library_dir"))
             end,
             covers = covers,
-            open = function(path)
-                local view = plugin:openCanvas(nil, path)
-                -- back on the shelf, the notebook's cover drawn by the view
-                -- it was open in
-                if view then view.after_close = function() covers.redraw(path, view) end end
+            open = function(path) Shelf.open(plugin, path) end,
+            choose = function(path)
+                require("ink/coverpicker").show{ path = path, open = function() Shelf.open(plugin, path) end }
             end,
         })
         if not done then error("refused") end
     end)
+    Shelf.registered = Shelf.registered or ok
     return ok
+end
+
+-- Redraw the shelf from a fresh listing. A Spines shelf keeps its whole list
+-- for half a minute and sourceChanged does not drop it (Bookshelf 5.4.4), so
+-- a notebook just covered would stay off the shelf and a new cover would wait
+-- that long; the shelf's kept list is cleared first. Only that one field, and
+-- nothing at all if a later Bookshelf has no such field.
+function Shelf.redrawShelf(bs)
+    pcall(function()
+        local w = bs._widget
+        if type(w) == "table" and type(w._spine_fetch_cache) == "table" then w._spine_fetch_cache = nil end
+        bs:sourceChanged(Shelf.ID)
+    end)
+end
+
+-- Open the notebook at `path` in Ink Away, from the shelf. As the view closes
+-- it draws the notebook's cover (text and pictures included) and lets go of
+-- itself, so nothing of it outlives the close.
+function Shelf.open(plugin, path)
+    local view = plugin:openCanvas(nil, path)
+    if not view then return end
+    view.after_close = function()
+        view.after_close = nil
+        if Shelf.covers then Shelf.covers.redraw(path, view) end
+    end
+end
+
+-- The notebook at `path` got a new look: draw its cover now (with Ink Away
+-- view `view` when one is open) and redraw the shelf.
+function Shelf.lookChanged(path, view)
+    if Shelf.covers then Shelf.covers.redraw(path, view) end
+end
+
+-- The default style changed: every notebook without its own is drawn again
+-- as the shelf asks for it.
+function Shelf.defaultChanged()
+    if Shelf.covers then pcall(Shelf.covers.changed) end
 end
 
 return Shelf

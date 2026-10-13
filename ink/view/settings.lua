@@ -358,6 +358,13 @@ function InkAwayView:openSettings()
                 { "notebooks", _("Notebooks") } },
             self:getSetting("inkaway_start", "last"), content_w,
             function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
+        -- the cover notebooks get on a Bookshelf shelf, when Bookshelf is installed
+        local Shelf = require("ink/bookshelf")
+        if Shelf.registered then
+            add(vspan(10))
+            add(act(_("Covers on Bookshelf: ") .. require("ink/notebookcover").names()[Shelf.defaultStyle()],
+                content_w, function() self:chooseShelfCover() end))
+        end
         -- (palm rejection, the stabilizer and the pen test are in the Pen
         -- sheet's Pen and input, set from where the pen is)
         add(vspan(16))
@@ -370,6 +377,25 @@ function InkAwayView:openSettings()
         return content
     end
     self:showSheet("_settings_dialog", build)
+end
+
+-- The cover style notebooks get on a Bookshelf shelf unless given their own,
+-- previewed on the newest notebook; the settings come back as it closes.
+function InkAwayView:chooseShelfCover()
+    local Shelf = require("ink/bookshelf")
+    local newest = Shelf.notebooks(self:libraryDir())[1]
+    if not newest then
+        UIManager:show(InfoMessage:new{ text = _("Start a notebook first: its cover shows the styles.") })
+        return
+    end
+    local grid = require("ink/coverpicker").showDefault(newest.path)
+    if grid then
+        local was = grid.on_close
+        grid.on_close = function()
+            if was then was() end
+            self:openSettings()
+        end
+    end
 end
 
 -- Light, dark or as KOReader's night mode: Ink Away's own controls (see

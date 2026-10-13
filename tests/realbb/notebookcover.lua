@@ -1,20 +1,23 @@
 -- A notebook's Bookshelf cover (ink/notebookcover.lua) on KOReader's REAL
--- blitter, fonts and image scaler: the first page fills the cover with its
--- ruling and ink, the spiral's holes and wire run down the left edge, the
--- name is white on the notebook's colour band, a view draws the page when one
--- is given, and what can't be drawn writes nothing.
+-- blitter, fonts and image scaler, in each of its six styles: the coloured
+-- part takes the notebook's colour, the name stays inside its area however long
+-- it is (the default "Notebook <date> <time>" on two lines) and reads on light
+-- and dark colours, the styles that show the first page draw it on its own
+-- paper (white ink on a dark one) and the others never draw it, the spiral's
+-- holes and wire run off the edge, a view draws the page when one is given,
+-- and what can't be drawn writes nothing.
 -- Run (the test runner does this):  cd <emulator>/koreader && ./luajit <repo>/tests/realbb/notebookcover.lua <repo>
 local REPO = arg[1] or "."
 require("ffi/loadlib")
 local BB = require("ffi/blitbuffer")
+-- KOReader's own scaler, as RenderImage uses it on a device
+local Mupdf = require("ffi/mupdf")
 package.path = REPO .. "/?.lua;" .. REPO .. "/tests/mock/?.lua;" .. package.path
 _G.G_reader_settings = { data = require("testenv").settings(),
     readSetting = function(self, k) return self.data[k] end,
     saveSetting = function(self, k, v) self.data[k] = v end,
     isTrue = function(self, k) return self.data[k] == true end, nilOrTrue = function() return true end }
 dofile(REPO .. "/tests/realbb/realtext.lua").install()
--- KOReader's own scaler, as RenderImage uses it on a device
-local Mupdf = require("ffi/mupdf")
 package.loaded["ui/renderimage"] = {
     scaleBlitBuffer = function(_, bb, w, h, free_orig)
         if bb:getWidth() == w and bb:getHeight() == h then return bb end
@@ -43,13 +46,27 @@ local function count(bb, x0, y0, x1, y1, test)
     for y = y0, y1 - 1 do for x = x0, x1 - 1 do if test(px(bb, x, y)) then n = n + 1 end end end
     return n
 end
+-- Where two covers differ: the count, and whether all of it is inside `r`.
+local function differ(a, b, r)
+    local n, outside = 0, 0
+    for y = 0, Cover.H - 1 do
+        for x = 0, Cover.W - 1 do
+            local p, q = px(a, x, y), px(b, x, y)
+            if p.r ~= q.r or p.g ~= q.g or p.b ~= q.b then
+                n = n + 1
+                if x < r.x or x >= r.x + r.w or y < r.y or y >= r.y + r.h then outside = outside + 1 end
+            end
+        end
+    end
+    return n, outside
+end
 
 local DIR = TestEnv.libraryDir()
 local PW, PH = 600, 800
--- A notebook with a thick black line across page 1 at canvas row 400 and a
--- red stroke lower down.
-local function notebook(name)
-    local nb = Notebook.new(PW, PH, { style = "lines", size = 40 })
+-- A notebook with a thick line across page 1 at canvas row 400 and a red
+-- stroke lower down, on `paper` ({r,g,b}, white when nil).
+local function notebook(name, paper)
+    local nb = Notebook.new(PW, PH, { style = "lines", size = 40, paper = paper })
     nb.pages[1].ops = {
         { kind = "ink", width = 24, alpha = 255, style = "solid", seed = 1, pts = { 60, 400, 540, 400 } },
         { kind = "ink", width = 24, alpha = 255, color = { 220, 30, 30 }, style = "solid", seed = 2,
@@ -60,71 +77,127 @@ local function notebook(name)
     return path
 end
 
-------------------------------------------------------------------------------
--- Layout and colours
-------------------------------------------------------------------------------
-do
-    local page, band = Cover.layout()
-    ok(page.x == 0 and page.y == 0 and page.w == Cover.W, "layout: the page runs edge to edge")
-    ok(page.h + band.h == Cover.H and band.y == page.h and band.w == Cover.W, "layout: the band below it")
-    local p = DIR .. "/a.inkaway"
-    ok(Cover.boardOf(p) == Cover.boardOf(p), "boardOf: a notebook keeps its colour")
-    local inPalette = false
-    for _, c in ipairs(Cover.BOARDS) do if c == Cover.boardOf(p) then inPalette = true end end
-    ok(inPalette, "boardOf: one of the band colours")
-end
+local DEFAULT_NAME = "Notebook 2026-10-13 14.22"
+-- A point in each style's coloured part.
+local COLOURED = {
+    page = { Cover.W - 6, Cover.H - 6 }, hardcover = { Cover.W - 20, 40 }, composition = { 30, 300 },
+    reporter = { Cover.W - 30, 100 }, kraft = { Cover.W - 6, Cover.H - 6 }, legal = { Cover.W - 20, 60 },
+}
 
 ------------------------------------------------------------------------------
--- The cover
+-- Every style
 ------------------------------------------------------------------------------
 do
     local path = notebook("Physics")
-    local bb = Cover.render(path)
-    ok(bb ~= nil, "render: a notebook has a cover")
-    ok(bb and bb:getWidth() == Cover.W and bb:getHeight() == Cover.H, "render: at the cover's size")
-    if bb then
-        local page, band = Cover.layout()
-        local s = Cover.W / PW   -- the page at the cover's width
-        -- ink: the black line, at its row scaled to the cover
-        local ly = math.floor(400 * s)
-        ok(count(bb, 120, ly - 3, 400, ly + 3, function(c) return c.r < 60 and c.g < 60 and c.b < 60 end) > 600,
-            "render: the page's ink is on the cover")
-        local ry = math.floor(600 * s)
-        ok(ry < page.h, "render: (the red stroke is above the band)")
-        ok(count(bb, 120, ry - 3, 380, ry + 3, function(c) return c.r > 170 and c.g < 90 and c.b < 90 end) > 300,
-            "render: in its colours")
-        -- paper and ruling between the strokes
-        ok(count(bb, 120, 60, 460, 300, function(c) return c.r > 240 and c.g > 240 and c.b > 240 end) > 40000,
-            "render: the page's paper")
-        ok(count(bb, 120, 60, 460, 300, function(c) return c.r < 235 and c.r > 120 end) > 200,
-            "render: and its ruling")
-        -- the band in the notebook's colour, the name white on it
-        local col = Cover.boardOf(path)
-        ok(near(px(bb, Cover.W - 6, Cover.H - 6), col[1], col[2], col[3]), "render: the band in the notebook's colour")
-        ok(count(bb, 40, band.y, Cover.W, Cover.H, function(c) return c.r > 230 and c.g > 230 and c.b > 230 end) > 150,
-            "render: the name in white on it")
-        -- the spiral: a dark hole by the edge, and wire running off the edge
-        local function hole(c) return near(c, 0x3A, 0x3A, 0x3A, 10) end
-        ok(count(bb, 12, 10, 24, 26, hole) > 6, "render: a punched hole near the left edge, the wire through it")
-        ok(count(bb, 0, 15, 14, 22, function(c) return c.r > 240 end) > 20, "render: the page shows inside the loop")
-        ok(count(bb, 0, 8, 4, 30, function(c) return c.r > 180 and c.r < 230 and near(c, c.r, c.r, c.r, 12) end) > 4,
-            "render: wire at the very edge, wrapping round it")
-        ok(count(bb, 12, band.y, 24, Cover.H, hole) > 20, "render: the spiral runs through the band too")
-        bb:free()
+    local purple = { 0x80, 0x00, 0xB0 }
+    for _, style in ipairs(Cover.STYLES) do
+        local pages = {}
+        local bb = Cover.render(path, { style = style, colour = purple, pages = pages })
+        ok(bb and bb:getWidth() == Cover.W and bb:getHeight() == Cover.H, style .. ": a cover at the cover's size")
+        if bb then
+            local at = COLOURED[style]
+            ok(near(px(bb, at[1], at[2]), purple[1], purple[2], purple[3]), style .. ": its coloured part in the colour")
+            ok((next(pages) ~= nil) == (Cover.SHOWS_PAGE[style] == true),
+                style .. (Cover.SHOWS_PAGE[style] and ": draws the first page" or ": never draws the page"))
+            -- the name: inside its area, written, on two lines when long
+            local blank = Cover.render(path, { style = style, colour = purple, name = "", pages = pages })
+            local long = Cover.render(path, { style = style, colour = purple, name = DEFAULT_NAME, pages = pages })
+            local r = Cover.LAYOUT[style].name
+            local n, outside = differ(blank, long, r)
+            ok(n > 300, style .. ": the default name is written")
+            ok(outside == 0, style .. ": the default name stays inside its area (" .. outside .. " outside)")
+            local word = Cover.render(path, { style = style, colour = purple, pages = pages,
+                name = "Supercalifragilisticexpialidociousnotebookofeverything" })
+            n, outside = differ(blank, word, r)
+            ok(n > 200 and outside == 0, style .. ": one very long word is cut short inside its area")
+            local many = Cover.render(path, { style = style, colour = purple, pages = pages,
+                name = "A notebook with a name far too long for any cover anyone would ever make at all" })
+            n, outside = differ(blank, many, r)
+            ok(n > 200 and outside == 0, style .. ": a very long name is cut short inside its area")
+            blank:free(); long:free(); word:free(); many:free()
+            bb:free()
+        end
+        Cover.freePages(pages)
+        ok(next(pages) == nil, style .. ": its kept pages are freed")
     end
+end
 
-    -- a long name is shrunk and cut short, never past the band
-    local long = notebook("A notebook with a name far too long for any cover at all")
-    local lb = Cover.render(long)
-    ok(lb ~= nil, "render: a long name still has a cover")
-    if lb then
-        local _, band = Cover.layout()
-        ok(count(lb, Cover.W - 10, band.y, Cover.W, Cover.H, function(c) return c.r > 230 and c.g > 230 end) == 0,
-            "render: a long name stays clear of the band's edge")
-        ok(count(lb, 40, band.y, Cover.W, Cover.H, function(c) return c.r > 230 and c.g > 230 and c.b > 230 end) > 150,
-            "render: and is still written")
-        lb:free()
+------------------------------------------------------------------------------
+-- Names on light and dark colours
+------------------------------------------------------------------------------
+do
+    local path = notebook("Contrast")
+    local function nameInk(style, colour)
+        local blank = Cover.render(path, { style = style, colour = colour, name = "" })
+        local named = Cover.render(path, { style = style, colour = colour, name = "Physics" })
+        local r = Cover.LAYOUT[style].name
+        local dark, light = 0, 0
+        for y = r.y, r.y + r.h - 1 do
+            for x = r.x, r.x + r.w - 1 do
+                local p, q = px(blank, x, y), px(named, x, y)
+                if p.r ~= q.r or p.g ~= q.g or p.b ~= q.b then
+                    if q.r < 80 and q.g < 80 and q.b < 80 then dark = dark + 1 end
+                    if q.r > 220 and q.g > 220 and q.b > 220 then light = light + 1 end
+                end
+            end
+        end
+        blank:free(); named:free()
+        return dark, light
     end
+    local d, l = nameInk("page", { 0x2E, 0x4A, 0x7A })
+    ok(l > 100 and d == 0, "name: white on a dark band")
+    d, l = nameInk("page", { 0xE8, 0xC0, 0x00 })
+    ok(d > 100 and l == 0, "name: near black on a light band")
+    d, l = nameInk("hardcover", { 0xE8, 0xC0, 0x00 })
+    ok(d > 100, "name: near black on the cream label")
+    d, l = nameInk("legal", { 0xBB, 0xBB, 0xBB })
+    ok(d > 100, "name: near black on a light grey binding")
+end
+
+------------------------------------------------------------------------------
+-- The first page: its ink, paper and ruling
+------------------------------------------------------------------------------
+do
+    local s = Cover.W / PW   -- the page at the cover's width (page style)
+    local path = notebook("Ink")
+    local bb = Cover.render(path, { style = "page" })
+    local ly, ry = math.floor(400 * s), math.floor(600 * s)
+    ok(count(bb, 120, ly - 3, 400, ly + 3, function(c) return c.r < 60 and c.g < 60 and c.b < 60 end) > 600,
+        "page: the ink is on the cover")
+    ok(count(bb, 120, ry - 3, 380, ry + 3, function(c) return c.r > 170 and c.g < 90 and c.b < 90 end) > 300,
+        "page: in its colours")
+    ok(count(bb, 120, 60, 460, 300, function(c) return c.r > 240 and c.g > 240 and c.b > 240 end) > 40000,
+        "page: on white paper")
+    ok(count(bb, 120, 60, 460, 300, function(c) return c.r < 235 and c.r > 120 end) > 200, "page: and its ruling")
+    -- the spiral: a dark hole by the edge, wire running off the edge and
+    -- the page showing inside each ring
+    local function hole(c) return near(c, 0x3A, 0x3A, 0x3A, 10) end
+    ok(count(bb, 12, 10, 24, 26, hole) > 6, "page: a punched hole near the left edge, the wire through it")
+    ok(count(bb, 0, 15, 14, 22, function(c) return c.r > 240 end) > 20, "page: the page shows inside the ring")
+    ok(count(bb, 0, 8, 4, 30, function(c) return c.r > 180 and c.r < 230 and near(c, c.r, c.r, c.r, 12) end) > 4,
+        "page: wire at the very edge, wrapping round it")
+    local band = Cover.LAYOUT.page.band
+    ok(count(bb, 12, band.y, 24, Cover.H, hole) > 20, "page: the spiral runs through the band too")
+    bb:free()
+
+    -- a cream paper shows as cream in every style that shows the page
+    local cream = { 0xF3, 0xE9, 0xD2 }
+    local cp = notebook("Cream", cream)
+    for _, style in ipairs({ "page", "reporter", "kraft" }) do
+        local cb = Cover.render(cp, { style = style })
+        local r = style == "kraft" and Cover.LAYOUT.kraft.window or Cover.LAYOUT[style].page
+        ok(count(cb, r.x + 40, r.y + 4, r.x + r.w - 10, r.y + 60, function(c) return near(c, 0xF3, 0xE9, 0xD2, 4) end) > 2000,
+            style .. ": the page's own paper colour")
+        cb:free()
+    end
+    -- on a dark paper the ink shows white, as in Ink Away
+    local dp = notebook("Dark", { 0x22, 0x22, 0x22 })
+    local db = Cover.render(dp, { style = "page" })
+    ok(count(db, 120, ly - 3, 400, ly + 3, function(c) return c.r > 220 and c.g > 220 and c.b > 220 end) > 600,
+        "page: black ink shows white on a dark paper")
+    ok(count(db, 120, 60, 460, 300, function(c) return near(c, 0x22, 0x22, 0x22, 6) end) > 30000,
+        "page: on its dark paper")
+    db:free()
 
     -- with a view, the view draws the page (text and pictures included)
     local asked
@@ -134,14 +207,39 @@ do
         t:paintRectRGB32(0, 0, w, h, BB.ColorRGB32(0, 200, 0, 0xFF))
         return t
     end }
-    local vb = Cover.render(path, view)
-    ok(asked and asked.p == path and asked.w == Cover.W, "render: a view is asked for the page at the cover's width")
-    ok(vb and near(px(vb, 240, 200), 0, 200, 0), "render: and its page is the one shown")
+    local vb = Cover.render(path, { style = "page", view = view })
+    ok(asked and asked.p == path and asked.w == Cover.W, "view: asked for the page at the cover's width")
+    ok(vb and near(px(vb, 240, 200), 0, 200, 0), "view: and its page is the one shown")
     if vb then vb:free() end
-    -- a view that can't draw it: the export engine does
-    local fb = Cover.render(path, { renderDocThumb = function() return nil end })
-    ok(fb and near(px(fb, 240, 100), 255, 255, 255, 20), "render: without the view's page, the export engine's")
+    local fb = Cover.render(path, { style = "page", view = { renderDocThumb = function() return nil end } })
+    ok(fb and near(px(fb, 240, 100), 255, 255, 255, 20), "view: when it can't, the export engine's page")
     if fb then fb:free() end
+end
+
+------------------------------------------------------------------------------
+-- Colours, marbling and the same cover twice
+------------------------------------------------------------------------------
+do
+    local a, b = notebook("Same"), notebook("Other")
+    ok(Cover.boardOf(a) == Cover.boardOf(a), "boardOf: a notebook keeps its colour")
+    local inPalette = false
+    for _, c in ipairs(Cover.BOARDS) do if c == Cover.boardOf(a) then inPalette = true end end
+    ok(inPalette, "boardOf: one of the cover colours")
+    local auto = Cover.render(a, { style = "page" })
+    local col = Cover.boardOf(a)
+    ok(near(px(auto, Cover.W - 6, Cover.H - 6), col[1], col[2], col[3]), "colour: without one, the picked colour")
+    auto:free()
+    local m1 = Cover.render(a, { style = "composition", name = "" })
+    local m2 = Cover.render(a, { style = "composition", name = "" })
+    local m3 = Cover.render(b, { style = "composition", name = "" })
+    local full = { x = 0, y = 0, w = Cover.W, h = Cover.H }
+    ok(differ(m1, m2, full) == 0, "composition: a notebook's marbling is the same every time")
+    ok(differ(m1, m3, full) > 1000, "composition: another notebook's is its own")
+    m1:free(); m2:free(); m3:free()
+    ok(Cover.styleOf("legal") == "legal" and Cover.styleOf("nope") == Cover.DEFAULT and Cover.styleOf(nil) == Cover.DEFAULT,
+        "styleOf: a style, or the default")
+    local names = Cover.names()
+    for _, s in ipairs(Cover.STYLES) do ok(type(names[s]) == "string" and names[s] ~= "", "names: " .. s) end
 end
 
 ------------------------------------------------------------------------------
@@ -150,7 +248,7 @@ end
 do
     local path = notebook("Written")
     local file = DIR .. "/cover.png"
-    ok(Cover.write(path, file) == true, "write: the cover is written")
+    ok(Cover.write(path, file, { style = "kraft" }) == true, "write: the cover is written")
     ok(Storage.exists(file) and not Storage.exists(file .. ".tmp"), "write: as a PNG, nothing left over")
     local f = io.open(file, "rb")
     local sig = f and f:read(8)
