@@ -8,6 +8,20 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Notebooks on a Bookshelf shelf. With the Bookshelf plugin installed, a
+  shelf can show "Ink Away notebooks": every notebook stands face out on its
+  cover, a tap opens it in Ink Away, and its cover is drawn again when you
+  close it. Without Bookshelf nothing changes.
+- Six cover styles for the shelf: Front page (the notebook's first page, with
+  a spiral and its name on a coloured band), Hardcover, Composition book,
+  Reporter pad, Kraft with window and Legal pad. A long press on a notebook on
+  the shelf picks its style and colour, which follows its tab colour until you
+  pick another; "Cover on the shelf" in a notebook's menu in the library does
+  the same, and "Covers on Bookshelf" in Ink Away's settings sets the style
+  new notebooks start with. A notebook keeps its cover through renames, moves
+  and the trash.
+
 ### Fixed
 - With the screen turned upside down (a Kobo Libra Colour held with its
   buttons on the left, for one) the page under Ink Away was dark: strokes
