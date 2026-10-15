@@ -217,12 +217,20 @@ function NotesView:paintSurround(bb, x, y)
     if Theme.invert() then bb:invertRect(x + s.x, y + s.y, s.w, s.h) end   -- dark: the strip is a control
 end
 
+-- The title the strip shows for page i: its own, else that of the page before
+-- it with one (a page added by hand belongs to the chapter page before it).
+local function titleFor(pages, i)
+    for k = i, 1, -1 do
+        local t = pages[k] and pages[k].title
+        if t and t ~= "" then return t end
+    end
+end
+
 -- "Chapter · 2/5", made again only when it changes.
 function NotesView:stripText()
     local nb = self.notebook
     if not nb then return nil end
-    local page = nb.pages[nb.index]
-    local name = (page and page.title and page.title ~= "") and page.title or self:docName()
+    local name = titleFor(nb.pages, nb.index) or self:docName()
     local text = string.format("%s \u{00B7} %d/%d", name, nb.index, nb:count())
     if self._strip_w and self._strip_text == text then return self._strip_w end
     if self._strip_w then self._strip_w:free() end
@@ -324,22 +332,33 @@ function NotesView:goToChapter(info)
     end
 end
 
--- A chapter page opened for this visit and left empty goes again.
+-- A chapter page opened for this visit goes again if it was left empty, with
+-- the pages added by hand after it, as long as they are all empty: a page
+-- written on keeps the chapter page it belongs to.
 function NotesView:pruneFreshPage()
     local nb, page = self.notebook, self._fresh_page
     self._fresh_page = nil
-    if not (nb and page) or nb:count() <= 1 then return end
-    if nb.pages[nb.index] == page then self:nbSyncOut() end
-    if #(page.ops or {}) > 0 then return end
+    if not (nb and page) then return end
+    self:nbSyncOut()
+    local first
     for i, p in ipairs(nb.pages) do
-        if p == page then
-            table.remove(nb.pages, i)
-            if nb.index >= i then nb.index = math.max(1, nb.index - 1) end
-            nb.index = math.min(nb.index, #nb.pages)
-            self.dirty = true
-            return
-        end
+        if p == page then first = i; break end
     end
+    if not first then return end
+    local last = first
+    while nb.pages[last + 1] and not nb.pages[last + 1].book do last = last + 1 end
+    if last - first + 1 >= nb:count() then return end   -- a notebook keeps a page
+    for i = first, last do
+        if #(nb.pages[i].ops or {}) > 0 then return end
+    end
+    for i = last, first, -1 do table.remove(nb.pages, i) end
+    if nb.index > last then nb.index = nb.index - (last - first + 1)
+    elseif nb.index >= first then nb.index = first - 1 end
+    nb.index = math.max(1, math.min(nb.index, #nb.pages))
+    -- the canvas follows, so the save that comes with closing keeps that page
+    self.canvas:setOps(nb:currentOps())
+    self._page_rev = self.canvas.rev
+    self.dirty = true
 end
 
 -- The "Book notes" folder is made with the notebook's first save.

@@ -13,6 +13,14 @@ versions marked *Prerelease* were test builds.
   buttons on the left, for one) the page under Ink Away was dark: strokes
   showed as white boxes and the eraser drew white, over a book and in
   drawings alike. The page shows as it does the right way up.
+- A page added to a book's notes named the notebook in the strip above it
+  instead of its chapter, so it looked like another notebook had opened. It
+  names the chapter it belongs to now.
+- Opening a book's notes in a new chapter, adding a page and writing only on
+  that one moved the notes to the chapter before when the notes closed, and
+  the chapter opened on an empty page the next time. The chapter's page now
+  stays when a page after it has notes, and goes with the empty pages after
+  it when they are all left empty.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

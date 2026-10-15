@@ -371,5 +371,75 @@ do
     view:closeCanvas()
 end
 
+-- Book notes (ink/reader/notesview.lua): a page added by hand belongs to the
+-- chapter before it, so its strip names that chapter and closing keeps it with
+-- that chapter's page; a new chapter page left empty goes, with any empty pages
+-- added after it.
+do
+    local W, H = 1072, 1448
+    Screen:setSize(W, H)
+    local Project = require("ink/project")
+    local book = { info = { title = "Notes Test Book", md5 = "abc" } }
+    function book:notesInfo() return self.info end
+    function book:notesPath() return self.linked end
+    function book:setNotesPath(path) self.linked = path end
+    local function chapter(key, title) book.info.key, book.info.chapter = key, title end
+    local function open()
+        UIManager.reset()
+        package.loaded["ink/view"] = nil
+        package.loaded["ink/reader/notesview"] = nil
+        local view = require("ink/reader/notesview"):new{ book = book }
+        UIManager:show(view)
+        return view
+    end
+    local function write(view)
+        local v = view.view
+        local x, y = v.area_x + 40, v.area_y + 60
+        view:onIaTouch(nil, pos(x, y))
+        for i = 1, 5 do view:onIaPan(nil, pos(x + i * 20, y + i)) end
+        view:onIaPanRelease(nil, pos(x + 100, y + 5))
+        view:flushPending()
+    end
+    -- what the saved notebook holds: each page's chapter and ink
+    local function saved()
+        local data = Project.load(book.linked)
+        local out = {}
+        for i, p in ipairs(data and data.pages or {}) do
+            out[i] = (p.book and p.book.toc or "-") .. ":" .. #(p.ops or {})
+        end
+        return table.concat(out, " ")
+    end
+
+    chapter(3, "Chapter Three")
+    local view = open()
+    ok(view:stripText() and view._strip_text == "Chapter Three \u{00B7} 1/1", "notes: the strip names the chapter")
+    write(view)
+    view:nbAddPage()
+    view:stripText()
+    ok(view._strip_text == "Chapter Three \u{00B7} 2/2", "notes: a page added by hand names its chapter too")
+    write(view)
+    view:closeCanvas()
+    ok(saved() == "3:1 -:1", "notes: one notebook, the added page after its chapter's (" .. saved() .. ")")
+
+    -- a later chapter: its new page left empty, a page added after it written on
+    chapter(7, "Chapter Seven")
+    view = open()
+    view:nbAddPage()
+    write(view)
+    view:closeCanvas()
+    ok(saved() == "3:1 -:1 7:0 -:1", "notes: the written page stays with its chapter's page (" .. saved() .. ")")
+    view = open()
+    local nb = view.notebook
+    ok(nb:count() == 4 and nb.index == 4 and #nb.pages[4].ops == 1, "notes: and opening in that chapter goes to its written page")
+    view:closeCanvas()
+
+    -- another chapter: its new page and a page added after it, both left empty, go
+    chapter(9, "Chapter Nine")
+    view = open()
+    view:nbAddPage()
+    view:closeCanvas()
+    ok(saved() == "3:1 -:1 7:0 -:1", "notes: an empty chapter page goes with the empty page added after it (" .. saved() .. ")")
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
