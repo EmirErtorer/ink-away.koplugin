@@ -188,15 +188,17 @@ function Pens.tapered(op, st)
     return { kind = op.kind, style = op.style, width = op.width, pts = out, pr = opr }
 end
 
--- Draw an ink op's path through `put`, whatever its pen.
-function Pens.paint(op, put)
+-- Draw an ink op's path through `put`, whatever its pen. With `clip` (a canvas
+-- rect being drawn again) a pen whose width changes skips the parts of the
+-- stroke that cannot reach it; inside it the pixels are the same.
+function Pens.paint(op, put, clip)
     local st = op.style and Raster.STYLES[op.style]
     if not st or (st.solid and not st.engine) then
         return Raster.path(op.pts, op.width / 2, put)
     end
     if st.engine == "var" then
         local t = Pens.tapered(op, st)
-        return Raster.pathVar(t.pts, Pens.radii(t, st, 1), put)
+        return Raster.pathVar(t.pts, Pens.radii(t, st, 1), put, clip)
     elseif st.engine == "nib" then
         return Pens.nib(op.pts, op.pr, op.width, st, put, Pens.nibAngle(op.nib))
     elseif st.engine == "wash" then
@@ -247,7 +249,8 @@ function Pens.segment(st, seg, r, p0, p1, put, seed, t0, t1, nib)
     end
     local rs
     if single then
-        rs = { r * factor(st, p1) }
+        -- a stroke's first point starts its taper, as the saved stroke does
+        rs = { r * factor(st, p1) * ((st.taper and t1) and Pens.taper(st, t1) or 1) }
     else
         local a, b = Pens.segRadii(st, r, p0, p1, seg[3] - seg[1], seg[4] - seg[2])
         if st.taper and t0 then a, b = a * Pens.taper(st, t0), b * Pens.taper(st, t1) end

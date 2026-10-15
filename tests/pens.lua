@@ -217,5 +217,102 @@ do
     end
 end
 
+-- ---- drawn again in a region: the parts that cannot reach it are skipped ------
+-- Pens.paint with a clip (a region being composed again) must leave exactly
+-- the pixels inside it that the whole stroke draws there.
+do
+    math.randomseed(11)
+    local bad, tried, skipped_some = 0, 0, false
+    for _i = 1, 300 do
+        local style = (_i % 2 == 0) and "ballpoint" or "fountain"
+        local op = { kind = "ink", style = style, width = math.random(4, 30), pts = {}, pr = {} }
+        local x, y = math.random(50, 400), math.random(50, 400)
+        for _j = 0, math.random(2, 40) do
+            x = x + math.random(-25, 25); y = y + math.random(-25, 25)
+            op.pts[#op.pts + 1] = x; op.pts[#op.pts + 1] = y
+            op.pr[#op.pr + 1] = math.random(0, 255)
+        end
+        local cx0, cy0 = math.random(0, 450), math.random(0, 450)
+        local clip = { x0 = cx0, y0 = cy0, x1 = cx0 + math.random(5, 120), y1 = cy0 + math.random(5, 120) }
+        local function inClip(put)
+            return function(px, py, len)
+                if py < clip.y0 or py >= clip.y1 then return end
+                local a, b = math.max(px, clip.x0), math.min(px + len, clip.x1)
+                if b > a then put(a, py, b - a) end
+            end
+        end
+        local whole, nw = cover(function(put) Pens.paint(op, inClip(put)) end)
+        local calls = 0
+        local part = cover(function(put)
+            Pens.paint(op, inClip(function(...) calls = calls + 1; return put(...) end), clip)
+        end)
+        tried = tried + 1
+        if not same(whole, part) then bad = bad + 1 end
+        if nw == 0 then skipped_some = true end
+    end
+    ok(bad == 0, ("clip: the pixels inside the region are the whole stroke's, every time (%d of %d differ)"):format(bad, tried))
+    ok(skipped_some, "clip: (some strokes miss their region entirely)")
+end
+
+-- ---- a row's spans along a path are joined: the same pixels, written once ----
+-- Raster.pathVar along several segments covers exactly what its segments
+-- drawn one by one cover (how it drew them before), with fewer writes, and
+-- never a pixel twice within one row's join; a tapered end shows it most.
+do
+    math.randomseed(7)
+    local bad, tried, fewer, writes_one, writes_all = 0, 0, 0, 0, 0
+    for _i = 1, 400 do
+        local pts, rs = {}, {}
+        local x, y = math.random(50, 400), math.random(50, 400)
+        local n = math.random(2, 45)
+        for _j = 1, n do
+            if _i % 3 == 0 then   -- short steps, as a taper is drawn
+                x = x + math.random(-4, 4); y = y + math.random(-4, 4)
+            else
+                x = x + math.random(-30, 30); y = y + math.random(-30, 30)
+            end
+            pts[#pts + 1] = x + math.random(); pts[#pts + 1] = y + math.random()
+        end
+        for _j = 1, 2 * (n - 1) do rs[_j] = math.random() * 14 end
+        local one = cover(function(put)
+            for k = 1, n - 1 do
+                Raster.pathVar({ pts[2 * k - 1], pts[2 * k], pts[2 * k + 1], pts[2 * k + 2] },
+                    { rs[2 * k - 1], rs[2 * k] }, function(...) writes_one = writes_one + 1; return put(...) end)
+            end
+        end)
+        local before = writes_all
+        local all = cover(function(put)
+            Raster.pathVar(pts, rs, function(...) writes_all = writes_all + 1; return put(...) end)
+        end)
+        tried = tried + 1
+        if not same(one, all) then bad = bad + 1 end
+        if writes_all - before < 1 then bad = bad + 1 end
+        if n > 2 then fewer = fewer + 1 end
+    end
+    ok(bad == 0, ("join: a path covers exactly what its segments one by one cover (%d of %d differ)"):format(bad, tried))
+    print(("  join: random paths %d writes, %d before"):format(writes_all, writes_one))
+    ok(writes_all < writes_one * 0.6, ("join: with far fewer writes (%d against %d)"):format(writes_all, writes_one))
+    -- a ballpoint stroke with its tapers: same pixels as before, a fraction of the writes
+    local op = { kind = "ink", style = "ballpoint", width = 15, pts = {}, pr = {} }
+    for i = 0, 30 do
+        local a = i / 30 * math.pi * 2.2
+        op.pts[#op.pts + 1] = 200 + 30 * math.sin(a) + i * 2; op.pts[#op.pts + 1] = 200 + 40 * math.cos(a * 0.9)
+        op.pr[#op.pr + 1] = 150 + (i % 5) * 20
+    end
+    local t = Pens.tapered(op, Raster.STYLES.ballpoint)
+    local radii = Pens.radii(t, Raster.STYLES.ballpoint, 1)
+    local w1, w2 = 0, 0
+    local one = cover(function(put)
+        for k = 1, #t.pts / 2 - 1 do
+            Raster.pathVar({ t.pts[2 * k - 1], t.pts[2 * k], t.pts[2 * k + 1], t.pts[2 * k + 2] },
+                { radii[2 * k - 1], radii[2 * k] }, function(...) w1 = w1 + 1; return put(...) end)
+        end
+    end)
+    local all = cover(function(put) Pens.paint(op, function(...) w2 = w2 + 1; return put(...) end) end)
+    ok(same(one, all), "join: a tapered ballpoint stroke keeps every pixel")
+    print(("  join: tapered ballpoint %d writes, %d before"):format(w2, w1))
+    ok(w2 * 3 < w1, ("join: a tapered ballpoint stroke takes a third of the writes or fewer (%d against %d)"):format(w2, w1))
+end
+
 print(("pens: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

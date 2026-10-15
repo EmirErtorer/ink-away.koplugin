@@ -196,7 +196,7 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
             seg[1], seg[2], seg[3], seg[4] = self.last_cx, self.last_cy, cx, cy
             strokeFn(seg, width / 2, self._lw_cput, p0, p, t0, t1)
         else
-            strokeFn({ cx, cy }, width / 2, self._lw_cput, p, p)
+            strokeFn({ cx, cy }, width / 2, self._lw_cput, p, p, t0, t0)
         end
         self.last_cx, self.last_cy = cx, cy
         -- on a layer under others: they stay over it (see view/layers.lua)
@@ -217,7 +217,7 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
         seg[1], seg[2], seg[3], seg[4] = self.last_ax, self.last_ay, ax, ay
         strokeFn(seg, (width * self.view.zoom) / 2, self._lw_aput, p0, p, t0, t1)
     else
-        strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput, p, p)
+        strokeFn({ ax, ay }, (width * self.view.zoom) / 2, self._lw_aput, p, p, t0, t0)
     end
     self.last_ax, self.last_ay = ax, ay
     self._live_p = p
@@ -397,6 +397,86 @@ function InkAwayView:beautifyStroke(raw, committed)
     return true
 end
 
+-- What a lift must draw again from the saved stroke of a pen whose width
+-- changes or that has its own engine: nil for the whole stroke, a canvas rect
+-- {x0, y0, x1, y1} for just that, or false for nothing.
+--   * a tapered pen (Ballpoint, Fountain): only where its end thins, which
+--     the live drawing could not know of, or all of a stroke too short for
+--     both its tapers (both are then shortened)
+--   * Calligraphy and a pressed Pencil: nothing; the live drawing is the
+--     saved stroke's, but for a pixel or two of the simplification here and
+--     there, as with any pen
+--   * anything else (the see-through pens blend over the page): all of it
+-- Redrawing the whole stroke at every lift cost ten to twenty times what the
+-- rest of the lift does.
+function InkAwayView:liftTail(op, st)
+    if st.engine == "nib" then return false end
+    if not st.engine and op.pr then return false end
+    if st.engine ~= "var" then return nil end
+    local tp = st.taper
+    if not tp then return false end
+    local pts, w = op.pts, op.width or 1
+    local n = math.floor(#pts / 2)
+    if n < 2 then return nil end
+    local total = 0
+    for i = 2, n do
+        total = total + math.sqrt((pts[2 * i - 1] - pts[2 * i - 3]) ^ 2 + (pts[2 * i] - pts[2 * i - 2]) ^ 2) / w
+    end
+    if total < 1.2 or total < tp.a + tp.b then return nil end
+    -- the saved stroke from where its end's taper starts, b widths from the end
+    local x0, y0, x1, y1 = pts[2 * n - 1], pts[2 * n], pts[2 * n - 1], pts[2 * n]
+    local e = 0
+    for i = n, 2, -1 do
+        local ax, ay, bx, by = pts[2 * i - 3], pts[2 * i - 2], pts[2 * i - 1], pts[2 * i]
+        local seg = math.sqrt((bx - ax) ^ 2 + (by - ay) ^ 2) / w
+        local px, py = ax, ay
+        if e + seg > tp.b then
+            local f = (tp.b - e) / seg
+            px, py = bx + (ax - bx) * f, by + (ay - by) * f
+        end
+        if px < x0 then x0 = px end
+        if px > x1 then x1 = px end
+        if py < y0 then y0 = py end
+        if py > y1 then y1 = py end
+        e = e + seg
+        if e >= tp.b then break end
+    end
+    local pad = w / 2 + 2
+    return { x0 = x0 - pad, y0 = y0 - pad, x1 = x1 + pad, y1 = y1 + pad }
+end
+
+-- Show an area-local rect of area_bb drawn again once the stroke has ended.
+-- After a paint during the stroke the next paint copies to the screen only
+-- what the samples since changed (_blit_rect, see paintTo), so the rect joins
+-- that; without it the end drawn again stayed off the screen until a full
+-- repaint.
+function InkAwayView:blitAfterStroke(r)
+    if self._blit_rect then
+        self._blit_rect = InkGeom.growRect(self._blit_rect, r.x0, r.y0, r.x1, r.y1)
+    end
+end
+
+-- Draw the canvas rect `tail` again from the saved ops (and its mirrors under
+-- symmetry), and show it.
+function InkAwayView:redrawTail(tail, op)
+    local v = self.view
+    local W, H = v.canvas_w, v.canvas_h
+    local rects, nr = Symmetry.mirrorRects(tail, op.sym, W, H)
+    for i = 1, nr do
+        local r = rects[i]
+        if r.x1 > r.x0 and r.y1 > r.y0 then self:composeRegion(r.x0, r.y0, r.x1, r.y1) end
+    end
+    local ax0, ay0 = self:toAreaLocal(tail.x0, tail.y0)
+    local ax1, ay1 = self:toAreaLocal(tail.x1, tail.y1)
+    local srects, sn = self:symAreaRects({ x0 = ax0, y0 = ay0, x1 = ax1, y1 = ay1 })
+    for i = 1, sn do
+        local rr = srects[i]
+        self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
+        self:blitAfterStroke(rr)
+        if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+    end
+end
+
 -- Update the master after a hold swapped a stroke for a clean op, over just the
 -- footprint of the raw ink and the clean op, and of each symmetry mirror of it,
 -- composed again (pixel-identical to composeCanvas). Returns false without a
@@ -528,14 +608,20 @@ function InkAwayView:finalizeStroke()
     -- exactly what thumbnails and exports will show.
     local st = committed and committed.kind == "ink" and committed.style and Raster.STYLES[committed.style]
     if st and (st.engine or committed.pr) and self.canvas_bb then
+        local tail = self:liftTail(committed, st)
         local c = self._lw_cacc
-        if c and c.x1 > c.x0 and self:beautifyRecompose({ c.x0, c.y0, c.x1, c.y1 }, committed) and sr then
-            local rects, nr = self:symAreaRects(sr)
-            for i = 1, nr do
-                local rr = rects[i]
-                self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
-                if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+        if tail == nil then
+            if c and c.x1 > c.x0 and self:beautifyRecompose({ c.x0, c.y0, c.x1, c.y1 }, committed) and sr then
+                local rects, nr = self:symAreaRects(sr)
+                for i = 1, nr do
+                    local rr = rects[i]
+                    self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
+                    self:blitAfterStroke(rr)
+                    if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+                end
             end
+        elseif tail then
+            self:redrawTail(tail, committed)
         end
     end
     if self:fastLive() then

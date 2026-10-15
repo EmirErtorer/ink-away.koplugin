@@ -67,6 +67,14 @@ versions marked *Prerelease* were test builds.
   straight stroke is kept as its two ends, and its tapered ends' thinness was
   drawn all along it on the page, in thumbnails and in exports, so the width
   you pressed disappeared. Notes written before show at their proper width.
+- Each lift of the pen drew the whole stroke again from its saved copy with
+  the Ballpoint, Fountain and Calligraphy, and with the Pencil when pressure
+  was on, which could make writing lag on a Kindle Scribe (with the Pencil it
+  took about twenty times the rest of the lift). A lift now draws only what it
+  changes: the thinning end of a Ballpoint or Fountain stroke, and nothing for
+  the others. That end now shows on the screen at once; it often waited for
+  the page's next full redraw before. A page full of Ballpoint or Fountain
+  writing draws faster too.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

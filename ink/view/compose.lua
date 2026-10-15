@@ -167,7 +167,9 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                             op.fill_alpha or 255), nil), region),
                         op.sym, refx, refy)
                 end
-                Export.paintGeom(op, Symmetry.wrap(inRegion(put, region), op.sym, refx, refy), fill_put)
+                -- (a mirrored stroke can reach the region from anywhere: drawn whole)
+                local clip = (region and (op.sym == nil or op.sym == "off")) and region or nil
+                Export.paintGeom(op, Symmetry.wrap(inRegion(put, region), op.sym, refx, refy), fill_put, clip)
             end
         end
     end

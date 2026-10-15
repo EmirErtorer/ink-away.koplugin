@@ -122,7 +122,18 @@ for _i, typ in ipairs({ BB.TYPE_BBRGB32, BB.TYPE_BB8 }) do
     view:flushPending()
     local last = view.canvas.ops[#view.canvas.ops]
     ok(last.style == "fountain" and last.pr ~= nil, name .. ": the fountain stroke keeps a pressure per point")
-    ok(sameAsCompose(view) == 0, name .. ": the fountain stroke's master equals a fresh compose")
+    -- the lift draws again only the tapered end (see liftTail): along the rest
+    -- the live drawing stays, which differs from the saved stroke by edges the
+    -- simplification moved by a pixel (tests/realbb/lift.lua measures them)
+    local inked = 0
+    for yy = 0, view.view.canvas_h - 1, 2 do
+        for xx = 0, view.view.canvas_w - 1, 2 do
+            if view.canvas_bb:getPixel(xx, yy):getColorRGB32().r < 128 then inked = inked + 1 end
+        end
+    end
+    local d = sameAsCompose(view)
+    ok(d <= inked * 0.05, ("%s: the fountain stroke's master is a fresh compose but for a few edge pixels (%d of %d)")
+        :format(name, d, inked))
     view:onCloseWidget()
 end
 

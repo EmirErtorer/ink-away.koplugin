@@ -77,8 +77,9 @@ function Export.drawFooter(buf, ow, oh, text, lvl)
     end
 end
 
--- Draw an op's geometry through `put` (shapes, fills and strokes all share this).
-local function paintGeom(op, put, fill_put)
+-- Draw an op's geometry through `put` (shapes, fills and strokes all share this);
+-- `clip`, a canvas rect being drawn again, lets a stroke skip what cannot reach it.
+local function paintGeom(op, put, fill_put, clip)
     if op.kind == "shape" then
         -- a bucket-filled interior (its own colour), painted under the outline
         if fill_put and op.fill_color and not op.fill then Shapes.fill(op, fill_put) end
@@ -86,7 +87,7 @@ local function paintGeom(op, put, fill_put)
     elseif op.kind == "fill" then
         Fill.render(op, put)
     elseif op.kind == "ink" then
-        Pens.paint(op, put)          -- the pen's own rasterizer (see ink/pens.lua)
+        Pens.paint(op, put, clip)    -- the pen's own rasterizer (see ink/pens.lua)
     else
         Raster.path(op.pts, op.width / 2, put)
     end
