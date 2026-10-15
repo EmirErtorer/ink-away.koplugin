@@ -21,6 +21,10 @@ versions marked *Prerelease* were test builds.
   the chapter opened on an empty page the next time. The chapter's page now
   stays when a page after it has notes, and goes with the empty pages after
   it when they are all left empty.
+- On a pen reader a tap with the lasso did nothing (or said "Nothing inside
+  the loop"), so what was cut or copied could not be pasted and a picture,
+  shape or text box could not be picked out with a tap. A tap with the pen
+  now does what a finger's tap does.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

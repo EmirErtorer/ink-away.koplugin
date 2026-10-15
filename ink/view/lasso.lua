@@ -123,9 +123,30 @@ function InkAwayView:lassoPan(pos)
     return true
 end
 
+-- A loop that never strayed past the pen's tap slop from where it began is a
+-- tap. The pen reaches the lasso only as touch, moves and a lift (never as a
+-- tap gesture), and with palm rejection on a finger's tap navigates, so this is
+-- how the pen pastes and picks a picture, shape or text box out.
+function InkAwayView:lassoWasTap()
+    local scr = self.lasso_scr
+    if not scr then return false end
+    local slop = self:penTapSlop()
+    for i = 3, #scr - 1, 2 do
+        local dx, dy = scr[i] - scr[1], scr[i + 1] - scr[2]
+        if dx * dx + dy * dy > slop * slop then return false end
+    end
+    return true
+end
+
 function InkAwayView:lassoRelease(pos)
     if self.lassoing then
         if pos then self.lasso_scr[#self.lasso_scr + 1] = pos.x; self.lasso_scr[#self.lasso_scr + 1] = pos.y end
+        if self:lassoWasTap() then
+            local scr = self.lasso_scr
+            self.lassoing, self.lasso_scr = false, nil
+            if #scr > 4 then self:redraw() end   -- the dots its moves left
+            return self:lassoTap({ x = scr[1], y = scr[2] })
+        end
         self:lassoFinish()
     end
     return true

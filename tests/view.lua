@@ -3650,9 +3650,125 @@ do
     press("Paste here")
     ok(view.canvas:opCount() == 2 and not view.notebook, "clip: it pastes into another document")
     view:clearSelection()
+
     view.tool = "pen"
     UIManager:close(view)
     Clipboard.clear()
+    UIManager.reset()
+end
+
+-- ---- the lasso with the pen: with palm rejection on a finger on the page
+-- navigates, so the pen's tap with the lasso must be a tap (paste, pick a
+-- shape out), not a loop too small to hold anything
+do
+    local Clipboard = require("ink/clipboard")
+    local saved_orientation = G_reader_settings.data.inkaway_orientation
+    G_reader_settings.data.inkaway_orientation = "portrait"   -- the pen's frames are the screen's
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    Clipboard.clear()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines")
+    local v = view.view
+    for _, y in ipairs({ 100, 150 }) do
+        view:onIaTouch(nil, pos(200, v.area_y + y))
+        view:onIaPan(nil, pos(230, v.area_y + y + 20))
+        view:onIaPanRelease(nil, pos(230, v.area_y + y + 20))
+        UIManager.fireScheduled()
+    end
+    view.tool = "lasso"
+    view:computeSelection({ -10, -10, 5000, -10, 5000, 5000, -10, 5000 })
+    view:selCopy(false)
+    view:clearSelection()
+    ok(Clipboard.count() == 2, "pen lasso: two strokes copied")
+    -- tap the button labelled `text` in the paste sheet
+    local function press(text)
+        local function has(w, seen)
+            if type(w) ~= "table" or seen[w] then return false end
+            seen[w] = true
+            if w.text == text then return true end
+            for k, val in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" and has(val, seen) then return true end
+            end
+            return false
+        end
+        local function find(w, seen)
+            if type(w) ~= "table" or seen[w] then return nil end
+            seen[w] = true
+            if type(w.callback) == "function" and has(w, {}) then return w end
+            for k, val in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" then
+                    local f = find(val, seen); if f then return f end
+                end
+            end
+        end
+        local b = view._paste_dialog and find(view._paste_dialog, {})
+        if b then b.callback(); return true end
+        return false
+    end
+
+    -- with the pen, palm rejection on (a finger on the page navigates): the
+    -- pen's tap with the lasso is a tap, not a loop too small to hold anything
+    view.palm_reject, view.finger_mode = true, "navigate"
+    view:applyPalmReject()
+    local id = 20
+    local function penTap(x, y, wobble)
+        id = id + 1
+        view:onStylusSlot(Device.input, { slot = 4, id = id, tool = 1, x = x, y = y, timev = id * 10 })
+        if wobble then
+            view:onStylusSlot(Device.input, { slot = 4, id = id, tool = 1, x = x + wobble, y = y + 1, timev = id * 10 + 1 })
+            view:onStylusSlot(Device.input, { slot = 4, id = id, tool = 1, x = x, y = y + wobble, timev = id * 10 + 2 })
+        end
+        view:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, x = x, y = y, timev = id * 10 + 3 })
+        UIManager.fireScheduled()
+    end
+    view.tool = "lasso"
+    local n0 = view.canvas:opCount()
+    penTap(400, v.area_y + 900)
+    ok(view._paste_dialog ~= nil, "pen lasso: a pen tap with the lasso offers to paste")
+    press("Paste here")
+    ok(view.canvas:opCount() == n0 + 2 and view.selection and #view.selection.idxs == 2,
+        "pen lasso: and pastes there")
+    view:clearSelection()
+    view:closeSheet("_paste_dialog")
+    penTap(700, v.area_y + 1100, 2)
+    ok(view._paste_dialog ~= nil, "pen lasso: a pen tap that wobbles a little offers it too")
+    view:closeSheet("_paste_dialog")
+    -- a pen tap on a shape picks it out, as a finger's tap does
+    view.canvas:addOp({ kind = "shape", shape = "rect", fill = false, width = 6, alpha = 255,
+        pts = { 100, 1000, 300, 1200 } })
+    view:composeCanvas(); view:renderView()
+    local sx, sy = v.area_x + (100 - v.pan_x) * v.zoom, v.area_y + (1100 - v.pan_y) * v.zoom
+    penTap(sx, sy)
+    ok(view.selection and #view.selection.idxs == 1
+        and view.canvas.ops[view.selection.idxs[1]].shape == "rect", "pen lasso: a pen tap on a shape picks it out")
+    view:clearSelection()
+    -- a loop drawn with the pen still selects what it holds
+    id = id + 1
+    local corners = { { 50, 950 }, { 350, 950 }, { 350, 1250 }, { 50, 1250 }, { 50, 955 } }
+    local t = id * 1000
+    for c = 1, #corners - 1 do   -- a hand's pace: 10 px every 8 ms
+        local a, b2 = corners[c], corners[c + 1]
+        local n = math.ceil(math.max(math.abs(b2[1] - a[1]), math.abs(b2[2] - a[2])) / 10)
+        for k = 0, n - 1 do
+            local cx, cy = a[1] + (b2[1] - a[1]) * k / n, a[2] + (b2[2] - a[2]) * k / n
+            t = t + 8
+            view:onStylusSlot(Device.input, { slot = 4, id = id, tool = 1, timev = t,
+                x = v.area_x + (cx - v.pan_x) * v.zoom, y = v.area_y + (cy - v.pan_y) * v.zoom })
+        end
+    end
+    view:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, timev = t + 8 })
+    UIManager.fireScheduled()
+    ok(view.selection and #view.selection.idxs >= 1, "pen lasso: a pen loop still selects")
+    view:clearSelection()
+    view.palm_reject = false
+    view:applyPalmReject()
+    view.tool = "pen"
+    UIManager:close(view)
+    Clipboard.clear()
+    G_reader_settings.data.inkaway_orientation = saved_orientation
     UIManager.reset()
 end
 
