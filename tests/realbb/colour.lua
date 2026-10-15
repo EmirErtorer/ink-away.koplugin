@@ -193,6 +193,51 @@ do
     Device.isAndroid = hadA
 end
 
+-- a grey pen on a colour panel, "Colour while drawing" on (the default): a grey
+-- has no colour to show, and the fast waveform shows a light grey as white, so
+-- its live copy is drawn in the page's ink (black, white on a dark paper) like
+-- the copy of any pen with that setting off; the grey is back on the lift and
+-- settles. A real colour still draws in its colour.
+do
+    local function stroke(color, alpha, setup)
+        local view, modes, tick, done = world(BB.TYPE_BBRGB32)
+        if setup then setup(view) end
+        local v = view.view
+        view:setTool("pen")
+        view.pen_color, view.pen_alpha = color, alpha or 255
+        local y = v.area_y + 400
+        view:onIaTouch(nil, { pos = { x = 200, y = y } })
+        for x = 204, 600, 4 do tick(5); view:onIaPan(nil, { pos = { x = x, y = y } }) end
+        local ax, ay = 400 - v.area_x, y - v.area_y
+        local live = { rgb(view.area_bb, ax, ay) }
+        local cx, cy = view:toCanvasClamped(400, y)
+        local master = { rgb(view.canvas_bb, math.floor(cx), math.floor(cy)) }
+        view:onIaPanRelease(nil, { pos = { x = 600, y = y } }); view:flushPending()
+        local after = { rgb(view.area_bb, ax, ay) }
+        local settle = view._reconcile ~= nil
+        view:onCloseWidget(); done()
+        return live, master, after, settle
+    end
+    local function same(c, r, g, b) return c[1] == r and c[2] == g and c[3] == b end
+    local live, master, after, settle = stroke({ 136, 136, 136 })
+    ok(same(live, 0, 0, 0), ("grey pen, colour: drawn in the page's ink while writing (%d,%d,%d)"):format(live[1], live[2], live[3]))
+    ok(same(master, 136, 136, 136) and same(after, 136, 136, 136) and settle,
+        "grey pen, colour: the master keeps the grey, it is back on the lift, and it settles")
+    live = stroke(nil, 110)
+    ok(same(live, 0, 0, 0), "grey pen, colour: black at a lowered opacity (a grey) too")
+    live, master = stroke({ 136, 136, 136 }, 255, function(view) view.paper = { 30, 30, 30 } end)
+    ok(same(live, 255, 255, 255), ("grey pen, colour: on a dark paper the page's ink is white (%d,%d,%d)"):format(live[1], live[2], live[3]))
+    live = stroke({ 220, 20, 20 })
+    ok(live[1] > 150 and live[2] < 100, "grey pen, colour: a red pen still draws red")
+    live = stroke({ 220, 20, 20 }, 255, function(view) view.live_colour = false; view.paper = { 30, 30, 30 } end)
+    ok(same(live, 255, 255, 255), "grey pen, colour: with Colour while drawing off, the copy on a dark paper is white too")
+    local had = Device.isEmulator
+    Device.isEmulator = function() return true end
+    live = stroke({ 136, 136, 136 })
+    ok(same(live, 136, 136, 136), "grey pen, emulator: drawn grey, where every refresh shows it as drawn")
+    Device.isEmulator = had
+end
+
 -- a shape's outline while it is dragged out, refreshed with the fast waveform
 -- (black and white only): a pen that is not solid black (a colour, or any
 -- opacity below full) shows its outline in the page's ink, which that waveform

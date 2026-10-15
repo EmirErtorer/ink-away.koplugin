@@ -21,7 +21,6 @@ local displayColor = Paint.displayColor
 local spanWriter = Paint.spanWriter
 local bgSpanWriter = Paint.bgSpanWriter
 
-local PREVIEW_INK = Blitbuffer.COLOR_BLACK   -- live preview of non-black ink on colour panels
 
 -- After a lift, wait this long before committing the stroke; a touch that lands
 -- nearby in the meantime continues it. Panels often drop and reacquire a finger
@@ -82,15 +81,19 @@ function InkAwayView:setupLiveWriters()
     -- each sample there). Ink is drawn in its own colour at once ("Colour while
     -- drawing"); the fast waveform shows it roughly on colour e-ink, and one
     -- refresh settles the true colour once the pen rests. With that setting off
-    -- the screen copy of a non-black pen is drawn black, which that waveform shows
-    -- sharply, and its colour comes back on lift. The master always keeps it.
-    -- A grey Boox that Ink Away drives (see fastLive) always draws that black
-    -- copy: the fast waveform would show light grey ink as white.
+    -- the screen copy of a non-black pen is drawn in the page's ink (black, white
+    -- on a dark paper), which that waveform shows sharply, and its colour comes
+    -- back on lift. The master always keeps it. A grey pen (or black at a lowered
+    -- opacity) draws that copy on e-ink even with the setting on, as a grey has
+    -- no colour to show and the fast waveform would show a light one as white;
+    -- so does a grey Boox that Ink Away drives (see fastLive).
     local area_color = color
     self._live_preview = false
-    local preview = self:colourPanel() and not self.live_colour or (not self:colourPanel() and self:einkDriven())
+    local grey = not Paint.isChromatic(color) and not self:instantColour()
+    local preview = self:colourPanel() and (not self.live_colour or grey)
+        or (not self:colourPanel() and self:einkDriven())
     if preview and self.tool ~= "erase" and self._live_mode == "fast" and not self:pureBlackPen() then
-        area_color, self._live_preview = PREVIEW_INK, true
+        area_color, self._live_preview = Paint.inkOn(self:paperRGB()), true
     end
     -- master (1:1) writer
     local v = self.view

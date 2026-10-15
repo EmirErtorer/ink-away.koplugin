@@ -43,6 +43,11 @@ versions marked *Prerelease* were test builds.
   refresh that keeps the outline up with the pen shows only black and white.
   The outline is now drawn in the page's ink while it is dragged, and the
   shape takes its colour and opacity when it is placed.
+- On colour e-ink a grey pen did not show while writing: the quick refresh
+  used for live ink shows only black and white, and a grey has no colour to
+  show. It now writes in the page's ink and turns grey when the pen lifts, as
+  every pen does with "Colour while drawing" off, which on a dark paper now
+  writes in white instead of black.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 
