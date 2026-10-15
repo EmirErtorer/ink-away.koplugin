@@ -25,6 +25,11 @@ versions marked *Prerelease* were test builds.
   the loop"), so what was cut or copied could not be pasted and a picture,
   shape or text box could not be picked out with a tap. A tap with the pen
   now does what a finger's tap does.
+- A tool menu dragged out of the way went back to where it opens as soon as
+  an option was picked in it, and a menu opened from it (Pen type, the colour
+  wheel, a font) opened in the usual place too. Both now stay where the menu
+  was dragged, kept whole on the screen; a menu opened later starts in its
+  usual place.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

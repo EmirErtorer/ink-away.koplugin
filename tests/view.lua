@@ -5219,6 +5219,65 @@ for _, nb in ipairs({ false, true }) do
 end
 UIManager.reset()
 
+-- ---- a sheet moved by a drag stays there while options are picked in it ----
+-- Picking an option rebuilds the sheet in place; the place it was dragged to
+-- comes along, kept on the screen when the sheet grows.
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    -- a sheet whose content is h px tall (grown by an option)
+    local h = 400
+    local function build()
+        return { getSize = function() return { w = 600, h = h } end, paintTo = function() end, free = function() end }
+    end
+    view:showSheet("_test_sheet", build)
+    local m = view._test_sheet
+    m:paintTo(Screen.bb, 0, 0)
+    local x0, y0 = m.movable.dimen.x, m.movable.dimen.y
+    m.movable:setMovedOffset({ x = 0, y = 300 })   -- where a drag leaves it
+    m:paintTo(Screen.bb, 0, 0)
+    ok(m.movable.dimen.y == y0 + 300, "moved sheet: painted where it was dragged")
+    view:rebuildSheet("_test_sheet")   -- what picking an option in it does
+    ok(view._test_sheet == m, "moved sheet: an option rebuilds the same sheet")
+    m:paintTo(Screen.bb, 0, 0)
+    ok(m.movable.dimen.x == x0 and m.movable.dimen.y == y0 + 300, "moved sheet: and it stays where it was moved")
+    view:rebuildSheet("_test_sheet")
+    m:paintTo(Screen.bb, 0, 0)
+    ok(m.movable.dimen.y == y0 + 300, "moved sheet: through any number of options")
+    -- moved low, then grown by an option: still whole on the screen
+    m.movable:setMovedOffset({ x = 0, y = 800 })
+    h = 900
+    view:rebuildSheet("_test_sheet")
+    m:paintTo(Screen.bb, 0, 0)
+    local d = m.movable.dimen
+    ok(d.y >= 0 and d.y + d.h <= Screen:getHeight(), "moved sheet: kept on the screen when it grows")
+    -- an option that opens another sheet in its place (Pen type, the colour
+    -- wheel, a font) opens it there, and the way back too
+    h = 400
+    m.movable:setMovedOffset({ x = 0, y = 300 })
+    m:paintTo(Screen.bb, 0, 0)
+    view:closeSheet("_test_sheet")
+    view:showSheet("_test_sub", build)
+    view._test_sub:paintTo(Screen.bb, 0, 0)
+    ok(view._test_sub.movable.dimen.y == y0 + 300, "moved sheet: the sheet an option opens comes up where it was")
+    view:closeSheet("_test_sub")
+    view:showSheet("_test_sheet", build)
+    view._test_sheet:paintTo(Screen.bb, 0, 0)
+    ok(view._test_sheet.movable.dimen.y == y0 + 300, "moved sheet: and so does the way back")
+    -- closed by itself (a tap away), the next sheet opens in its usual place
+    view:closeSheet("_test_sheet")
+    UIManager.fireScheduled()
+    view:showSheet("_test_sheet", build)
+    view._test_sheet:paintTo(Screen.bb, 0, 0)
+    ok(view._test_sheet.movable.dimen.y == y0, "moved sheet: opened later, it starts in its usual place")
+    view:closeSheet("_test_sheet")
+    UIManager.fireScheduled()
+    UIManager:close(view)
+end
+UIManager.reset()
+
 -- ---- pen sheet without shape assist; "Colour while drawing" on colour screens --
 do
     local Device = require("device")

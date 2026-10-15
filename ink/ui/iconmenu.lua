@@ -94,6 +94,8 @@ function IconMenu:init()
     -- swallows drags that start on the frame; paintTo positions it
     self.movable = MovableContainer:new{ self.frame }
     self[1] = self.movable
+    -- opened in place of a sheet that was dragged elsewhere: open there too
+    self._carry, IconMenu.carried = IconMenu.carried, nil
 end
 
 -- UIManager:show without a refresh type only marks the widget dirty, so the sheet
@@ -114,23 +116,37 @@ end
 -- sheets build buffers (brush previews).
 function IconMenu:onCloseWidget()
     local region = self.movable and self.movable.dimen
+    -- A sheet dragged elsewhere hands its place to a sheet opened in the same
+    -- moment (an option that opens another sheet, or the way back from it);
+    -- one opened any later starts in its usual place.
+    local o = self.movable and self.movable.getMovedOffset and self.movable:getMovedOffset()
+    if region and o and (o.x ~= 0 or o.y ~= 0) then
+        local carried = { x = region.x, y = region.y }
+        IconMenu.carried = carried
+        UIManager:nextTick(function()
+            if IconMenu.carried == carried then IconMenu.carried = nil end
+        end)
+    end
     UIManager:setDirty(nil, function() return "ui", region end)
     if self.on_uncover then self.on_uncover() end
     if self.movable and self.movable.free then self.movable:free() end
 end
 
 -- Rebuild the sheet's content in place when a control inside it changes state
--- (picking a brush or a colour). When the footprint is unchanged, the usual case,
--- only that region is refreshed with "ui" (the sheet is already opaque white on
--- screen); when it changes, the uncovered canvas is repainted and the union
--- flashes (on a grey panel; see onShow).
+-- (picking a brush or a colour), where it was dragged to if it was. When the
+-- footprint is unchanged, the usual case, only that region is refreshed with
+-- "ui" (the sheet is already opaque white on screen); when it changes, the
+-- uncovered canvas is repainted and the union flashes (on a grey panel; see
+-- onShow).
 function IconMenu:rebuild()
     if not (self.movable and self.build) then return end
     local old = self.movable.dimen and self.movable.dimen:copy()
+    local moved = self.movable.getMovedOffset and self.movable:getMovedOffset()
     if self.movable.free then self.movable:free() end
     self.frame = panel(self:build())
     self:fitFrame()
     self.movable = MovableContainer:new{ self.frame }
+    if moved and self.movable.setMovedOffset then self.movable:setMovedOffset(moved) end
     self[1] = self.movable
     UIManager:widgetRepaint(self, 0, 0)      -- paint the new contents; sets movable.dimen
     local new = self.movable.dimen
@@ -180,6 +196,19 @@ function IconMenu:paintTo(bb, _x, _y)
         py = math.max(pad, math.min(self.top_y, Screen:getHeight() - sz.h - pad))
     else
         py = math.floor((Screen:getHeight() - sz.h) / 2)
+    end
+    -- where the sheet it replaced was dragged to (see onCloseWidget)
+    if self._carry and self.movable.setMovedOffset then
+        self.movable:setMovedOffset({ x = self._carry.x - px, y = self._carry.y - py })
+        self._carry = nil
+    end
+    -- a sheet dragged elsewhere stays whole on the screen, even once an option
+    -- has made it bigger
+    local o = self.movable.getMovedOffset and self.movable:getMovedOffset()
+    if o and (o.x ~= 0 or o.y ~= 0) then
+        local ox = math.max(-px, math.min(o.x, Screen:getWidth() - sz.w - px))
+        local oy = math.max(-py, math.min(o.y, Screen:getHeight() - sz.h - py))
+        if ox ~= o.x or oy ~= o.y then self.movable:setMovedOffset({ x = ox, y = oy }) end
     end
     self.movable:paintTo(bb, px, py)
     self.dimen = self.movable.dimen
