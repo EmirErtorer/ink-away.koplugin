@@ -63,6 +63,10 @@ versions marked *Prerelease* were test builds.
   show. It now writes in the page's ink and turns grey when the pen lifts, as
   every pen does with "Colour while drawing" off, which on a dark paper now
   writes in white instead of black.
+- Ballpoint and Fountain lines no longer turn thin when the pen lifts. A
+  straight stroke is kept as its two ends, and its tapered ends' thinness was
+  drawn all along it on the page, in thumbnails and in exports, so the width
+  you pressed disappeared. Notes written before show at their proper width.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

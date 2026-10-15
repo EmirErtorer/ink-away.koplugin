@@ -138,7 +138,9 @@ do
         end)
         local missing = 0
         for k in pairs(full) do if not live[k] then missing = missing + 1 end end
-        ok(missing == 0, style .. ": every saved pixel was drawn live (" .. missing .. " missing)")
+        -- (the points a taper adds split a segment, which moves where its discs
+        -- are stamped by under a pixel: a pixel or two at a taper's edge)
+        ok(missing <= 2, style .. ": every saved pixel was drawn live (" .. missing .. " missing)")
     end
 end
 
@@ -185,6 +187,34 @@ do
     local live = Pens.taper(st, 1.0)
     ok(math.abs(live - Pens.taper(st, 1.0, 11, 12)) < 1e-9, "ballpoint: the live start matches the finished stroke")
     ok(Pens.taper(Raster.STYLES.solid or {}, 0, 0, 12) == 1, "fineliner: no taper, even throughout")
+end
+
+-- ---- a simplified stroke draws as drawn: the taper follows the stroke's length --
+-- A straight stroke is saved as its two ends. The taper must still ramp over
+-- its first and last widths and leave the middle at the width pressed, as the
+-- same stroke saved with every point draws it (it used to be drawn at the
+-- taper's thinnest all along).
+do
+    for _i, style in ipairs({ "ballpoint", "fountain" }) do
+        local function line(n, pr)
+            local pts, prs = {}, {}
+            for i = 0, n do pts[#pts + 1] = 100 + i * 400 / n; pts[#pts + 1] = 300; prs[#prs + 1] = pr end
+            return { kind = "ink", style = style, width = 15, alpha = 255, pts = pts, pr = prs }
+        end
+        for _j, pr in ipairs({ 255, 120 }) do
+            local two, many = line(1, pr), line(40, pr)
+            local s2 = cover(function(put) Pens.paint(two, put) end)
+            local sm = cover(function(put) Pens.paint(many, put) end)
+            local mid2, midm = thickness(s2, 300), thickness(sm, 300)
+            ok(mid2 == midm, ("%s at pressure %d: two points draw the middle as many do (%d vs %d px)"):format(style, pr, mid2, midm))
+            ok(thickness(s2, 102) < mid2 and thickness(s2, 498) < mid2, style .. ": and still taper at both ends")
+            local diff = 0
+            for k in pairs(s2) do if not sm[k] then diff = diff + 1 end end
+            for k in pairs(sm) do if not s2[k] then diff = diff + 1 end end
+            local n = 0 for _ in pairs(sm) do n = n + 1 end
+            ok(diff <= n * 0.02, ("%s at pressure %d: the same pixels as the stroke with every point (%d of %d differ)"):format(style, pr, diff, n))
+        end
+    end
 end
 
 print(("pens: %d checks, %d failures"):format(checks, failures))
