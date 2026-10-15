@@ -173,6 +173,48 @@ do
     view:onCloseWidget()
 end
 
+-- 3. A finger-only Android reader (a Boox): the tracking id is the pointer id,
+--    so ids repeat, and when Android cancels a gesture (the system takes the
+--    touch) KOReader drops every contact without a lift (Input:resetState).
+--    The finger the raw tracker owned is gone too: the next finger must not
+--    bring it back to the detector, where it would never lift and turn every
+--    later tap into a two-finger tap (Undo, "Nothing to undo" over and over).
+do
+    local w = fingerWorld()
+    local view = w.view
+    local ay = view.view.area_y
+    local gd = w.input.gesture_detector
+    local function android(fn, ...) w.panel_last_slot = nil; return fn(...) end
+    -- a finger draws on slot 1, then the gesture is cancelled mid-stroke
+    android(panel.down, w, 1, 1, 300, ay + 500, 0, 400)
+    for i = 1, 8 do android(panel.move, w, { { 1, 300 + i * 20, ay + 500 + i * 3 } }, 15) end
+    ok(view.capturing, "android cancel: the finger is drawing")
+    w.input:resetState()
+    ok(not view.capturing and view.canvas:opCount() == 0, "android cancel: the stroke it was drawing goes")
+    -- the next gesture: two fingers that lift, then one finger's tap
+    android(panel.down, w, 0, 0, 500, ay + 800, 0, 300)
+    android(panel.down, w, 2, 2, 700, ay + 820, 0, 40)
+    android(panel.up, w, 0, 60)
+    android(panel.up, w, 2, 20)
+    H.tick(w, 600)
+    local live = {}
+    for s = 0, 3 do if gd:getContact(s) then live[#live + 1] = s end end
+    ok(#live == 0, "android cancel: no finger is left down in the detector (" .. table.concat(live, ",") .. ")")
+    w.gestures = {}
+    android(panel.down, w, 0, 0, 400, ay + 300, 0, 600)
+    android(panel.up, w, 0, 60)
+    H.tick(w, 600)
+    ok(not has(w, "two_finger_tap"), "android cancel: a later tap is a tap, not a two-finger tap (" .. table.concat(w.gestures, ",") .. ")")
+    -- and the raw tracker draws the next stroke again
+    local n0 = view.canvas:opCount()
+    android(panel.down, w, 0, 0, 300, ay + 900, 0, 600)
+    for i = 1, 8 do android(panel.move, w, { { 0, 300 + i * 20, ay + 900 + i * 3 } }, 15) end
+    android(panel.up, w, 0, 15)
+    H.tick(w, 600)
+    ok(view.canvas:opCount() == n0 + 1, "android cancel: the next stroke draws (" .. n0 .. " -> " .. view.canvas:opCount() .. ")")
+    view:onCloseWidget()
+end
+
 Device.input.gesture_detector = nil
 print(("gestures: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

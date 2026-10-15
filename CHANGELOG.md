@@ -33,6 +33,11 @@ versions marked *Prerelease* were test builds.
 - Over a book, Pen after the highlighter and another tool (the eraser, say)
   gave the highlighter back. It gives back the pen you had before the
   highlighter.
+- On Android readers (a Boox, for one) "Nothing to undo" could start showing
+  on every tap, with a finger or the pen, until Ink Away was closed. When the
+  system took a touch away mid-stroke, Ink Away later handed KOReader a finger
+  that was no longer there, so every tap after it read as a two-finger tap,
+  which is Undo. A touch the system takes away now goes for Ink Away too.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

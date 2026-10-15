@@ -810,6 +810,18 @@ function InkAwayView:installRawFinger()
         if self._raw and self._raw.wait then self:rawStart() end
     end
     gd.feedEvent = wrapper
+    -- KOReader drops every contact at once, without their lifts, when Android
+    -- cancels a gesture (Input:resetState): the finger we own goes with them
+    if type(gd.dropContacts) == "function" then
+        local orig_drop = gd.dropContacts
+        local drop
+        drop = function(gd_self, ...)
+            if self._raw_drop == drop then pcall(self.rawDropped, self) end
+            return orig_drop(gd_self, ...)
+        end
+        self._raw_drop_own, self._raw_drop = rawget(gd, "dropContacts"), drop
+        gd.dropContacts = drop
+    end
     return true
 end
 
@@ -821,7 +833,27 @@ function InkAwayView:uninstallRawFinger()
     if gd and rawget(gd, "feedEvent") == self._raw_installed then
         gd.feedEvent = self._raw_own       -- nil falls back to the class method
     end                                    -- else a wrapper chained on top: ours stays transparent
+    if gd and self._raw_drop and rawget(gd, "dropContacts") == self._raw_drop then
+        gd.dropContacts = self._raw_drop_own
+    end
     self._raw_wrapper, self._raw_installed, self._raw_gd, self._raw = nil, nil, nil, nil
+    self._raw_drop, self._raw_drop_own = nil, nil
+end
+
+-- KOReader dropped its contacts without their lifts (Android cancelled the
+-- gesture: the system took the touch, as a Boox does with a palm). The finger
+-- we own is gone too, and its stroke with it, as KOReader drops a cancelled
+-- gesture. Left owned, the next finger would hand it back to the detector as a
+-- first finger that never lifts, and every tap after that would be a
+-- two-finger tap.
+function InkAwayView:rawDropped()
+    local r = self._raw
+    if not r then return end
+    if r.slot ~= nil then
+        if r.wait then self:rawDropWaiting() else self:penDropFingerOps() end
+    end
+    r.slot, r.id, r.tev = nil, nil, nil
+    r.ignore_slot, r.ignore_id = nil, nil
 end
 
 -- May a contact landing at screen (x, y) be drawn from its raw frames?
