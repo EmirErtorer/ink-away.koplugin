@@ -371,6 +371,44 @@ do
     view:closeCanvas()
 end
 
+-- The book toolbar's Pen after another tool: the pen in hand before the
+-- highlighter, not the highlighter again, whichever tool came between.
+do
+    local W, H = 1072, 1448
+    Screen:setSize(W, H)
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    package.loaded["ink/reader/inkview"] = nil
+    local ReaderInkView = require("ink/reader/inkview")
+    local view = ReaderInkView:new{ book = standInBook() }
+    local function tap(id)
+        for _i, e in ipairs(view._toolbar_icons) do
+            if e.id == id then e.button.callback() end
+        end
+        for _i, f in ipairs({ "_pen_dialog", "_eraser_dialog", "_shape_dialog", "_text_settings" }) do
+            view:closeSheet(f)
+        end
+    end
+    tap("pen")
+    ok(view.tool == "pen" and view.pen_style ~= "highlighter" and view:vbarActive() == "pen", "tools: the pen to start")
+    local pen = view.pen_style
+    for _i, other in ipairs({ "erase", "lasso", "shape", "text" }) do
+        tap("highlight")
+        ok(view:vbarActive() == "highlight", "tools: the highlighter (" .. other .. ")")
+        tap(other)
+        ok(view:vbarActive() == other, "tools: then " .. other)
+        tap("pen")
+        ok(view.tool == "pen" and view.pen_style == pen and view:vbarActive() == "pen",
+            "tools: then Pen is the pen again, not the highlighter (after " .. other .. ")")
+    end
+    -- and the highlighter after another tool is the highlighter
+    tap("highlight"); tap("erase"); tap("highlight")
+    ok(view:vbarActive() == "highlight", "tools: Highlighter after the eraser is the highlighter")
+    tap("pen")
+    ok(view.pen_style == pen, "tools: and Pen still goes back to the pen")
+    view:closeCanvas()
+end
+
 -- Book notes (ink/reader/notesview.lua): a page added by hand belongs to the
 -- chapter before it, so its strip names that chapter and closing keeps it with
 -- that chapter's page; a new chapter page left empty goes, with any empty pages

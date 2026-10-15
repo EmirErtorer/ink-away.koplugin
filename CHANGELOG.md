@@ -30,6 +30,9 @@ versions marked *Prerelease* were test builds.
   wheel, a font) opened in the usual place too. Both now stay where the menu
   was dragged, kept whole on the screen; a menu opened later starts in its
   usual place.
+- Over a book, Pen after the highlighter and another tool (the eraser, say)
+  gave the highlighter back. It gives back the pen you had before the
+  highlighter.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

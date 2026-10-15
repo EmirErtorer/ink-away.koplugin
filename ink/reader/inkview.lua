@@ -342,7 +342,8 @@ end
 ------------------------------------------------------------------------------
 
 -- The highlighter is a tool of its own here: the pen with the highlighter's
--- settings. The Pen goes back to the pen in hand before it.
+-- settings. The Pen goes back to the pen in hand before it, also when another
+-- tool came in between (the highlighter is still the pen in hand then).
 function ReaderInkView:highlighterActive()
     return self.tool == "pen" and self.pen_style == "highlighter"
 end
@@ -350,7 +351,7 @@ end
 function ReaderInkView:buildToolbar()
     local specs = {
         { id = "pen", icon = "pen", tool = true, cb = function()
-            if self:highlighterActive() then
+            if self.pen_style == "highlighter" then
                 if not self:swapPen() then self:choosePenType("solid") end
                 self:setTool("pen"); self:refreshToolLabels()
             elseif self.tool == "pen" then self:openPenSettings()
