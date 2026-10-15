@@ -8,6 +8,12 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Fixed
+- With the screen turned upside down (a Kobo Libra Colour held with its
+  buttons on the left, for one) the page under Ink Away was dark: strokes
+  showed as white boxes and the eraser drew white, over a book and in
+  drawings alike. The page shows as it does the right way up.
+
 ## [4.1.0] - 2026-10-11 *Prerelease*
 
 A text tool update, with fixes for colour readers and the Kindle Scribe. A

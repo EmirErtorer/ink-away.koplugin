@@ -134,7 +134,8 @@ end
 -- redraw. canvas_panel_bb mirrors canvas_bb in the screen's pixel order, so a
 -- crop of it scales straight into area_bb through physical views. The rotation
 -- is paid only when the mirror is synced: in full after a compose or a rotation
--- change, and over just the changed rect after a commit. Portrait keeps no mirror.
+-- change, and over just the changed rect after a commit. An upright screen keeps
+-- no mirror; one turned upside down needs it as much as a landscape one does.
 -- canvas_bb and the export stay in logical coordinates; a landscape downscale can
 -- differ from a portrait one by a grey level on a few pixels, on screen only.
 ------------------------------------------------------------------------------
@@ -155,12 +156,12 @@ function InkAwayView:newCanvasPanelBuffer()
     return panelBuffer(cw, ch, rot, inv, typ)
 end
 
--- Make sure the mirror exists and matches the current rotation and size (in
--- portrait there is none). A rebuilt mirror is synced with one full copy.
+-- Make sure the mirror exists and matches the current rotation and size (on an
+-- upright screen there is none). A rebuilt mirror is synced with one full copy.
 function InkAwayView:ensureCanvasPanel()
     if not self.canvas_bb then return end
     local rot = self._area_rot or 0
-    if rot % 2 == 0 then
+    if rot == 0 then
         if self.canvas_panel_bb then self.canvas_panel_bb:free(); self.canvas_panel_bb = nil end
         self._cpanel_dirty = nil
         return
@@ -577,7 +578,7 @@ function InkAwayView:renderView()
     self._full_blit = true
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
-    -- sync the mirror before scaling from it (in portrait canvas_bb is used directly)
+    -- sync the mirror before scaling from it (upright, canvas_bb is used directly)
     self:ensureCanvasPanel()
     self:flushCanvasPanel()
 
