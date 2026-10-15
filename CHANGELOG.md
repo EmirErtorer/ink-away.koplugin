@@ -38,6 +38,11 @@ versions marked *Prerelease* were test builds.
   system took a touch away mid-stroke, Ink Away later handed KOReader a finger
   that was no longer there, so every tap after it read as a two-finger tap,
   which is Undo. A touch the system takes away now goes for Ink Away too.
+- A shape being dragged out with a lowered opacity, or in a pale colour,
+  showed a broken outline or none at all until a menu opened: the quick
+  refresh that keeps the outline up with the pen shows only black and white.
+  The outline is now drawn in the page's ink while it is dragged, and the
+  shape takes its colour and opacity when it is placed.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

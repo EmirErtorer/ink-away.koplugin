@@ -366,6 +366,22 @@ function InkAwayView:shapeErased(idx)
     return false
 end
 
+-- Is the outline being dragged out drawn in the page's ink? It is refreshed
+-- with the fast waveform (see refreshPreview), which shows black and white
+-- only: a grey, a colour or a partial opacity breaks up or does not show at all
+-- until some other refresh. So on e-ink a pen that is not solid black has its
+-- outline drawn in the page's ink while it is dragged out, as a pen's live ink
+-- is on a colour panel, and the shape takes its own colour and opacity when it
+-- is placed.
+function InkAwayView:shapePreviewInInk(sp)
+    if self:instantColour() then return false end
+    local function solidBlack(c, a)
+        return (a or 255) >= 255 and (c == nil or (c[1] == 0 and c[2] == 0 and c[3] == 0))
+    end
+    if not solidBlack(sp.color, sp.alpha) then return true end
+    return sp.fill_color ~= nil and not sp.fill and not solidBlack(sp.fill_color, sp.fill_alpha)
+end
+
 -- The shape being placed, over the drawing and clipped to the area.
 function InkAwayView:paintShapePreview(bb, x, y)
     local v = self.view
@@ -395,6 +411,13 @@ function InkAwayView:paintShapePreview(bb, x, y)
         return put
     end
     local sp = self.shape_preview
+    if self:shapePreviewInInk(sp) then   -- its outline alone, in the page's ink
+        local outline = {}
+        for k, val in pairs(sp) do outline[k] = val end
+        outline.fill, outline.fill_color = false, nil
+        Shapes.render(outline, makePut(Paint.inkOn(self:paperRGB())))
+        return
+    end
     if sp.fill_color and not sp.fill then
         Shapes.fill(sp, makePut(displayColor(Paint.inkOnPaper(sp.fill_color, self:paperRGB()), sp.fill_alpha)))
     end

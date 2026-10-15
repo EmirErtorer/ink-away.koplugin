@@ -193,6 +193,58 @@ do
     Device.isAndroid = hadA
 end
 
+-- a shape's outline while it is dragged out, refreshed with the fast waveform
+-- (black and white only): a pen that is not solid black (a colour, or any
+-- opacity below full) shows its outline in the page's ink, which that waveform
+-- shows whole, instead of a shade it breaks up or leaves out; the placed shape
+-- keeps its own colour and opacity. Solid black is unchanged, and where every
+-- refresh shows colour as drawn (the emulator) the outline keeps its shade.
+do
+    local function shape(typ, color, alpha, setup)
+        local view, modes, tick, done = world(typ)
+        if setup then setup(view) end
+        local v = view.view
+        view:setTool("shape")
+        view.shape, view.shape_fill = "rect", false
+        view.pen_color, view.pen_alpha, view.pen_width = color, alpha, 6
+        local x0, y0 = v.area_x + 100, v.area_y + 200
+        local x1, y1 = x0 + 500, y0 + 600
+        for k = 1, #modes do modes[k] = nil end
+        view:onIaTouch(nil, { pos = { x = x0, y = y0 } })
+        for i = 1, 20 do tick(20); view:onIaPan(nil, { pos = { x = x0 + 25 * i, y = y0 + 30 * i } }) end
+        view:paintShapePreview(Device.screen.bb, 0, 0)
+        local ym = math.floor((y0 + y1) / 2)
+        local pr, pg, pb = rgb(Device.screen.bb, x1, ym)
+        local fast = count(modes, "fast")
+        view:onIaPanRelease(nil, { pos = { x = x1, y = y1 } }); view:flushPending()
+        local placed = view.canvas.ops[#view.canvas.ops]
+        local cr, cg, cb = rgb(view.area_bb, x1 - v.area_x, ym - v.area_y)
+        view:onCloseWidget(); done()
+        return { pr, pg, pb }, fast, placed, { cr, cg, cb }
+    end
+    local function black(c) return c[1] == 0 and c[2] == 0 and c[3] == 0 end
+    local function white(c) return c[1] == 255 and c[2] == 255 and c[3] == 255 end
+    for _, typ in ipairs({ BB.TYPE_BB8, BB.TYPE_BBRGB32 }) do
+        local tag = typ == BB.TYPE_BB8 and "grey" or "colour"
+        local p, fast, placed = shape(typ, nil, 255)
+        ok(black(p) and fast > 0 and placed.kind == "shape", "shape preview, " .. tag .. ": solid black shows black, with the fast waveform")
+        local c
+        p, fast, placed, c = shape(typ, nil, 90)
+        ok(black(p), ("shape preview, %s: a see-through pen's outline shows in the page's ink (%d,%d,%d)"):format(tag, p[1], p[2], p[3]))
+        ok(fast > 0 and placed.alpha == 90 and not black(c) and not white(c),
+            ("shape preview, %s: and the placed shape keeps its opacity (%d,%d,%d)"):format(tag, c[1], c[2], c[3]))
+        p, fast, placed = shape(typ, { 240, 220, 40 }, 255)
+        ok(black(p) and placed.color and placed.color[1] == 240, "shape preview, " .. tag .. ": a pale colour's outline shows in the page's ink, the shape keeps its colour")
+        p = shape(typ, { 220, 20, 20 }, 120, function(view) view.paper = { 30, 30, 30 } end)
+        ok(white(p), ("shape preview, %s: on a dark paper the page's ink is white (%d,%d,%d)"):format(tag, p[1], p[2], p[3]))
+    end
+    local had = Device.isEmulator
+    Device.isEmulator = function() return true end
+    local p = shape(BB.TYPE_BBRGB32, nil, 90)
+    ok(not black(p) and not (p[1] == 255 and p[2] == 255), ("shape preview, emulator: the outline keeps its shade (%d,%d,%d)"):format(p[1], p[2], p[3]))
+    Device.isEmulator = had
+end
+
 -- the emulator (or a screen that is not e-ink): the colour as drawn, no settle
 do
     local had = Device.isEmulator
