@@ -6,6 +6,13 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
+## [Unreleased]
+
+### Fixed
+- Over a book, the tab that hides the toolbar is back beside the toolbar, as
+  in 4.1.1. 4.2.0 moved it into the toolbar's end, which shortened the
+  toolbar and broke it.
+
 ## [4.2.0] - 2026-10-17
 
 Everything from the 4.1.0 and 4.1.1 prereleases, now tested on readers, plus

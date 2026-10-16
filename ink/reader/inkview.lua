@@ -486,9 +486,7 @@ function ReaderInkView:buildToolbar()
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
     }
     local across = self._bar_side == "top" or self._bar_side == "bottom"
-    -- (the bar leaves its end to the tab that hides it, see fabRect)
-    self:buildVBar(specs, (across and Screen:getWidth() or Screen:getHeight()) - self.tabSlot(), self._bar_side,
-        self:toolbarFit())
+    self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side, self:toolbarFit())
 end
 
 -- Is the toolbar sized to the book's margin (Book ink settings, off by default)?
@@ -543,25 +541,20 @@ end
 ------------------------------------------------------------------------------
 
 -- Over a book the only floating control is the toolbar's tab: a small chevron
--- in its own slot at the end of the toolbar (it slides the toolbar away), so
--- it never covers the book's text, or at that edge of the screen once the
--- toolbar is hidden (it brings it back): at the bottom end of a side toolbar,
--- the right end of one across the top or bottom. No zoom or Pan buttons.
-function ReaderInkView.tabSlot() return Screen:scaleBySize(48) end
-
+-- beside the toolbar (it slides the toolbar away) or at that edge of the
+-- screen once it is hidden (it brings it back): near the top of a side
+-- toolbar, near the right end of one across the top or bottom. No zoom or Pan
+-- buttons.
 function ReaderInkView:fabRect(which)
     if which ~= "bar" or not self.view then return nil end
     local W, H = self.screen_w, self.screen_h
-    local gap, len, wid = Screen:scaleBySize(2), Screen:scaleBySize(40), Screen:scaleBySize(24)
-    local slot = self.tabSlot()
-    local hidden = self._toolbar_hidden
-    local t = self._vb_thick or 0
+    local gap, len, wid, inset = Screen:scaleBySize(2), Screen:scaleBySize(40), Screen:scaleBySize(24), Screen:scaleBySize(8)
+    local t = self._toolbar_hidden and 0 or (self._vb_thick or 0)
     local side = self._bar_side or "left"
-    local ex, ey = W - slot + math.floor((slot - len) / 2), H - slot + math.floor((slot - len) / 2)
-    if side == "right" then return { x = hidden and W - gap - wid or W - t + math.floor((t - wid) / 2), y = ey, w = wid, h = len } end
-    if side == "top" then return { x = ex, y = hidden and gap or math.floor((t - wid) / 2), w = len, h = wid } end
-    if side == "bottom" then return { x = ex, y = hidden and H - gap - wid or H - t + math.floor((t - wid) / 2), w = len, h = wid } end
-    return { x = hidden and gap or math.floor((t - wid) / 2), y = ey, w = wid, h = len }
+    if side == "right" then return { x = W - t - gap - wid, y = inset, w = wid, h = len } end
+    if side == "top" then return { x = W - inset - len, y = t + gap, w = len, h = wid } end
+    if side == "bottom" then return { x = W - inset - len, y = H - t - gap - wid, w = len, h = wid } end
+    return { x = t + gap, y = inset, w = wid, h = len }
 end
 
 function ReaderInkView:fabHit(px, py)
