@@ -32,7 +32,7 @@ ok(#Actions.choices("two_tap") == #Actions.LIST, "fingers: every action")
 -- overlaps
 local info = Actions.preview(b, "two_swipe_down", "undo")
 ok(#info.also == 1 and info.also[1] == "two_tap", "overlap: undo is already on the two-finger tap")
-ok(info.replaced == nil, "overlap: the swipe down did nothing before")
+ok(info.replaced == "refresh", "overlap: the swipe down refreshed the screen before")
 info = Actions.preview(b, "two_tap", "redo")
 ok(info.replaced == "undo" and info.also[1] == "two_double_tap", "overlap: replacing undo, and redo is on the double tap")
 Actions.set(b, "two_swipe_down", "undo", true)

@@ -158,6 +158,7 @@ Guide.TOPICS = {
         { glyph = "ges_two_swipe_side", trigger = "two_swipe_left", text = "Two-finger swipe left." },
         { glyph = "ges_two_swipe_side", trigger = "two_swipe_right", text = "Two-finger swipe right." },
         { glyph = "ges_two_swipe_up", trigger = "two_swipe_up", text = "Long two-finger swipe up." },
+        { glyph = "ges_two_swipe_down", trigger = "two_swipe_down", text = "Long two-finger swipe down." },
         { glyph = "ges_pen_button", trigger = "pen_side", when = "pen", text = "Hold the pen's side button while drawing." },
         { glyph = "ges_pen_button", trigger = "pen_eraser", when = "pen", text = "The pen's eraser end." },
         { icon = "menu", title = "Make them yours", show = "gestures",

@@ -50,6 +50,15 @@ function InkAwayView:savedPen(i)
     return self:penset().favs[i]
 end
 
+-- Draw the screen again from the page and refresh all of it with a flash: what a
+-- quick refresh left out shows, and the marks fast drawing leaves go (#12).
+function InkAwayView:refreshScreen()
+    self:flushPending()
+    self:renderView()
+    self._paint_all = true
+    UIManager:setDirty(self, "full")
+end
+
 -- Do `id` once (a gesture). Tools are toggled: asking for the eraser while it is
 -- in hand goes back to the pen. Returns whether something happened.
 function InkAwayView:runAction(id)
@@ -69,6 +78,7 @@ function InkAwayView:runAction(id)
     if id == "pan" then self:togglePan(); return true end
     if id == "toolbar" then self:setToolbarHidden(not self._toolbar_hidden); return true end
     if id == "fit" then self:setZoom(self.zoom_min or self.view.zoom); return true end
+    if id == "refresh" then self:refreshScreen(); return true end
     if id == "eraser" then self:setTool(self.tool == "erase" and "pen" or "erase"); return true end
     if id == "lasso" then self:setTool(self.tool == "lasso" and "pen" or "lasso"); return true end
     if id == "prev_pen" then return self:swapPen() end

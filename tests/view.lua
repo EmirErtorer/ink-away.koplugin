@@ -1289,6 +1289,35 @@ do
     view:onCloseWidget()
 end
 
+-- ---- refreshing the screen by hand (#12) --------------------------------------
+-- "Refresh the screen" draws the screen again from the page and asks for one
+-- full (flashing) refresh; out of the box the long two-finger swipe down does it.
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    _G.G_reader_settings.data.inkaway_gestures = nil
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local v = view.view
+    ok(view:gestureBindings().two_swipe_down == "refresh", "refresh: the long swipe down refreshes, out of the box")
+    local rendered, full = 0, 0
+    local rv = view.renderView
+    view.renderView = function(self) rendered = rendered + 1; return rv(self) end
+    local sd = UIManager.setDirty
+    UIManager.setDirty = function(self, w, mode, region)
+        if w == view and mode == "full" and region == nil then full = full + 1 end
+        return sd(self, w, mode, region)
+    end
+    local cx, top = v.area_x + 300, v.area_y + 100
+    view:onIaTwoSwipe(nil, { pos = { x = cx, y = top }, end_pos = { x = cx, y = top + v.area_h * 0.6 }, direction = "south" })
+    ok(rendered == 1 and full == 1, ("refresh: the screen drawn again and refreshed in full (%d, %d)"):format(rendered, full))
+    ok(view:runAction("refresh") and full == 2, "refresh: and from the action itself")
+    UIManager.setDirty = sd
+    view.renderView = rv
+    view:onCloseWidget()
+end
+
 -- ---- a Kobo pen's eraser end and side button (#13, #32) ------------------------
 -- On a Kobo, KOReader latches BTN_STYLUS (the pen's eraser end) as the eraser
 -- and BTN_STYLUS2 (its side button) as the highlighter, and rewrites the pen's
