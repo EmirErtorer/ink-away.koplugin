@@ -50,6 +50,25 @@ function InkAwayView:savedPen(i)
     return self:penset().favs[i]
 end
 
+-- The reader's page turn buttons (#14): the action Gestures and pen buttons gives
+-- them, by default the next or previous page of a notebook, or of the book in
+-- annotation mode. Taken either way, so the book under the canvas never turns
+-- on its own.
+function InkAwayView:keyAction(trigger)
+    local id = self:gestureBindings()[trigger]
+    if id and id ~= "nothing" then self:runAction(id) end
+    return true
+end
+function InkAwayView:onIaKeyFwd() return self:keyAction("key_fwd") end
+function InkAwayView:onIaKeyBack() return self:keyAction("key_back") end
+
+-- Does this reader have page turn buttons?
+function InkAwayView:pageKeys()
+    local ok, keys = pcall(function() return Device:hasKeys() end)
+    local g = Device.input and Device.input.group
+    return (ok and keys and g and g.PgFwd ~= nil) and true or false
+end
+
 -- Draw the screen again from the page and refresh all of it with a flash: what a
 -- quick refresh left out shows, and the marks fast drawing leaves go (#12).
 function InkAwayView:refreshScreen()
@@ -219,14 +238,20 @@ end
 -- The settings sheet
 ------------------------------------------------------------------------------
 
--- Which triggers this reader can make: the pen's only with pen support. The
--- second side button is not offered: neither a Kindle Scribe pen nor a Kobo pen
--- has one (a Kobo pen's BTN_STYLUS2 is its only side button, see
--- Stylus.penAction); a pen that sends it anyway does what its default says.
+-- Which triggers this reader can make: the pen's only with pen support, the page
+-- turn buttons only on a reader with them. The second side button is not
+-- offered: neither a Kindle Scribe pen nor a Kobo pen has one (a Kobo pen's
+-- BTN_STYLUS2 is its only side button, see Stylus.penAction); a pen that sends
+-- it anyway does what its default says.
 function InkAwayView:availableTriggers()
     local out = {}
+    local keys = self:pageKeys()
     for _i, t in ipairs(Actions.TRIGGERS) do
-        if not t.pen or (self:penCapable() and not t.second) then out[#out + 1] = t end
+        if t.key then
+            if keys then out[#out + 1] = t end
+        elseif not t.pen or (self:penCapable() and not t.second) then
+            out[#out + 1] = t
+        end
     end
     return out
 end
@@ -261,14 +286,18 @@ function InkAwayView:openGestureSettings()
                 LeftContainer:new{ dimen = GeomUI:new{ w = label_w, h = pill:getSize().h }, label },
                 HorizontalSpan:new{ width = gap }, pill }
         end
-        local pen_started = false
+        local pen_started, keys_started = false, false
         for _i, t in ipairs(self:availableTriggers()) do
             if t.pen and not pen_started then
                 pen_started = true
                 add(vspan(12))
                 add(self:sheetLabel(_("Pen buttons, while held")))
+            elseif t.key and not keys_started then
+                keys_started = true
+                add(vspan(12))
+                add(self:sheetLabel(_("Page turn buttons")))
             end
-            add(vspan(t.pen and 6 or 8))
+            add(vspan((t.pen or t.key) and 6 or 8))
             add(row(t))
         end
         local notes = {}

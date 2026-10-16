@@ -38,8 +38,9 @@ for _i, a in ipairs(Actions.LIST) do BY_ID[a.id] = a end
 function Actions.get(id) return BY_ID[id] end
 function Actions.label(id) return (BY_ID[id] or BY_ID.nothing).label end
 
--- The triggers. `pen`: a pen control, acting while held; `kobo`: the second
--- side button, which only some styluses have.
+-- The triggers. `pen`: a pen control, acting while held; `second`: the second
+-- side button, which no Kobo or Kindle pen has; `key`: the reader's page turn
+-- buttons.
 Actions.TRIGGERS = {
     { id = "two_tap",         label = "Two-finger tap" },
     { id = "two_double_tap",  label = "Two-finger double tap" },
@@ -50,6 +51,8 @@ Actions.TRIGGERS = {
     { id = "pen_side",        label = "Side button",        pen = true },
     { id = "pen_side2",       label = "Second side button", pen = true, second = true },
     { id = "pen_eraser",      label = "Eraser end",         pen = true },
+    { id = "key_fwd",         label = "Page turn button forward", key = true },
+    { id = "key_back",        label = "Page turn button back",    key = true },
 }
 local TRIGGER = {}
 for _i, t in ipairs(Actions.TRIGGERS) do TRIGGER[t.id] = t end
@@ -62,6 +65,7 @@ Actions.DEFAULTS = {
     two_swipe_left = "next_page", two_swipe_right = "prev_page",
     two_swipe_up = "browse", two_swipe_down = "refresh",
     pen_side = "highlighter", pen_side2 = "highlighter", pen_eraser = "eraser",
+    key_fwd = "next_page", key_back = "prev_page",
 }
 
 -- The actions a trigger may be given.

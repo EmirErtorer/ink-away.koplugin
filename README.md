@@ -169,6 +169,7 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | Two-finger swipe left or right | Turn a notebook's page |
 | Long two-finger swipe up | Open Browse in a notebook, or the Library from a drawing |
 | Long two-finger swipe down | Refresh the screen, clearing ghosting and anything a quick refresh missed |
+| Page turn buttons | Turn a notebook's page, or the book's in annotation mode |
 | Pinch | Zoom |
 | Two-finger drag | Move around the page |
 | Hold Prev or Next | Jump to the first or last page |

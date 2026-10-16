@@ -162,7 +162,7 @@ Guide.TOPICS = {
         { glyph = "ges_pen_button", trigger = "pen_side", when = "pen", text = "Hold the pen's side button while drawing." },
         { glyph = "ges_pen_button", trigger = "pen_eraser", when = "pen", text = "The pen's eraser end." },
         { icon = "menu", title = "Make them yours", show = "gestures",
-          text = "Gestures and pen buttons gives each one an action: undo, lasso, a saved pen, hiding the toolbar and more." },
+          text = "Gestures and pen buttons gives each one an action, and the page turn buttons too: undo, lasso, a saved pen, hiding the toolbar and more." },
     } },
     { id = "reader", title = "Your reader", line = "Pen, screen and refresh", icon = "reader", cards = {
         { icon = "pen", title = "Palm rejection", when = "pen_capable", show = "pen_input",

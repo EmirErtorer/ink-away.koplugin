@@ -298,7 +298,12 @@ function InkAwayView:init()
         }
     end
     if Device:hasKeys() then
-        self.key_events = { IaClose = { { Device.input.group.Back } } }
+        local g = Device.input.group
+        self.key_events = { IaClose = { { g.Back } } }
+        -- the reader's page turn buttons (KOReader turns them with the screen and
+        -- the reader's own inverting): see InkAwayView:keyAction
+        if g.PgFwd then self.key_events.IaKeyFwd = { { g.PgFwd } } end
+        if g.PgBack then self.key_events.IaKeyBack = { { g.PgBack } } end
     end
 
     -- canvas_bb is the page at 1:1, where strokes are stamped once. area_bb is what

@@ -481,5 +481,27 @@ do
     ok(saved() == "3:1 -:1 7:0 -:1", "notes: an empty chapter page goes with the empty page added after it (" .. saved() .. ")")
 end
 
+-- the reader's page turn buttons turn the book's pages in annotation mode (#14)
+do
+    Screen:setSize(1072, 1448)
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    package.loaded["ink/reader/inkview"] = nil
+    local hasKeys, group = Device.hasKeys, Device.input.group
+    Device.hasKeys = function() return true end
+    Device.input.group = { Back = { "Back" }, PgFwd = { "RPgFwd" }, PgBack = { "RPgBack" } }
+    G_reader_settings.data.inkaway_gestures = nil
+    local ReaderInkView = require("ink/reader/inkview")
+    local book = standInBook()
+    local turns = {}
+    function book:turn(dir) turns[#turns + 1] = dir end
+    local view = ReaderInkView:new{ book = book }
+    ok(view.key_events and view.key_events.IaKeyFwd and view.key_events.IaKeyBack, "keys: annotation mode listens for the page turn buttons")
+    ok(view:onIaKeyFwd() and turns[1] == 1, "keys: forward turns the book's page")
+    ok(view:onIaKeyBack() and turns[2] == -1, "keys: back turns it back")
+    view:closeCanvas()
+    Device.hasKeys, Device.input.group = hasKeys, group
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

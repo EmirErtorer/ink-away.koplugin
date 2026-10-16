@@ -9,6 +9,9 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- The reader's page turn buttons work in Ink Away: they turn a notebook's
+  pages, and the book's in annotation mode, where they did nothing before.
+  Gestures and pen buttons can give them another action.
 - Refresh the screen by hand: a long two-finger swipe down redraws the whole
   screen with a full refresh, so anything a quick refresh missed shows and
   the faint marks of fast drawing go. Any gesture can be set to it in

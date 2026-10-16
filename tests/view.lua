@@ -1289,6 +1289,63 @@ do
     view:onCloseWidget()
 end
 
+-- ---- the reader's page turn buttons (#14) ---------------------------------------
+-- On a reader with page turn buttons the canvas listens for them: by default the
+-- next and previous page of a notebook, and Gestures and pen buttons can give
+-- them another action. A reader without them is not offered them.
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    _G.G_reader_settings.data.inkaway_gestures = nil
+    local InkAwayView = dofile("ink/view.lua")
+    local hasKeys, group = Device.hasKeys, Device.input.group
+    -- without page keys: nothing to listen for, nothing offered
+    local view = InkAwayView:new{}
+    local function offers(v, id)
+        for _i, t in ipairs(v:availableTriggers()) do if t.id == id then return true end end
+        return false
+    end
+    ok(not (view.key_events and view.key_events.IaKeyFwd) and not offers(view, "key_fwd"),
+        "page keys: a reader without them neither listens nor offers them")
+    view:onCloseWidget()
+    -- a Kobo Libra Colour: page turn buttons
+    Device.hasKeys = function() return true end
+    Device.input.group = { Back = { "Back" }, PgFwd = { "RPgFwd", "LPgFwd" }, PgBack = { "RPgBack", "LPgBack" } }
+    view = InkAwayView:new{}
+    ok(view.key_events.IaKeyFwd and view.key_events.IaKeyBack and view.key_events.IaClose,
+        "page keys: the canvas listens for both buttons, and Back")
+    ok(offers(view, "key_fwd") and offers(view, "key_back"), "page keys: Gestures and pen buttons offers them")
+    view:newNotebook("lines", require("testenv").libraryDir() .. "/keystest")
+    view:nbAddPage(); view:nbAddPage()
+    view:nbGoTo(1)
+    ok(view:onIaKeyFwd() and view.notebook.index == 2, "page keys: forward turns to the next page")
+    view:onIaKeyFwd()
+    ok(view.notebook.index == 3, "page keys: and again")
+    ok(view:onIaKeyBack() and view.notebook.index == 2, "page keys: back turns to the previous page")
+    -- another action
+    view:gestureBindings().key_fwd = "toolbar"
+    local hidden = view._toolbar_hidden
+    view:onIaKeyFwd()
+    ok(view._toolbar_hidden ~= hidden and view.notebook.index == 2, "page keys: set to Hide the toolbar, they do that instead")
+    view:gestureBindings().key_fwd = "nothing"
+    ok(view:onIaKeyFwd() and view.notebook.index == 2, "page keys: set to Nothing, the key is still taken and nothing turns")
+    view:onCloseWidget()
+    -- the settings sheet: their own heading
+    view = InkAwayView:new{}
+    view:openGestureSettings()
+    local heading = false
+    local seen = {}
+    local function find(t) if type(t) ~= "table" or seen[t] then return end; seen[t] = true
+        if t.text == "Page turn buttons" then heading = true end
+        for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then find(c) end end end
+    find(view._gestures_dialog)
+    ok(heading, "page keys: the settings sheet lists them under Page turn buttons")
+    view:closeSheet("_gestures_dialog")
+    view:onCloseWidget()
+    Device.hasKeys, Device.input.group = hasKeys, group
+    _G.G_reader_settings.data.inkaway_gestures = nil
+end
+
 -- ---- the first finger drag with palm rejection on: a note, once (#41) --------
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
