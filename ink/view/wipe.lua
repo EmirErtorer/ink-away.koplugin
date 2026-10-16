@@ -18,7 +18,7 @@ function InkAwayView:wipeBegin(sx, sy)
     -- it is protected, pictures with Erase pictures on)
     self._wipe = { boxes = Wipe.boxes(self:editableOps(), v.canvas_w, v.canvas_h,
             { text = not self.text_erase_protect, pictures = self.erase_bg }),
-        areas = {}, rows = {}, removed = 0 }
+        areas = {}, rows = {}, removed = 0, path = {} }
     self.capturing, self.pending_lift = true, nil
     self:wipeTo(sx, sy)
 end
@@ -30,6 +30,7 @@ function InkAwayView:wipeTo(sx, sy)
     local cx, cy = self:toCanvasClamped(sx, sy)
     local seg = { w.x or cx, w.y or cy, cx, cy }
     w.x, w.y = cx, cy
+    w.path[#w.path + 1], w.path[#w.path + 2] = cx, cy   -- (over a book: the highlights it crossed)
     local r = self.eraser_width / 2
     local ops = self.canvas.ops
     for _, f in ipairs(Symmetry.flips(self.symmetry)) do

@@ -435,6 +435,44 @@ function Book:removeHighlight(item)
     return false
 end
 
+-- The highlights the path `pts` (flat x, y, ... on the screen, the canvas's own
+-- points in annotation mode) comes within `r` px of: their annotation items,
+-- each once. It uses what KOReader drew on the page shown and its own tap test
+-- (view.highlight.visible_boxes, in page coordinates on a fixed page), walking
+-- each segment in small steps so a short highlight between two points counts.
+function Book:highlightsAt(pts, r)
+    local out = {}
+    local ui = self.ui
+    local view = ui and ui.view
+    local vis = view and view.highlight and view.highlight.visible_boxes
+    local anns = ui and ui.annotation and ui.annotation.annotations
+    if not (vis and anns and #vis > 0 and view.screenToPageTransform and pts and #pts >= 2) then return out end
+    local zoom = (ui.paging and view.state and view.state.zoom) or 1
+    local rr = (r or 0) / zoom
+    local seen = {}
+    local function at(x, y)
+        local ok, pos = pcall(view.screenToPageTransform, view, { x = x, y = y })
+        if not (ok and pos and pos.x) then return end
+        for _k, box in ipairs(vis) do
+            local b = box.rect
+            if b and not seen[box.index] and pos.x >= b.x - rr and pos.x <= b.x + b.w + rr
+                    and pos.y >= b.y - rr and pos.y <= b.y + b.h + rr then
+                seen[box.index] = true
+                local it = anns[box.index]
+                if it then out[#out + 1] = it end
+            end
+        end
+    end
+    local step = math.max(2, r or 0)
+    at(pts[1], pts[2])
+    for i = 3, #pts - 1, 2 do
+        local x0, y0, x1, y1 = pts[i - 2], pts[i - 1], pts[i], pts[i + 1]
+        local n = math.max(1, math.ceil(math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) / step))
+        for k = 1, n do at(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n) end
+    end
+    return out
+end
+
 -- Put a removed highlight back (redo). Returns it as saved now.
 function Book:restoreHighlight(item)
     return self:addHighlight({ text = item.text, pos0 = item.pos0, pos1 = item.pos1, pboxes = item.pboxes,

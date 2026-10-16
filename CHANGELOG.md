@@ -9,6 +9,11 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- In annotation mode the eraser takes away the highlights it crosses, as it
+  does ink, in one undo step with whatever ink it cut. A long press on a
+  highlight (with a finger while palm rejection is on, or with the lasso)
+  offers to remove it. Until now a highlight could only go from KOReader's
+  own menu once Ink Away was closed.
 - The reader's page turn buttons work in Ink Away: they turn a notebook's
   pages, and the book's in annotation mode, where they did nothing before.
   Gestures and pen buttons can give them another action.

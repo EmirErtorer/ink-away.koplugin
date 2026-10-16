@@ -629,5 +629,41 @@ do
     os.execute("rm -rf '" .. root .. "'")
 end
 
+-- ---- the highlights a path crosses, as KOReader drew them (#21) -----------------
+do
+    local Book = require("ink/reader/book")
+    local h1 = { text = "first", pos0 = "a", pos1 = "b", drawer = "lighten" }
+    local h2 = { text = "second", pos0 = "c", pos1 = "d", drawer = "lighten" }
+    local note = { text = "a note", pos0 = "e", pos1 = "f" }
+    -- a reflowing book: the boxes are on the screen
+    local view = { highlight = { visible_boxes = {
+        { index = 1, rect = { x = 100, y = 100, w = 200, h = 30 } },
+        { index = 1, rect = { x = 100, y = 140, w = 80, h = 30 } },   -- its second line
+        { index = 2, rect = { x = 400, y = 300, w = 20, h = 30 } },   -- a short one
+    } } }
+    function view:screenToPageTransform(pos) pos.page = 1; return pos end
+    local ui = { rolling = true, view = view, annotation = { annotations = { h1, h2, note } } }
+    local b = setmetatable({ ui = ui }, Book)
+    local hits = b:highlightsAt({ 50, 115, 350, 115 }, 4)
+    ok(#hits == 1 and hits[1] == h1, "highlights: a stroke across the first highlights it, once for its two lines")
+    hits = b:highlightsAt({ 300, 315, 600, 315 }, 4)
+    ok(#hits == 1 and hits[1] == h2, "highlights: a short highlight between two far points is still crossed")
+    hits = b:highlightsAt({ 50, 250, 600, 250 }, 4)
+    ok(#hits == 0, "highlights: a stroke between them crosses none")
+    hits = b:highlightsAt({ 150, 97 }, 4)
+    ok(#hits == 1 and hits[1] == h1, "highlights: a point just above one, within the eraser's reach, counts")
+    hits = b:highlightsAt({ 50, 115, 350, 115, 410, 330 }, 4)
+    ok(#hits == 2, "highlights: one stroke can cross both")
+    ui.view.highlight.visible_boxes = {}
+    ok(#b:highlightsAt({ 50, 115, 350, 115 }, 4) == 0, "highlights: none drawn, none crossed")
+    -- a fixed page zoomed in: page coordinates, the reach scaled with them
+    local pview = { state = { zoom = 2 }, highlight = { visible_boxes = {
+        { index = 1, rect = { x = 50, y = 50, w = 100, h = 15 } } } } }
+    function pview:screenToPageTransform(pos) return { x = pos.x / 2, y = pos.y / 2, page = 1 } end
+    local pb = setmetatable({ ui = { paging = true, view = pview, annotation = { annotations = { h1 } } } }, Book)
+    ok(#pb:highlightsAt({ 120, 130 }, 4) == 1, "highlights (PDF): inside the box on the zoomed page")
+    ok(#pb:highlightsAt({ 120, 175 }, 4) == 0, "highlights (PDF): the reach is in page coordinates, not more")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -199,8 +199,17 @@ function ReaderInkView:cutWithEraser(op)
     local Cut = require("ink/cut")
     self.canvas:undo()            -- the eraser's own stroke, as if never drawn
     self.canvas.redo_stack = {}
+    local before = {}
+    for i, o in ipairs(self.canvas.ops) do before[i] = o end
     local ops, changed = Cut.ops(self.canvas.ops, op.pts, (op.width or 1) / 2,
         { text = not self.text_erase_protect, pictures = self.erase_bg })
+    -- the reader's highlights it crossed go too, in the same undo step (#21)
+    local hls = self.book.highlightsAt and self.book:highlightsAt(op.pts, (op.width or 1) / 2) or {}
+    if #hls > 0 then
+        if changed then self.canvas.ops = ops end
+        self:removeHighlights(hls, changed and before or nil, changed and ops or nil)
+        return true
+    end
     if changed then
         self.canvas:pushHistory()
         self.canvas.ops = ops
@@ -212,13 +221,101 @@ function ReaderInkView:cutWithEraser(op)
 end
 
 function ReaderInkView:undoMark(mark)
+    if mark.erased then   -- highlights an eraser or a hold took away: back, with the ink
+        for i, it in ipairs(mark.erased) do
+            local back = self.book:restoreHighlight(it)
+            if back then mark.erased[i] = back end
+        end
+        if mark.before then self.canvas.ops = mark.before end
+        self:pageChanged()
+        return
+    end
     if mark.item and self.book:removeHighlight(mark.item) then self:pageChanged() end
 end
 
 function ReaderInkView:redoMark(mark)
+    if mark.erased then
+        for _i, it in ipairs(mark.erased) do self.book:removeHighlight(it) end
+        if mark.after then self.canvas.ops = mark.after end
+        self:pageChanged()
+        return
+    end
     if not mark.item then return end
     local item = self.book:restoreHighlight(mark.item)
     if item then mark.item = item; self:pageChanged() end
+end
+
+-- Take the reader's highlights `items` off the book (#21: the eraser only
+-- worked on ink, and a highlight could only go from KOReader's own menu once
+-- Ink Away was closed): one undo step, with the ink the same stroke changed
+-- (`before` and `after`, the page's ops then) when it did. Returns whether
+-- anything went.
+function ReaderInkView:removeHighlights(items, before, after)
+    local gone = {}
+    for _i, it in ipairs(items) do
+        if self.book:removeHighlight(it) then gone[#gone + 1] = it end
+    end
+    if #gone == 0 and not before then return false end
+    self.canvas.redo_stack = {}
+    self.canvas:pushMark({ erased = gone, before = before, after = after })
+    self:pageChanged()
+    return #gone > 0
+end
+
+-- The whole-stroke eraser over a book: the highlights along its path go too,
+-- in the same undo step as the strokes it took.
+function ReaderInkView:wipeEnd()
+    local w = self._wipe
+    local path, removed = w and w.path, w and w.removed or 0
+    InkAwayView.wipeEnd(self)
+    if not (path and #path >= 2 and self.book.highlightsAt) then return end
+    local hls = self.book:highlightsAt(path, (self.eraser_width or 1) / 2)
+    if #hls == 0 then return end
+    local before, after
+    local top = removed > 0 and self.canvas.undo_stack[#self.canvas.undo_stack]
+    if top and top.snap then
+        table.remove(self.canvas.undo_stack)
+        before = top.snap
+        after = {}
+        for i, o in ipairs(self.canvas.ops) do after[i] = o end
+    end
+    self:removeHighlights(hls, before, after)
+end
+
+-- A hold on a highlight with nothing of the ink under it (a navigating finger,
+-- or the lasso): offer to take it away (#32's long press).
+function ReaderInkView:highlightPromptAt(pos)
+    if not (pos and self.book.highlightsAt) then return false end
+    local items = self.book:highlightsAt({ pos.x, pos.y }, Screen:scaleBySize(3))
+    if #items == 0 then return false end
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local text
+    if #items == 1 then
+        local words, n = {}, 0
+        for ch in tostring(items[1].text or ""):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+            n = n + 1
+            if n > 80 then words[#words + 1] = "\u{2026}"; break end
+            words[#words + 1] = ch
+        end
+        text = _("Remove this highlight?") .. "\n\n\u{201C}" .. table.concat(words) .. "\u{201D}"
+    else
+        text = _("Remove these highlights?")
+    end
+    UIManager:show(ConfirmBox:new{ text = text, ok_text = _("Remove"),
+        ok_callback = function() self:removeHighlights(items) end })
+    return true
+end
+
+function ReaderInkView:holdMenuAt(pos)
+    if self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y) or self:hitTestText(pos.x, pos.y) then
+        return InkAwayView.holdMenuAt(self, pos)
+    end
+    self:highlightPromptAt(pos)
+end
+
+function ReaderInkView:selectAt(pos)
+    if InkAwayView.selectAt(self, pos) then return true end
+    return self:highlightPromptAt(pos)
 end
 
 -- The book's page changed under the ink (a highlight added or taken away):

@@ -481,6 +481,84 @@ do
     ok(saved() == "3:1 -:1 7:0 -:1", "notes: an empty chapter page goes with the empty page added after it (" .. saved() .. ")")
 end
 
+-- the reader's highlights: the eraser takes away those it crosses, in the same
+-- undo step as the ink it cuts, and a hold on one offers to remove it (#21, #32)
+do
+    local W, H = 1072, 1448
+    Screen:setSize(W, H)
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    package.loaded["ink/reader/inkview"] = nil
+    local ReaderInkView = require("ink/reader/inkview")
+    local book = standInBook()
+    local hl = { text = "the cylinder was artificial", drawer = "lighten" }
+    -- a highlight across the first stroke's line (the stand-in reports it under
+    -- anything between y 190 and 210)
+    function book:highlightsAt(pts)
+        if #pts == 2 then return (pts[2] >= 190 and pts[2] <= 210) and { hl } or {} end
+        for i = 3, #pts - 1, 2 do   -- (along each segment, as Book:highlightsAt walks it)
+            local y0, y1 = pts[i - 1], pts[i + 1]
+            if math.min(y0, y1) <= 210 and math.max(y0, y1) >= 190 then return { hl } end
+        end
+        return {}
+    end
+    local view = ReaderInkView:new{ book = book }
+    local v = view.view
+    local function at(x, y) return { pos = { x = x, y = y } } end   -- (a canvas point is the screen point)
+    local function drag(x0, y0, x1, y1)
+        view:onIaTouch(nil, at(x0, y0))
+        for i = 1, 10 do view:onIaPan(nil, at(x0 + (x1 - x0) * i / 10, y0 + (y1 - y0) * i / 10)) end
+        view:onIaPanRelease(nil, at(x1, y1))
+        view:flushPending()
+    end
+    -- the cutting eraser across the highlighted line: the stroke is cut, the highlight goes
+    view:setTool("erase"); view.erase_whole = false
+    local before = #view.canvas.ops
+    drag(300, 150, 300, 250)
+    ok(book.removed == 1, "highlight: the eraser takes away the highlight it crosses")
+    ok(#view.canvas.ops == before + 1, "highlight: and cuts the stroke there, as before")
+    view:undo()
+    ok(book.restored == 1 and #view.canvas.ops == before, "highlight: one undo brings back both the highlight and the stroke")
+    view:redo()
+    ok(book.removed == 2 and #view.canvas.ops == before + 1, "highlight: redo takes both away again")
+    view:undo()
+    -- the eraser away from it: nothing happens to the highlight
+    local removed = book.removed
+    drag(600, 600, 700, 700)
+    ok(book.removed == removed, "highlight: an eraser elsewhere leaves it")
+    -- the whole-stroke eraser across the highlighted line: the stroke and the highlight, one step
+    view.erase_whole = true
+    before = #view.canvas.ops
+    drag(300, 150, 300, 250)
+    ok(book.removed == removed + 1 and #view.canvas.ops == before - 1, "highlight: the whole-stroke eraser takes the stroke and the highlight")
+    local restored = book.restored
+    view:undo()
+    ok(#view.canvas.ops == before and book.restored == restored + 1, "highlight: one undo brings both back")
+    -- a hold on a highlight offers to remove it (a navigating finger)
+    view:setTool("pen")
+    UIManager.shown = nil
+    view:holdMenuAt({ x = 250, y = 205 })
+    local box = UIManager.shown
+    ok(box and box.text and box.text:find("Remove this highlight?", 1, true) and box.text:find("cylinder", 1, true),
+        "highlight: a hold on it asks whether to remove it, quoting it")
+    removed = book.removed
+    if box and box.ok_callback then box.ok_callback() end
+    ok(book.removed == removed + 1, "highlight: Remove takes it away")
+    restored = book.restored
+    view:undo()
+    ok(book.restored == restored + 1, "highlight: and undo puts it back")
+    UIManager.shown = nil
+    view:holdMenuAt({ x = 250, y = 700 })
+    ok(UIManager.shown == nil, "highlight: a hold on plain text asks nothing")
+    -- the lasso's hold too
+    view:setTool("lasso")
+    view:selectAt({ x = 250, y = 205 })
+    ok(UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("Remove this highlight?", 1, true),
+        "highlight: the lasso's hold on it asks too")
+    UIManager.shown = nil
+    view:closeCanvas()
+end
+
 -- the reader's page turn buttons turn the book's pages in annotation mode (#14)
 do
     Screen:setSize(1072, 1448)

@@ -120,7 +120,7 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 |---|---|
 | **Any book** | EPUB, MOBI, FB2, PDF, DjVu, CBZ and every other format KOReader opens. Pen, eraser, shapes, text and pictures work right on the page. |
 | **Ink follows the text** | On a reflowing book each stroke is anchored to the words beside it, so it stays with them when you change the font size, margins or orientation. On PDFs and comics it keeps its place on the page. |
-| **Smart highlighter** | A highlighter stroke over text becomes KOReader's own highlight in the pen's colour and shows in your highlights list. Strokes that wobble or run into the margin still snap; over empty space it stays ink. |
+| **Smart highlighter** | A highlighter stroke over text becomes KOReader's own highlight in the pen's colour and shows in your highlights list. Strokes that wobble or run into the margin still snap; over empty space it stays ink. The eraser takes highlights away like ink, and a long press on one offers to remove it. |
 | **Book notes** | A notebook for each book with a page for each chapter, in a window over the page that expands to full screen. |
 | **Toolbar** | On any side of the screen, and it folds away. It can also fit in the book's margin, clear of the text. |
 | **Kept with the book** | Annotations live beside the book's own KOReader data and follow it when it is moved or renamed. Deleting them puts them in Ink Away's trash for 30 days. |
