@@ -292,6 +292,23 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
         view:setTool("pen")
     end
 
+    -- Book ink can refresh the screen (#12): the sheet closes, then one full refresh
+    do
+        view:openReaderSettings()
+        local rb = findButton(view._settings_dialog, "Refresh the screen")
+        ok(rb ~= nil, tag .. ": Book ink has a Refresh the screen button")
+        local full = 0
+        local sd = UIManager.setDirty
+        UIManager.setDirty = function(self, w, mode, region)
+            if w == view and mode == "full" and region == nil then full = full + 1 end
+            return sd(self, w, mode, region)
+        end
+        if rb then rb.callback() end
+        UIManager.setDirty = sd
+        ok(view._settings_dialog == nil and full == 1,
+            (tag .. ": it closes the sheet and refreshes the screen in full (%d)"):format(full))
+    end
+
     -- deleting every annotation on the book: two confirmations, then gone at
     -- once into the trash, with nothing left to undo
     view:openReaderSettings()

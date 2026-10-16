@@ -27,7 +27,8 @@ versions marked *Prerelease* were test builds.
 - Refresh the screen by hand: a long two-finger swipe down redraws the whole
   screen with a full refresh, so anything a quick refresh missed shows and
   the faint marks of fast drawing go. Any gesture can be set to it in
-  Gestures and pen buttons.
+  Gestures and pen buttons, and Settings has a Refresh the screen button,
+  in annotation mode too.
 - The first time a finger drags on the page with palm rejection on, a note
   says why it doesn't draw: the pen draws and a finger moves the page, and
   palm rejection is in the pen menu, Pen and input. It shows once.

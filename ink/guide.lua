@@ -178,7 +178,7 @@ Guide.TOPICS = {
         { icon = "menu", title = "Updates", when = "canvas", show = "updates",
           text = "Settings, Updates: the latest release, and prereleases apart. Once a day, opening on Wi-Fi, Ink Away looks; a dot on Settings means news." },
         { icon = "menu", title = "Ghosting", when = "canvas",
-          text = "Settings, Ghosting: a full refresh every few strokes clears the faint marks fast drawing leaves." },
+          text = "Settings, Ghosting: a full refresh every few strokes clears the faint marks fast drawing leaves. The Refresh the screen button below it does one now." },
         { icon = "pen", title = "Fast refresh on a Boox", when = "boox", show = "pen_input",
           text = "Pen and input, Fast refresh while drawing: ink shows with the Boox's fast refresh as you write." },
         { icon = "menu", title = "Faster drawing", when = "android", show = "device_tips",

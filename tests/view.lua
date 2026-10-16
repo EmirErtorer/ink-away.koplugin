@@ -1431,6 +1431,13 @@ do
     view:onIaTwoSwipe(nil, { pos = { x = cx, y = top }, end_pos = { x = cx, y = top + v.area_h * 0.6 }, direction = "south" })
     ok(rendered == 1 and full == 1, ("refresh: the screen drawn again and refreshed in full (%d, %d)"):format(rendered, full))
     ok(view:runAction("refresh") and full == 2, "refresh: and from the action itself")
+    -- and from Settings, which closes first
+    view:openSettings()
+    local rb = findButton(view._settings_dialog, "Refresh the screen")
+    ok(rb ~= nil, "refresh: Settings has a Refresh the screen button")
+    if rb then rb.callback() end
+    ok(view._settings_dialog == nil and full == 3 and rendered == 3,
+        ("refresh: it closes the sheet, draws the screen again and refreshes it in full (%d, %d)"):format(rendered, full))
     UIManager.setDirty = sd
     view.renderView = rv
     view:onCloseWidget()

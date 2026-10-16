@@ -348,6 +348,9 @@ function InkAwayView:openSettings()
                 self._strokes_since_full = 0 end })
         add(vspan(4))
         add(self:sheetHint(_("Fast strokes leave faint marks; a full refresh clears them this often."), content_w))
+        add(vspan(10))
+        -- one full refresh now, as the "Refresh the screen" gesture does
+        add(act(_("Refresh the screen"), content_w, function() self:refreshScreen() end))
         add(vspan(16))
 
         -- where documents are kept, and what opening Ink Away shows
