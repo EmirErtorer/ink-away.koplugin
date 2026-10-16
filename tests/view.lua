@@ -2691,6 +2691,99 @@ do
     view:onCloseWidget()
 end
 
+-- ---- a library folder's colour and icon -----------------------------------
+do
+    local TestEnv = require("testenv")
+    local Storage = require("ink/storage")
+    local Folder = require("ink/folder")
+    local FolderLook = require("ink/folderlook")
+    local InputDialog = require("ui/widget/inputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local LIB = TestEnv.libraryDir() .. "/looktest"
+    os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. LIB .. "/School' '" .. LIB .. "/Art'")
+    local saved_lib = G_reader_settings.data.inkaway_library_dir
+    G_reader_settings.data.inkaway_library_dir = LIB
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view:openLibrary(LIB)
+    local lib = view._library
+    local function item(name)
+        for _, it in ipairs(lib.items) do if it.label == name then return it end end
+    end
+    ok(item("Art") and item("Art").look == nil and item("School").look == nil, "look: folders start plain")
+    ok(lib.folder_tile ~= nil, "look: the library draws folders in their looks")
+    view:libraryItemMenu(item("School"))
+    local found
+    for _, row in ipairs(ButtonDialog.last.buttons) do
+        for _, b in ipairs(row) do if b.text == "Colour and icon\u{2026}" then found = b end end
+    end
+    ok(found ~= nil, "look: a folder's menu offers Colour and icon")
+    found.callback()
+    ok(view._folder_look ~= nil, "look: it opens the sheet")
+    view:setFolderLook(item("School"), function(l) l.color = "green" end)
+    ok(Folder.load(LIB).folders.School.color == "green", "look: the colour is kept in the parent's binder file")
+    ok(item("School").look.color == "green", "look: and the card shows it")
+    view:setFolderLook(item("School"), function(l) l.icon = "ink/pen.svg" end)
+    local kept = Folder.load(LIB).folders.School
+    ok(kept.color == "green" and kept.icon == "ink/pen.svg", "look: an icon is kept beside the colour")
+    ok(view:rebuildSheet("_folder_look"), "look: the sheet shows the change")
+    BB.out_of_bounds = 0
+    lib:paintTo(Screen.bb, 0, 0)
+    ok(BB.out_of_bounds == 0, "look: the grid paints in bounds (a folder that cannot be drawn shows the plain icon)")
+    -- the icon chooser
+    view:chooseFolderIcon(item("School"))
+    local chooser = UIManager.shown
+    -- (KOReader's own icons are not here: the tests do not run in KOReader's folder)
+    ok(chooser ~= lib and #chooser.items > 10, "look: the icon chooser lists the icons (" .. #chooser.items .. ")")
+    local sel
+    for _, ic in ipairs(chooser.items) do if ic.selected then sel = ic end end
+    ok(sel and sel.id == "ink/pen.svg", "look: the icon in use is marked")
+    ok(view._folder_look == nil, "look: the sheet steps aside for the icons")
+    chooser.on_pick(chooser.items[1])
+    ok(Folder.load(LIB).folders.School.icon == chooser.items[1].id, "look: a tap puts another icon on")
+    ok(view._folder_look ~= nil, "look: and the sheet comes back")
+    -- a renamed folder keeps its look
+    view:promptRenameItem(item("School"))
+    local d = InputDialog.last
+    d.input = "Maths"
+    for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    local after = Folder.load(LIB).folders
+    ok(after.Maths and after.Maths.color == "green" and after.School == nil, "look: a renamed folder keeps it")
+    -- a moved folder takes it along
+    view:setFolderLook(item("Art"), function(l) l.color = "pink" end)
+    local real = view.chooseLibraryFolder
+    view.chooseLibraryFolder = function(_, _, pick) pick(LIB .. "/Maths") end
+    view:moveItem(item("Art"))
+    view.chooseLibraryFolder = real
+    ok(Folder.load(LIB).folders.Art == nil and Folder.load(LIB .. "/Maths").folders.Art.color == "pink",
+        "look: a moved folder takes it along")
+    -- back to plain
+    view:setFolderLook(item("Maths"), function(l) l.color, l.icon = nil, nil end)
+    ok(Folder.load(LIB).folders.Maths == nil and item("Maths").look == nil, "look: Plain folder forgets it")
+    -- what the binder file may hold wrongly
+    Folder.update(LIB, function(dd) dd.folders.Maths = "green" end)
+    view:refreshLibrary()
+    ok(item("Maths").look == nil, "look: a look that is not a table is left out")
+    Folder.update(LIB, function(dd) dd.folders.Maths = { color = "chartreuse", icon = "ko/star.full.svg" } end)
+    view:refreshLibrary()
+    ok(item("Maths").look and item("Maths").look.color == nil and item("Maths").look.icon == "ko/star.full.svg",
+        "look: an unknown colour is dropped, its icon kept")
+    -- a folder with no subfolders does not read its binder file for looks
+    local loads, real_load = 0, Folder.load
+    Folder.load = function(...) loads = loads + 1; return real_load(...) end
+    view:libraryItems(LIB .. "/Maths/Art")
+    Folder.load = real_load
+    ok(loads == 0, "look: a folder without subfolders reads no binder file")
+    ok(FolderLook.tile(nil, 100) == nil, "look: no look, no picture")
+    view:closeSheet("_folder_look")
+    lib:close()
+    G_reader_settings.data.inkaway_library_dir = saved_lib
+    view:onCloseWidget()
+end
+
 -- ---- finishing a text box undoes the keyboard scroll ---------------------
 -- Typing near the bottom scrolls the page past its normal end so the line stays
 -- above the keyboard; closing the box must bring the view back inside the page.

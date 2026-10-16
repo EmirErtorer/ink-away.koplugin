@@ -21,6 +21,7 @@ local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Folder = require("ink/folder")
+local FolderLook = require("ink/folderlook")
 local Library = require("ink/library")
 local Notebook = require("ink/notebook")
 local Paint = require("ink/paint")
@@ -82,7 +83,8 @@ function InkAwayView:overviewTabs(dir, sel_path)
     end
     local tabs = {}
     for _, f in ipairs(folders) do
-        tabs[#tabs + 1] = { label = f.name, name = f.name, path = f.path, folder = true, color = colour(f.name) }
+        tabs[#tabs + 1] = { label = f.name, name = f.name, path = f.path, folder = true, color = colour(f.name),
+            look = FolderLook.clean(data.folders[f.name]) }
     end
     local seen
     for _, d in ipairs(docs) do
@@ -205,6 +207,7 @@ function InkAwayView:openOverview()
         start = start,
         tabs = tabs,
         folder_icon = self:iconPath("folder"),
+        folder_tile = self.folderTile,
         flash_open = not self:colourPanel(),   -- (see ThumbGrid:onShow)
         empty_text = self:overviewEmptyText(),
         actions = {

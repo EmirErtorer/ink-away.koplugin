@@ -43,6 +43,8 @@ local ThumbGrid = InputContainer:extend{
     close_label = nil,  -- the close pill's text (Close by default)
     empty_text = nil,   -- shown when there are no items
     folder_icon = nil,  -- path of the SVG drawn on folder cards
+    folder_tile = nil,  -- function(item, w, bg) -> a folder's own look w wide on grey bg (a
+                        -- BlitBuffer the caller keeps), or nil for the plain icon
     tabs = nil,         -- list of { label, color = Blitbuffer colour or nil, selected = bool, folder = bool }
     on_tab = nil,       -- function(tab) after a tap on a tab
     on_tab_hold = nil,  -- function(tab) after a hold on a tab
@@ -321,12 +323,16 @@ function ThumbGrid:paintTo(bb, x, y)
                 end
                 local lx = rx + strip + S(10)
                 if t.folder then
-                    local icon = self:folderTile(S(22), "_tab_folder")
+                    local tbg = t.selected and 0xFF or 0xE6
+                    local own = self.folder_tile and self.folder_tile(t, S(28), Theme.invert() and 0xFF - tbg or tbg)
+                    local icon = own or self:folderTile(S(22), "_tab_folder")
                     if icon then
                         local iw, ih = icon:getWidth(), icon:getHeight()
-                        bb:blitFrom(icon, lx, ry + math.floor((r.h - ih) / 2), 0, 0, iw, ih)
+                        local iy = ry + math.floor((r.h - ih) / 2)
+                        bb:blitFrom(icon, lx, iy, 0, 0, iw, ih)
+                        if own then keep(lx, iy, iw, ih) end
                     end
-                    lx = lx + S(30)
+                    lx = lx + (own and S(36) or S(30))
                 end
                 local tw = TextBoxWidget:new{ text = t.label, face = tface, bold = t.selected,
                     bgcolor = t.selected and WHITE or CARD,   -- it fills its box
@@ -382,13 +388,17 @@ function ThumbGrid:paintTo(bb, x, y)
             else
                 bb:paintRoundedRect(cx, cy, c.w, c.h, CARD, card_r)
             end
-            local img = it.folder and self:folderTile(math.floor(math.min(c.w, c.h - self.label_h) * 0.45))
-                or self.cache[it]
+            -- a folder in its own colour and icon is drawn bigger than the
+            -- plain icon, and keeps its colours in dark (on the card's dark grey)
+            local box = math.min(c.w, c.h - self.label_h)
+            local own = it.folder and self.folder_tile
+                and self.folder_tile(it, math.floor(box * 0.62), Theme.invert() and 0x19 or 0xE6)
+            local img = own or (it.folder and self:folderTile(math.floor(box * 0.45))) or self.cache[it]
             if img then
                 local iw, ih = img:getWidth(), img:getHeight()
                 local ix, iy = cx + math.floor((c.w - iw) / 2), cy + math.floor((c.h - self.label_h - ih) / 2)
                 bb:blitFrom(img, ix, iy, 0, 0, iw, ih)
-                if not (kept or it.folder) then keep(ix, iy, iw, ih) end   -- a page as it is
+                if not kept and (own or not it.folder) then keep(ix, iy, iw, ih) end   -- a page as it is
             end
             local name = it.star and ("\u{2605} " .. it.label) or it.label
             label(name, cx + c.w / 2, cy + c.h - self.label_h / 2 - S(4), nface,

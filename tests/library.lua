@@ -430,6 +430,15 @@ do
     ok(back.order[2] == "z.inkaway" and back.colors["z.inkaway"][1] == 1, "and loads back")
     Folder.forget(back, "z.inkaway")
     ok(#back.order == 2 and back.colors["z.inkaway"] == nil, "a deleted tab is forgotten")
+    ok(type(back.folders) == "table", "a binder file from before folder looks loads with none")
+    back.folders.Art = { color = "teal", icon = "ko/star.full.svg" }
+    Folder.rename(back, "Art", "Drawing class")
+    ok(back.folders["Drawing class"].color == "teal" and back.folders.Art == nil, "a renamed subfolder keeps its look")
+    Folder.save(B, back)
+    ok(Folder.load(B).folders["Drawing class"].icon == "ko/star.full.svg", "a subfolder's look saves and loads")
+    Folder.forget(back, "Drawing class")
+    ok(back.folders["Drawing class"] == nil, "a deleted subfolder's look is forgotten")
+    Folder.save(B, back)
     ok(Storage.exists(B .. "/" .. Folder.FILE) and #Library.list(B, DIR) == 0, "the binder file is hidden from the library")
 
     local a = Notebook.new(10, 10, { style = "lines", pdf_path = "x.pdf" })

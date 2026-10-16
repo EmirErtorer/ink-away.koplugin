@@ -7,23 +7,35 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local Button = require("ui/widget/button")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
+local Device = require("device")
+local FrameContainer = require("ui/widget/container/framecontainer")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
+local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Layers = require("ink/layers")
 local Folder = require("ink/folder")
+local FolderLook = require("ink/folderlook")
 local Library = require("ink/library")
 local Notebook = require("ink/notebook")
 local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
+local Theme = require("ink/ui/theme")
 local ThumbGrid = require("ink/ui/thumbgrid")
 
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
+local Screen = Device.screen
+local function S(px) return Screen:scaleBySize(px) end
 
 local InkAwayView = {}
 
@@ -37,12 +49,20 @@ function InkAwayView:libraryTitle(dir)
     return Storage.baseName(dir)
 end
 
+-- The looks of folder `dir`'s subfolders (from its binder file, read only
+-- when it has subfolders), by name.
+function InkAwayView:folderLooks(dir, folders)
+    if #folders == 0 then return {} end
+    return Folder.load(dir).folders
+end
+
 -- The cards for library folder `dir`: its folders, then its documents.
 function InkAwayView:libraryItems(dir)
     local folders, docs = Library.list(dir, self:libraryDir(), self:getSetting("inkaway_library_sort"))
+    local looks = self:folderLooks(dir, folders)
     local items = {}
     for _, f in ipairs(folders) do
-        items[#items + 1] = { label = f.name, path = f.path, folder = true }
+        items[#items + 1] = { label = f.name, path = f.path, folder = true, look = FolderLook.clean(looks[f.name]) }
     end
     for _, d in ipairs(docs) do
         items[#items + 1] = { label = Storage.stem(d.name), path = d.path, mtime = d.mtime,
@@ -71,6 +91,7 @@ function InkAwayView:openLibrary(dir, over_grid)
         items = items,
         start = start,
         folder_icon = self:iconPath("folder"),
+        folder_tile = self.folderTile,
         flash_open = not (over_grid or self:colourPanel()),   -- (see ThumbGrid:onShow)
         empty_text = _("Nothing here yet. Start a drawing or a notebook with the buttons above."),
         actions = {
@@ -146,6 +167,7 @@ function InkAwayView:libraryItemMenu(it)
           act(_("Move to\u{2026}"), function() self:moveItem(it) end) },
     }
     if it.folder then
+        rows[#rows + 1] = { act(_("Colour and icon\u{2026}"), function() self:folderLookSheet(it) end) }
         rows[#rows + 1] = { act(_("Export as PDF\u{2026}"), function() self:exportFolderPDF(it.path) end),
             act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
     else
@@ -273,15 +295,16 @@ function InkAwayView:moveItem(it)
             return
         end
         if new ~= it.path then
-            -- its tab colour and Bookshelf cover go with it
+            -- its tab colour, Bookshelf cover and folder look go with it
             local old_name, new_name = Storage.baseName(it.path), Storage.baseName(new)
             local from = Folder.load(Storage.dirName(it.path))
-            local color, cover = from.colors[old_name], from.covers[old_name]
+            local color, cover, look = from.colors[old_name], from.covers[old_name], from.folders[old_name]
             Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, old_name) end)
             Folder.update(dir, function(d)
                 Folder.add(d, new_name)
                 if color ~= nil then d.colors[new_name] = color end
                 if cover ~= nil then d.covers[new_name] = cover end
+                if look ~= nil then d.folders[new_name] = look end
             end)
         end
         self:pathMoved(it.path, new)
@@ -298,10 +321,11 @@ function InkAwayView:chooseLibraryFolder(moving, on_pick)
     local cur = root
     local function items()
         local folders = Library.list(cur, root)
+        local looks = self:folderLooks(cur, folders)
         local out = {}
         for _, f in ipairs(folders) do
             if not (moving and Storage.within(f.path, moving)) then
-                out[#out + 1] = { label = f.name, path = f.path, folder = true }
+                out[#out + 1] = { label = f.name, path = f.path, folder = true, look = FolderLook.clean(looks[f.name]) }
             end
         end
         return out
@@ -315,6 +339,7 @@ function InkAwayView:chooseLibraryFolder(moving, on_pick)
     grid = ThumbGrid:new{
         items = {},
         folder_icon = self:iconPath("folder"),
+        folder_tile = self.folderTile,
         flash_open = false,   -- it opens over the library
         close_label = _("Cancel"),
         empty_text = _("No folders here."),
@@ -325,6 +350,131 @@ function InkAwayView:chooseLibraryFolder(moving, on_pick)
         on_pick = function(it) go(it.path) end,
     }
     go(root)
+    UIManager:show(grid)
+end
+
+------------------------------------------------------------------------------
+-- A folder's colour and icon
+------------------------------------------------------------------------------
+
+-- A card's or tab's folder in its own look, `w` wide on grey `bg`, or nil for
+-- the plain folder icon (ThumbGrid's folder_tile; not a method).
+function InkAwayView.folderTile(it, w, bg)
+    return it.look and FolderLook.tile(it.look, w, bg) or nil
+end
+
+-- Change the look of the library folder `it` with fn(look) and show it.
+function InkAwayView:setFolderLook(it, fn)
+    local dir, name = Storage.dirName(it.path), Storage.baseName(it.path)
+    local look
+    Folder.update(dir, function(d)
+        look = FolderLook.clean(d.folders[name]) or {}
+        fn(look)
+        look = FolderLook.clean(look)
+        d.folders[name] = look
+    end)
+    it.look = look
+    self:refreshLibrary()
+    self:refreshOverview()   -- (when it is open, under the library)
+end
+
+-- The sheet for a folder's look: the twelve colours as folders (with its icon,
+-- the one in use framed), its icon, and back to the plain folder.
+function InkAwayView:folderLookSheet(it)
+    local content_w, gap = self:sheetWidth()
+    local closeSelf = function() self:closeSheet("_folder_look") end
+    local per_row = 6
+    local cell = math.floor((content_w - (per_row - 1) * gap) / per_row)
+    local bg = Theme.invert() and 0x00 or 0xFF
+    local function swatch(key)
+        local look = it.look or {}
+        local selected = look.color == key
+        local inner = cell - S(8)
+        local bb = FolderLook.tile({ color = key, icon = look.icon }, inner - S(6), bg)
+        local b = Button:new{ text = "", width = inner, height = inner, bordersize = 0,
+            background = Blitbuffer.COLOR_WHITE, radius = S(11), margin = 0, padding = 0,
+            callback = function()
+                self:setFolderLook(it, function(l) l.color = key end)
+                self:rebuildSheet("_folder_look")
+            end, show_parent = self }
+        if bb then
+            self:setButtonLabel(b, ImageWidget:new{ image = bb, width = bb:getWidth(), height = bb:getHeight(),
+                image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK })
+        end
+        return FrameContainer:new{ bordersize = selected and S(3) or 0, color = Blitbuffer.COLOR_BLACK,
+            radius = S(14), padding = selected and S(1) or S(4), margin = 0, Theme.keep(b, S(11)) }
+    end
+    local build = function()
+        local look = it.look or {}
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(it.label, content_w, _("Done"), closeSelf))
+        add(VerticalSpan:new{ width = S(14) })
+        for r = 0, 1 do
+            local hg = HorizontalGroup:new{ align = "center" }
+            for i = 1, per_row do
+                if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
+                table.insert(hg, swatch(FolderLook.COLORS[r * per_row + i].key))
+            end
+            add(hg)
+            add(VerticalSpan:new{ width = S(8) })
+        end
+        add(VerticalSpan:new{ width = S(8) })
+        local half = math.floor((content_w - gap) / 2)
+        local icon_label = look.icon and string.format(_("Icon: %s"), FolderLook.iconName(look.icon))
+            or _("Add an icon\u{2026}")
+        local row = HorizontalGroup:new{ align = "center" }
+        table.insert(row, self:actionButton(icon_label, look.icon and half or content_w,
+            function() self:chooseFolderIcon(it) end))
+        if look.icon then
+            table.insert(row, HorizontalSpan:new{ width = gap })
+            table.insert(row, self:actionButton(_("No icon"), half, function()
+                self:setFolderLook(it, function(l) l.icon = nil end)
+                self:rebuildSheet("_folder_look")
+            end))
+        end
+        add(row)
+        add(VerticalSpan:new{ width = S(10) })
+        add(self:actionButton(_("Plain folder"), content_w, function()
+            self:setFolderLook(it, function(l) l.color, l.icon = nil, nil end)
+            self:rebuildSheet("_folder_look")
+        end, it.look == nil))
+        return content
+    end
+    self:showSheet("_folder_look", build)
+end
+
+-- A grid of the icons on offer (the reader's koreader/icons folder, Ink
+-- Away's, KOReader's); a tap puts one on the folder. The sheet steps aside
+-- (sheets stay above other windows) and comes back after.
+function InkAwayView:chooseFolderIcon(it)
+    self:closeSheet("_folder_look")
+    local items, start = {}, 1
+    for i, ic in ipairs(FolderLook.icons()) do
+        local sel = it.look and it.look.icon == ic.id
+        items[i] = { label = ic.label, id = ic.id, path = ic.path, selected = sel }
+        if sel then start = i end
+    end
+    local wide = Screen:getWidth() > Screen:getHeight()
+    local grid
+    grid = ThumbGrid:new{
+        title = _("Folder icon"),
+        items = items,
+        start = start,
+        cols = wide and 6 or 4,
+        rows = wide and 3 or 5,
+        flash_open = false,   -- it opens over the library
+        close_label = _("Cancel"),
+        empty_text = _("No icons found."),
+        render = function(ic, w, h)
+            return FolderLook.iconPreview(ic.path, math.floor(math.min(w, h) * 0.7), 0xE6)
+        end,
+        on_pick = function(ic)
+            self:setFolderLook(it, function(l) l.icon = ic.id end)
+            grid:close()
+        end,
+        on_close = function() self:folderLookSheet(it) end,
+    }
     UIManager:show(grid)
 end
 

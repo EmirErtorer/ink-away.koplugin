@@ -8,6 +8,14 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Library folders in colour: hold a folder for Colour and icon, then pick one
+  of twelve colours and, if you like, an icon for its front. The icons are
+  the ones in your KOReader: its own, Ink Away's, and any SVG or PNG you put
+  in the koreader/icons folder. The look is kept in the library, so updates
+  leave it alone, and each folder is drawn once, so the library opens as fast
+  as before. Renamed and moved folders keep their look.
+
 ### Fixed
 - On the Kindle Scribe a resting palm took the pen again once a book had been
   opened, until KOReader was restarted: the pen stopped being recognised near
