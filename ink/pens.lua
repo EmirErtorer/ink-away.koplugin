@@ -99,8 +99,9 @@ function Pens.segRadii(st, r, p0, p1, dx, dy)
 end
 
 -- Per-segment radii for a whole op at `scale` (1 for the page, the zoom on
--- screen), as Raster.pathVar takes them: pressure, the nib, and the taper.
-function Pens.radii(op, st, scale)
+-- screen), as Raster.pathVar takes them: pressure, the nib, and the taper at
+-- each point (left out with `untapered`, for Pens.taperAlong to follow).
+function Pens.radii(op, st, scale, untapered)
     local pts, pr = op.pts, op.pr
     local r = (op.width or 1) / 2 * (scale or 1)
     local n = floor(#pts / 2)
@@ -108,7 +109,7 @@ function Pens.radii(op, st, scale)
     if n == 1 then rs[1] = r * factor(st, pr and pr[1]); return rs end
     -- each point's distance from the start, in widths, for the taper
     local d
-    if st.taper then
+    if st.taper and not untapered then
         d = { 0 }
         local w = op.width or 1
         for i = 2, n do
@@ -128,64 +129,36 @@ function Pens.radii(op, st, scale)
     return rs
 end
 
--- A tapered op with points added inside its two tapers, so each ramp is
--- followed even where the saved stroke is one long segment: a finished stroke
--- is simplified to few points, and the radius is only interpolated straight
--- between them, so a straight stroke kept as its two ends used to be drawn at
--- the taper's thinnest all along. A point goes every TAPER_STEP widths in a
--- taper and one where each taper meets the even middle; pressure is
--- interpolated along with the position. Returns the op itself when it needs
--- none.
-local TAPER_STEP = 0.25
-function Pens.tapered(op, st)
+-- Where along a tapered op each of its points lies, and its taper, as
+-- Raster.pathVar takes them: { d = each point's distance from the start in
+-- widths, a and ze = where the even middle starts and ends, fn(t) = the share
+-- of the width at t }, or nil for an op without a taper or a dot. The taper
+-- is followed along the stroke's length, not only at its points: a finished
+-- stroke is simplified to few points (a straight one to its two ends), and a
+-- radius only blended between them was drawn at the taper's thinnest all
+-- along. fn is Pens.taper for this stroke.
+function Pens.taperAlong(op, st)
     local tp = st.taper
-    local pts, pr = op.pts, op.pr
+    local pts = op.pts
     local n = floor(#pts / 2)
-    if not tp or n < 2 then return op end
+    if not tp or n < 2 then return nil end
     local w = op.width or 1
     local d = { 0 }
     for i = 2, n do
         d[i] = d[i - 1] + sqrt((pts[2 * i - 1] - pts[2 * i - 3]) ^ 2 + (pts[2 * i] - pts[2 * i - 2]) ^ 2) / w
     end
     local total = d[n]
-    if total < 1.2 then return op end   -- a dot keeps its full width (see Pens.taper)
+    if total < 1.2 then return nil end   -- a dot keeps its full width
     local a, b = tp.a, tp.b
     if total < a + b then
         local k = total / (a + b) * 0.8
         a, b = a * k, b * k
     end
-    local ze = total - b
-    local out, opr = { pts[1], pts[2] }, pr and { pr[1] } or nil
-    local added = false
-    for i = 2, n do
-        local t0, t1 = d[i - 1], d[i]
-        local x0, y0, x1, y1 = pts[2 * i - 3], pts[2 * i - 2], pts[2 * i - 1], pts[2 * i]
-        local function add(t)
-            local f = (t - t0) / (t1 - t0)
-            out[#out + 1] = x0 + (x1 - x0) * f
-            out[#out + 1] = y0 + (y1 - y0) * f
-            if opr then opr[#opr + 1] = pr[i - 1] + (pr[i] - pr[i - 1]) * f end
-            added = true
-        end
-        if t1 > t0 then
-            -- the start's taper, from 0 to a
-            local t = (floor(t0 / TAPER_STEP) + 1) * TAPER_STEP
-            while t < t1 and t < a do add(t); t = t + TAPER_STEP end
-            if a > t0 and a < t1 then add(a) end
-            -- the end's taper, from total - b to total
-            if ze > t0 and ze < t1 and ze > a then add(ze) end
-            t = ze + TAPER_STEP
-            if t <= t0 then t = ze + (floor((t0 - ze) / TAPER_STEP) + 1) * TAPER_STEP end
-            while t < t1 do
-                if t > a then add(t) end
-                t = t + TAPER_STEP
-            end
-        end
-        out[#out + 1], out[#out + 2] = x1, y1
-        if opr then opr[#opr + 1] = pr[i] end
-    end
-    if not added then return op end
-    return { kind = op.kind, style = op.style, width = op.width, pts = out, pr = opr }
+    local min = tp.min
+    return { d = d, a = a, ze = total - b, fn = function(t)
+        local f, g = ramp(t, a, min), ramp(total - t, b, min)
+        return g < f and g or f
+    end }
 end
 
 -- Draw an ink op's path through `put`, whatever its pen. With `clip` (a canvas
@@ -197,8 +170,7 @@ function Pens.paint(op, put, clip)
         return Raster.path(op.pts, op.width / 2, put)
     end
     if st.engine == "var" then
-        local t = Pens.tapered(op, st)
-        return Raster.pathVar(t.pts, Pens.radii(t, st, 1), put, clip)
+        return Raster.pathVar(op.pts, Pens.radii(op, st, 1, true), put, clip, Pens.taperAlong(op, st))
     elseif st.engine == "nib" then
         return Pens.nib(op.pts, op.pr, op.width, st, put, Pens.nibAngle(op.nib))
     elseif st.engine == "wash" then

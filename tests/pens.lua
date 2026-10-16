@@ -254,64 +254,31 @@ do
     ok(skipped_some, "clip: (some strokes miss their region entirely)")
 end
 
--- ---- a row's spans along a path are joined: the same pixels, written once ----
--- Raster.pathVar along several segments covers exactly what its segments
--- drawn one by one cover (how it drew them before), with fewer writes, and
--- never a pixel twice within one row's join; a tapered end shows it most.
+-- ---- the taper along a segment: each segment follows its stretch of the ramp --
+-- A tapered stroke drawn whole covers exactly what its segments drawn one by
+-- one cover, each given its own stretch of the taper.
 do
-    math.randomseed(7)
-    local bad, tried, fewer, writes_one, writes_all = 0, 0, 0, 0, 0
-    for _i = 1, 400 do
-        local pts, rs = {}, {}
-        local x, y = math.random(50, 400), math.random(50, 400)
-        local n = math.random(2, 45)
-        for _j = 1, n do
-            if _i % 3 == 0 then   -- short steps, as a taper is drawn
-                x = x + math.random(-4, 4); y = y + math.random(-4, 4)
-            else
-                x = x + math.random(-30, 30); y = y + math.random(-30, 30)
-            end
-            pts[#pts + 1] = x + math.random(); pts[#pts + 1] = y + math.random()
-        end
-        for _j = 1, 2 * (n - 1) do rs[_j] = math.random() * 14 end
-        local one = cover(function(put)
-            for k = 1, n - 1 do
-                Raster.pathVar({ pts[2 * k - 1], pts[2 * k], pts[2 * k + 1], pts[2 * k + 2] },
-                    { rs[2 * k - 1], rs[2 * k] }, function(...) writes_one = writes_one + 1; return put(...) end)
-            end
-        end)
-        local before = writes_all
-        local all = cover(function(put)
-            Raster.pathVar(pts, rs, function(...) writes_all = writes_all + 1; return put(...) end)
-        end)
-        tried = tried + 1
-        if not same(one, all) then bad = bad + 1 end
-        if writes_all - before < 1 then bad = bad + 1 end
-        if n > 2 then fewer = fewer + 1 end
-    end
-    ok(bad == 0, ("join: a path covers exactly what its segments one by one cover (%d of %d differ)"):format(bad, tried))
-    print(("  join: random paths %d writes, %d before"):format(writes_all, writes_one))
-    ok(writes_all < writes_one * 0.6, ("join: with far fewer writes (%d against %d)"):format(writes_all, writes_one))
-    -- a ballpoint stroke with its tapers: same pixels as before, a fraction of the writes
     local op = { kind = "ink", style = "ballpoint", width = 15, pts = {}, pr = {} }
     for i = 0, 30 do
         local a = i / 30 * math.pi * 2.2
         op.pts[#op.pts + 1] = 200 + 30 * math.sin(a) + i * 2; op.pts[#op.pts + 1] = 200 + 40 * math.cos(a * 0.9)
         op.pr[#op.pr + 1] = 150 + (i % 5) * 20
     end
-    local t = Pens.tapered(op, Raster.STYLES.ballpoint)
-    local radii = Pens.radii(t, Raster.STYLES.ballpoint, 1)
-    local w1, w2 = 0, 0
+    local st = Raster.STYLES.ballpoint
+    local radii = Pens.radii(op, st, 1, true)
+    local tw = Pens.taperAlong(op, st)
     local one = cover(function(put)
-        for k = 1, #t.pts / 2 - 1 do
-            Raster.pathVar({ t.pts[2 * k - 1], t.pts[2 * k], t.pts[2 * k + 1], t.pts[2 * k + 2] },
-                { radii[2 * k - 1], radii[2 * k] }, function(...) w1 = w1 + 1; return put(...) end)
+        for k = 1, #op.pts / 2 - 1 do
+            local piece = { d = { tw.d[k], tw.d[k + 1] }, a = tw.a, ze = tw.ze, fn = tw.fn }
+            Raster.pathVar({ op.pts[2 * k - 1], op.pts[2 * k], op.pts[2 * k + 1], op.pts[2 * k + 2] },
+                { radii[2 * k - 1], radii[2 * k] }, put, nil, piece)
         end
     end)
-    local all = cover(function(put) Pens.paint(op, function(...) w2 = w2 + 1; return put(...) end) end)
-    ok(same(one, all), "join: a tapered ballpoint stroke keeps every pixel")
-    print(("  join: tapered ballpoint %d writes, %d before"):format(w2, w1))
-    ok(w2 * 3 < w1, ("join: a tapered ballpoint stroke takes a third of the writes or fewer (%d against %d)"):format(w2, w1))
+    local all = cover(function(put) Pens.paint(op, put) end)
+    ok(same(one, all), "taper: a ballpoint stroke drawn whole is its segments, each with its stretch of the taper")
+    ok(Pens.taperAlong({ kind = "ink", style = "ballpoint", width = 10, pts = { 100, 100, 105, 100 } }, st) == nil,
+        "taper: a dot has none")
+    ok(Pens.taperAlong(op, Raster.STYLES.solid) == nil, "taper: a fineliner has none")
 end
 
 print(("pens: %d checks, %d failures"):format(checks, failures))

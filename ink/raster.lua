@@ -142,12 +142,10 @@ end
 -- draws each segment on its own terms; a single point uses rs[1]. Discs are
 -- stamped about every pixel with the radius blended along the segment, and each
 -- segment's discs are merged into one span per row, as on the solid path.
--- Along a path of several segments a row's spans that touch are joined before
--- they go out (a tapered end is many short segments over the same rows), so
--- each pixel is written about once: `put` must write the same thing however
--- often a pixel is written, as every ink writer does.
-local joinL, joinR, joining = {}, {}, false
-function Raster.pathVar(pts, rs, put, clip)
+-- With `taper` (see Pens.taperAlong) a segment inside a taper has its radius
+-- scaled step by step by the taper at that point of the stroke, so a ramp is
+-- followed however long the segment.
+function Raster.pathVar(pts, rs, put, clip, taper)
     local n = floor(#pts / 2)
     if n == 0 then return end
     if n == 1 then
@@ -159,10 +157,6 @@ function Raster.pathVar(pts, rs, put, clip)
         end
         return
     end
-    local join = n > 2
-    if join and joining then joinL, joinR = {}, {} end   -- (a draw that failed part way)
-    joining = join
-    local jy0, jy1 = huge, -huge
     local px, py = pts[1], pts[2]
     for i = 2, n do
         local nx, ny = pts[2 * i - 1], pts[2 * i]
@@ -175,6 +169,12 @@ function Raster.pathVar(pts, rs, put, clip)
         if steps < 1 then steps = 1 end
         local inv = 1 / steps
         local irmax = floor(r0 > r1 and r0 or r1) + 1
+        -- a segment in a taper: its radius follows the taper (never wider)
+        local tf, td0, td1
+        if taper then
+            td0, td1 = taper.d[i - 1], taper.d[i]
+            if td0 < taper.a or td1 > taper.ze then tf = taper.fn end
+        end
         -- with `clip` (a region being drawn again), a segment that cannot reach
         -- it is skipped: what it would draw lies within its own box
         local skip = clip and ((px < nx and px or nx) - irmax - 2 >= clip.x1
@@ -189,7 +189,9 @@ function Raster.pathVar(pts, rs, put, clip)
             for k = 0, rows do rowL[k] = huge; rowR[k] = -huge end
             for s = 0, steps do
                 local f = s * inv
-                local t = discSpansQ(r0 + (r1 - r0) * f)
+                local rr = r0 + (r1 - r0) * f
+                if tf then rr = rr * tf(td0 + (td1 - td0) * f) end
+                local t = discSpansQ(rr)
                 local ir = t.ir
                 local icx = floor(px + dx * f + 0.5)
                 local base = floor(py + dy * f + 0.5) - y0
@@ -203,41 +205,10 @@ function Raster.pathVar(pts, rs, put, clip)
             end
             for k = 0, rows do
                 local a = rowL[k]
-                if a ~= huge then
-                    local y, b = y0 + k, rowR[k]
-                    if not join then
-                        put(a, y, b - a + 1)
-                    else
-                        local ja = joinL[y]
-                        if not ja then
-                            joinL[y], joinR[y] = a, b
-                            if y < jy0 then jy0 = y end
-                            if y > jy1 then jy1 = y end
-                        else
-                            local jb = joinR[y]
-                            if a <= jb + 1 and b >= ja - 1 then
-                                if a < ja then joinL[y] = a end
-                                if b > jb then joinR[y] = b end
-                            else
-                                put(ja, y, jb - ja + 1)
-                                joinL[y], joinR[y] = a, b
-                            end
-                        end
-                    end
-                end
+                if a ~= huge then put(a, y0 + k, rowR[k] - a + 1) end
             end
         end
         px, py = nx, ny
-    end
-    if join then
-        for y = jy0, jy1 do
-            local a = joinL[y]
-            if a then
-                put(a, y, joinR[y] - a + 1)
-                joinL[y], joinR[y] = nil, nil
-            end
-        end
-        joining = false
     end
 end
 
