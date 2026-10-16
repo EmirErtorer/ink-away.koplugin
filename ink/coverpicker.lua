@@ -56,8 +56,7 @@ end
 -- The first page's snapshot of the notebook at `path`, when there is one.
 local function snapshotOf(path)
     local dir = Shelf.covers and Shelf.covers.dir()
-    local file = Shelf.snapshotFile(dir or Storage.join(Storage.cacheDir(), Shelf.COVER_DIR), path)
-    return file and Storage.exists(file) and file or nil
+    return Shelf.pageFile(dir or Storage.join(Storage.cacheDir(), Shelf.COVER_DIR), path)
 end
 
 -- The style grid. `o`: path (the notebook), open (opens the notebook; shown as

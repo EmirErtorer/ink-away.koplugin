@@ -48,8 +48,9 @@ versions marked *Prerelease* were test builds.
 - Covers are quick and never draw your strokes again. The first page on a
   cover is a picture Ink Away keeps of it as you close the notebook or turn
   from that page, only when it changed; writing on any other page leaves the
-  cover alone. A notebook not opened since shows its paper until then. The
-  long press sheet opens at once, also for a notebook with smudges.
+  cover alone. A notebook not opened since has its first page drawn once in
+  the background, small and only while no notebook or book is open. The long
+  press sheet opens at once, also for a notebook with smudges.
 
 ### Changed
 - Pen pressure is now "Pen pressure (Beta)" in Pen and input, and starts off,

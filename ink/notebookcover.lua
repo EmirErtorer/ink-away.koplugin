@@ -143,39 +143,47 @@ local function pageTemplate(nb)
     return t
 end
 
--- The notebook's first page at `w` x `h` through the export engine: its paper,
--- ruling and ink (over the PDF page, for an imported PDF). Returns an RGB32
--- BlitBuffer.
+-- The notebook's first page `w` wide (at most its own width), of which `h`
+-- rows show, through the export engine: its paper, ruling and ink (over the
+-- PDF page, for an imported PDF), but not its text and pictures. Drawn at that
+-- size, not drawn whole and scaled: its strokes are scaled down first (see
+-- Transform.scale), so it costs about what the cover's pixels cost. Only for a
+-- notebook with no snapshot yet, once (see Shelf's draft pages). Returns an
+-- RGB32 BlitBuffer.
 function Cover.pageImage(nb, w, h)
     local BB = require("ffi/blitbuffer")
-    local RenderImage = require("ui/renderimage")
+    local Transform = require("ink/transform")
     local page = nb.pages[1]
     local template = pageTemplate(nb)
-    local canvas = Canvas.new(nb.w, nb.h)
-    canvas:setOps(page.ops)
+    local k = math.min(1, w / nb.w)
+    local sw, sh = math.max(1, math.floor(nb.w * k + 0.5)), math.max(1, math.floor(nb.h * k + 0.5))
+    local canvas = Canvas.new(sw, sh)
+    local ops = {}
+    for i, op in ipairs(page.ops) do ops[i] = Transform.scale(canvas:cloneOp(op), 0, 0, k) end
+    canvas:setOps(ops)
+    -- (whole pixels: a ruling at a fractional row lands its colour channels on
+    -- different rows, tinting the lines)
+    if template.size then template.size = math.max(2, math.floor(template.size * k + 0.5)) end
     local pdf = template.pdf_path and page.src and Storage.exists(template.pdf_path)
     -- see-through over a PDF page, else on the page's paper
     local buf, ow, oh = Export.buildPNGRGBA(canvas, { template = template, white = not pdf })
-    local full = BB.new(ow, oh, BB.TYPE_BBRGB32, buf)
-    local ink = RenderImage:scaleBlitBuffer(full, w, h, false)
-    if ink == full then ink = full:copy() end
-    full = nil   -- luacheck: ignore 311
-    buf = nil    -- luacheck: ignore 311
-    local out = BB.new(w, h, BB.TYPE_BBRGB32)
+    local ink = BB.new(ow, oh, BB.TYPE_BBRGB32, buf)
+    local out = BB.new(w, math.max(h, sh), BB.TYPE_BBRGB32)
     local paper = template.paper
-    out:paintRectRGB32(0, 0, w, h, BB.ColorRGB32(paper[1], paper[2], paper[3], 0xFF))
+    out:paintRectRGB32(0, 0, w, out:getHeight(), BB.ColorRGB32(paper[1], paper[2], paper[3], 0xFF))
     if pdf then
-        local bg = pdfPage(template.pdf_path, page.src, w, h)
+        local bg = pdfPage(template.pdf_path, page.src, sw, sh)
         if bg then
-            out:blitFrom(bg, math.floor((w - bg:getWidth()) / 2), math.floor((h - bg:getHeight()) / 2),
+            out:blitFrom(bg, math.floor((sw - bg:getWidth()) / 2), math.floor((sh - bg:getHeight()) / 2),
                 0, 0, bg:getWidth(), bg:getHeight())
             bg:free()
         end
-        out:alphablitFrom(ink, 0, 0, 0, 0, w, h)
+        out:alphablitFrom(ink, 0, 0, 0, 0, ow, oh)
     else
-        out:blitFrom(ink, 0, 0, 0, 0, w, h)
+        out:blitFrom(ink, 0, 0, 0, 0, ow, oh)
     end
-    ink:free()
+    ink = nil   -- luacheck: ignore 311
+    buf = nil   -- luacheck: ignore 311
     return out
 end
 
@@ -508,6 +516,22 @@ function Cover.render(path, look)
     if not look.pages then Cover.freePages(pages) end
     if not ok then bb:free(); error(err) end
     return bb
+end
+
+-- Draw the first page of the notebook at `path` to PNG `file`, the cover's
+-- width wide (see Cover.pageImage). Returns whether it was written.
+function Cover.writePage(path, file)
+    local ok, img = pcall(function()
+        local nb = Cover.load(path)
+        if not nb then return nil end
+        return Cover.pageImage(nb, W, math.floor(W * nb.h / nb.w + 0.5))
+    end)
+    if not (ok and img) then return false end
+    local tmp = file .. ".tmp"
+    local wrote = pcall(function() img:writePNG(tmp) end)
+    img:free()
+    if not (wrote and Storage.exists(tmp)) then os.remove(tmp); return false end
+    return os.rename(tmp, file) == true
 end
 
 -- Draw the cover of the notebook at `path` (see Cover.render for `look`) to

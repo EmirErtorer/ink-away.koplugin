@@ -177,8 +177,8 @@ do
     ok(#Q.jobs == 1, "covers: and one is queued")
     ok(Q.covers.get(nb, dir) == nil and #Q.jobs == 1, "covers: asked again, it is not queued twice")
     Q.run()
-    ok(#Q.renders == 1 and Q.renders[1].snapshot == Shelf.snapshotFile(dir, nb.path),
-        "covers: drawn in the background, from the notebook's snapshot")
+    ok(#Q.renders == 1 and Q.renders[1].snapshot == Shelf.pageFile(dir, nb.path),
+        "covers: drawn in the background, from the notebook's page picture (none yet)")
     ok(Q.changed == 1, "covers: the shelf redraws once it lands")
     local file = Q.covers.get(nb, dir)
     ok(file == Storage.join(dir, Shelf.coverName(nb.path, 50, "k1")), "covers: then given")
@@ -192,7 +192,8 @@ do
     -- a new snapshot: a new cover; the old one stays for Bookshelf's records
     -- that still point at it, until it is pruned as stale
     local nb2 = { path = nb.path, name = "Physics", mtime = 60, key = "k1", stamp = 60 }
-    ok(Q.covers.get(nb2, dir) == nil, "covers: a new snapshot waits for its new cover")
+    ok(Q.covers.get(nb2, dir) == file and #Q.jobs == 1,
+        "covers: a new snapshot keeps the old cover on the shelf while its new one is drawn")
     Q.run()
     ok(Q.covers.get(nb2, dir) ~= nil, "covers: the new cover is drawn")
     ok(Storage.exists(file), "covers: the old one is not deleted at once")
@@ -204,7 +205,8 @@ do
     -- restyled: a new cover too, the old style's pruned later
     local nb3 = { path = nb.path, name = "Physics", mtime = 60, key = "k2", stamp = 60 }
     local before3 = Q.covers.get(nb2, dir)
-    ok(Q.covers.get(nb3, dir) == nil, "covers: a restyled notebook waits for its new cover")
+    ok(Q.covers.get(nb3, dir) == before3 and #Q.jobs == 1,
+        "covers: a restyled notebook keeps its old cover while the new one is drawn")
     Q.run()
     ok(Q.covers.get(nb3, dir) ~= nil, "covers: drawn in its new style")
     Q.covers.prune({ nb3 }, dir, now + Shelf.STALE_AFTER + 5)
@@ -255,8 +257,8 @@ do
     Q.changed = 0
     local before = #Q.renders
     Q.covers.redraw(real)
-    ok(#Q.renders == before + 1 and Q.renders[#Q.renders].snapshot == Shelf.snapshotFile(dir, real),
-        "redraw: drawn from the notebook's snapshot")
+    ok(#Q.renders == before + 1 and Q.renders[#Q.renders].snapshot == Shelf.pageFile(dir, real),
+        "redraw: drawn from the notebook's page picture")
     local look = Shelf.lookOf(real)
     ok(Q.renders[#Q.renders].look.style == look.style, "redraw: in the notebook's look")
     local stamp = Shelf.stampOf(dir, real, look)
@@ -527,6 +529,74 @@ do
     ok(Storage.exists(Shelf.snapshotFile(dir, path)), "prune: a notebook's snapshot stays")
     Q.prune({}, dir, os.time() + Shelf.STALE_AFTER + 5)
     ok(not Storage.exists(Shelf.snapshotFile(dir, path)), "prune: a gone notebook's snapshot goes")
+end
+
+------------------------------------------------------------------------------
+-- Draft pages: a notebook not opened since gets its first page drawn once
+------------------------------------------------------------------------------
+do
+    local cache = TestEnv.libraryDir() .. "/draftcache"
+    Storage.ensureDir(cache)
+    local Q = { jobs = {}, changed = 0, drafted = {}, busy = false, fail = {} }
+    Q.covers = Shelf.newCovers{
+        cacheDir = function() return cache end,
+        render = function(_, file) writeAll(file, "png"); return true end,
+        schedule = function(sec, fn) Q.jobs[#Q.jobs + 1] = { sec = sec, fn = fn } end,
+        unschedule = function(fn)
+            for i = #Q.jobs, 1, -1 do if Q.jobs[i].fn == fn then table.remove(Q.jobs, i) end end
+        end,
+        changed = function() Q.changed = Q.changed + 1 end,
+        draft = function(path, file)
+            Q.drafted[#Q.drafted + 1] = path
+            if Q.fail[path] then return false end
+            writeAll(file, "png"); return true
+        end,
+        busy = function() return Q.busy end,
+    }
+    local function runOne()
+        local job = table.remove(Q.jobs, 1)
+        if job then job.fn() end
+        return job
+    end
+    local function runAll() local n = 0; while runOne() and n < 200 do n = n + 1 end end
+    local dir = Q.covers.dir()
+    local a = { path = ROOT .. "/A.inkaway" }
+    local b = { path = ROOT .. "/B.inkaway" }
+    local c = { path = ROOT .. "/C.inkaway" }
+    Q.covers.wantDraft(a, dir, false)
+    Q.covers.wantDraft(b, dir, true)
+    Q.covers.wantDraft(c, dir, true)
+    Q.covers.wantDraft(b, dir, true)
+    ok(#Q.covers.drafts == 3, "draft: each notebook queued once")
+    ok(Q.covers.drafts[1].path == b.path and Q.covers.drafts[2].path == c.path and Q.covers.drafts[3].path == a.path,
+        "draft: those whose cover shows the page come first")
+    -- a cover still to draw goes first; an open notebook or book waits it out
+    Q.covers.queue[1] = { path = ROOT .. "/X.inkaway" }
+    runOne()
+    ok(#Q.drafted == 0 and #Q.jobs == 1 and Q.jobs[1].fn == Q.covers.draftStep, "draft: after the covers")
+    Q.covers.queue[1] = nil
+    Q.busy = true
+    runOne()
+    ok(#Q.drafted == 0 and #Q.jobs == 1 and Q.jobs[1].sec == 5, "draft: not while a notebook or a book is open")
+    Q.busy = false
+    Q.fail[c.path] = true
+    runAll()
+    ok(#Q.drafted == 3 and Q.drafted[1] == b.path, "draft: then each drawn, one at a time")
+    ok(Storage.exists(Shelf.draftFile(dir, b.path)) and Shelf.pageFile(dir, b.path) == Shelf.draftFile(dir, b.path),
+        "draft: a cover then shows the draft page")
+    ok(Q.changed > 0, "draft: and the shelf redraws")
+    ok(Shelf.stampOf(dir, b.path, { style = "page" }) == Storage.mtime(Shelf.draftFile(dir, b.path)),
+        "draft: the cover follows it")
+    -- once only: drawn or failed, never again
+    Q.covers.wantDraft(b, dir, true); Q.covers.wantDraft(c, dir, true)
+    ok(#Q.covers.drafts == 0, "draft: never drawn twice, nor tried again after failing")
+    -- a snapshot wins over a draft
+    writeAll(Shelf.snapshotFile(dir, b.path), "png")
+    ok(Shelf.pageFile(dir, b.path) == Shelf.snapshotFile(dir, b.path), "draft: a snapshot replaces it on the cover")
+    -- kept while the notebook is on the shelf
+    Q.covers.prune({ { path = a.path, key = "k" } }, dir, os.time() + Shelf.STALE_AFTER + 5)
+    ok(Storage.exists(Shelf.draftFile(dir, a.path)), "prune: a notebook's draft page stays")
+    ok(not Storage.exists(Shelf.draftFile(dir, b.path)), "prune: a gone notebook's goes")
 end
 
 TestEnv.cleanup()

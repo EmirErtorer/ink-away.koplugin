@@ -226,12 +226,34 @@ end
 function Shelf.snapshotName(path) return Library.pathCode(path) .. "-page.png" end
 function Shelf.snapshotFile(dir, path) return dir and Storage.join(dir, Shelf.snapshotName(path)) end
 
--- What a notebook's cover in `look` depends on besides the look: its
--- snapshot's time for a style that shows the first page, else 0.
+-- The file of a notebook's draft page: its first page drawn once in the
+-- background for a notebook Ink Away has no snapshot of yet (without its text
+-- and pictures, which the export engine leaves out), until the first snapshot
+-- replaces it.
+function Shelf.draftName(path) return Library.pathCode(path) .. "-draft.png" end
+function Shelf.draftFile(dir, path) return dir and Storage.join(dir, Shelf.draftName(path)) end
+
+-- The picture of the notebook at `path`'s first page a cover shows: its
+-- snapshot, else its draft, else nil.
+function Shelf.pageFile(dir, path)
+    if not dir then return nil end
+    local snap = Shelf.snapshotFile(dir, path)
+    if Storage.exists(snap) then return snap end
+    local draft = Shelf.draftFile(dir, path)
+    if Storage.exists(draft) then return draft end
+    return nil
+end
+
+-- What a notebook's cover in `look` depends on besides the look: its page
+-- picture's time for a style that shows the first page, else 0.
 function Shelf.stampOf(dir, path, look)
     if not (dir and Cover.SHOWS_PAGE[look.style]) then return 0 end
-    return Storage.mtime(Shelf.snapshotFile(dir, path)) or 0
+    local file = Shelf.pageFile(dir, path)
+    return file and Storage.mtime(file) or 0
 end
+
+-- Seconds between two draft pages, so the shelf answers between them.
+Shelf.DRAFT_GAP = 1
 
 -- The record Bookshelf shows for notebook `nb` ({ path, name, mtime }), with
 -- `cover` (a PNG path) when one is drawn. Its path (under Shelf.PREFIX) is the
@@ -258,13 +280,17 @@ end
 -- missing), render(path, file, look, snapshot) drawing a notebook's cover in
 -- `look` to PNG `file`, its first page from PNG `snapshot` when there is one
 -- (returns ok), schedule(seconds, fn), unschedule(fn) and changed() (the
--- shelf redraws). Covers are drawn one at a time between redraws, newest
--- notebook first. None draws the notebook's strokes (see Cover.render), so
--- each takes moments. A notebook here carries { path, mtime, look, key,
--- stamp }. A cover a notebook no longer uses is left for prune() to remove
--- once it has gone stale, never deleted at once.
+-- shelf redraws); and, for draft pages, draft(path, file) drawing a
+-- notebook's first page to PNG `file` (returns ok) and busy() (true while a
+-- notebook or a book is open, when drafts wait). Covers are drawn one at a
+-- time between redraws, newest notebook first. None draws the notebook's
+-- strokes (see Cover.render), so each takes moments. Draft pages, which do,
+-- come after them, one every Shelf.DRAFT_GAP seconds, once per notebook. A
+-- notebook here carries { path, mtime, look, key, stamp }. A cover a notebook
+-- no longer uses is left for prune() to remove once it has gone stale, never
+-- deleted at once.
 function Shelf.newCovers(opts)
-    local C = { queue = {}, queued = {}, failed = {} }
+    local C = { queue = {}, queued = {}, failed = {}, drafts = {}, drafting = {}, draft_failed = {}, last = {} }
 
     -- The cover folder, or nil when it can't be made.
     function C.dir()
@@ -286,7 +312,7 @@ function Shelf.newCovers(opts)
         local dir = C.dir()
         if dir then
             local file = Storage.join(dir, Shelf.coverName(nb.path, nb.stamp, nb.key))
-            if opts.render(nb.path, file, nb.look, Shelf.snapshotFile(dir, nb.path)) then
+            if opts.render(nb.path, file, nb.look, Shelf.pageFile(dir, nb.path)) then
                 opts.unschedule(changed)
                 opts.schedule(#C.queue > 0 and 1 or 0.1, changed)
             else
@@ -298,20 +324,63 @@ function Shelf.newCovers(opts)
     end
     C.step = step
 
+    -- Draw the next draft page: after the covers, not while a notebook or a
+    -- book is open, then come back for the one after.
+    local function draftStep()
+        if opts.busy and opts.busy() then opts.schedule(5, draftStep) return end
+        if #C.queue > 0 then opts.schedule(Shelf.DRAFT_GAP, draftStep) return end
+        local nb = table.remove(C.drafts, 1)
+        if not nb then return end
+        C.drafting[nb.path] = nil
+        local dir = C.dir()
+        if dir and not Shelf.pageFile(dir, nb.path) then
+            if opts.draft(nb.path, Shelf.draftFile(dir, nb.path)) then
+                opts.unschedule(changed)
+                opts.schedule(0.1, changed)
+            else
+                C.draft_failed[nb.path] = true
+            end
+        end
+        if #C.drafts > 0 then opts.schedule(Shelf.DRAFT_GAP, draftStep) end
+    end
+    C.draftStep = draftStep
+
+    -- Queue a draft page for `nb` if it has no page picture yet (and none
+    -- failed): one shown on its cover first (`first`), else after those.
+    function C.wantDraft(nb, dir, first)
+        if not (opts.draft and dir) or C.drafting[nb.path] or C.draft_failed[nb.path] then return end
+        if Shelf.pageFile(dir, nb.path) then return end
+        C.drafting[nb.path] = true
+        local at = #C.drafts + 1
+        if first then
+            at = 1
+            while C.drafts[at] and C.drafts[at].first do at = at + 1 end
+        end
+        table.insert(C.drafts, at, { path = nb.path, first = first })
+        if #C.drafts == 1 then opts.schedule(Shelf.DRAFT_GAP, draftStep) end
+    end
+
     -- Has the cover of `nb` failed to draw (and it has not changed since)?
     function C.hasFailed(nb)
         return C.failed[nb.path] == (nb.stamp or 0) .. ":" .. tostring(nb.key)
     end
 
-    -- The cover file for `nb` if it is drawn, else nil, and `nb` queued.
+    -- The cover file for `nb` if it is drawn, else nil, and `nb` queued. While
+    -- a new one waits (a new page picture or look), the one it had before is
+    -- given, so the notebook never drops off the shelf meanwhile.
     function C.get(nb, dir)
         local file = dir and Storage.join(dir, Shelf.coverName(nb.path, nb.stamp, nb.key))
-        if file and Storage.exists(file) then return file end
+        if file and Storage.exists(file) then
+            C.last[nb.path] = file
+            return file
+        end
         if dir and not C.queued[nb.path] and C.failed[nb.path] ~= (nb.stamp or 0) .. ":" .. tostring(nb.key) then
             C.queued[nb.path] = true
             C.queue[#C.queue + 1] = nb
             if #C.queue == 1 then opts.schedule(0.2, step) end
         end
+        local before = C.last[nb.path]
+        if before and Storage.exists(before) then return before end
         return nil
     end
 
@@ -323,7 +392,7 @@ function Shelf.newCovers(opts)
         if dir and Storage.exists(path) then
             local look = Shelf.lookOf(path)
             local file = Storage.join(dir, Shelf.coverName(path, Shelf.stampOf(dir, path, look), Shelf.lookKey(look)))
-            if Storage.exists(file) or opts.render(path, file, look, Shelf.snapshotFile(dir, path)) then
+            if Storage.exists(file) or opts.render(path, file, look, Shelf.pageFile(dir, path)) then
                 C.failed[path] = nil
             end
         end
@@ -340,6 +409,7 @@ function Shelf.newCovers(opts)
         for _, nb in ipairs(nbs) do
             current[Shelf.coverName(nb.path, nb.stamp, nb.key)] = true
             current[Shelf.snapshotName(nb.path)] = true
+            current[Shelf.draftName(nb.path)] = true
         end
         for _, e in ipairs(Storage.list(dir)) do
             if e.mode == "file" and not current[e.name] and (e.name:match("%.png$") or e.name:match("%.tmp$"))
@@ -355,6 +425,8 @@ function Shelf.newCovers(opts)
         local live = {}
         for _, nb in ipairs(nbs) do live[nb.path] = true end
         for path in pairs(C.failed) do if not live[path] then C.failed[path] = nil end end
+        for path in pairs(C.draft_failed) do if not live[path] then C.draft_failed[path] = nil end end
+        for path in pairs(C.last) do if not live[path] then C.last[path] = nil end end
     end
 
     return C
@@ -389,6 +461,8 @@ function Shelf.spec(opts)
                 -- cover would stay blank. Covers are drawn in moments, each
                 -- redrawing the shelf; one that can't be drawn still shows.
                 local cover = opts.covers.get(nb, dir)
+                -- a notebook not opened since: its first page drawn once, later
+                if opts.covers.wantDraft then opts.covers.wantDraft(nb, dir, Cover.SHOWS_PAGE[nb.look.style]) end
                 if cover or opts.covers.hasFailed(nb) then out[#out + 1] = Shelf.record(nb, cover) end
             end
             -- covers no longer used, cleared away now and then
@@ -458,6 +532,12 @@ function Shelf.register(ui, plugin)
             schedule = function(s, fn) UIManager:scheduleIn(s, fn) end,
             unschedule = function(fn) UIManager:unschedule(fn) end,
             changed = function() Shelf.redrawShelf(bs) end,
+            draft = function(path, file)
+                local done = Cover.writePage(path, file)
+                collectgarbage()
+                return done
+            end,
+            busy = Shelf.busy,
         }
         Shelf.covers = covers
     end
@@ -478,6 +558,19 @@ function Shelf.register(ui, plugin)
     end)
     Shelf.registered = Shelf.registered or ok
     return ok
+end
+
+-- Is a notebook (an Ink Away view) or a book open? Draft pages wait then,
+-- so their drawing never holds up the pen or a page turn.
+function Shelf.busy()
+    local ok, busy = pcall(function()
+        if require("apps/reader/readerui").instance then return true end
+        for _, w in ipairs(require("ui/uimanager")._window_stack or {}) do
+            if w.widget and w.widget.name == "inkaway_view" then return true end
+        end
+        return false
+    end)
+    return ok and busy
 end
 
 -- Redraw the shelf from a fresh listing. A Spines shelf keeps its whole list
@@ -564,6 +657,7 @@ function Shelf.takeSnapshot(view, shows_first)
         if small ~= bb then small:free() end
         if not (wrote and os.rename(tmp, file)) then os.remove(tmp); error("not written") end
     end)
+    if ok then os.remove(Shelf.draftFile(dir, view.doc_path)) end   -- the real page replaces it
     return ok
 end
 
