@@ -459,8 +459,11 @@ function InkAwayView:blitAfterStroke(r)
 end
 
 -- Draw the canvas rect `tail` again from the saved ops (and its mirrors under
--- symmetry), and show it.
-function InkAwayView:redrawTail(tail, op)
+-- symmetry), and show it. Zoomed in or out, the screen shows the page scaled,
+-- while the live ink was drawn at the screen's own size, so all of the stroke
+-- (`sr`, its area rect) is shown from the page: its end then joins it without
+-- a step.
+function InkAwayView:redrawTail(tail, op, sr)
     local v = self.view
     local W, H = v.canvas_w, v.canvas_h
     local rects, nr = Symmetry.mirrorRects(tail, op.sym, W, H)
@@ -470,6 +473,10 @@ function InkAwayView:redrawTail(tail, op)
     end
     local ax0, ay0 = self:toAreaLocal(tail.x0, tail.y0)
     local ax1, ay1 = self:toAreaLocal(tail.x1, tail.y1)
+    if v.zoom ~= 1 and sr then
+        ax0, ay0 = math.min(ax0, sr.x0), math.min(ay0, sr.y0)
+        ax1, ay1 = math.max(ax1, sr.x1), math.max(ay1, sr.y1)
+    end
     local srects, sn = self:symAreaRects({ x0 = ax0, y0 = ay0, x1 = ax1, y1 = ay1 })
     for i = 1, sn do
         local rr = srects[i]
@@ -623,7 +630,7 @@ function InkAwayView:finalizeStroke()
                 end
             end
         elseif tail then
-            self:redrawTail(tail, committed)
+            self:redrawTail(tail, committed, sr)
         end
     end
     if self:fastLive() then

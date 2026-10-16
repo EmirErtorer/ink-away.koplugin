@@ -244,7 +244,9 @@ for _, pen in ipairs({ "ballpoint", "fountain", "felttip" }) do
 end
 
 -- zoomed in and panned: the end drawn again is shown where it lies on the
--- screen (the area's scaling is not real here, so the rect asked for is checked)
+-- screen, with all of the stroke, scaled from the page as the end is, so they
+-- join without a step (the area's scaling is not real here, so the rect asked
+-- for is checked)
 do
     local view, tick = world()
     view:choosePenType("ballpoint")
@@ -263,13 +265,14 @@ do
     write(view, tick, { pts })
     view.renderViewRect = rvr
     ok(v.zoom > 1.6 and v.pan_x > 0 and v.pan_y > 0, "zoomed: the page is zoomed in and panned")
-    -- the stroke ends at (700, 700) on the screen; its tapered end lies just before
+    -- the stroke runs from (300, 700) to (700, 700) on the screen
     local hit = false
     for _, r in ipairs(shown) do
-        if r[1] <= 690 and r[3] >= 700 and r[2] <= 700 and r[4] >= 700
-                and (r[3] - r[1]) * (r[4] - r[2]) < 200 * 120 then hit = true end
+        if r[1] <= 300 and r[3] >= 700 and r[2] <= 700 and r[4] >= 700
+                and (r[4] - r[2]) < 120 then hit = true end
     end
-    ok(hit, ("zoomed: the lift shows the end where it is on the screen (%d rects asked for)"):format(#shown))
+    ok(hit, ("zoomed: the lift shows the stroke, its end included, where it is on the screen (%d rects asked for)")
+        :format(#shown))
     view:onCloseWidget()
 end
 
