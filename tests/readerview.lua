@@ -193,9 +193,19 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
         ok(v.area_x == e[1] and v.area_y == e[2] and v.area_w == e[3] and v.area_h == e[4]
             and v.pan_x == v.area_x and v.pan_y == v.area_y, tag .. " " .. side .. ": the area beside the toolbar, 1:1")
         local r = view:fabRect("bar")
-        local touching = (side == "left" and r.x >= t and r.x < t + 8) or (side == "right" and r.x + r.w <= W - t and r.x + r.w > W - t - 8)
-            or (side == "top" and r.y >= t and r.y < t + 8) or (side == "bottom" and r.y + r.h <= H - t and r.y + r.h > H - t - 8)
-        ok(inside(r) and touching, tag .. " " .. side .. ": the tab sits at the toolbar's inner edge")
+        -- in the toolbar's own strip (never over the page and its text), past
+        -- its last button
+        local strip = (side == "left" and r.x >= 0 and r.x + r.w <= t) or (side == "right" and r.x >= W - t and r.x + r.w <= W)
+            or (side == "top" and r.y >= 0 and r.y + r.h <= t) or (side == "bottom" and r.y >= H - t and r.y + r.h <= H)
+        local across = side == "top" or side == "bottom"
+        local past = across and r.x >= view._vbar_h or (not across and r.y >= view._vbar_h)
+        ok(inside(r) and strip and past, tag .. " " .. side .. ": the tab sits in the toolbar's strip, past its buttons")
+        -- sheets open beside the toolbar: above it when it runs along the bottom
+        view:openEraserSettings()
+        local sh = view._eraser_dialog
+        ok(sh and (side == "bottom") == (sh.bottom_y ~= nil) and (sh.bottom_y == nil or sh.bottom_y <= H - t),
+            tag .. " " .. side .. ": a tool's sheet opens on the toolbar's side")
+        view:closeSheet("_eraser_dialog")
         view:setToolbarHidden(true)
         local h = view:fabRect("bar")
         ok(v.area_w == W and v.area_h == H and inside(h), tag .. " " .. side .. ": hidden, the page fills the screen, the tab at its edge")

@@ -23,6 +23,11 @@ versions marked *Prerelease* were test builds.
   stays away, as in KOReader's own text fields.
 
 ### Fixed
+- Over a book, the tab that hides the toolbar covered the start of the text
+  beside it. It now sits in its own space at the end of the toolbar.
+- Over a book with the toolbar along the bottom, a tool's settings opened at
+  the top of the screen. They now open just above the toolbar, as they open
+  beside it on the other sides.
 - On the Kindle Scribe a resting palm took the pen again once a book had been
   opened, until KOReader was restarted: the pen stopped being recognised near
   the hand and drew stray lines. Opening a book, the reader sleeping or some

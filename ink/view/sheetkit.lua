@@ -84,6 +84,7 @@ end
 -- toolbar down a side keeps them beside it.
 function InkAwayView:sheetLeftX() return nil end
 function InkAwayView:sheetRightX() return nil end
+function InkAwayView:sheetBottomY() return nil end   -- (a toolbar along the bottom, over a book)
 
 function InkAwayView:sheetTopY()
     return (self._bar_h or 0) + Screen:scaleBySize(6)
@@ -115,8 +116,9 @@ function InkAwayView:showSheet(field, build, opts)
     -- every field a sheet was shown in, so closing the view closes them all
     self._sheet_fields = self._sheet_fields or {}
     self._sheet_fields[field] = true
+    local bottom_y = opts.bottom_y or self:sheetBottomY()
     self[field] = IconMenu:new{ build = build, flash = not self:colourPanel(),
-        top_y = not opts.bottom_y and self:sheetTopY() or nil, bottom_y = opts.bottom_y,
+        top_y = not bottom_y and self:sheetTopY() or nil, bottom_y = bottom_y,
         left_x = self:sheetLeftX(), right_x = self:sheetRightX(),
         on_uncover = function() self:uncovered() end,
         on_close = function()
