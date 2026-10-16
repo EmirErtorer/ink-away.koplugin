@@ -112,7 +112,7 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | **Papers and planners** | Blank, lined, grid, dotted, isometric, margin ruled and Cornell, plus handwriting practice, checklist, two columns, storyboard, music, daily, weekly, week columns, monthly, meeting notes and a habit tracker. You set the line spacing and strength, and drawings can use any of them as a guide. |
 | **Paper colours** | Twelve papers on colour screens, from cream and legal pad to kraft, blueprint and chalkboard, and white or black on grey ones. Black ink and text turn white on a dark paper, and exports come out on the same paper. |
 | **Annotate PDFs** | Open any PDF as a notebook and write on its pages. |
-| **Links and contents** | Make anything a link to a page of this or another notebook, with a Back button to return. A contents page lists the titled pages, each one a link. |
+| **Links and contents** | Make anything a link to a page of this or another notebook, with a Back button to return; tap a link with Pan, or with a finger while palm rejection is on, to follow it. A contents page lists the titled pages, each one a link, and Go to the contents page in the page menu (or on a gesture) gets you there. |
 
 ### Write on your books
 

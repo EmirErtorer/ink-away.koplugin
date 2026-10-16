@@ -397,6 +397,10 @@ function InkAwayView:openPageMenu()
         add(row2(act(_("Save as template\u{2026}"), halfW, function() self:nbSaveTemplate() end),
                  act(_("From template\u{2026}"), halfW, function() self:nbFromTemplate() end)))
         add(vspan(8))
+        if self:nbHasContents() and not page.contents then
+            add(act(_("Go to the contents page"), content_w, function() self:goToContents() end))
+            add(vspan(8))
+        end
         add(act(self:nbHasContents() and _("Update the contents page") or _("Make a contents page"), content_w,
             function() self:nbMakeContents() end))
         add(vspan(8))

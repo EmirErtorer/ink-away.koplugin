@@ -5401,6 +5401,43 @@ do
     ok(nb.pages[nb.index].title == "Introduction", "contents: a tap on a line opens its page")
     view:fabAction("back")
 
+    -- Go to the contents page (#40): from the page menu and as a gesture, with Back
+    view:nbGoTo(3)
+    view:openPageMenu()
+    local go = findButton(view._page_dialog, "Go to the contents page")
+    ok(go ~= nil, "contents: the page menu offers Go to the contents page")
+    if go then go.callback() end
+    ok(nb.pages[nb.index].contents and view._link_back and view._link_back.page == 3,
+        "contents: it goes there, with the way back")
+    view:fabAction("back")
+    ok(nb.index == 3, "contents: Back returns to the page")
+    ok(view:runAction("contents") and nb.pages[nb.index].contents, "contents: a gesture set to it goes there too")
+    view:fabAction("back")
+    view:openPageMenu()
+    ok(findButton(view._page_dialog, "Go to the contents page") ~= nil, "contents: (offered on any other page)")
+    view:closeSheet("_page_dialog")
+    view:nbGoTo(1)
+    view:openPageMenu()
+    ok(findButton(view._page_dialog, "Go to the contents page") == nil, "contents: not on the contents page itself")
+    view:closeSheet("_page_dialog")
+    -- Pan follows a link made on a shape, or on a picture, as on ink
+    view:nbGoTo(3)
+    local function linkOn(op)
+        view.canvas:addOp(op)
+        view:selectOps({ #view.canvas.ops }, "lasso")
+        view:selLink()
+        findButton(view._link_sheet, "Introduction").callback()
+        view:dropSelection()
+        return view.canvas.ops[#view.canvas.ops]
+    end
+    local sl = linkOn({ kind = "shape", shape = "rect", fill = false, width = 6, alpha = 255, pts = { 300, 600, 500, 760 } })
+    view:setTool("pan")
+    local sx, sy = scr(400, 600)   -- on the rectangle's edge
+    view:onIaTouch(nil, pos(sx, sy)); view:onIaTap(nil, pos(sx, sy))
+    ok(sl.kind == "link" and nb.pages[nb.index].title == "Introduction", "links: a tap with Pan on a linked shape follows it")
+    view:fabAction("back")
+    ok(nb.index == 3, "links: (and Back)")
+
     -- in an exported PDF: links between exported pages
     local saved = Export.notebookPDFJob
     local got

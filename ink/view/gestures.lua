@@ -98,6 +98,7 @@ function InkAwayView:runAction(id)
     if id == "toolbar" then self:setToolbarHidden(not self._toolbar_hidden); return true end
     if id == "fit" then self:setZoom(self.zoom_min or self.view.zoom); return true end
     if id == "refresh" then self:refreshScreen(); return true end
+    if id == "contents" then return self:goToContents() end
     if id == "eraser" then self:setTool(self.tool == "erase" and "pen" or "erase"); return true end
     if id == "lasso" then self:setTool(self.tool == "lasso" and "pen" or "lasso"); return true end
     if id == "prev_pen" then return self:swapPen() end

@@ -32,6 +32,7 @@ Actions.LIST = {
     { id = "toolbar",     label = "Hide or show the toolbar" },
     { id = "fit",         label = "Fit the page" },
     { id = "refresh",     label = "Refresh the screen" },
+    { id = "contents",    label = "Go to the contents page", notebook = true },
 }
 local BY_ID = {}
 for _i, a in ipairs(Actions.LIST) do BY_ID[a.id] = a end

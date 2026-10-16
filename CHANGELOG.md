@@ -9,6 +9,10 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- Go to the contents page: in the page menu of a notebook that has one, and
+  as an action for any gesture or page turn button, with Back to return.
+  The guide now says how links are followed: a tap with Pan, or with a
+  finger while palm rejection is on, on ink, shapes and pictures alike.
 - On colour screens ink keeps its colour in KOReader's night mode: blue
   stays blue instead of turning yellow, and dark ink turns light so it reads
   on the dark page. Keep colours in night mode in Settings turns it off.

@@ -120,6 +120,28 @@ function InkAwayView:followLink(op)
     end
 end
 
+-- Go to the notebook's contents page, keeping the way back as a link does
+-- (#40: a quick way to it, from the page menu or a gesture). Without one, says
+-- where it is made. Returns whether it went.
+function InkAwayView:goToContents()
+    local nb = self.notebook
+    if not nb then return false end
+    for i, p in ipairs(nb.pages) do
+        if p.contents then
+            if i ~= nb.index then
+                local back = self:linkPlace()
+                self:dropSelection()
+                self:nbGoTo(i)
+                self._link_back = back
+                self:refreshFabRegion(self:fabRect("back"))
+            end
+            return true
+        end
+    end
+    UIManager:show(InfoMessage:new{ text = _("This notebook has no contents page yet: the page menu makes one."), timeout = 3 })
+    return false
+end
+
 -- Back to where the last link was followed from.
 function InkAwayView:linkBack()
     local b = self._link_back
