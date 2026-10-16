@@ -95,6 +95,12 @@ versions marked *Prerelease* were test builds.
   left the other without palm rejection, so the hand drew lines. Closing a
   window now gives the pen back to the one under it, or to the plugin that
   had it.
+- On a Kobo the pen's eraser end highlighted and its side button did nothing,
+  whatever Gestures and pen buttons said: Ink Away read a Kobo pen's buttons
+  as a Kindle Scribe's. The eraser end now erases and the side button
+  highlights, each as set in Gestures and pen buttons, also with
+  pencil.koplugin's input.lua installed. The setting for a second side
+  button is gone, as no Kobo or Kindle pen has one.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

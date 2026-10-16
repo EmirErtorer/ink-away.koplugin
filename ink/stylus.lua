@@ -58,8 +58,10 @@ end
 --   pen_slot          the digitizer's dedicated slot number (or nil)
 --   learned_slot      the slot a genuine TOOL_PEN frame was last seen on
 --   wacom             true on a Wacom protocol device (Kindle Scribe, reMarkable)
---   eraser_latch      Input.stylus_eraser_active (a held barrel button)
---   highlighter_latch Input.stylus_highlighter_active
+--   eraser_latch      Input.stylus_eraser_active (BTN_STYLUS held; pencil.koplugin's
+--                     input.lua calls it kobo_eraser_active)
+--   highlighter_latch Input.stylus_highlighter_active (BTN_STYLUS2 held;
+--                     kobo_highlighter_active there)
 -- Returns one of the ROLE_ values below.
 Stylus.ROLE_PEN   = "pen"     -- a trusted stylus: draw or erase with it
 Stylus.ROLE_PALM  = "palm"    -- a palm promoted to a stylus tool number: discard
@@ -118,21 +120,27 @@ end
 
 -- Which part of a trusted pen is at work, for slots already classified ROLE_PEN;
 -- what each does is the reader's choice (see ink/actions.lua). KOReader rewrites
--- the tool while a barrel button is held (ERASER for BTN_STYLUS, the Kindle
--- Scribe's side button; HIGHLIGHTER for BTN_STYLUS2, the Kobo stylus's), so the
--- latches tell a held button from the pen's real rear eraser:
---   first side button held (eraser latch)       ACT_BUTTON1
---   second side button held (highlighter latch) ACT_BUTTON2
---   rear eraser end (tool ERASER, no latch)     ACT_ERASER_END
---   anything else                               ACT_DRAW (the current tool)
+-- the tool while BTN_STYLUS (eraser latch) or BTN_STYLUS2 (highlighter latch)
+-- is held, and those buttons are different parts of the pen:
+--   * a Wacom pen (the Kindle Scribe): BTN_STYLUS is the side button, and the
+--     rear eraser is a tool of its own (BTN_TOOL_RUBBER, tool ERASER, no latch)
+--       eraser latch       ACT_BUTTON1     highlighter latch  ACT_BUTTON2
+--       tool ERASER        ACT_ERASER_END
+--   * a Kobo pen: BTN_STYLUS is the eraser end (the Kobo Stylus 2's top, the
+--     first Kobo Stylus's erase button) and BTN_STYLUS2 the side button that
+--     highlights in Kobo's own notebooks
+--       eraser latch       ACT_ERASER_END  highlighter latch  ACT_BUTTON1
+--   anything else          ACT_DRAW (the current tool)
+-- Reading the Kobo eraser end as the Scribe's side button made it highlight,
+-- and left the settings for the eraser end and the side button unused (#13, #32).
 Stylus.ACT_DRAW       = "draw"
 Stylus.ACT_BUTTON1    = "button1"
 Stylus.ACT_BUTTON2    = "button2"
 Stylus.ACT_ERASER_END = "eraser_end"
 function Stylus.penAction(slot, facts)
     facts = facts or {}
-    if facts.eraser_latch then return Stylus.ACT_BUTTON1 end
-    if facts.highlighter_latch then return Stylus.ACT_BUTTON2 end
+    if facts.eraser_latch then return facts.wacom and Stylus.ACT_BUTTON1 or Stylus.ACT_ERASER_END end
+    if facts.highlighter_latch then return facts.wacom and Stylus.ACT_BUTTON2 or Stylus.ACT_BUTTON1 end
     if slot and slot.tool == Stylus.TOOL_ERASER then return Stylus.ACT_ERASER_END end
     return Stylus.ACT_DRAW
 end

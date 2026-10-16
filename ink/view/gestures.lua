@@ -209,14 +209,14 @@ end
 -- The settings sheet
 ------------------------------------------------------------------------------
 
--- Which triggers this reader can make: the pen's only with pen support, the
--- second side button only off Wacom (a Kobo stylus has one; a Kindle Scribe pen
--- does not).
+-- Which triggers this reader can make: the pen's only with pen support. The
+-- second side button is not offered: neither a Kindle Scribe pen nor a Kobo pen
+-- has one (a Kobo pen's BTN_STYLUS2 is its only side button, see
+-- Stylus.penAction); a pen that sends it anyway does what its default says.
 function InkAwayView:availableTriggers()
     local out = {}
-    local wacom = Device.input and Device.input.wacom_protocol
     for _i, t in ipairs(Actions.TRIGGERS) do
-        if not t.pen or (self:penCapable() and not (t.second and wacom)) then out[#out + 1] = t end
+        if not t.pen or (self:penCapable() and not t.second) then out[#out + 1] = t end
     end
     return out
 end

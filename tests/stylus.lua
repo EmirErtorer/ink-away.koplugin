@@ -180,23 +180,55 @@ do
         "kobo: a finger on slot 4 is just a finger (no dedicated pen slot)")
 end
 
--- Pen action: the rear eraser end erases, the primary side (barrel) button is a
--- lasso-select modifier, everything else draws. KOReader overrides a held side
--- button's tool to ERASER, so the eraser latch is what tells the button apart from
--- the pen's real rear-eraser end.
+-- Pen action: which part of the pen is at work. On a Wacom pen (the Kindle
+-- Scribe) KOReader overrides a held side button's tool to ERASER, so the eraser
+-- latch (BTN_STYLUS) tells the button from the pen's real rear eraser. On a Kobo
+-- BTN_STYLUS is the pen's eraser end and BTN_STYLUS2 its side button (#13, #32).
 do
     local PENt, ERAt, HILt = S.TOOL_PEN, S.TOOL_ERASER, S.TOOL_HIGHLIGHTER
+    local scribe = { wacom = true }
     ok(S.penAction({ tool = PENt }, {}) == S.ACT_DRAW, "penAction: a plain pen tip draws")
-    ok(S.penAction({ tool = ERAt }, {}) == S.ACT_ERASER_END,
-        "penAction: the rear eraser end (tool 2, no latch) is the eraser end")
-    ok(S.penAction({ tool = ERAt }, { eraser_latch = true }) == S.ACT_BUTTON1,
-        "penAction: the side button (eraser latch) is button 1, not the eraser end")
-    ok(S.penAction({ tool = PENt }, { eraser_latch = true }) == S.ACT_BUTTON1,
-        "penAction: the side-button latch wins even if the tool still reads pen")
-    ok(S.penAction({ tool = HILt }, { highlighter_latch = true }) == S.ACT_BUTTON2,
-        "penAction: the second barrel button (Kobo) is button 2")
+    ok(S.penAction({ tool = ERAt }, scribe) == S.ACT_ERASER_END,
+        "penAction (Scribe): the rear eraser end (tool 2, no latch) is the eraser end")
+    ok(S.penAction({ tool = ERAt }, { wacom = true, eraser_latch = true }) == S.ACT_BUTTON1,
+        "penAction (Scribe): the side button (eraser latch) is button 1, not the eraser end")
+    ok(S.penAction({ tool = PENt }, { wacom = true, eraser_latch = true }) == S.ACT_BUTTON1,
+        "penAction (Scribe): the side-button latch wins even if the tool still reads pen")
+    ok(S.penAction({ tool = HILt }, { wacom = true, highlighter_latch = true }) == S.ACT_BUTTON2,
+        "penAction (Scribe): a second barrel button is button 2")
     ok(S.penAction({ tool = ERAt }, nil) == S.ACT_ERASER_END,
         "penAction: with no facts the rear tip is still the eraser end")
+    -- a Kobo pen
+    ok(S.penAction({ tool = ERAt }, { eraser_latch = true }) == S.ACT_ERASER_END,
+        "penAction (Kobo): the eraser end (BTN_STYLUS) is the eraser end, not a side button")
+    ok(S.penAction({ tool = PENt }, { eraser_latch = true }) == S.ACT_ERASER_END,
+        "penAction (Kobo): even if the tool still reads pen")
+    ok(S.penAction({ tool = HILt }, { highlighter_latch = true }) == S.ACT_BUTTON1,
+        "penAction (Kobo): the side button (BTN_STYLUS2) is the side button")
+    ok(S.penAction({ tool = PENt }, {}) == S.ACT_DRAW, "penAction (Kobo): the tip draws")
+end
+
+-- pencil.koplugin's input.lua names the latches kobo_eraser_active and
+-- kobo_highlighter_active: they are read as KOReader's own
+do
+    package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
+    local InkAwayView = dofile("ink/view.lua")
+    local v = InkAwayView:new{}
+    local f = v:stylusFacts({ wacom_protocol = false, kobo_eraser_active = true })
+    ok(f.eraser_latch and not f.highlighter_latch, "facts: pencil's eraser latch is read")
+    f = v:stylusFacts({ wacom_protocol = false, kobo_highlighter_active = true })
+    ok(f.highlighter_latch and not f.eraser_latch, "facts: pencil's highlighter latch is read")
+    f = v:stylusFacts({ wacom_protocol = false, stylus_eraser_active = true })
+    ok(f.eraser_latch, "facts: KOReader's own eraser latch is read")
+    -- a Kobo pen with the side button held is the pen (not a palm), and its
+    -- eraser end too, with either input.lua
+    local slot = { slot = 0, tool = S.TOOL_HIGHLIGHTER, id = 3, x = 10, y = 10 }
+    ok(S.classify(slot, v:stylusFacts({ kobo_highlighter_active = true })) == S.ROLE_PEN,
+        "classify (Kobo, pencil's input.lua): the side button held is the pen")
+    slot.tool = S.TOOL_ERASER
+    ok(S.classify(slot, v:stylusFacts({ kobo_eraser_active = true })) == S.ROLE_PEN,
+        "classify (Kobo, pencil's input.lua): the eraser end is the pen, not a palm")
+    v:onCloseWidget()
 end
 
 print(string.format("stylus: %d checks, %d failures", checks, failures))

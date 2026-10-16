@@ -1278,6 +1278,75 @@ do
     view:onCloseWidget()
 end
 
+-- ---- a Kobo pen's eraser end and side button (#13, #32) ------------------------
+-- On a Kobo, KOReader latches BTN_STYLUS (the pen's eraser end) as the eraser
+-- and BTN_STYLUS2 (its side button) as the highlighter, and rewrites the pen's
+-- tool while one is held. The eraser end must erase and the side button do what
+-- "Side button" is set to (highlight by default), with KOReader's input.lua or
+-- pencil.koplugin's (kobo_*_active).
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local inp = Device.input
+    local wacom, pen_slot = inp.wacom_protocol, inp.pen_slot
+    inp.wacom_protocol, inp.pen_slot = false, nil
+    local view = InkAwayView:new{}
+    view.palm_reject = true
+    view:applyPalmReject()
+    view:setTool("pen")
+    local v = view.view
+    local y = v.area_y + 600
+    local t = 0
+    local function pen(id, x, tool)
+        t = t + 8000
+        return inp.stylus_callback(inp, { slot = 0, id = id, x = x, y = y, tool = tool, timev = t })
+    end
+    -- a plain stroke: the tip draws (and Ink Away learns the pen's slot)
+    local n0 = view.canvas:opCount()
+    pen(5, 300, 1); pen(5, 360, 1); pen(-1, 360, 1)
+    UIManager.fireScheduled()
+    ok(view.canvas:opCount() == n0 + 1 and view.tool == "pen", "kobo pen: the tip draws")
+    for _, names in ipairs({ { "stylus_eraser_active", "stylus_highlighter_active", "KOReader's input.lua" },
+            { "kobo_eraser_active", "kobo_highlighter_active", "pencil's input.lua" } }) do
+        local er, hi, which = names[1], names[2], names[3]
+        -- the eraser end down: the eraser while it touches, the pen again after
+        inp[er] = true
+        pen(6, 300, 2)
+        ok(view.tool == "erase", "kobo pen (" .. which .. "): the eraser end erases")
+        pen(6, 340, 2); pen(-1, 340, 2)
+        inp[er] = nil
+        UIManager.fireScheduled()
+        ok(view.tool == "pen" and view.pen_style ~= "highlighter",
+            "kobo pen (" .. which .. "): the pen is back after the eraser end")
+        -- the side button held: the highlighter (Side button's default)
+        local style0 = view.pen_style
+        inp[hi] = true
+        pen(7, 300, 3)
+        ok(view.tool == "pen" and view.pen_style == "highlighter",
+            "kobo pen (" .. which .. "): the side button highlights while held")
+        pen(7, 380, 3); pen(-1, 380, 3)
+        inp[hi] = nil
+        UIManager.fireScheduled()
+        ok(view.pen_style == style0, "kobo pen (" .. which .. "): the pen is back after the side button")
+    end
+    -- set to Lasso, the side button selects: it follows "Side button"
+    view:gestureBindings().pen_side = "lasso"
+    inp.stylus_highlighter_active = true
+    pen(8, 300, 3)
+    ok(view.tool == "lasso", "kobo pen: the side button follows the Side button setting")
+    pen(-1, 300, 3)
+    inp.stylus_highlighter_active = nil
+    view:gestureBindings().pen_side = "highlighter"
+    UIManager.fireScheduled()
+    -- the settings offer no second side button (no Kobo or Kindle pen has one)
+    local second = false
+    for _i, tr in ipairs(view:availableTriggers()) do if tr.id == "pen_side2" then second = true end end
+    ok(not second, "kobo pen: no Second side button in the settings")
+    view:onCloseWidget()
+    inp.wacom_protocol, inp.pen_slot = wacom, pen_slot
+end
+
 -- ---- the pen passed between views: a book's notes over its annotation (#27) ----
 -- KOReader keeps one stylus callback. A view that closes or stops palm rejection
 -- gives the pen back to the view under it, or to the callback that held it
@@ -2100,7 +2169,7 @@ do
     view:onIaTwoSwipe(nil, { pos = { x = cx, y = top + v.area_h * 0.6 }, end_pos = { x = cx, y = top } })
     ok(opened == 2, "gestures: a long swipe up set to Nothing does nothing")
     view.openLibrary = real_lib
-    -- the second side button (a Kobo stylus): highlights while held by default
+    -- a second side button (BTN_STYLUS2 on a Wacom pen): highlights while held by default
     view.palm_reject = true
     view:applyPalmReject()
     local style0 = view.pen_style
@@ -2110,7 +2179,7 @@ do
             { slot = Device.input.pen_slot, id = id, x = x, y = y, tool = tool or 1 })
     end
     pen(0, cx, top + 300, 3)
-    ok(view.pen_style == "highlighter", "pen buttons: the Kobo side button highlights while held")
+    ok(view.pen_style == "highlighter", "pen buttons: a second side button highlights while held")
     pen(0, cx + 80, top + 300, 3)
     pen(-1, cx + 80, top + 300, 3)
     Device.input.stylus_highlighter_active = false

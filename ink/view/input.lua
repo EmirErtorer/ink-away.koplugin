@@ -430,8 +430,9 @@ function InkAwayView:stylusFacts(input)
         pen_slot          = input and input.pen_slot,
         learned_slot      = self._learned_pen_slot,   -- slot a real TOOL_PEN was seen on
         wacom             = input and input.wacom_protocol == true,
-        eraser_latch      = input and input.stylus_eraser_active == true,
-        highlighter_latch = input and input.stylus_highlighter_active == true,
+        -- (pencil.koplugin's input.lua names them kobo_*_active)
+        eraser_latch      = input and (input.stylus_eraser_active == true or input.kobo_eraser_active == true),
+        highlighter_latch = input and (input.stylus_highlighter_active == true or input.kobo_highlighter_active == true),
     }
 end
 
