@@ -323,6 +323,13 @@ end
 -- Build the on-screen keyboard and point it at this view's text methods.
 function InkAwayView:showTextKeyboard()
     if self._text_kb then return end
+    self:lendKeys()   -- (see ink/view/keys.lua)
+    -- With the keyboard on top, UIManager only delivers gestures to lower
+    -- widgets that are is_always_active; this keeps the toolbar and canvas alive
+    -- while typing. It is turned off again when editing ends.
+    self.is_always_active = true
+    -- a physical keyboard types instead, as in KOReader's own text fields
+    if self:physicalKeyboard() then return end
     local VirtualKeyboard = require("ui/widget/virtualkeyboard")
     local view = self
     local inputbox = {
@@ -340,16 +347,22 @@ function InkAwayView:showTextKeyboard()
         scrollUp = function() end,
         scrollDown = function() end,
     }
-    self._text_kb = VirtualKeyboard:new{ keyboard_layer = 2, inputbox = inputbox }
-    -- With the keyboard on top, UIManager only delivers gestures to lower
-    -- widgets that are is_always_active; this keeps the toolbar and canvas alive
-    -- while typing. It is turned off again when editing ends.
-    self.is_always_active = true
-    UIManager:show(self._text_kb)
+    local kb = VirtualKeyboard:new{ keyboard_layer = 2, inputbox = inputbox }
+    -- the keyboard closes itself on Back (Esc on a keyboard): forget it then,
+    -- so the box knows it is gone and a physical keyboard types on
+    local closed = kb.onCloseWidget
+    kb.onCloseWidget = function(w, ...)
+        if view._text_kb == w then view._text_kb = nil end
+        if closed then return closed(w, ...) end
+    end
+    self._text_kb = kb
+    UIManager:show(kb)
 end
 
 function InkAwayView:hideTextKeyboard()
     self.is_always_active = false
+    self:returnKeys()
+    self._left_ctrl = nil
     if self._text_kb then
         UIManager:close(self._text_kb)
         self._text_kb = nil

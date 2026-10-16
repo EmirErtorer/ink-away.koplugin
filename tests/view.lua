@@ -2691,6 +2691,122 @@ do
     view:onCloseWidget()
 end
 
+-- ---- a physical keyboard types into the open text box ----------------------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local Text = require("ink/text")
+    -- a key as KOReader's Input makes it (device/key.lua): a hash of its name and
+    -- the modifiers held
+    local function key(name, mods)
+        local k = { key = name, modifiers = {} }
+        k[name] = true
+        for _, m in ipairs(mods or {}) do k.modifiers[m] = true; k[m] = true end
+        return k
+    end
+    local function press(name, mods) return view:onKeyPress(key(name, mods)) end
+    local function typed() return Text.plain(view.editing_text) end
+    local clip = ""
+    local saved_get, saved_set = Device.input.getClipboardText, Device.input.setClipboardText
+    Device.input.getClipboardText = function() return clip end
+    Device.input.setClipboardText = function(t) clip = t end
+    ok(press("A") == nil or press("A") == false, "keys: with no box open a key is left to the canvas's bindings")
+    view.tool = "text"
+    view.editing_text = Text.new{ x = 40, y = 300, w = 600, size = 20 }
+    view.editing_text.h = 160
+    view.text_cur = { p = 1, o = 0 }
+    view.afterTextEdit = function(v) v:refreshTextBox("ui") end   -- no font engine in the mock
+    view.ensureCaretVisible = function() end
+    ok(press("H", { "Shift" }) == true, "keys: a letter is taken")
+    press("I"); press(" "); press("1", { "Shift" }); press("2")
+    ok(typed() == "Hi !2", "keys: letters lower case, Shift for capitals and the shifted signs (" .. typed() .. ")")
+    press("CapsLock"); press("O"); press("K", { "Shift" }); press("CapsLock"); press("X")
+    ok(typed() == "Hi !2OkX" or typed() == "Hi !2Okx", "keys: Caps Lock flips the case")
+    ok(typed() == "Hi !2Okx", "keys: and is off again (" .. typed() .. ")")
+    press("Backspace"); press("Backspace")
+    ok(typed() == "Hi !2O", "keys: Backspace deletes back")
+    press("Press"); press("B")
+    ok(typed() == "Hi !2O\nb", "keys: Enter starts a new line")
+    press("Left"); press("Left")
+    press("Del")
+    ok(typed() == "Hi !2Ob", "keys: Del deletes forward, joining the lines (" .. typed() .. ")")
+    press("Home")
+    ok(view.text_cur.o == 0, "keys: Home goes to the line start")
+    press("End")
+    ok(view.text_cur.o == Text.paraLen(view.editing_text.paras[1]), "keys: End to its end")
+    -- the semicolon key, which KOReader's full size map names by its shifted sign
+    local map = Device.input.event_map
+    Device.input.event_map = { [57] = " ", [14] = "Backspace", [39] = ":" }
+    press(":"); press(":", { "Shift" })
+    ok(typed():sub(-2) == ";:", "keys: the semicolon key types ; and with Shift : (" .. typed() .. ")")
+    -- the keys that map leaves out are lent while a box is open, and taken back
+    view:lendKeys()
+    ok(Device.input.event_map[12] == "-" and Device.input.event_map[26] == "[", "keys: minus and brackets are lent")
+    view:returnKeys()
+    ok(Device.input.event_map[12] == nil and Device.input.event_map[57] == " ", "keys: and taken back after")
+    Device.input.event_map = { [12] = "VMinus" }
+    view:lendKeys(); view:returnKeys()
+    ok(Device.input.event_map[12] == "VMinus", "keys: another map's keys are never touched")
+    Device.input.event_map = map
+    -- Ctrl: undo, redo, select all and the clipboard
+    press(" ")   -- (a space ends the word: the next one is its own undo step)
+    local before = typed()
+    press("Q"); press(" ")
+    press("Z", { "Ctrl" })
+    ok(typed() == before, "keys: Ctrl+Z undoes the word (" .. typed() .. ")")
+    press("Y", { "Ctrl" })
+    ok(typed() == before .. "q ", "keys: Ctrl+Y redoes it")
+    press("Z", { "Ctrl", "Shift" })
+    ok(typed() == before .. "q ", "keys: Ctrl+Shift+Z redoes too (nothing left to redo)")
+    press("A", { "Ctrl" })
+    press("C", { "Ctrl" })
+    ok(clip == typed(), "keys: Ctrl+A then Ctrl+C copies it all")
+    -- KOReader tracks only the right Ctrl; the left one is followed here
+    view.text_sel = nil
+    view:onKeyPress(key("LCtrl"))
+    press("A")
+    view:onKeyRelease(key("LCtrl"))
+    ok(view.text_sel ~= nil and typed() == clip, "keys: the left Ctrl works too, and types nothing")
+    press("X")
+    ok(typed() == "x", "keys: with Ctrl let go a letter types again, over the selection")
+    ok(press("F5") == nil or press("F5") == false, "keys: a key with nothing to type is left alone")
+    -- Esc closes the box (it does not close Ink Away)
+    local finished
+    local real_finish = view.finishTextEdit
+    view.finishTextEdit = function(v, commit) finished = commit; v.editing_text = nil end
+    press("Back")
+    ok(finished == true and not view._closed, "keys: Esc finishes the box")
+    view.finishTextEdit = real_finish
+    -- the emulator types through TextInput, and leaves single keys to it
+    view.editing_text = Text.new{ x = 40, y = 300, w = 600, size = 20 }
+    view.editing_text.h = 160
+    view.text_cur = { p = 1, o = 0 }
+    local isSDL = Device.isSDL
+    Device.isSDL = function() return true end
+    press("A"); view:onTextInput("\u{e9}t\u{e9}")
+    ok(typed() == "\u{e9}t\u{e9}", "keys: in the emulator letters come through TextInput only")
+    Device.isSDL = isSDL
+    ok(view:physicalKeyboard() == false, "keys: no keyboard on this device, the on-screen one shows")
+    local hk = Device.hasKeyboard
+    Device.hasKeyboard = function() return true end
+    G_reader_settings.nilOrFalse = function(self, k) return not self.data[k] end
+    ok(view:physicalKeyboard() == true, "keys: with one, KOReader keeps the on-screen keyboard away")
+    view._text_kb = nil
+    view:showTextKeyboard()
+    ok(view._text_kb == nil and view.is_always_active == true, "keys: no on-screen keyboard, the canvas still takes keys")
+    view:hideTextKeyboard()
+    G_reader_settings.data.virtual_keyboard_enabled = true
+    ok(view:physicalKeyboard() == false, "keys: unless it was turned back on in KOReader")
+    G_reader_settings.data.virtual_keyboard_enabled = nil
+    Device.hasKeyboard = hk
+    view.editing_text = nil
+    Device.input.getClipboardText, Device.input.setClipboardText = saved_get, saved_set
+    view:onCloseWidget()
+end
+
 -- ---- a library folder's colour and icon -----------------------------------
 do
     local TestEnv = require("testenv")

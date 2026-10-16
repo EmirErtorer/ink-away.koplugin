@@ -15,6 +15,12 @@ versions marked *Prerelease* were test builds.
   in the koreader/icons folder. The look is kept in the library, so updates
   leave it alone, and each folder is drawn once, so the library opens as fast
   as before. Renamed and moved folders keep their look.
+- Typing on a physical keyboard: a Bluetooth or USB keyboard that KOReader has
+  set up types into text boxes, with Shift, Caps Lock, Backspace, Delete, the
+  arrows, Home and End, Enter for a new line and Esc to finish the box. Ctrl+Z
+  and Ctrl+Y undo and redo, Ctrl+A selects all and Ctrl+C, Ctrl+X and Ctrl+V
+  copy, cut and paste. When KOReader counts the keyboard, the on-screen one
+  stays away, as in KOReader's own text fields.
 
 ### Fixed
 - On the Kindle Scribe a resting palm took the pen again once a book had been
