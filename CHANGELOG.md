@@ -55,6 +55,9 @@ versions marked *Prerelease* were test builds.
   writing speed, as they do with a finger.
 
 ### Fixed
+- A page with smudges could take ten times longer to open after an export or
+  after Bookshelf covers were drawn: the smudge's drawing was left running
+  slowly. It now runs at full speed whatever was drawn before.
 - With "Fit the toolbar in the margin" on, the book's toolbar ended right
   where the text began. It now leaves a little space before the text.
 - With the screen turned upside down (a Kobo Libra Colour held with its

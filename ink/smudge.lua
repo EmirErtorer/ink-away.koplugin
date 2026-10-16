@@ -77,7 +77,10 @@ end
 
 -- One step of the brush at (cx, cy) on surface s, with base b (the page without
 -- ink, the same layout). k is the strength, 0-255.
-local function step(st, s, b, cx, cy, k)
+-- (The step is compiled once per kind of surface: see stepFor.)
+local STEP_SRC = [==[
+local floor, ABS, PICKUP, toValue = ...
+return function(st, s, b, cx, cy, k)
     local R, side, acc, r = st.R, st.side, st.acc, st.r
     local ptr, stride, bpp, w, h = s.ptr, s.stride, s.bpp, s.w, s.h
     local bptr = b.ptr
@@ -107,41 +110,56 @@ local function step(st, s, b, cx, cy, k)
                     else
                         ink = ptr[o] ~= bptr[o] or ptr[o + 1] ~= bptr[o + 1] or ptr[o + 2] ~= bptr[o + 2]
                     end
-                    local c1 = ptr[o]
-                    local c2 = bpp > 1 and ptr[o + 1] or c1
-                    local c3 = bpp > 1 and ptr[o + 2] or c1
-                    -- how much ink the pixel holds: all of it on an opaque page, its
-                    -- alpha in a transparent PNG
-                    local load = ink and (alpha_ch and ptr[o + 3] or 255) or 0
-                    -- the brush holds pigment: each channel as absorbance
-                    local a1, a2, a3 = ABS[c1], ABS[c2], ABS[c3]
-                    if first then
-                        acc[ai], acc[ai + 1], acc[ai + 2] = a1, a2, a3
-                        acc[ai + 3] = load
-                    else
-                        -- pick up: ink brings its pigment; paper only thins the load
-                        if ink then
-                            acc[ai] = acc[ai] + (a1 - acc[ai]) * PICKUP
-                            acc[ai + 1] = acc[ai + 1] + (a2 - acc[ai + 1]) * PICKUP
-                            acc[ai + 2] = acc[ai + 2] + (a3 - acc[ai + 2]) * PICKUP
-                            acc[ai + 3] = acc[ai + 3] + (load - acc[ai + 3]) * PICKUP
-                        else
-                            acc[ai + 3] = acc[ai + 3] * (1 - PICKUP)
+                    -- Paper under a brush that carries next to nothing: it only
+                    -- thins the load further, and too little is left to lay
+                    -- down (the test below, t <= 0.002), so nothing else is
+                    -- read or written. Most of a smudge's area is that, and
+                    -- this keeps a page with smudges quick to draw again.
+                    local skip = false
+                    if not first and not ink then
+                        local l = acc[ai + 3] * (1 - PICKUP)
+                        if l / 255 * strength * (1 - d2) <= 0.002 then
+                            acc[ai + 3] = l
+                            skip = true
                         end
-                        -- lay down, strongest at the centre, mixing pigments
-                        local t = acc[ai + 3] / 255 * strength * (1 - d2)
-                        if t > 0.002 then
-                            if alpha_ch and ptr[o + 3] == 0 then
-                                ptr[o], ptr[o + 1], ptr[o + 2] = toValue(acc[ai]),
-                                    toValue(acc[ai + 1]), toValue(acc[ai + 2])
-                                ptr[o + 3] = floor(255 * t + 0.5)
+                    end
+                    if not skip then
+                        local c1 = ptr[o]
+                        local c2 = bpp > 1 and ptr[o + 1] or c1
+                        local c3 = bpp > 1 and ptr[o + 2] or c1
+                        -- how much ink the pixel holds: all of it on an opaque page, its
+                        -- alpha in a transparent PNG
+                        local load = ink and (alpha_ch and ptr[o + 3] or 255) or 0
+                        -- the brush holds pigment: each channel as absorbance
+                        local a1, a2, a3 = ABS[c1], ABS[c2], ABS[c3]
+                        if first then
+                            acc[ai], acc[ai + 1], acc[ai + 2] = a1, a2, a3
+                            acc[ai + 3] = load
+                        else
+                            -- pick up: ink brings its pigment; paper only thins the load
+                            if ink then
+                                acc[ai] = acc[ai] + (a1 - acc[ai]) * PICKUP
+                                acc[ai + 1] = acc[ai + 1] + (a2 - acc[ai + 1]) * PICKUP
+                                acc[ai + 2] = acc[ai + 2] + (a3 - acc[ai + 2]) * PICKUP
+                                acc[ai + 3] = acc[ai + 3] + (load - acc[ai + 3]) * PICKUP
                             else
-                                ptr[o] = toValue(a1 + (acc[ai] - a1) * t)
-                                if bpp > 1 then
-                                    ptr[o + 1] = toValue(a2 + (acc[ai + 1] - a2) * t)
-                                    ptr[o + 2] = toValue(a3 + (acc[ai + 2] - a3) * t)
-                                    if alpha_ch then
-                                        ptr[o + 3] = floor(ptr[o + 3] + (255 - ptr[o + 3]) * t + 0.5)
+                                acc[ai + 3] = acc[ai + 3] * (1 - PICKUP)
+                            end
+                            -- lay down, strongest at the centre, mixing pigments
+                            local t = acc[ai + 3] / 255 * strength * (1 - d2)
+                            if t > 0.002 then
+                                if alpha_ch and ptr[o + 3] == 0 then
+                                    ptr[o], ptr[o + 1], ptr[o + 2] = toValue(acc[ai]),
+                                        toValue(acc[ai + 1]), toValue(acc[ai + 2])
+                                    ptr[o + 3] = floor(255 * t + 0.5)
+                                else
+                                    ptr[o] = toValue(a1 + (acc[ai] - a1) * t)
+                                    if bpp > 1 then
+                                        ptr[o + 1] = toValue(a2 + (acc[ai + 1] - a2) * t)
+                                        ptr[o + 2] = toValue(a3 + (acc[ai + 2] - a3) * t)
+                                        if alpha_ch then
+                                            ptr[o + 3] = floor(ptr[o + 3] + (255 - ptr[o + 3]) * t + 0.5)
+                                        end
                                     end
                                 end
                             end
@@ -152,10 +170,28 @@ local function step(st, s, b, cx, cy, k)
         end
     end
 end
+]==]
+
+-- The step for surfaces like `s`. Each kind (grey, RGB, RGB32, RGBA) gets a
+-- copy of its own: LuaJIT compiles a loop for the first kind it meets, and a
+-- page drawn on another kind afterwards (the screen's grey page after an RGBA
+-- export, say) fell back to the interpreter and took thirty times as long.
+local stepFor = {}
+local function stepOf(s)
+    local key = s.bpp .. (s.alpha and "a" or "")
+    local f = stepFor[key]
+    if not f then
+        f = load(STEP_SRC, "=ink/smudge.lua step " .. key)(floor, ABS, PICKUP, toValue)
+        stepFor[key] = f
+    end
+    return f
+end
 
 -- Move the brush from (x0, y0) to (x1, y1), stepping every quarter radius;
 -- leftover distance carries over to the next segment. A nil x0 places it.
 function Smudge.segment(st, s, b, x0, y0, x1, y1, k)
+    local step = st.step
+    if not step then step = stepOf(s); st.step = step end
     if not x0 then return step(st, s, b, x1, y1, k) end
     local spacing = max(1, st.r * 0.25)
     local dx, dy = x1 - x0, y1 - y0
