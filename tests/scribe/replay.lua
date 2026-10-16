@@ -229,6 +229,93 @@ run("S7b", "the hand's edge, reported as a pen, rests on the panel while the pen
 end)
 
 ---------------------------------------------------------------------------
+-- KOReader pauses input as it opens a book, as the reader sleeps and for some
+-- popups (Input:inhibitInput), and puts its touch handler back on the Input
+-- itself when it resumes. The pen bridge must still install after that (it
+-- did not: once a book had been opened, a resting palm took the pen until
+-- KOReader restarted, the Kindle Scribe report of 2026-10-16).
+---------------------------------------------------------------------------
+local ffiC = require("ffi").C
+local KEY, ABS = ffiC.EV_KEY, ffiC.EV_ABS
+-- a palm on the panel; with `emul` the panel also reports it the legacy way
+-- (BTN_TOUCH, ABS_X, ABS_Y), as Linux's pointer emulation does on some panels
+local function palm(w, kind, x, y, emul)
+    local evs = {}
+    if kind == "down" then
+        evs = { { ABS, ffiC.ABS_MT_SLOT, 0 }, { ABS, ffiC.ABS_MT_TRACKING_ID, 77 }, { ABS, ffiC.ABS_MT_TOOL_TYPE, 0 },
+            { ABS, ffiC.ABS_MT_POSITION_X, x }, { ABS, ffiC.ABS_MT_POSITION_Y, y } }
+        if emul then evs[#evs + 1] = { KEY, ffiC.BTN_TOUCH, 1 } end
+        w.panel_last_slot = 0
+    elseif kind == "move" then
+        evs = { { ABS, ffiC.ABS_MT_POSITION_X, x }, { ABS, ffiC.ABS_MT_POSITION_Y, y } }
+    else
+        evs = { { ABS, ffiC.ABS_MT_TRACKING_ID, -1 } }
+        if emul then evs[#evs + 1] = { KEY, ffiC.BTN_TOUCH, 0 } end
+    end
+    if emul and kind ~= "up" then
+        evs[#evs + 1] = { ABS, ffiC.ABS_X, x }
+        evs[#evs + 1] = { ABS, ffiC.ABS_Y, y }
+    end
+    w.frame(H.PANEL_FD, evs, kind == "move" and 3 or 4, "palm-" .. kind, "panel")
+end
+-- a stroke with the hand down on the page, then a second one with it still down
+local function writeWithPalm(w, emul)
+    pen.enter(w, AX0 - 5, AY0 - 5, 50)
+    pen.hover(w, AX0 - 2, AY0 - 2, 7)
+    pen.touch(w, AX0, AY0, 7)
+    for i = 1, 6 do pen.move(w, AX0 + i * 6, AY0 + i * 3, 7) end
+    palm(w, "down", 600, 800, emul)
+    for i = 7, 30 do
+        pen.move(w, AX0 + i * 6, AY0 + i * 3, 4)
+        if i % 3 == 0 then palm(w, "move", 600 + i, 800 + i % 5, emul) end
+    end
+    pen.lift(w, 7); pen.leave(w, 30)
+    pen.enter(w, BX0, BY0, 200); pen.touch(w, BX0, BY0, 7)
+    for i = 1, 12 do
+        pen.move(w, BX0 + i * 6, BY0 - i * 4, 4)
+        if i % 4 == 0 then palm(w, "move", 640 + i, 810, emul) end
+    end
+    pen.lift(w, 7); pen.leave(w, 30)
+    palm(w, "up", 0, 0, emul)
+end
+
+run("S8", "a book was opened before Ink Away (input paused and resumed); the palm rests while writing", function(w)
+    writeWithPalm(w, false)
+    return "bridge " .. (w.bridge and "installed" or "NOT installed")
+end, { paused = "before" })
+
+run("S8b", "input is paused while Ink Away opens (a popup, a book just opened), then resumed", function(w)
+    writeWithPalm(w, false)
+    return "bridge " .. (w.bridge and "installed" or "NOT installed")
+end, { paused = "during" })
+
+run("S9", "the panel reports a pinky near the nib the legacy way too (pointer emulation)", function(w)
+    pen.enter(w, 795, 595, 50); pen.touch(w, 800, 600, 7)
+    for i = 1, 40 do
+        local px, py = 800 + i * 4, 600 + (i % 6) * 3
+        pen.move(w, px, py, 4)
+        if i == 5 then palm(w, "down", px + 70, py + 60, true) end
+        if i > 5 and i % 2 == 0 and i ~= 20 then palm(w, "move", px + 70, py + 60, true) end
+        if i == 20 then palm(w, "up", 0, 0, true) end
+        if i == 22 then palm(w, "down", px + 60, py + 50, true) end
+    end
+    pen.lift(w, 7); pen.leave(w, 30)
+    palm(w, "up", 0, 0, true)
+end)
+
+run("S9b", "pointer emulation with the palm well away from the nib", function(w)
+    writeWithPalm(w, true)
+end)
+
+run("S10", "the reader sleeps and wakes while Ink Away is open, then the palm rests while writing", function(w)
+    local ax, ay = strokeA(w, 6)
+    pen.lift(w, 7); pen.leave(w, 30)
+    w.input:inhibitInput(true)       -- Device:_beforeSuspend
+    w.input:inhibitInput(false)      -- Device:_afterResume
+    writeWithPalm(w, false)
+end)
+
+---------------------------------------------------------------------------
 -- Pen taps menus and buttons: a pen contact that lands on the toolbar, a
 -- floating control, the notebook bar or a shown menu goes to the gesture
 -- detector like a finger.
@@ -313,8 +400,11 @@ uirun("U5", "a palm (finger tool) rests on the canvas while the pen taps the too
     panel.move(w, { { 0, 518, 912 } }, 8)
     panel.up(w, 0, 8)
     pen.leave(w, 30)
-    local taps = gestures(w, "tap")
-    uiok(#taps == 1 and taps[1].y == y, "U5: the pen's tap reaches the detector")
+    -- (the palm's own lift may come as a tap too, which the view takes and drops;
+    -- which gesture it makes depended on the scenarios run before this one)
+    local pen_taps = 0
+    for _, t in ipairs(gestures(w, "tap")) do if t.x == 300 and t.y == y then pen_taps = pen_taps + 1 end end
+    uiok(pen_taps == 1, "U5: the pen's tap reaches the detector")
     uiok(v.canvas:opCount() == 0 and not v.capturing, "U5: the palm drew nothing")
     -- the pen draws as usual afterwards
     local ay = v.view.area_y
@@ -576,6 +666,40 @@ if not ONLY or ONLY == "B1" then
     uiok(tool_during == "lasso", "B1: Kindle side button held: the pen lassoes (" .. tostring(tool_during) .. ")")
     uiok(v.canvas:opCount() == n0, "B1: and draws no ink")
     uiok(v.tool == "pen", "B1: the pen is back to its tool after the lift")
+end
+
+-- The bridge's own lifecycle around KOReader's input pauses: it installs over
+-- KOReader's handlers however they are held, survives a pause, and leaves
+-- nothing of itself behind when removed, also in the middle of a pause.
+do
+    local function stock(w) return getmetatable(w.input).handleTouchEv or w.input.__index and w.input.__index.handleTouchEv end
+    local w = H.newWorld({ paused = "before" })
+    uiok(w.bridge ~= nil, "L1: after a book was opened, the bridge installs")
+    local Input = getmetatable(w.input)
+    local touch_cls = Input and rawget(Input, "handleTouchEv")
+    local key_cls = Input and rawget(Input, "handleKeyBoardEv")
+    if w.bridge then
+        H.PenBridge.uninstall(w.bridge)
+        uiok(w.input.handleTouchEv == touch_cls and w.input.handleKeyBoardEv == key_cls,
+            "L1: removed, KOReader's own handlers are back")
+        uiok(w.input.pen_slot ~= H.PenBridge.PEN_SLOT, "L1: and the pen slot")
+    end
+    w = H.newWorld()
+    local h = w.bridge
+    w.input:inhibitInput(true)
+    w.input:inhibitInput(false)
+    uiok(h and w.input.handleTouchEv == h.touch_wrapper and w.input.handleKeyBoardEv == h.key_wrapper,
+        "L2: a pause and resume keep the bridge")
+    w.input:inhibitInput(true)
+    if h then H.PenBridge.uninstall(h) end
+    w.input:inhibitInput(false)
+    uiok(h and w.input.handleTouchEv == touch_cls and w.input.handleKeyBoardEv == key_cls,
+        "L3: removed during a pause, KOReader's own handlers come back when it resumes")
+    uiok(w.input.pen_slot ~= H.PenBridge.PEN_SLOT, "L3: and the pen slot")
+    -- a device with a handler of its own (the Kindle PW2's snow protocol) is left alone
+    w = H.newWorld({ no_bridge = true })
+    w.input.handleTouchEv = function() end
+    uiok(H.PenBridge.install(w.input) == nil, "L4: a device's own touch handler is left alone")
 end
 
 print()

@@ -16,6 +16,19 @@ While installed, the bridge gives each device its own cursor:
 It also moves the pen slot out of the panel's 0..9 range (to 15), so a hand with
 several contacts never shares it. Everything is restored on uninstall.
 
+Where KOReader says which device an event came from (ev.fd, KOReader 2026.07.1
+and later), the panel's own ABS_X, ABS_Y, ABS_PRESSURE and BTN_TOUCH are
+dropped: some panels report a resting hand that way too (Linux's pointer
+emulation), which would move the pen to the hand and lift it there. The panel
+is the device that sends ABS_MT_* events; the pen is the one that sends
+BTN_TOOL_PEN. Without ev.fd nothing is dropped.
+
+KOReader pauses input as it opens a book, as the reader sleeps and for some
+popups (Input:inhibitInput): it holds its handlers aside in _abs_ev_handler and
+_key_ev_handler, and puts them back on the Input itself afterwards. The bridge
+installs over KOReader's stock handlers however they are held, and removes
+itself from wherever it is, so a pause neither keeps it out nor leaves it behind.
+
 The approach follows pierspad's Notebook plugin (MIT). It is installed only on
 Wacom-protocol devices that use KOReader's stock touch handlers.
 ]]
@@ -46,17 +59,38 @@ local function ensureSlot(input, n)
     return input.ev_slots[n]
 end
 
+-- Where KOReader holds each handler while input is paused (Input:inhibitInput).
+local HELD = { handleTouchEv = "_abs_ev_handler", handleKeyBoardEv = "_key_ev_handler" }
+
+-- KOReader's stock handler `name` for `input` (its class's), or nil.
+local function stock(input, name)
+    local mt = getmetatable(input)
+    local cls = mt and (type(mt.__index) == "table" and mt.__index or mt)
+    return cls and cls[name]
+end
+
+-- The handler `name` in effect: the one held aside while input is paused, else
+-- the one on the Input. Returns the handler and the field it is in.
+local function current(input, name)
+    local held = rawget(input, HELD[name])
+    if held ~= nil then return held, HELD[name] end
+    return input[name], name
+end
+
 -- Can the bridge run on this Input? Only Wacom-protocol devices that still use the
 -- stock handlers (a device or plugin with its own handler is left alone).
 function PenBridge.supported(input)
-    return input ~= nil and input.wacom_protocol == true and input.pen_slot ~= nil
+    if not (input ~= nil and input.wacom_protocol == true and input.pen_slot ~= nil
         and type(input.setupSlotData) == "function"
         and type(input.setCurrentMtSlot) == "function"
-        and type(input.setCurrentMtSlotChecked) == "function"
-        and type(input.handleTouchEv) == "function"
-        and type(input.handleKeyBoardEv) == "function"
-        and rawget(input, "handleTouchEv") == nil
-        and rawget(input, "handleKeyBoardEv") == nil
+        and type(input.setCurrentMtSlotChecked) == "function") then
+        return false
+    end
+    for name in pairs(HELD) do
+        local fn = current(input, name)
+        if type(fn) ~= "function" or fn ~= stock(input, name) then return false end
+    end
+    return true
 end
 
 -- Install on `input`. Returns a handle for uninstall, or nil when not supported.
@@ -79,8 +113,19 @@ function PenBridge.install(input)
     end
     input.pen_slot = new_slot
 
-    local touch = input.handleTouchEv          -- the class methods (checked above)
-    local key = input.handleKeyBoardEv
+    local touch = stock(input, "handleTouchEv")    -- KOReader's (checked above)
+    local key = stock(input, "handleKeyBoardEv")
+    h.touch, h.key = touch, key
+    h.panel_fds = {}
+
+    -- Is `ev` from the touch panel, by the device it came from? Only known
+    -- where KOReader gives ev.fd; the pen's own device never counts.
+    local function fromPanel(ev)
+        local fd = ev.fd
+        if fd == nil then return false end
+        if h.pen_fd ~= nil then return fd ~= h.pen_fd end
+        return h.panel_fds[fd] == true
+    end
 
     local function penActive(this)
         local p = slotData(this, this.pen_slot)
@@ -93,10 +138,15 @@ function PenBridge.install(input)
         if ev.type == EV_SYN then h.touch_pending = nil; return false end
         if ev.type ~= EV_ABS then return false end
         local code = ev.code
+        if code >= ABS_MT_SLOT and code <= ABS_MT_LAST and ev.fd ~= nil and ev.fd ~= h.pen_fd then
+            h.panel_fds[ev.fd] = true                    -- the touch panel's device
+        end
         if code == ABS_MT_SLOT then
             h.panel_slot = ev.value
         elseif code >= ABS_MT_FIRST and code <= ABS_MT_LAST then
             if this.cur_slot ~= h.panel_slot then this:setupSlotData(h.panel_slot) end
+        elseif (code == ABS_X or code == ABS_Y or code == ABS_PRESSURE) and fromPanel(ev) then
+            return true                                  -- a hand reported the legacy way: drop it
         elseif code == ABS_X or code == ABS_Y then
             this:setupSlotData(this.pen_slot)
             this:setCurrentMtSlotChecked(code == ABS_X and "x" or "y", ev.value)
@@ -115,6 +165,13 @@ function PenBridge.install(input)
         return false
     end
     local function steerKey(this, ev)
+        if (ev.code == BTN_TOOL_PEN or ev.code == BTN_TOOL_RUBBER) and ev.fd ~= nil then
+            h.pen_fd = ev.fd                             -- the pen's device
+            h.panel_fds[ev.fd] = nil
+        end
+        if ev.code == BTN_TOUCH and fromPanel(ev) then
+            return true                                  -- a hand reported the legacy way: drop it
+        end
         if ev.code == BTN_TOUCH then
             if penActive(this) then
                 this:setupSlotData(this.pen_slot)
@@ -138,7 +195,7 @@ function PenBridge.install(input)
 
     -- A fault in the bridge must never take KOReader's input loop down: it removes
     -- itself and the event goes to KOReader as if the bridge had never been there.
-    input.handleTouchEv = function(this, ev)
+    local touch_wrapper = function(this, ev)
         if not h.dead then
             local ok, took = pcall(steerTouch, this, ev)
             if ok and took then return nil end
@@ -146,7 +203,7 @@ function PenBridge.install(input)
         end
         return touch(this, ev)
     end
-    input.handleKeyBoardEv = function(this, ev)
+    local key_wrapper = function(this, ev)
         if not h.dead then
             local ok, took = pcall(steerKey, this, ev)
             if ok and took then return nil end
@@ -155,7 +212,12 @@ function PenBridge.install(input)
         return key(this, ev)
     end
 
-    h.touch_wrapper, h.key_wrapper = input.handleTouchEv, input.handleKeyBoardEv
+    -- in place of KOReader's handlers, wherever they are now (held aside while
+    -- input is paused: KOReader then puts the bridge back on the Input itself)
+    local _, touch_field = current(input, "handleTouchEv")
+    local _, key_field = current(input, "handleKeyBoardEv")
+    input[touch_field], input[key_field] = touch_wrapper, key_wrapper
+    h.touch_wrapper, h.key_wrapper = touch_wrapper, key_wrapper
     return h
 end
 
@@ -163,9 +225,16 @@ end
 function PenBridge.uninstall(h)
     if not h then return end
     local input = h.input
-    -- Only unwind what is still ours (another wrapper may sit on top: leave it).
-    if rawget(input, "handleTouchEv") == h.touch_wrapper then input.handleTouchEv = nil end
-    if rawget(input, "handleKeyBoardEv") == h.key_wrapper then input.handleKeyBoardEv = nil end
+    -- From now on the wrappers only hand events on, wherever they still are.
+    h.dead = true
+    -- Unwind what is still ours: on the Input (KOReader's stock handler is its
+    -- class's), or held aside while input is paused (KOReader's comes back when
+    -- it resumes). Another wrapper may sit on top: leave it, ours passes through.
+    for name, held in pairs(HELD) do
+        local mine = name == "handleTouchEv" and h.touch_wrapper or h.key_wrapper
+        if rawget(input, name) == mine then input[name] = nil end
+        if rawget(input, held) == mine then input[held] = name == "handleTouchEv" and h.touch or h.key end
+    end
     if input.pen_slot == PenBridge.PEN_SLOT then
         local moved = slotData(input, PenBridge.PEN_SLOT)
         local back = ensureSlot(input, h.orig_pen_slot)

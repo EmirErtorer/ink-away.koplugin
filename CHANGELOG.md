@@ -8,6 +8,15 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Fixed
+- On the Kindle Scribe a resting palm took the pen again once a book had been
+  opened, until KOReader was restarted: the pen stopped being recognised near
+  the hand and drew stray lines. Opening a book, the reader sleeping or some
+  popups pause KOReader's input, and after that Ink Away no longer kept the pen
+  and the palm apart. It now does, whatever came before.
+- On KOReader 2026.07.1 and later, a touch panel that also reports a resting
+  hand as a single point can no longer move or lift the pen.
+
 ## [4.1.1] - 2026-10-16 *Prerelease*
 
 Notebooks and drawings on Bookshelf shelves with drawings in twelve frames,

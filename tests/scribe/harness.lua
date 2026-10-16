@@ -10,7 +10,8 @@
 -- (eventAdjustHook, then handleKeyBoardEv / handleTouchEv per event).
 --
 -- Driven by tests/scribe/replay.lua. ink/penbridge.lua is installed on the real
--- Input exactly as applyPalmReject does on a device (NOBRIDGE=1 to leave it off).
+-- Input exactly as applyPalmReject does on a device (NOBRIDGE=1 to leave it off;
+-- NOFD=1 to send events without the device they came from).
 
 package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
 -- KOReader source checkout with the emulator built in it (KO_SRC overrides)
@@ -118,11 +119,20 @@ local function newWorld(opts)
     local input = Input:new{ device = fakeDevice, input = {}, event_map = {}, group = { Back = {} } }
     input.wacom_protocol = true                    -- KindleScribe:init (kindle/device.lua:1896)
     input:registerStylusCallback(view._stylus_cb)  -- the real Input calls cb(input, slot)
+    -- KOReader pauses input (Input:inhibitInput) as it opens a book, as the
+    -- reader sleeps and for some popups, and puts its handlers back on the Input
+    -- itself when it resumes. opts.paused = "before": that happened before Ink
+    -- Away opened; "during": input is paused as Ink Away opens, resumed after.
+    if opts.paused == "before" then input:inhibitInput(true); input:inhibitInput(false) end
+    if opts.paused == "during" then input:inhibitInput(true) end
+    local bridge
     if PenBridge and not opts.no_bridge then
-        assert(PenBridge.install(input), "penbridge refused")
+        bridge = PenBridge.install(input)
+        if not bridge then print("  (the pen bridge did not install)") end
     end
+    if opts.paused == "during" then input:inhibitInput(false) end
 
-    local w = { view = view, input = input, log = {}, T = CLOCK.T, panel_last_slot = nil,
+    local w = { view = view, input = input, bridge = bridge, log = {}, T = CLOCK.T, panel_last_slot = nil,
                 panel_tool = {}, fed = {}, gestures = {}, phys = "idle",
                 touch_frames = 0, hover_fed = 0, panel_fed = 0, stylus_frames = {}, ges_log = {} }
     local log = w.log
@@ -186,7 +196,9 @@ local function newWorld(opts)
         evs[#evs + 1] = { C.EV_SYN, C.SYN_REPORT, 0 }
         log[#log + 1] = string.format("FRAME fd=%d %-22s cur_slot(before)=%s", fd, tag or "", tostring(input.cur_slot))
         for _, e in ipairs(evs) do
-            local ev = { type = e[1], code = e[2], value = e[3], time = { sec = sec, usec = usec }, fd = fd }
+            -- (NOFD=1: events without the device they came from, as before KOReader 2026.07.1)
+            local ev = { type = e[1], code = e[2], value = e[3], time = { sec = sec, usec = usec },
+                fd = not os.getenv("NOFD") and fd or nil }
             input:eventAdjustHook(ev)
             if ev.type == C.EV_KEY then
                 input:handleKeyBoardEv(ev)
