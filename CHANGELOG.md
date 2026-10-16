@@ -6,7 +6,12 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
-## [Unreleased]
+## [4.2.0] - 2026-10-17
+
+Everything from the 4.1.0 and 4.1.1 prereleases, now tested on readers, plus
+coloured library folders, typing on a physical keyboard and fixes for the
+book toolbar and the Kindle Scribe's pen. Kobo Libra Colour and Kindle Scribe
+testers confirmed the pen, colour and highlight fixes.
 
 ### Added
 - Library folders in colour: hold a folder for Colour and icon, then pick one
@@ -699,7 +704,8 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.1...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...HEAD
+[4.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.1...v4.2.0
 [4.1.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...v4.1.1
 [4.1.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...v4.1.0
 [4.0.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...v4.0.1
