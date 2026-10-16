@@ -370,10 +370,12 @@ do
     ok(draft.view_mode == "covers", "new_shelf: the covers, front facing")
     ok(draft.spine_face_out == "all", "new_shelf: on spines, every notebook faces out")
     ok(draft.label == "Notebooks", "new_shelf: named Notebooks")
+    ok(draft.cover_text == "none", "new_shelf: no text below the covers")
     -- what the reader chose stays (the hook also runs when a shelf's source changes)
-    local mine = { label = "Uni", view_mode = "covers", spine_face_out = false, source = { kind = Shelf.ID } }
+    local mine = { label = "Uni", view_mode = "covers", spine_face_out = false, cover_text = "title",
+        source = { kind = Shelf.ID } }
     spec.new_shelf(mine)
-    ok(mine.view_mode == "covers" and mine.spine_face_out == false and mine.label == "Uni",
+    ok(mine.view_mode == "covers" and mine.spine_face_out == false and mine.label == "Uni" and mine.cover_text == "title",
         "new_shelf: a reader's own choices stay")
 
     ok(spec.owns(recs[1]) == true, "owns: a notebook record")

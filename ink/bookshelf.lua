@@ -491,6 +491,9 @@ function Shelf.spec(opts)
         new_shelf = function(draft)
             if draft.view_mode == nil then draft.view_mode = "covers" end
             if draft.spine_face_out == nil then draft.spine_face_out = "all" end
+            -- no text below the covers: a cover shows its name already, and
+            -- Bookshelf's default line (an author) has nothing to show here
+            if draft.cover_text == nil then draft.cover_text = "none" end
             if draft.label == nil or draft.label == "New shelf" or draft.label == _("New shelf") then
                 draft.label = _("Notebooks")
             end

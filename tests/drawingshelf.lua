@@ -196,9 +196,11 @@ do
     spec.new_shelf(draft)
     ok(draft.view_mode == "covers" and draft.spine_face_out == "all" and draft.label == "Drawings",
         "spec: a new shelf shows the drawings face out, called Drawings")
-    local mine = { label = "My art", view_mode = "spines", spine_face_out = "none" }
+    ok(draft.cover_text == "none", "spec: with no text below the covers")
+    local mine = { label = "My art", view_mode = "spines", spine_face_out = "none", cover_text = "author" }
     spec.new_shelf(mine)
-    ok(mine.label == "My art" and mine.view_mode == "spines" and mine.spine_face_out == "none",
+    ok(mine.label == "My art" and mine.view_mode == "spines" and mine.spine_face_out == "none"
+        and mine.cover_text == "author",
         "spec: a reader's own choices stay")
     -- the first listing: no covers yet, all queued; the drawings get frames
     local out = spec.list()
