@@ -80,7 +80,7 @@ Export a transparent or white PNG, or a paged PDF, at your exact screen size.
 | **Hold to straighten** | Hold the pen still at the end of a stroke and a rough line, box, ellipse or triangle snaps clean. Writing is left alone. |
 | **Shapes** | Lines, curves, single and double arrows, rectangles, ellipses and triangles, filled or outlined, snapped to the grid or to 45°. A paint bucket fills an area in one tap. |
 | **Eraser** | Clears ink back to transparent, or removes whole strokes. It leaves pictures alone unless you ask, and can spare text too. |
-| **Text** | Text boxes in any installed font, with bold, italic, underline, sizes, alignment, line spacing, lists and checklists you tick with a tap, snapped to a notebook's lines. On colour screens, coloured text and highlights in yellow, orange, blue, green, pink or your own colours. Turn a box to any angle, or stand it on end for a book's margin. |
+| **Text** | Text boxes in any installed font, with bold, italic, underline, sizes, alignment, line spacing, lists and checklists you tick with a tap, snapped to a notebook's lines. On colour screens, coloured text and highlights in yellow, orange, blue, green, pink or your own colours. Turn a box to any angle, or stand it on end for a book's margin. A Bluetooth or USB keyboard that KOReader has set up types into it too. |
 | **Pictures** | From a file or found online (Wikimedia or Openverse), then moved, resized, turned and cut out of their background. A picture can also sit behind a drawing to trace over. |
 | **Symmetry** | Draw mirrored left to right, top to bottom, or four ways. |
 
@@ -130,9 +130,16 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 |             |                                                                                                                                          |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Library** | Every drawing and notebook is a file that saves itself. Folders, thumbnails, rename, move, duplicate and delete, all without a computer. |
+| **Folder colours** | Give a folder one of twelve colours and an icon from your KOReader, your own koreader/icons folder included, so you spot it at a glance. |
 | **Browse**  | A folder's notebooks as coloured tabs beside their pages, with a starred-only view. Move or copy pages to any notebook.                   |
 | **Search**  | By name, or by the text inside pages, handwriting turned into text included.                                                             |
 | **Trash**   | Deleted notebooks, drawings, folders and pages wait 30 days and go back exactly where they were if restored.                             |
+
+<details>
+<summary><b>Screenshot</b></summary>
+<br>
+<a href="assets/screenshots/library-folder-look.png"><img src="assets/screenshots/library-folder-look.png" alt="Folder colour and icon" width="50%"></a><br><sub>Hold a folder in the library for its colour and icon.</sub>
+</details>
 
 ### On Bookshelf
 
