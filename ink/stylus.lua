@@ -62,6 +62,8 @@ end
 --                     input.lua calls it kobo_eraser_active)
 --   highlighter_latch Input.stylus_highlighter_active (BTN_STYLUS2 held;
 --                     kobo_highlighter_active there)
+--   android           true on Android, where KOReader reports only the pen (1)
+--                     and its eraser end (2) as stylus tools
 -- Returns one of the ROLE_ values below.
 Stylus.ROLE_PEN   = "pen"     -- a trusted stylus: draw or erase with it
 Stylus.ROLE_PALM  = "palm"    -- a palm promoted to a stylus tool number: discard
@@ -102,6 +104,10 @@ function Stylus.classify(slot, facts)
     -- 2. On the pen's own slot (preset or learned) a stylus tool is the pen, its
     --    rear eraser, or a held barrel button.
     if on_pen_slot and stylus_tool then return Stylus.ROLE_PEN end
+    -- 2b. On Android KOReader reports a palm as a finger, never as the eraser's
+    --     number, so an eraser there is the pen's eraser end, even before the pen
+    --     has drawn and its slot is learned (#36).
+    if facts.android and tool == Stylus.TOOL_ERASER then return Stylus.ROLE_PEN end
     -- 3. KOReader rewrites the pen's tool to ERASER or HIGHLIGHTER while a side
     --    button is held; trust that latch even if the slot bookkeeping lags. Not
     --    on a known Wacom pen slot's device: there the held button's pen is on

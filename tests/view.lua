@@ -1347,6 +1347,55 @@ do
     inp.wacom_protocol, inp.pen_slot = wacom, pen_slot
 end
 
+-- ---- a Boox pen's eraser end on Android (#36) ---------------------------------
+-- KOReader on Android (2026.08 on) reports the pen as tool 1 and its eraser end
+-- as tool 2, and every other contact (a palm included) as a finger, so a tool 2
+-- there is always the eraser end, even before the pen has drawn. The pen's side
+-- button is not reported at all (KOReader passes no button state on Android).
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local inp = Device.input
+    local wacom, pen_slot = inp.wacom_protocol, inp.pen_slot
+    inp.wacom_protocol, inp.pen_slot = false, nil
+    local view = InkAwayView:new{}
+    view._android = true
+    view.androidPenTypes = function() return true end   -- KOReader 2026.08 on
+    view.palm_reject = true
+    view:applyPalmReject()
+    ok(inp.stylus_callback ~= nil and inp.stylus_callback == view._stylus_cb, "boox: palm rejection holds the pen")
+    view:setTool("pen")
+    local v = view.view
+    local y = v.area_y + 600
+    local t = 0
+    local function touch(id, x, tool)
+        t = t + 8000
+        return inp.stylus_callback(inp, { slot = 0, id = id, x = x, y = y, tool = tool, timev = t })
+    end
+    -- the eraser end first, before any pen stroke
+    touch(0, 300, 2)
+    ok(view.tool == "erase", "boox: the eraser end erases, before the pen has drawn")
+    touch(0, 360, 2); touch(-1, 360, 2)
+    UIManager.fireScheduled()
+    ok(view.tool == "pen", "boox: the pen is back after the eraser end")
+    -- the tip draws
+    local n0 = view.canvas:opCount()
+    touch(1, 300, 1); touch(1, 380, 1); touch(-1, 380, 1)
+    UIManager.fireScheduled()
+    ok(view.canvas:opCount() == n0 + 1, "boox: the tip draws")
+    -- off Android, a bare tool 2 off the pen's slot stays a palm (Linux reports a
+    -- resting palm as 2): the same frame on a Kobo is not taken for the eraser
+    view._android = false
+    view._learned_pen_slot = nil
+    local before = view.tool
+    touch(2, 300, 2); touch(-1, 300, 2)
+    UIManager.fireScheduled()
+    ok(view.tool == before, "kobo: a bare tool 2 on an unknown slot is still not the eraser")
+    view:onCloseWidget()
+    inp.wacom_protocol, inp.pen_slot = wacom, pen_slot
+end
+
 -- ---- the pen passed between views: a book's notes over its annotation (#27) ----
 -- KOReader keeps one stylus callback. A view that closes or stops palm rejection
 -- gives the pen back to the view under it, or to the callback that held it

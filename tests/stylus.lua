@@ -208,6 +208,15 @@ do
     ok(S.penAction({ tool = PENt }, {}) == S.ACT_DRAW, "penAction (Kobo): the tip draws")
 end
 
+-- Android: a tool 2 is the pen's eraser end (KOReader maps a palm to a finger
+-- there), even on a slot not yet learned; elsewhere a bare 2 stays a palm.
+do
+    local slot = { slot = 0, tool = S.TOOL_ERASER, id = 0, x = 10, y = 10 }
+    ok(S.classify(slot, { android = true }) == S.ROLE_PEN, "classify (Android): an eraser is the pen's eraser end")
+    ok(S.penAction(slot, { android = true }) == S.ACT_ERASER_END, "penAction (Android): and erases")
+    ok(S.classify(slot, {}) == S.ROLE_PALM, "classify (Linux): a bare tool 2 on an unknown slot is a palm")
+end
+
 -- pencil.koplugin's input.lua names the latches kobo_eraser_active and
 -- kobo_highlighter_active: they are read as KOReader's own
 do

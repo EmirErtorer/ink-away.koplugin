@@ -433,6 +433,7 @@ function InkAwayView:stylusFacts(input)
         -- (pencil.koplugin's input.lua names them kobo_*_active)
         eraser_latch      = input and (input.stylus_eraser_active == true or input.kobo_eraser_active == true),
         highlighter_latch = input and (input.stylus_highlighter_active == true or input.kobo_highlighter_active == true),
+        android           = self:onAndroid(),
     }
 end
 

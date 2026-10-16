@@ -101,6 +101,10 @@ versions marked *Prerelease* were test builds.
   highlights, each as set in Gestures and pen buttons, also with
   pencil.koplugin's input.lua installed. The setting for a second side
   button is gone, as no Kobo or Kindle pen has one.
+- On Android readers (a Boox, for one) the pen's eraser end was ignored until
+  the pen had drawn once, taken for a resting hand. It erases from the first
+  touch now, with KOReader 2026.08 or later. The pen's side button still
+  can't work there: KOReader doesn't pass it on to plugins on Android.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 
