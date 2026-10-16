@@ -6,11 +6,13 @@ swatches, or any colour on the colour wheel). Opened by a long press on the
 shelf, from a notebook's menu in Ink Away's library, and, for the style every
 notebook gets unless given its own, from Ink Away's settings.
 
-Previews share the notebook's first page, drawn once for the sheet and freed
-when it closes, so the sheet leaves nothing behind.
+Previews share the notebook's first page, taken from its snapshot (see
+Shelf.takeSnapshot; no stroke is drawn) once for the sheet and freed when it
+closes, so the sheet opens at once and leaves nothing behind.
 ]]
 
 local Device = require("device")
+local Library = require("ink/library")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local Cover = require("ink/notebookcover")
@@ -51,16 +53,22 @@ local function preview(path, look, maxw, maxh)
         math.max(1, math.floor(Cover.H * s)), true)
 end
 
--- The style grid. `o`: path (the notebook), view (an open Ink Away view, to
--- draw its page with text and pictures), open (opens the notebook; shown as
+-- The first page's snapshot of the notebook at `path`, when there is one.
+local function snapshotOf(path)
+    local dir = Shelf.covers and Shelf.covers.dir()
+    local file = Shelf.snapshotFile(dir or Storage.join(Storage.cacheDir(), Shelf.COVER_DIR), path)
+    return file and Storage.exists(file) and file or nil
+end
+
+-- The style grid. `o`: path (the notebook), open (opens the notebook; shown as
 -- a button when given), on_change, and default (true: choose the style every
 -- notebook gets, previewed on this notebook).
 function CoverPicker.show(o)
     local ThumbGrid = require("ink/ui/thumbgrid")
     local path = o.path
-    local nb = path and Cover.load(path)
-    if not nb then return end
-    local pages = {}   -- the first page, drawn once for every preview
+    if not (path and Library.isNotebookFile(path)) then return end
+    local snapshot = snapshotOf(path)
+    local pages = {}   -- the first page, made once for every preview
     local look = Shelf.lookOf(path)
     local names = Cover.names()
     local grid
@@ -79,7 +87,7 @@ function CoverPicker.show(o)
     end
     local actions = {}
     if not o.default then
-        actions[#actions + 1] = { _("Colour"), function() CoverPicker.colour(path, nb, pages, o.view, changed) end }
+        actions[#actions + 1] = { _("Colour"), function() CoverPicker.colour(path, snapshot, pages, changed) end }
         actions[#actions + 1] = { _("Use for all"), function()
             Shelf.setDefaultStyle(look.style)
             Shelf.setLook(path, false)
@@ -97,8 +105,8 @@ function CoverPicker.show(o)
         flash_open = false,
         actions = actions,
         render = function(it, maxw, maxh)
-            return preview(path, { style = it.style, colour = look.colour, nb = nb, pages = pages,
-                view = o.view }, maxw, maxh)
+            return preview(path, { style = it.style, colour = look.colour, snapshot = snapshot, pages = pages },
+                maxw, maxh)
         end,
         on_pick = function(it)
             if o.default then
@@ -106,7 +114,7 @@ function CoverPicker.show(o)
                 Shelf.defaultChanged()
             else
                 Shelf.setLook(path, it.style)
-                Shelf.lookChanged(path, o.view)
+                Shelf.lookChanged(path)
             end
             changed()
         end,
@@ -116,10 +124,11 @@ function CoverPicker.show(o)
     return grid
 end
 
--- The colour grid for notebook `path` (loaded as `nb`, its first page shared
--- in `pages`): its tab colour (or the automatic one), the swatches and, on a
--- colour screen, the colour wheel; each previewed on its cover.
-function CoverPicker.colour(path, nb, pages, view, on_change)
+-- The colour grid for notebook `path` (its first page's snapshot `snapshot`,
+-- the page shared in `pages`): its tab colour (or the automatic one), the
+-- swatches and, on a colour screen, the colour wheel; each previewed on its
+-- cover.
+function CoverPicker.colour(path, snapshot, pages, on_change)
     local ThumbGrid = require("ink/ui/thumbgrid")
     local look = Shelf.lookOf(path)
     local grid
@@ -137,7 +146,7 @@ function CoverPicker.colour(path, nb, pages, view, on_change)
     end
     local function use(rgb)
         Shelf.setLook(path, nil, rgb or false)
-        Shelf.lookChanged(path, view)
+        Shelf.lookChanged(path)
         look = Shelf.lookOf(path)
         grid:setItems(items())
         if on_change then on_change() end
@@ -149,7 +158,7 @@ function CoverPicker.colour(path, nb, pages, view, on_change)
         flash_open = false,
         close_label = _("Done"),
         render = function(it, maxw, maxh)
-            return preview(path, { style = look.style, colour = it.rgb, nb = nb, pages = pages, view = view },
+            return preview(path, { style = look.style, colour = it.rgb, snapshot = snapshot, pages = pages },
                 maxw, maxh)
         end,
         on_pick = function(it)

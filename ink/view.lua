@@ -455,6 +455,7 @@ function InkAwayView:onCloseWidget()
     Export.text_raster = nil   -- drop the closures over this view
     Export.image_raster = nil
     self:saveDocument()
+    self:shelfSnapshot()   -- before the page's buffers go
     self:freeThumbs()   -- release any decoded online-image thumbnails
     -- Close any of our popups so nothing is left shown or referenced.
     for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_paste_dialog", "_search_sheet", "_trash_sheet", "_trash_item", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview",
@@ -487,7 +488,14 @@ function InkAwayView:onCloseWidget()
     if self.over_book then UIManager:setDirty("all", "ui") else self:refresh(nil, "full") end
     -- opened from a Bookshelf shelf: it redraws, as the saved notebook may
     -- have a new cover
-    if self.after_close then pcall(self.after_close) end
+    if self.after_close then
+        pcall(self.after_close)
+    elseif self._shelf_snapped then
+        -- opened elsewhere: the shelf's cover follows the new snapshot
+        local Shelf = require("ink/bookshelf")
+        if Shelf and Shelf.covers and self.doc_path then pcall(Shelf.covers.redraw, self.doc_path) end
+    end
+    self._shelf_snapped = nil
 end
 
 function InkAwayView:onIaClose()

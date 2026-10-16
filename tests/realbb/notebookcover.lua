@@ -25,6 +25,7 @@ package.loaded["ui/renderimage"] = {
         if free_orig ~= false then bb:free() end
         return out
     end,
+    renderImageFile = function(_, file) return Mupdf.renderImageFile(file) end,
 }
 local TestEnv = require("testenv")
 local Storage = require("ink/storage")
@@ -155,15 +156,35 @@ do
 end
 
 ------------------------------------------------------------------------------
--- The first page: its ink, paper and ruling
+-- The first page: from its snapshot, else its paper and ruling without ink
 ------------------------------------------------------------------------------
+-- What Ink Away's view keeps as it shows a notebook's first page (see
+-- Shelf.takeSnapshot): the page drawn, at the cover's width.
+local function snapshotOf(path)
+    local nb = Cover.load(path)
+    local page = Cover.pageImage(nb, Cover.W, math.floor(Cover.W * nb.h / nb.w + 0.5))
+    local file = path .. ".snap.png"
+    page:writePNG(file)
+    page:free()
+    return file
+end
 do
     local s = Cover.W / PW   -- the page at the cover's width (page style)
     local path = notebook("Ink")
-    local bb = Cover.render(path, { style = "page" })
     local ly, ry = math.floor(400 * s), math.floor(600 * s)
-    ok(count(bb, 120, ly - 3, 400, ly + 3, function(c) return c.r < 60 and c.g < 60 and c.b < 60 end) > 600,
-        "page: the ink is on the cover")
+    local function dark(c) return c.r < 60 and c.g < 60 and c.b < 60 end
+    -- no snapshot yet: the paper and its ruling, and no stroke drawn
+    local pb = Cover.render(path, { style = "page" })
+    ok(count(pb, 120, ly - 3, 400, ly + 3, dark) == 0, "page: without a snapshot no ink is drawn")
+    ok(count(pb, 120, 60, 460, 300, function(c) return c.r > 240 and c.g > 240 and c.b > 240 end) > 40000,
+        "page: without a snapshot, white paper")
+    ok(count(pb, 120, 60, 460, 300, function(c) return c.r < 235 and c.r > 120 end) > 200,
+        "page: without a snapshot, its ruling")
+    pb:free()
+    -- with one, the page as Ink Away drew it
+    local snap = snapshotOf(path)
+    local bb = Cover.render(path, { style = "page", snapshot = snap })
+    ok(count(bb, 120, ly - 3, 400, ly + 3, dark) > 600, "page: the snapshot's ink is on the cover")
     ok(count(bb, 120, ry - 3, 380, ry + 3, function(c) return c.r > 170 and c.g < 90 and c.b < 90 end) > 300,
         "page: in its colours")
     ok(count(bb, 120, 60, 460, 300, function(c) return c.r > 240 and c.g > 240 and c.b > 240 end) > 40000,
@@ -179,41 +200,93 @@ do
     local band = Cover.LAYOUT.page.band
     ok(count(bb, 12, band.y, 24, Cover.H, hole) > 20, "page: the spiral runs through the band too")
     bb:free()
+    -- a snapshot gone missing: the paper again
+    os.remove(snap)
+    local gb = Cover.render(path, { style = "page", snapshot = snap })
+    ok(gb and count(gb, 120, ly - 3, 400, ly + 3, dark) == 0, "page: a missing snapshot gives the paper")
+    if gb then gb:free() end
 
-    -- a cream paper shows as cream in every style that shows the page
+    -- a cream paper shows as cream in every style that shows the page, with
+    -- a snapshot and without
     local cream = { 0xF3, 0xE9, 0xD2 }
     local cp = notebook("Cream", cream)
+    local csnap = snapshotOf(cp)
     for _, style in ipairs({ "page", "reporter", "kraft" }) do
-        local cb = Cover.render(cp, { style = style })
-        local r = style == "kraft" and Cover.LAYOUT.kraft.window or Cover.LAYOUT[style].page
-        ok(count(cb, r.x + 40, r.y + 4, r.x + r.w - 10, r.y + 60, function(c) return near(c, 0xF3, 0xE9, 0xD2, 4) end) > 2000,
-            style .. ": the page's own paper colour")
-        cb:free()
+        for _, sn in ipairs({ csnap, false }) do
+            local cb = Cover.render(cp, { style = style, snapshot = sn or nil })
+            local r = style == "kraft" and Cover.LAYOUT.kraft.window or Cover.LAYOUT[style].page
+            ok(count(cb, r.x + 40, r.y + 4, r.x + r.w - 10, r.y + 60, function(c) return near(c, 0xF3, 0xE9, 0xD2, 4) end) > 2000,
+                style .. ": the page's own paper colour" .. (sn and "" or ", without a snapshot"))
+            cb:free()
+        end
     end
     -- on a dark paper the ink shows white, as in Ink Away
     local dp = notebook("Dark", { 0x22, 0x22, 0x22 })
-    local db = Cover.render(dp, { style = "page" })
+    local db = Cover.render(dp, { style = "page", snapshot = snapshotOf(dp) })
     ok(count(db, 120, ly - 3, 400, ly + 3, function(c) return c.r > 220 and c.g > 220 and c.b > 220 end) > 600,
         "page: black ink shows white on a dark paper")
     ok(count(db, 120, 60, 460, 300, function(c) return near(c, 0x22, 0x22, 0x22, 6) end) > 30000,
         "page: on its dark paper")
     db:free()
+    local pdb = Cover.render(dp, { style = "page" })
+    ok(count(pdb, 120, 60, 460, 300, function(c) return near(c, 0x22, 0x22, 0x22, 6) end) > 30000,
+        "page: on its dark paper without a snapshot too")
+    pdb:free()
+end
 
-    -- with a view, the view draws the page (text and pictures included)
-    local asked
-    local view = { renderDocThumb = function(_, p, w, h)
-        asked = { p = p, w = w, h = h }
-        local t = BB.new(w, h, BB.TYPE_BBRGB32)
-        t:paintRectRGB32(0, 0, w, h, BB.ColorRGB32(0, 200, 0, 0xFF))
-        return t
-    end }
-    local vb = Cover.render(path, { style = "page", view = view })
-    ok(asked and asked.p == path and asked.w == Cover.W, "view: asked for the page at the cover's width")
-    ok(vb and near(px(vb, 240, 200), 0, 200, 0), "view: and its page is the one shown")
-    if vb then vb:free() end
-    local fb = Cover.render(path, { style = "page", view = { renderDocThumb = function() return nil end } })
-    ok(fb and near(px(fb, 240, 100), 255, 255, 255, 20), "view: when it can't, the export engine's page")
-    if fb then fb:free() end
+------------------------------------------------------------------------------
+-- The snapshot Ink Away's view keeps of a notebook's first page
+------------------------------------------------------------------------------
+do
+    local Shelf = require("ink/bookshelf")
+    local Notebook = require("ink/notebook")
+    local cache = DIR .. "/snapcache"
+    Storage.ensureDir(cache)
+    local path = notebook("Snapped")
+    local was_reg, was_covers = Shelf.registered, Shelf.covers
+    Shelf.registered = true
+    Shelf.covers = Shelf.newCovers{ cacheDir = function() return cache end, render = function() return true end,
+        schedule = function() end, unschedule = function() end, changed = function() end }
+    local file = Shelf.snapshotFile(Shelf.covers.dir(), path)
+    local nb = Notebook.fromData(Project.load(path))
+    local canvas = BB.new(PW, PH, BB.TYPE_BB8)
+    canvas:paintRect(0, 0, PW, PH, BB.Color8(0x40))
+    local function newView()
+        return { notebook = nb, canvas_bb = canvas, doc_written = true, doc_path = path,
+            nightInk = function(v) return v.night == true end }
+    end
+    local view = newView()
+    ok(Shelf.takeSnapshot(view) == true and Storage.exists(file), "snapshot: taken from the page the view drew")
+    local img = Mupdf.renderImageFile(file)
+    ok(img:getWidth() == Cover.W and math.abs(img:getHeight() - math.floor(Cover.W * PH / PW)) <= 1,
+        "snapshot: at the cover's width, the page's shape")
+    ok(near(px(img, 100, 100), 0x40, 0x40, 0x40, 3), "snapshot: the page as drawn")
+    img:free()
+    ok(Shelf.takeSnapshot(view) == false, "snapshot: not again while the page is unchanged")
+    view._p1_changed = true
+    ok(Shelf.takeSnapshot(view) == true, "snapshot: again once the first page changed")
+    nb.template.style = "dots"
+    ok(Shelf.takeSnapshot(view) == true, "snapshot: or its paper")
+    nb.index = 2
+    view._p1_changed = true
+    ok(Shelf.takeSnapshot(view) == false, "snapshot: never of another page")
+    nb.index = 1
+    view.night = true
+    view._p1_changed = true
+    ok(Shelf.takeSnapshot(view) == false, "snapshot: never in night colours")
+    view.night = nil
+    -- a view opening the notebook later: taken again only if the file was
+    -- written since (on another page, or elsewhere)
+    os.execute("touch -t 202601010000 '" .. path .. "'")
+    ok(Shelf.takeSnapshot(newView()) == false, "snapshot: a new view keeps one newer than the file")
+    os.execute("touch -t 202601010000 '" .. file .. "'")
+    os.execute("touch '" .. path .. "'")
+    ok(Shelf.takeSnapshot(newView()) == true, "snapshot: and takes it again when the file is newer")
+    Shelf.registered = false
+    os.remove(file)
+    ok(Shelf.takeSnapshot(newView()) == false and not Storage.exists(file), "snapshot: nothing without Bookshelf")
+    Shelf.registered, Shelf.covers = was_reg, was_covers
+    canvas:free()
 end
 
 ------------------------------------------------------------------------------

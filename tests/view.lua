@@ -1443,6 +1443,70 @@ do
     view:onCloseWidget()
 end
 
+-- ---- the snapshot of a notebook's first page for its Bookshelf cover --------
+-- With Bookshelf, the view asks for a snapshot of the first page as it leaves
+-- that page (a turn, a new page) and as it closes, saying whether the canvas
+-- shows the first page and whether it changed; never without Bookshelf.
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local Shelf = require("ink/bookshelf")
+    local was_reg, was_take = Shelf.registered, Shelf.takeSnapshot
+    local asked = {}
+    Shelf.registered = true
+    Shelf.takeSnapshot = function(v, shows_first)
+        if shows_first == nil then shows_first = v.notebook and v.notebook.index == 1 end
+        asked[#asked + 1] = { first = shows_first, changed = v._p1_changed == true,
+            ops = v.notebook and #v.notebook.pages[1].ops }
+        v._p1_changed = nil
+        return false
+    end
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local v = view.view
+    view:newNotebook("lines", require("testenv").libraryDir() .. "/snaptest")
+    local function stroke(y)
+        view:onIaTouch(nil, pos(v.area_x + 100, v.area_y + y))
+        for i = 1, 8 do view:onIaPan(nil, pos(v.area_x + 100 + i * 20, v.area_y + y)) end
+        view:onIaPanRelease(nil, pos(v.area_x + 260, v.area_y + y))
+        view:flushPending()
+    end
+    stroke(200)
+    view:saveDocument(true)
+    local n = #asked
+    view:nbAddPage()
+    local a = asked[#asked]
+    ok(#asked == n + 1 and a.first and a.changed and a.ops == 1,
+        "shelf snapshot: adding a page asks for one of the first page, written on")
+    ok(view.notebook.index == 2 and #view.notebook.pages[1].ops == 1 and #view.notebook.pages[2].ops == 0,
+        "shelf snapshot: and each page keeps its own strokes")
+    stroke(300)
+    view:nbGoTo(1)
+    a = asked[#asked]
+    ok(not a.first, "shelf snapshot: leaving another page, the canvas does not show the first")
+    view:nbGoTo(2)
+    a = asked[#asked]
+    ok(a.first and not a.changed, "shelf snapshot: leaving the first page unchanged, nothing changed")
+    view:nbGoTo(1)
+    stroke(500)
+    n = #asked
+    view:onCloseWidget()
+    a = asked[#asked]
+    ok(#asked > n and a.first and a.changed and a.ops == 2, "shelf snapshot: closing on the first page, changed")
+    -- without Bookshelf it is never asked
+    Shelf.registered = false
+    n = #asked
+    view = InkAwayView:new{}
+    UIManager:show(view)
+    view:newNotebook("lines", require("testenv").libraryDir() .. "/snaptest2")
+    stroke(200)
+    view:nbAddPage()
+    view:onCloseWidget()
+    ok(#asked == n, "shelf snapshot: never without Bookshelf")
+    Shelf.registered, Shelf.takeSnapshot = was_reg, was_take
+end
+
 -- ---- a Kobo pen's eraser end and side button (#13, #32) ------------------------
 -- On a Kobo, KOReader latches BTN_STYLUS (the pen's eraser end) as the eraser
 -- and BTN_STYLUS2 (its side button) as the highlighter, and rewrites the pen's

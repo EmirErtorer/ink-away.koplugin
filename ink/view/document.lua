@@ -189,7 +189,18 @@ function InkAwayView:leaveDocument()
     if self.editing_text then self:finishTextEdit(true) end
     self:resetLasso()   -- drop any selection first
     self:saveDocument()
+    self:shelfSnapshot()
     self:layerCachesDrop()   -- a layered drawing's caches go with it
+end
+
+-- Keep the snapshot of a notebook's first page its Bookshelf cover shows, if
+-- the canvas shows that page (the current one unless `shows_first` says) and
+-- it changed (see Shelf.takeSnapshot). Called once the page is saved. Nothing
+-- without Bookshelf.
+function InkAwayView:shelfSnapshot(shows_first)
+    local Shelf = require("ink/bookshelf")
+    if not (Shelf.registered and self.notebook) then return end
+    if Shelf.takeSnapshot(self, shows_first) then self._shelf_snapped = true end
 end
 
 -- Start a new, empty document of `kind` in folder `dir` (the open document's by

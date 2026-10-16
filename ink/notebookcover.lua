@@ -18,12 +18,12 @@ its own paper colour and ruling (white ink on a dark paper, as Ink Away shows
 it). The name wraps onto two lines, then shrinks, and only as a last resort is
 cut short, always inside its own area.
 
-The page is drawn by an Ink Away view when one is at hand (as its library
-thumbnails are: text, pictures and an imported PDF's page included), else by
-the export engine, which draws the paper, ruling, ink, shapes and fills but
-leaves out text and pictures (they need the view's fonts and image cache).
-A cover is written once to a PNG in the cache, and again only when the
-notebook or its look changes.
+The page is never drawn here from the notebook's strokes, which costs seconds
+on a reader for a page with a smudge. It comes from the snapshot of the first
+page Ink Away keeps as it shows that page (see Shelf.takeSnapshot): text,
+pictures and an imported PDF's page included. Until a notebook has one, its
+cover shows its paper and ruling. A cover is written once to a PNG in the
+cache, and again only when the snapshot or the look changes.
 ]]
 
 local Canvas = require("ink/canvas")
@@ -179,17 +179,42 @@ function Cover.pageImage(nb, w, h)
     return out
 end
 
--- The first page of the notebook at `path` drawn by Ink Away view `view` at
--- `w` x `h`. Returns an RGB32 BlitBuffer or nil.
-local function viewPage(view, path, w, h)
+-- Snapshot PNG `file` (a first page, see Shelf.takeSnapshot) `w` wide, on a
+-- white page at least `h` high. Returns an RGB32 BlitBuffer or nil.
+function Cover.snapshotImage(file, w, h)
     local BB = require("ffi/blitbuffer")
-    local ok, thumb = pcall(view.renderDocThumb, view, path, w, h)
-    if not (ok and thumb) then return nil end
+    local RenderImage = require("ui/renderimage")
+    local ok, img = pcall(function() return RenderImage:renderImageFile(file, false) end)
+    if not (ok and img) then return nil end
+    local sw, sh = img:getWidth(), img:getHeight()
+    local th = math.max(1, math.floor(w * sh / sw + 0.5))
+    local scaled = RenderImage:scaleBlitBuffer(img, w, th)
+    local out = BB.new(w, math.max(h, th), BB.TYPE_BBRGB32)
+    out:paintRectRGB32(0, 0, w, out:getHeight(), BB.ColorRGB32(0xFF, 0xFF, 0xFF, 0xFF))
+    out:blitFrom(scaled, 0, 0, 0, 0, w, th)
+    scaled:free()
+    if scaled ~= img then pcall(function() img:free() end) end
+    return out
+end
+
+-- The notebook's first page `w` x `h` as blank paper: its paper colour and its
+-- ruling at the cover's scale, no ink. What a cover shows until Ink Away has
+-- taken a snapshot of the page. Returns an RGB32 BlitBuffer.
+function Cover.paperImage(nb, w, h)
+    local BB = require("ffi/blitbuffer")
+    local Template = require("ink/template")
+    local t = pageTemplate(nb)
     local out = BB.new(w, h, BB.TYPE_BBRGB32)
-    out:paintRectRGB32(0, 0, w, h, BB.ColorRGB32(0xFF, 0xFF, 0xFF, 0xFF))
-    local tw, th = thumb:getWidth(), thumb:getHeight()
-    out:blitFrom(thumb, math.floor((w - tw) / 2), math.floor((h - th) / 2), 0, 0, tw, th)
-    thumb:free()
+    out:paintRectRGB32(0, 0, w, h, BB.ColorRGB32(t.paper[1], t.paper[2], t.paper[3], 0xFF))
+    local k = w / (nb.w or w)
+    local rule = BB.ColorRGB32(t.rule[1], t.rule[2], t.rule[3], 0xFF)
+    local size = (t.size or 40) * k
+    if not t.pdf_path and size >= 3 then
+        pcall(Template.render, t.style, w, h, size, function(x, y, len)
+            x, y = math.floor(x), math.floor(y)
+            if y >= 0 and y < h then out:paintRectRGB32(x, y, math.max(1, math.floor(len)), 1, rule) end
+        end)
+    end
     return out
 end
 
@@ -438,19 +463,21 @@ end
 
 -- Free the first pages kept in `pages` (see Cover.render).
 function Cover.freePages(pages)
-    for k, p in pairs(pages or {}) do p:free(); pages[k] = nil end
+    for k, p in pairs(pages or {}) do
+        if type(k) == "number" then p:free() end
+        pages[k] = nil
+    end
 end
 
 -- The cover of the notebook at `path` as an RGB32 BlitBuffer, or nil when it
 -- can't be read. `look` (all optional): style, colour ({r,g,b}), name (else
--- the file's), nb (the notebook, already loaded), view (an Ink Away view to
--- draw the page) and pages (a table to keep the drawn first pages in, so
--- several styles of one notebook draw its page once; Cover.freePages frees
--- them).
+-- the file's), snapshot (the first page's snapshot PNG), nb (the notebook,
+-- already loaded: only needed for its paper when there is no snapshot) and
+-- pages (a table to keep the first page in at each width, so several styles
+-- of one notebook draw it once; Cover.freePages frees them).
 function Cover.render(path, look)
     look = look or {}
-    local nb = look.nb or Cover.load(path)
-    if not nb then return nil end
+    if not (look.nb or Library.isNotebookFile(path)) then return nil end
     local BB = require("ffi/blitbuffer")
     local pages = look.pages or {}
     local c = {
@@ -460,12 +487,21 @@ function Cover.render(path, look)
     }
     -- the first page `w` wide, of which the top `h` rows show
     function c.page(w, h)
-        local key = w
-        if not pages[key] then
-            local full_h = math.max(h, math.floor(w * nb.h / nb.w + 0.5))
-            pages[key] = look.view and viewPage(look.view, path, w, full_h) or Cover.pageImage(nb, w, full_h)
+        if not pages[w] then
+            local img = look.snapshot and Storage.exists(look.snapshot) and Cover.snapshotImage(look.snapshot, w, h)
+            if not img then
+                if pages.nb == nil then pages.nb = look.nb or Cover.load(path) or false end
+                local nb = pages.nb
+                if nb then
+                    img = Cover.paperImage(nb, w, math.max(h, math.floor(w * nb.h / nb.w + 0.5)))
+                else
+                    img = BB.new(w, h, BB.TYPE_BBRGB32)
+                    img:paintRectRGB32(0, 0, w, h, BB.ColorRGB32(0xFF, 0xFF, 0xFF, 0xFF))
+                end
+            end
+            pages[w] = img
         end
-        return pages[key]
+        return pages[w]
     end
     local bb = BB.new(W, H, BB.TYPE_BBRGB32)
     local ok, err = pcall(DRAW[Cover.styleOf(look.style)], bb, c)

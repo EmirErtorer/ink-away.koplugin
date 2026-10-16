@@ -141,6 +141,7 @@ function InkAwayView:nbSyncOut()
     nb:setCurrentOps(self.canvas.ops)
     if self.canvas.rev ~= self._page_rev then
         self._page_rev = self.canvas.rev
+        if nb.index == 1 then self._p1_changed = true end   -- its shelf cover follows
         nb:touch()
         if self._page_cache then self._page_cache[nb.pages[nb.index]] = nil end
         self:dropPageThumb(nb.pages[nb.index])
@@ -151,6 +152,9 @@ end
 -- Load the current notebook page into the canvas and repaint.
 function InkAwayView:nbLoad()
     if not self.notebook then return end
+    -- leaving the first page: its Bookshelf cover keeps a snapshot of it, from
+    -- the canvas, which still shows it (see shelfSnapshot)
+    self:shelfSnapshot(self._shown_page ~= nil and self._shown_page == self.notebook.pages[1])
     -- drop the previous page's image decodes so memory stays flat over many
     -- pages; composeCanvas decodes what this page uses (the bar icon cache stays)
     self:freeImageCache()
@@ -159,6 +163,7 @@ function InkAwayView:nbLoad()
     self._page_rev = self.canvas.rev
     self:resetLasso()
     self:composeCanvas(); self:renderView()
+    self._shown_page = self.notebook.pages[self.notebook.index]   -- the page the canvas shows
     -- Like KOReader's reader, turn pages with a non-flashing refresh ("partial" on
     -- grey, "ui" on colour, where a flash takes a second or two) and flash only
     -- every few turns to clear ghosting.

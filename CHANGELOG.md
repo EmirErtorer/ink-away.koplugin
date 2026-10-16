@@ -33,17 +33,23 @@ versions marked *Prerelease* were test builds.
   says why it doesn't draw: the pen draws and a finger moves the page, and
   palm rejection is in the pen menu, Pen and input. It shows once.
 - Notebooks on a Bookshelf shelf. With the Bookshelf plugin installed, a
-  shelf can show "Ink Away notebooks": every notebook stands face out on its
-  cover, a tap opens it in Ink Away, and its cover is drawn again when you
-  close it. Without Bookshelf nothing changes.
+  shelf can show "Ink Away notebooks": a new shelf shows every notebook's
+  cover front facing, and a tap opens it in Ink Away. Without Bookshelf
+  nothing changes.
 - Six cover styles for the shelf: Front page (the notebook's first page, with
   a spiral and its name on a coloured band), Hardcover, Composition book,
-  Reporter pad, Kraft with window and Legal pad. A long press on a notebook on
-  the shelf picks its style and colour, which follows its tab colour until you
-  pick another; "Cover on the shelf" in a notebook's menu in the library does
-  the same, and "Covers on Bookshelf" in Ink Away's settings sets the style
-  new notebooks start with. A notebook keeps its cover through renames, moves
-  and the trash.
+  Reporter pad, Kraft with window and Legal pad. The first time, your
+  notebooks get a mix of all six, so you see what there is. A long press on a
+  notebook on the shelf picks its style and colour, which follows its tab
+  colour until you pick another; "Cover on the shelf" in a notebook's menu in
+  the library does the same, and "Covers on Bookshelf" in Ink Away's settings
+  sets the style new notebooks start with. A notebook keeps its cover through
+  renames, moves and the trash.
+- Covers are quick and never draw your strokes again. The first page on a
+  cover is a picture Ink Away keeps of it as you close the notebook or turn
+  from that page, only when it changed; writing on any other page leaves the
+  cover alone. A notebook not opened since shows its paper until then. The
+  long press sheet opens at once, also for a notebook with smudges.
 
 ### Changed
 - Pen pressure is now "Pen pressure (Beta)" in Pen and input, and starts off,

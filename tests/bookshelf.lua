@@ -142,9 +142,9 @@ local function newQueue(render)
     local Q = { jobs = {}, changed = 0, renders = {}, now = 0 }
     Q.covers = Shelf.newCovers{
         cacheDir = function() return cache end,
-        render = function(path, file, look, view)
-            Q.renders[#Q.renders + 1] = { path = path, look = look, view = view }
-            return render(path, file, look, view)
+        render = function(path, file, look, snapshot)
+            Q.renders[#Q.renders + 1] = { path = path, look = look, snapshot = snapshot }
+            return render(path, file, look, snapshot)
         end,
         schedule = function(sec, fn) Q.jobs[#Q.jobs + 1] = { t = Q.now + sec, fn = fn } end,
         unschedule = function(fn)
@@ -172,22 +172,27 @@ do
     local dir = Q.covers.dir()
     ok(dir ~= nil and Storage.isDir(dir), "covers: the cover folder is made")
     local nb = { path = ROOT .. "/Physics.inkaway", name = "Physics", mtime = 50, key = "k1",
-        look = { style = "page" } }
+        look = { style = "page" }, stamp = 50 }
     ok(Q.covers.get(nb, dir) == nil, "covers: none yet, so none given")
     ok(#Q.jobs == 1, "covers: and one is queued")
     ok(Q.covers.get(nb, dir) == nil and #Q.jobs == 1, "covers: asked again, it is not queued twice")
     Q.run()
-    ok(#Q.renders == 1 and Q.renders[1].view == nil, "covers: drawn in the background, without a view")
+    ok(#Q.renders == 1 and Q.renders[1].snapshot == Shelf.snapshotFile(dir, nb.path),
+        "covers: drawn in the background, from the notebook's snapshot")
     ok(Q.changed == 1, "covers: the shelf redraws once it lands")
     local file = Q.covers.get(nb, dir)
     ok(file == Storage.join(dir, Shelf.coverName(nb.path, 50, "k1")), "covers: then given")
     ok(Q.renders[1].look == nb.look, "covers: drawn in the notebook's look")
     ok(#Q.jobs == 0, "covers: and nothing more is queued")
 
-    -- the notebook changes: a new cover; the old one stays for Bookshelf's
-    -- records that still point at it, until it is pruned as stale
-    local nb2 = { path = nb.path, name = "Physics", mtime = 60, key = "k1" }
-    ok(Q.covers.get(nb2, dir) == nil, "covers: an edited notebook waits for its new cover")
+    -- written on (any page) with the same snapshot: the same cover, nothing drawn
+    local edited = { path = nb.path, name = "Physics", mtime = 55, key = "k1", stamp = 50 }
+    ok(Q.covers.get(edited, dir) == file and #Q.jobs == 0,
+        "covers: a notebook written on keeps its cover while its snapshot stays")
+    -- a new snapshot: a new cover; the old one stays for Bookshelf's records
+    -- that still point at it, until it is pruned as stale
+    local nb2 = { path = nb.path, name = "Physics", mtime = 60, key = "k1", stamp = 60 }
+    ok(Q.covers.get(nb2, dir) == nil, "covers: a new snapshot waits for its new cover")
     Q.run()
     ok(Q.covers.get(nb2, dir) ~= nil, "covers: the new cover is drawn")
     ok(Storage.exists(file), "covers: the old one is not deleted at once")
@@ -197,7 +202,7 @@ do
     Q.covers.prune({ nb2 }, dir, now + Shelf.STALE_AFTER + 5)
     ok(not Storage.exists(file) and Q.covers.get(nb2, dir) ~= nil, "prune: then it goes, the current one stays")
     -- restyled: a new cover too, the old style's pruned later
-    local nb3 = { path = nb.path, name = "Physics", mtime = 60, key = "k2" }
+    local nb3 = { path = nb.path, name = "Physics", mtime = 60, key = "k2", stamp = 60 }
     local before3 = Q.covers.get(nb2, dir)
     ok(Q.covers.get(nb3, dir) == nil, "covers: a restyled notebook waits for its new cover")
     Q.run()
@@ -217,13 +222,13 @@ do
     -- a notebook that can't be drawn isn't tried again until it changes
     local F = newQueue(function() return false end)
     local fdir = F.covers.dir()
-    local bad = { path = ROOT .. "/bad.inkaway", name = "bad", mtime = 5 }
+    local bad = { path = ROOT .. "/bad.inkaway", name = "bad", mtime = 5, stamp = 5 }
     F.covers.get(bad, fdir); F.run()
     ok(#F.renders == 1 and F.changed == 0, "covers: a failed cover is not a redraw")
     F.covers.get(bad, fdir); F.run()
     ok(#F.renders == 1, "covers: nor tried again while unchanged")
-    F.covers.get({ path = bad.path, name = "bad", mtime = 6 }, fdir); F.run()
-    ok(#F.renders == 2, "covers: but tried once it changes")
+    F.covers.get({ path = bad.path, name = "bad", mtime = 6, stamp = 6 }, fdir); F.run()
+    ok(#F.renders == 2, "covers: but tried once its snapshot changes")
 
     -- covers of notebooks gone from the library are cleared away
     local live = { path = ROOT .. "/live.inkaway", name = "live", mtime = 1 }
@@ -245,18 +250,21 @@ do
     ok(next(F.covers.failed) == nil, "forgetGone: nothing kept for notebooks that are gone")
     ok(Storage.exists(Storage.join(dir, "notes.txt")), "prune: other files are left alone")
 
-    -- closing a notebook opened from the shelf: drawn now, by its view
+    -- closing a notebook opened from the shelf: drawn now, from its snapshot
     local real = ROOT .. "/Physics.inkaway"
     Q.changed = 0
     local before = #Q.renders
-    local view = {}
-    Q.covers.redraw(real, view)
-    ok(#Q.renders == before + 1 and Q.renders[#Q.renders].view == view, "redraw: drawn by the closing view")
+    Q.covers.redraw(real)
+    ok(#Q.renders == before + 1 and Q.renders[#Q.renders].snapshot == Shelf.snapshotFile(dir, real),
+        "redraw: drawn from the notebook's snapshot")
     local look = Shelf.lookOf(real)
     ok(Q.renders[#Q.renders].look.style == look.style, "redraw: in the notebook's look")
-    ok(Q.covers.get({ path = real, name = "Physics", mtime = Storage.mtime(real), key = Shelf.lookKey(look) }, dir) ~= nil,
-        "redraw: the cover for the saved notebook")
+    local stamp = Shelf.stampOf(dir, real, look)
+    ok(Q.covers.get({ path = real, name = "Physics", mtime = Storage.mtime(real), key = Shelf.lookKey(look),
+        stamp = stamp }, dir) ~= nil, "redraw: the cover for the saved notebook")
     ok(Q.changed == 1, "redraw: the shelf redraws")
+    Q.covers.redraw(real)
+    ok(#Q.renders == before + 1 and Q.changed == 2, "redraw: a cover already drawn is not drawn again")
 end
 
 ------------------------------------------------------------------------------
@@ -354,11 +362,11 @@ do
     local frecs = fspec.list({ kind = Shelf.ID })
     ok(#frecs == 3 and frecs[1].has_cover == false, "list: a notebook whose cover fails still shows")
 
-    -- a new shelf: all face out on the plank, named Notebooks
+    -- a new shelf: front facing covers (all face out on spines), named Notebooks
     local draft = { label = "New shelf", source = { kind = Shelf.ID } }
     spec.new_shelf(draft)
-    ok(draft.view_mode == "spines", "new_shelf: the shelf view")
-    ok(draft.spine_face_out == "all", "new_shelf: every notebook faces out")
+    ok(draft.view_mode == "covers", "new_shelf: the covers, front facing")
+    ok(draft.spine_face_out == "all", "new_shelf: on spines, every notebook faces out")
     ok(draft.label == "Notebooks", "new_shelf: named Notebooks")
     -- what the reader chose stays (the hook also runs when a shelf's source changes)
     local mine = { label = "Uni", view_mode = "covers", spine_face_out = false, source = { kind = Shelf.ID } }
@@ -463,6 +471,62 @@ do
     view.after_close()
     ok(view.after_close == nil, "register: the close hook lets go of the view once run")
     Shelf.covers = covers
+end
+
+------------------------------------------------------------------------------
+-- Mixed cover styles the first time the shelf has notebooks
+------------------------------------------------------------------------------
+do
+    local MIX = TestEnv.libraryDir() .. "/mix"
+    Storage.ensureDir(MIX)
+    local was = SETTINGS[Shelf.MIXED_KEY]
+    SETTINGS[Shelf.MIXED_KEY] = nil
+    ok(Shelf.mixStyles({}) == false and SETTINGS[Shelf.MIXED_KEY] == nil,
+        "mix: with no notebooks yet nothing is done, and it waits for some")
+    for i = 1, 8 do
+        notebookFile(MIX .. (i > 4 and "/Sub" or "") .. "/N" .. i .. ".inkaway", string.format("2026100%d0900", i))
+    end
+    Shelf.setLook(MIX .. "/N1.inkaway", "legal")   -- one the reader styled already
+    local nbs = Shelf.notebooks(MIX)
+    ok(#nbs == 8, "mix: eight notebooks in two folders")
+    ok(Shelf.mixStyles(nbs, function(n) return n end) == true, "mix: done the first time")
+    ok(SETTINGS[Shelf.MIXED_KEY] == true, "mix: and remembered")
+    ok(Shelf.lookOf(MIX .. "/N1.inkaway").style == "legal", "mix: a style the reader chose stays")
+    local seen, all_own = {}, true
+    for i, nb in ipairs(nbs) do
+        local look = Shelf.lookOf(nb.path)
+        if not look.own_style then all_own = false end
+        if i <= 6 then seen[look.style] = (seen[look.style] or 0) + 1 end
+    end
+    ok(all_own, "mix: every notebook now has a style of its own")
+    local distinct = 0
+    for _ in pairs(seen) do distinct = distinct + 1 end
+    ok(distinct == 6, ("mix: the newest six show all six styles (%d)"):format(distinct))
+    ok(Shelf.mixStyles(nbs) == false, "mix: only ever once")
+    SETTINGS[Shelf.MIXED_KEY] = was
+end
+
+------------------------------------------------------------------------------
+-- What a cover depends on: the snapshot, for the styles that show the page
+------------------------------------------------------------------------------
+do
+    local dir = TestEnv.libraryDir() .. "/stampcovers"
+    Storage.ensureDir(dir)
+    local path = ROOT .. "/Physics.inkaway"
+    ok(Shelf.stampOf(dir, path, { style = "page" }) == 0, "stamp: no snapshot yet")
+    writeAll(Shelf.snapshotFile(dir, path), "png")
+    os.execute("touch -t 202610050900 '" .. Shelf.snapshotFile(dir, path) .. "'")
+    local t = Storage.mtime(Shelf.snapshotFile(dir, path))
+    ok(Shelf.stampOf(dir, path, { style = "kraft" }) == t, "stamp: a style showing the page follows its snapshot")
+    ok(Shelf.stampOf(dir, path, { style = "hardcover" }) == 0, "stamp: one that doesn't, never")
+    -- the snapshot is kept while its notebook is on the shelf, and pruned with it
+    local Q = Shelf.newCovers{ cacheDir = function() return Storage.dirName(dir) end,
+        render = function() return true end, schedule = function() end, unschedule = function() end,
+        changed = function() end }
+    Q.prune({ { path = path, stamp = t, key = "k" } }, dir, os.time() + Shelf.STALE_AFTER + 5)
+    ok(Storage.exists(Shelf.snapshotFile(dir, path)), "prune: a notebook's snapshot stays")
+    Q.prune({}, dir, os.time() + Shelf.STALE_AFTER + 5)
+    ok(not Storage.exists(Shelf.snapshotFile(dir, path)), "prune: a gone notebook's snapshot goes")
 end
 
 TestEnv.cleanup()
