@@ -133,7 +133,28 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | **Browse**  | A folder's notebooks as coloured tabs beside their pages, with a starred-only view. Move or copy pages to any notebook.                   |
 | **Search**  | By name, or by the text inside pages, handwriting turned into text included.                                                             |
 | **Trash**   | Deleted notebooks, drawings, folders and pages wait 30 days and go back exactly where they were if restored.                             |
-| **On Bookshelf** | With the Bookshelf plugin installed, your notebooks stand on a shelf with their covers in six styles, and your drawings hang on one in twelve frames, from gilded Baroque to an instant photo. A tap opens one, a long press changes its cover or frame. |
+
+### On Bookshelf
+
+With the [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) plugin installed, your notebooks and drawings can each have a shelf of their own.
+
+| | |
+|---|---|
+| **Notebooks shelf** | Every notebook stands face out on its cover: Front page, Hardcover, Composition book, Reporter pad, Kraft with window or Legal pad, in its tab colour or one you pick. |
+| **Drawings shelf** | Every drawing hangs in a frame, from Gilded Baroque, Louis XVI and Art Deco to Museum Mat, Painted Box, Canvas Wrap and Instant Photo, each in a few finishes. A new drawing gets one at random. |
+| **Tap and hold** | A tap opens a notebook or drawing in Ink Away. A long press picks its cover or frame, and so does its menu in the library. |
+| **Quick** | A cover is a picture Ink Away keeps as you close the notebook or drawing, made again only when it changed, so the shelf opens at once and never draws your strokes again. |
+
+<details>
+<summary><b>Screenshots</b></summary>
+<br>
+<table>
+  <tr>
+    <td width="50%" valign="top"><a href="assets/screenshots/bookshelf-notebooks.png"><img src="assets/screenshots/bookshelf-notebooks.png" alt="Notebooks shelf"></a><br><sub>Notebooks on a Bookshelf shelf, each in its cover style and colour.</sub></td>
+    <td width="50%" valign="top"><a href="assets/screenshots/bookshelf-drawings.png"><img src="assets/screenshots/bookshelf-drawings.png" alt="Drawings shelf"></a><br><sub>Drawings on a Bookshelf shelf, each in its own frame.</sub></td>
+  </tr>
+</table>
+</details>
 
 ### Export
 
