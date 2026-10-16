@@ -6,13 +6,6 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
-## [Unreleased]
-
-### Fixed
-- Over a book, the tab that hides the toolbar is back beside the toolbar, as
-  in 4.1.1. 4.2.0 moved it into the toolbar's end, which shortened the
-  toolbar and broke it.
-
 ## [4.2.0] - 2026-10-17
 
 Everything from the 4.1.0 and 4.1.1 prereleases, now tested on readers, plus
@@ -35,8 +28,6 @@ testers confirmed the pen, colour and highlight fixes.
   stays away, as in KOReader's own text fields.
 
 ### Fixed
-- Over a book, the tab that hides the toolbar covered the start of the text
-  beside it. It now sits in its own space at the end of the toolbar.
 - Over a book with the toolbar along the bottom, a tool's settings opened at
   the top of the screen. They now open just above the toolbar, as they open
   beside it on the other sides.
