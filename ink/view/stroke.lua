@@ -313,8 +313,10 @@ function InkAwayView:beginStroke(sx, sy)
         self._live_mode = (self:pureBlackPen() or self:colourPanel()
             or (opaque and self:einkDriven())) and "fast" or "ui"
     end
-    -- a new stroke pushes back the pending colour settle (see queueReconcile)
-    if self._reconcile then UIManager:unschedule(self._reconcile_cb) end
+    -- a new stroke pushes back the pending colour settle (see queueReconcile);
+    -- on a Kobo Sage or Elipsa it waits on its own while the pen is down (see
+    -- runReconcile), as not every lift there sets it again
+    if self._reconcile and self:fastLive() then UIManager:unschedule(self._reconcile_cb) end
     -- pens whose width changes keep a pressure per point: the pen's own with Pen
     -- pressure (Beta) on, else for Ballpoint and Fountain one simulated from the
     -- drawing speed; Calligraphy and Pencil then keep none (Pencil as before 4.0)
@@ -458,6 +460,28 @@ function InkAwayView:blitAfterStroke(r)
     end
 end
 
+-- On a Kobo Sage or Elipsa (see sunxiPanel) solid black ink is drawn live with
+-- the fast waveform, which shows black and white exactly, and its lift is shown
+-- with it too: the grey one keeps the panel busy longer, and could still be
+-- running as the next letter began.
+function InkAwayView:fastLift()
+    return self:sunxiPanel() and self._live_mode == "fast"
+end
+
+-- Show an area-local rect drawn again at a lift. Where fastLift, the fast
+-- waveform shows it at once and the grey one follows once the pen rests (see
+-- queueReconcile), for anything grey under it that the fast one shows only as
+-- black or white (a ruling or a book's text where a tapered end thinned, other
+-- ink, the scaled ink of a zoom); elsewhere the grey one shows it at once.
+function InkAwayView:showRedrawn(rr)
+    if self:fastLift() then
+        self:dirtyAreaRect("fast", rr, 2)
+        self:queueReconcile(rr, 2)
+    else
+        self:dirtyAreaRect("ui", rr, 2)
+    end
+end
+
 -- Draw the canvas rect `tail` again from the saved ops (and its mirrors under
 -- symmetry), and show it. Zoomed in or out, the screen shows the page scaled,
 -- while the live ink was drawn at the screen's own size, so all of the stroke
@@ -482,7 +506,7 @@ function InkAwayView:redrawTail(tail, op, sr)
         local rr = srects[i]
         self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
         self:blitAfterStroke(rr)
-        if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+        if not self:fastLive() then self:showRedrawn(rr) end
     end
 end
 
@@ -626,7 +650,7 @@ function InkAwayView:finalizeStroke()
                     local rr = rects[i]
                     self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
                     self:blitAfterStroke(rr)
-                    if not self:fastLive() then self:dirtyAreaRect("ui", rr, 2) end
+                    if not self:fastLive() then self:showRedrawn(rr) end
                 end
             end
         elseif tail then
@@ -673,12 +697,18 @@ function InkAwayView:finalizeStroke()
         end
     elseif sr and self:sunxiPanel() then
         -- a Kobo Sage or Elipsa may have dropped some of the live updates (see
-        -- sunxiPanel): the whole stroke shows once more as the pen lifts
+        -- sunxiPanel): the whole stroke shows once more as the pen lifts, in one
+        -- update with its last samples, in the waveform it was drawn with (see
+        -- fastLift)
+        self:liveFlush()
+        local mode = self:fastLift() and "fast" or "ui"
         local rects, nr = self:symAreaRects(sr)
         for i = 1, nr do
             self:blitAfterStroke(rects[i])
-            self:dirtyAreaRect("ui", rects[i], 2)
+            self:dirtyAreaRect(mode, rects[i], 2)
         end
+        -- a grey refresh still to come waits for the pen to rest again
+        if self._reconcile then self:queueReconcile(self._reconcile) end
     end
     self._stroke_rect = nil
     self:afterCommit()

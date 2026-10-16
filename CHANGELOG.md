@@ -117,7 +117,9 @@ versions marked *Prerelease* were test builds.
   writing, and the whole strokes only appeared when the screen was redrawn
   (closing the toolbar, say). Their display drops many of the tiny updates
   sent at every point of the pen. The live ink is now shown at a steady pace
-  there too, and each stroke is shown whole once more as the pen lifts.
+  there too, and each stroke is shown whole once more as the pen lifts. Black
+  ink is shown then in the same quick mode it was drawn with, so the screen is
+  free sooner for the next letter.
 - Closing Ink Away took the pen away from whatever had it before: another
   plugin that draws with the pen lost it until it was opened again, and with
   two Ink Away windows open (a book's notes and its annotation), closing one

@@ -197,37 +197,106 @@ end
 
 -- a Kobo Sage or Elipsa (an Allwinner display controller, no Wacom pen) paces its
 -- live refreshes too, and at the lift one refresh covers the whole stroke, so
--- what the driver dropped while the pen moved shows then (#19)
-do
+-- what the driver dropped while the pen moved shows then (#19). Black ink is
+-- shown there with the fast waveform it was drawn with, its last samples in the
+-- same update; what the lift drew again (a Ballpoint's thinner end) gets the
+-- grey one only once the pen rests, never under the next stroke. Grey ink keeps
+-- the grey waveform.
+local function covers(r, x0, x1, y)
+    local g = r.region
+    return g and g.x <= x0 and g.x + g.w >= x1 and g.y <= y and g.y + g.h >= y
+end
+for _i, pen in ipairs({ { "solid", { 0, 0, 0 }, "fast" }, { "ballpoint", { 0, 0, 0 }, "fast", true },
+        { "pencil", nil, "ui" } }) do
+    local name = pen[1]
     local view, rs, tick, done = world(false)
     Device.isSunxi = function() return true end
     local v = view.view
-    view:choosePenType("solid"); view:setTool("pen")
-    view.pen_color, view.pen_width, view.pen_alpha = { 0, 0, 0 }, 8, 255
+    view:choosePenType(name); view:setTool("pen")
+    if pen[2] then view.pen_color = pen[2] end
+    view.pen_width, view.pen_alpha = 8, 255
     local y = v.area_y + 700
     for k = #rs, 1, -1 do rs[k] = nil end
     local n = drag(view, tick, 300, 700, y)
-    local live = count(rs, "fast")
-    ok(view:sunxiPanel() and not view:mtkPen(), "Sage: taken for an Allwinner panel")
-    ok(live <= math.floor(n * 8 / 20) + 2 and live >= 3, ("Sage: refreshes paced, %d for %d samples"):format(live, n))
+    local live = count(rs, pen[3])
+    ok(view:sunxiPanel() and not view:mtkPen(), name .. " (Sage): taken for an Allwinner panel")
+    local gap = pen[3] == "fast" and 20 or 80
+    ok(live <= math.floor(n * 8 / gap) + 2 and live >= 3,
+        ("%s (Sage): refreshes paced, %d for %d samples"):format(name, live, n))
     for k = #rs, 1, -1 do rs[k] = nil end
     view:onIaPanRelease(nil, { pos = { x = 700, y = y } })
     view:flushPending()
-    tick(200); UIManager.fireScheduled()
-    local whole = false
+    -- what the lift sends, before any timer runs
+    local whole, grey = false, 0
     for _k, r in ipairs(rs) do
-        local g = r.region
-        if r.mode == "ui" and g and g.x <= 300 and g.x + g.w >= 700 and g.y <= y and g.y + g.h >= y then whole = true end
+        if r.mode == pen[3] and covers(r, 300, 700, y) then whole = true end
+        if r.mode == "ui" then grey = grey + 1 end
     end
-    ok(whole, "Sage: the lift refreshes the whole stroke once more")
-    -- and the screen holds the whole stroke when it does
+    ok(whole, ("%s (Sage): the lift refreshes the whole stroke once more, %s"):format(name, pen[3]))
+    ok(not view._live_pend and not view._live_flush_armed,
+        name .. " (Sage): the last samples go with the lift's refresh, none follows")
+    if pen[3] == "fast" then
+        ok(grey == 0, ("%s (Sage): no grey refresh at the lift (%d)"):format(name, grey))
+    end
+    if pen[4] then
+        -- its thinner end is drawn again, so the grey refresh waits for the pen
+        -- to rest: a next stroke at once pushes it back, it runs after that one
+        ok(view._reconcile and UIManager.scheduled[view._reconcile_cb],
+            name .. " (Sage): the end drawn again gets the grey refresh once the pen rests")
+        for k = #rs, 1, -1 do rs[k] = nil end
+        tick(150)
+        drag(view, tick, 300, 600, y + 60)
+        view:runReconcile()   -- its timer, while the pen is down
+        ok(count(rs, "ui") == 0, ("%s (Sage): none while the next stroke is drawn (%d)"):format(name, count(rs, "ui")))
+        view:onIaPanRelease(nil, { pos = { x = 600, y = y + 60 } })
+        view:flushPending()
+        ok(count(rs, "ui") == 0 and UIManager.scheduled[view._reconcile_cb],
+            name .. " (Sage): nor at its lift, still waiting for the pen to rest")
+        -- an eraser stroke between does not lose it
+        view:setTool("erase")
+        drag(view, tick, 300, 400, y + 200)
+        view:onIaPanRelease(nil, { pos = { x = 400, y = y + 200 } })
+        view:flushPending()
+        ok(view._reconcile and UIManager.scheduled[view._reconcile_cb],
+            name .. " (Sage): an eraser stroke between leaves it to come")
+        view:setTool("pen")
+        tick(1000); UIManager.fireScheduled()
+        local settled = false
+        for _k, r in ipairs(rs) do if r.mode == "ui" and covers(r, 690, 700, y) then settled = true end end
+        ok(settled, name .. " (Sage): once the pen rests the first stroke's end gets it")
+    end
+    -- and the screen holds the whole stroke (a pencil's grain is not all dark)
     view._area_only = true
     view:paintTo(Device.screen.bb, 0, 0)
     local sb = Device.screen.bb
-    local dark = 0
-    for x = 310, 690, 20 do if sb:getPixel(x, y):getColorRGB32().r < 64 then dark = dark + 1 end end
-    ok(dark >= 19, ("Sage: the screen shows the stroke from end to end (%d of 20 points)"):format(dark))
+    local dark, same = 0, 0
+    for x = 310, 690, 20 do
+        local c = sb:getPixel(x, y):getColorRGB32().r
+        if c < 64 then dark = dark + 1 end
+        if c == view.area_bb:getPixel(x - v.area_x, y - v.area_y):getColorRGB32().r then same = same + 1 end
+    end
+    ok(same == 20 and (dark >= 19 or pen[3] ~= "fast"),
+        ("%s (Sage): the screen shows the stroke from end to end (%d of 20 points as drawn, %d dark)")
+        :format(name, same, dark))
     Device.isSunxi = nil
+    done()
+end
+
+-- any other grey reader keeps the grey waveform for the end a lift draws again
+do
+    local view, rs, tick, done = world(false)
+    local v = view.view
+    view:choosePenType("ballpoint"); view:setTool("pen")
+    view.pen_color, view.pen_width, view.pen_alpha = { 0, 0, 0 }, 8, 255
+    local y = v.area_y + 700
+    drag(view, tick, 300, 700, y)
+    for k = #rs, 1, -1 do rs[k] = nil end
+    view:onIaPanRelease(nil, { pos = { x = 700, y = y } })
+    view:flushPending()
+    local tail = false
+    for _k, r in ipairs(rs) do if r.mode == "ui" and covers(r, 690, 700, y) then tail = true end end
+    ok(not view:sunxiPanel() and tail and not view._reconcile,
+        "ballpoint (grey reader): the end drawn again is shown with the grey waveform at the lift, as before")
     done()
 end
 
