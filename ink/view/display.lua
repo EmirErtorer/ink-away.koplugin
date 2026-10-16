@@ -474,13 +474,29 @@ function InkAwayView:mtkPen()
     return self._mtk_pen
 end
 
+-- A Kobo Sage or Elipsa: an Allwinner (sunxi) display controller, whose driver
+-- merges partial updates and takes longer per update than other Kobos'. Given
+-- one tiny update per pen sample it dropped most of them: while writing only
+-- dots and dashes showed, and the strokes appeared whole only at the next full
+-- redraw (#19; another drawing plugin did the same there). Live refreshes are
+-- paced there too, and a lift shows the whole stroke once more (finalizeStroke).
+function InkAwayView:sunxiPanel()
+    if self._sunxi == nil then
+        local ok, r = pcall(function() return Device:isSunxi() end)
+        self._sunxi = (ok and r) and true or false
+    end
+    return self._sunxi
+end
+
 -- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect. On a colour
--- panel, on Android or on a Kindle Scribe the rect joins the pending one, which
--- is sent at a bounded pace (see LIVE_*_MS): the first sample shows at once,
--- later ones go with the next update.
+-- panel, on Android, on a Kindle Scribe or on a Kobo Sage or Elipsa the rect
+-- joins the pending one, which is sent at a bounded pace (see LIVE_*_MS): the
+-- first sample shows at once, later ones go with the next update.
 function InkAwayView:liveDirty(mode, r, pad)
     local android = self:onAndroid()
-    if not (android or self:colourPanel() or self:mtkPen()) then return self:dirtyAreaRect(mode, r, pad) end
+    if not (android or self:colourPanel() or self:mtkPen() or self:sunxiPanel()) then
+        return self:dirtyAreaRect(mode, r, pad)
+    end
     local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
     if not x0 then return end
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end

@@ -4,7 +4,8 @@
 -- moves, each covering only the pixels that sample changed (a sliver at the
 -- front of the stroke, not a box round the tip), and the screen equals the
 -- saved stroke. The smudge and the other pens keep their refresh per sample.
--- A Kindle Scribe paces its live refreshes (see InkAwayView:mtkPen).
+-- A Kindle Scribe, a Kobo Sage and a Kobo Elipsa pace their live refreshes (see
+-- InkAwayView:mtkPen and sunxiPanel).
 -- Run (the test runner does this):  cd <emulator>/koreader && ./luajit <repo>/tests/realbb/greylive.lua <repo>
 local REPO = arg[1] or "."
 require("ffi/loadlib")
@@ -191,6 +192,42 @@ for _i, pen in ipairs({ { "solid", { 0, 0, 0 }, "fast", 20 }, { "highlighter", n
     ok(x0 <= 300 and x1 >= 700, ("%s (Scribe): the whole stroke was refreshed, %d to %d"):format(pen[1], x0, x1))
     Device.isMTK = nil
     Device.input.wacom_protocol = false
+    done()
+end
+
+-- a Kobo Sage or Elipsa (an Allwinner display controller, no Wacom pen) paces its
+-- live refreshes too, and at the lift one refresh covers the whole stroke, so
+-- what the driver dropped while the pen moved shows then (#19)
+do
+    local view, rs, tick, done = world(false)
+    Device.isSunxi = function() return true end
+    local v = view.view
+    view:choosePenType("solid"); view:setTool("pen")
+    view.pen_color, view.pen_width, view.pen_alpha = { 0, 0, 0 }, 8, 255
+    local y = v.area_y + 700
+    for k = #rs, 1, -1 do rs[k] = nil end
+    local n = drag(view, tick, 300, 700, y)
+    local live = count(rs, "fast")
+    ok(view:sunxiPanel() and not view:mtkPen(), "Sage: taken for an Allwinner panel")
+    ok(live <= math.floor(n * 8 / 20) + 2 and live >= 3, ("Sage: refreshes paced, %d for %d samples"):format(live, n))
+    for k = #rs, 1, -1 do rs[k] = nil end
+    view:onIaPanRelease(nil, { pos = { x = 700, y = y } })
+    view:flushPending()
+    tick(200); UIManager.fireScheduled()
+    local whole = false
+    for _k, r in ipairs(rs) do
+        local g = r.region
+        if r.mode == "ui" and g and g.x <= 300 and g.x + g.w >= 700 and g.y <= y and g.y + g.h >= y then whole = true end
+    end
+    ok(whole, "Sage: the lift refreshes the whole stroke once more")
+    -- and the screen holds the whole stroke when it does
+    view._area_only = true
+    view:paintTo(Device.screen.bb, 0, 0)
+    local sb = Device.screen.bb
+    local dark = 0
+    for x = 310, 690, 20 do if sb:getPixel(x, y):getColorRGB32().r < 64 then dark = dark + 1 end end
+    ok(dark >= 19, ("Sage: the screen shows the stroke from end to end (%d of 20 points)"):format(dark))
+    Device.isSunxi = nil
     done()
 end
 

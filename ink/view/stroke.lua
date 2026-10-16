@@ -671,6 +671,14 @@ function InkAwayView:finalizeStroke()
         else
             UIManager:setDirty(self, mode, self:areaScreenRect())
         end
+    elseif sr and self:sunxiPanel() then
+        -- a Kobo Sage or Elipsa may have dropped some of the live updates (see
+        -- sunxiPanel): the whole stroke shows once more as the pen lifts
+        local rects, nr = self:symAreaRects(sr)
+        for i = 1, nr do
+            self:blitAfterStroke(rects[i])
+            self:dirtyAreaRect("ui", rects[i], 2)
+        end
     end
     self._stroke_rect = nil
     self:afterCommit()

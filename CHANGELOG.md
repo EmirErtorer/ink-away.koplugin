@@ -89,6 +89,11 @@ versions marked *Prerelease* were test builds.
   refresh at every point the pen reported, more than the Scribe's display can
   show, so the requests queued up. The live ink is now shown at a steady pace
   of up to fifty refreshes a second, as on colour readers.
+- On a Kobo Sage or Elipsa the ink showed as scattered dots and dashes while
+  writing, and the whole strokes only appeared when the screen was redrawn
+  (closing the toolbar, say). Their display drops many of the tiny updates
+  sent at every point of the pen. The live ink is now shown at a steady pace
+  there too, and each stroke is shown whole once more as the pen lifts.
 - Closing Ink Away took the pen away from whatever had it before: another
   plugin that draws with the pen lost it until it was opened again, and with
   two Ink Away windows open (a book's notes and its annotation), closing one
