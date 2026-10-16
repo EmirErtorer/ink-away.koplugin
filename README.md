@@ -133,6 +133,7 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | **Browse**  | A folder's notebooks as coloured tabs beside their pages, with a starred-only view. Move or copy pages to any notebook.                   |
 | **Search**  | By name, or by the text inside pages, handwriting turned into text included.                                                             |
 | **Trash**   | Deleted notebooks, drawings, folders and pages wait 30 days and go back exactly where they were if restored.                             |
+| **On Bookshelf** | With the Bookshelf plugin installed, your notebooks stand on a shelf with their covers in six styles, and your drawings hang on one in twelve frames, from gilded Baroque to an instant photo. A tap opens one, a long press changes its cover or frame. |
 
 ### Export
 

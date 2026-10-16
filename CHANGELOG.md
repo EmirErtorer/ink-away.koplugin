@@ -8,6 +8,13 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-10-16 *Prerelease*
+
+Notebooks and drawings on Bookshelf shelves with drawings in twelve frames,
+pen pressure as a setting that starts off and a round of pen and page fixes.
+A prerelease, as the pen and colour fixes could only be tested in the
+emulator: reports from pen and colour readers are very welcome.
+
 ### Added
 - Go to the contents page: in the page menu of a notebook that has one, and
   as an action for any gesture or page turn button, with Back to return.
@@ -664,7 +671,8 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.1...HEAD
+[4.1.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...v4.1.1
 [4.1.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...v4.1.0
 [4.0.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v3.3.0...v4.0.0
