@@ -361,7 +361,11 @@ end
 function InkAwayView:fingerNavEnd(pos, dir)
     local n = self._finger_nav
     self._finger_nav = nil
-    if n.mode == "navigate" and pos then self:noPenDrag(math.abs(pos.x - n.x) + math.abs(pos.y - n.y)) end
+    if pos then
+        local len = math.abs(pos.x - n.x) + math.abs(pos.y - n.y)
+        if n.mode == "navigate" then self:noPenDrag(len) end
+        self:fingerNote(n.mode, len)
+    end
     if self._view_stale then self:liveFlush() end   -- show where the pan ended
     if n.mode ~= "navigate" or not self:pageSwipes() then return true end
     if dir == "west" or dir == "east" then
@@ -373,6 +377,19 @@ function InkAwayView:fingerNavEnd(pos, dir)
         end
     end
     return true
+end
+
+-- The first finger drag on the page with palm rejection on, ever: say that the
+-- pen draws and a finger moves the page (or does nothing), and where to change
+-- it. A reader who wanted to draw with a finger could not find why it did not
+-- (#41). A tap never shows it.
+function InkAwayView:fingerNote(mode, len)
+    if len < Screen:scaleBySize(40) or self:getSetting("inkaway_finger_note_seen", false) == true then return end
+    self:setSetting("inkaway_finger_note_seen", true)
+    local text = mode == "nothing"
+        and _("Palm rejection is on, so the pen draws and a finger does nothing on the page.\n\nTo draw with a finger, turn off Palm rejection in the pen menu, Pen and input.")
+        or _("Palm rejection is on, so the pen draws and a finger moves the page.\n\nTo draw with a finger, turn off Palm rejection in the pen menu, Pen and input.")
+    UIManager:show(InfoMessage:new{ text = text })
 end
 
 -- A finger dragged the page `len` px while palm rejection waited for a pen that

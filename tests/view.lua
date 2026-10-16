@@ -1289,6 +1289,67 @@ do
     view:onCloseWidget()
 end
 
+-- ---- the first finger drag with palm rejection on: a note, once (#41) --------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    _G.G_reader_settings.data.inkaway_finger_note_seen = nil
+    local view = InkAwayView:new{}
+    view.palm_reject, view.finger_mode = true, "navigate"
+    view._pen_seen = true   -- (a pen seen: the no-pen hint stays out of it)
+    local v = view.view
+    local function at(x, y) return { pos = { x = x, y = y } } end
+    local function drag(len)
+        view:onIaTouch(nil, at(300, v.area_y + 300))
+        view:onIaPan(nil, at(300, v.area_y + 300 + len))
+        view:onIaPanRelease(nil, at(300, v.area_y + 300 + len))
+        UIManager.fireScheduled()
+    end
+    local n0 = view.canvas:opCount()
+    UIManager.shown = nil
+    drag(5)
+    ok(UIManager.shown == nil, "finger note: a tap-sized touch says nothing")
+    drag(200)
+    local msg = UIManager.shown and UIManager.shown.text or ""
+    ok(msg:find("the pen draws and a finger moves the page", 1, true) and msg:find("Pen and input", 1, true),
+        "finger note: the first drag says the pen draws, a finger moves the page, and where to change it")
+    ok(view.canvas:opCount() == n0, "finger note: and the finger drew nothing")
+    UIManager.shown = nil
+    drag(200)
+    ok(UIManager.shown == nil, "finger note: once")
+    view:onCloseWidget()
+    local again = InkAwayView:new{}
+    again.palm_reject, again.finger_mode = true, "navigate"
+    again._pen_seen = true
+    view, v = again, again.view
+    UIManager.shown = nil
+    drag(200)
+    ok(UIManager.shown == nil, "finger note: and never again after a restart")
+    again:onCloseWidget()
+    -- Finger on the page set to Nothing: says so
+    _G.G_reader_settings.data.inkaway_finger_note_seen = nil
+    view = InkAwayView:new{}
+    view.palm_reject, view.finger_mode = true, "nothing"
+    view._pen_seen = true
+    v = view.view
+    UIManager.shown = nil
+    drag(200)
+    msg = UIManager.shown and UIManager.shown.text or ""
+    ok(msg:find("a finger does nothing on the page", 1, true), "finger note: with Nothing, it says a finger does nothing")
+    view:onCloseWidget()
+    -- palm rejection off: a finger draws, no note
+    _G.G_reader_settings.data.inkaway_finger_note_seen = nil
+    view = InkAwayView:new{}
+    view.palm_reject = false
+    v = view.view
+    UIManager.shown = nil
+    drag(200)
+    ok(UIManager.shown == nil and view.canvas:opCount() == 1, "finger note: with palm rejection off a finger draws, no note")
+    view:onCloseWidget()
+    _G.G_reader_settings.data.inkaway_finger_note_seen = true
+end
+
 -- ---- refreshing the screen by hand (#12) --------------------------------------
 -- "Refresh the screen" draws the screen again from the page and asks for one
 -- full (flashing) refresh; out of the box the long two-finger swipe down does it.
@@ -1772,6 +1833,7 @@ do
     UIManager.reset()
     local InkAwayView = dofile("ink/view.lua")
     InkAwayView._no_pen_hinted = nil
+    _G.G_reader_settings.data.inkaway_finger_note_seen = true   -- (the first drag's note, below)
     local view = InkAwayView:new{}
     view.palm_reject, view.finger_mode = true, "navigate"
     local v = view.view

@@ -13,6 +13,9 @@ versions marked *Prerelease* were test builds.
   screen with a full refresh, so anything a quick refresh missed shows and
   the faint marks of fast drawing go. Any gesture can be set to it in
   Gestures and pen buttons.
+- The first time a finger drags on the page with palm rejection on, a note
+  says why it doesn't draw: the pen draws and a finger moves the page, and
+  palm rejection is in the pen menu, Pen and input. It shows once.
 - Notebooks on a Bookshelf shelf. With the Bookshelf plugin installed, a
   shelf can show "Ink Away notebooks": every notebook stands face out on its
   cover, a tap opens it in Ink Away, and its cover is drawn again when you

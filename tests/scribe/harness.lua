@@ -98,6 +98,9 @@ end
 local function newWorld(opts)
     opts = opts or {}
     UIManager.reset()
+    -- (the first finger drag's one-time note, see InkAwayView:fingerNote, would sit
+    -- on top and take the next pen touch; these replays are about pen frames)
+    G_reader_settings.data.inkaway_finger_note_seen = true
     CLOCK.T = 1000.0
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
