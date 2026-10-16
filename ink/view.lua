@@ -492,8 +492,8 @@ function InkAwayView:onCloseWidget()
         pcall(self.after_close)
     elseif self._shelf_snapped then
         -- opened elsewhere: the shelf's cover follows the new snapshot
-        local Shelf = require("ink/bookshelf")
-        if Shelf and Shelf.covers and self.doc_path then pcall(Shelf.covers.redraw, self.doc_path) end
+        local covers = self._shelf_snapped
+        if type(covers) == "table" and covers.redraw and self.doc_path then pcall(covers.redraw, self.doc_path) end
     end
     self._shelf_snapped = nil
 end

@@ -160,6 +160,11 @@ function InkAwayView:libraryItemMenu(it)
             rows[#rows + 1] = { act(_("Cover on the shelf\u{2026}"), function()
                 require("ink/coverpicker").show{ path = it.path, view = self }
             end) }
+        elseif require("ink/drawingshelf").registered and not Library.isNotebookFile(it.path) then
+            -- a drawing's frame on a Bookshelf shelf
+            rows[#rows + 1] = { act(_("Frame on the shelf\u{2026}"), function()
+                require("ink/framepicker").show{ path = it.path }
+            end) }
         end
     end
     dialog = ButtonDialog:new{ title = it.label, buttons = rows }

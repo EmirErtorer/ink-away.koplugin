@@ -176,11 +176,13 @@ local function isNotebook(path, mtime)
     return nb
 end
 
--- Every notebook in library folder `root` and its folders, as { path, name,
--- mtime }, newest first. Hidden entries and Ink Away's own folders (exports,
--- downloaded pictures) are left out, as the library leaves them out. What is
--- known of documents no longer there is dropped, so it never piles up.
-function Shelf.notebooks(root)
+-- Every notebook (or, `drawings` true, every drawing) in library folder
+-- `root` and its folders, as { path, name, mtime }, newest first. Hidden
+-- entries and Ink Away's own folders (exports, downloaded pictures) are left
+-- out, as the library leaves them out. What is known of documents no longer
+-- there is dropped, so it never piles up (both shelves walk every document,
+-- so neither drops what the other asked).
+function Shelf.documents(root, drawings)
     local out = {}
     local known = kinds
     kinds = {}
@@ -191,7 +193,7 @@ function Shelf.notebooks(root)
     local function walk(dir, depth)
         local folders, docs = Library.list(dir, root)
         for _, e in ipairs(docs) do
-            if isNotebookNow(e.path, e.mtime) then
+            if isNotebookNow(e.path, e.mtime) ~= (drawings == true) then
                 out[#out + 1] = { path = e.path, name = Storage.stem(e.path), mtime = e.mtime }
             end
         end
@@ -206,6 +208,9 @@ function Shelf.notebooks(root)
     end)
     return out
 end
+
+-- Every notebook in library folder `root`, as for Shelf.documents.
+function Shelf.notebooks(root) return Shelf.documents(root, false) end
 
 -- Forget what is known about the document at `path` (all of them when nil).
 function Shelf.forget(path)
@@ -288,7 +293,9 @@ end
 -- come after them, one every Shelf.DRAFT_GAP seconds, once per notebook. A
 -- notebook here carries { path, mtime, look, key, stamp }. A cover a notebook
 -- no longer uses is left for prune() to remove once it has gone stale, never
--- deleted at once.
+-- deleted at once. For another shelf (ink/drawingshelf.lua), `opts` may also
+-- give subdir (its own cover folder), and lookOf(path), lookKey(look) and
+-- stampOf(dir, path, look) in place of the notebooks' own.
 function Shelf.newCovers(opts)
     local C = { queue = {}, queued = {}, failed = {}, drafts = {}, drafting = {}, draft_failed = {}, last = {} }
 
@@ -296,7 +303,7 @@ function Shelf.newCovers(opts)
     function C.dir()
         local base = opts.cacheDir()
         if not base then return nil end
-        local dir = Storage.join(base, Shelf.COVER_DIR)
+        local dir = Storage.join(base, opts.subdir or Shelf.COVER_DIR)
         return Storage.ensureDir(dir) and dir or nil
     end
 
@@ -313,6 +320,9 @@ function Shelf.newCovers(opts)
         if dir then
             local file = Storage.join(dir, Shelf.coverName(nb.path, nb.stamp, nb.key))
             if opts.render(nb.path, file, nb.look, Shelf.pageFile(dir, nb.path)) then
+                -- shown until a newer one lands (a draft page, say, gives
+                -- the notebook a new stamp before its next cover is drawn)
+                C.last[nb.path] = file
                 opts.unschedule(changed)
                 opts.schedule(#C.queue > 0 and 1 or 0.1, changed)
             else
@@ -390,8 +400,9 @@ function Shelf.newCovers(opts)
     function C.redraw(path)
         local dir = C.dir()
         if dir and Storage.exists(path) then
-            local look = Shelf.lookOf(path)
-            local file = Storage.join(dir, Shelf.coverName(path, Shelf.stampOf(dir, path, look), Shelf.lookKey(look)))
+            local look = (opts.lookOf or Shelf.lookOf)(path)
+            local key = (opts.lookKey or Shelf.lookKey)(look)
+            local file = Storage.join(dir, Shelf.coverName(path, (opts.stampOf or Shelf.stampOf)(dir, path, look), key))
             if Storage.exists(file) or opts.render(path, file, look, Shelf.pageFile(dir, path)) then
                 C.failed[path] = nil
             end
@@ -586,16 +597,18 @@ function Shelf.redrawShelf(bs)
     end)
 end
 
--- Open the notebook at `path` in Ink Away, from the shelf. As the view closes
--- it has taken a new snapshot of the first page if that changed (see
--- takeSnapshot), and the cover follows; nothing of the view is kept.
-function Shelf.open(plugin, path)
+-- Open the notebook (or drawing) at `path` in Ink Away, from the shelf. As the
+-- view closes it has taken a new snapshot of the first page if that changed
+-- (see takeSnapshot), and the cover follows (in `covers`, the notebooks' by
+-- default); nothing of the view is kept.
+function Shelf.open(plugin, path, covers)
     local view = plugin:openCanvas(nil, path)
     if not view then return end
     local doc = view.doc_path or path
     view.after_close = function()
         view.after_close = nil
-        if Shelf.covers then Shelf.covers.redraw(doc) end
+        covers = covers or Shelf.covers
+        if covers then covers.redraw(doc) end
     end
 end
 
@@ -647,18 +660,25 @@ function Shelf.takeSnapshot(view, shows_first)
     view._shelf_snap = { path = view.doc_path, page = nb.pages[1], paper = key }
     view._p1_changed = nil
     if not need then return false end
-    local ok = pcall(function()
+    local ok = Shelf.writeSnapshot(bb, file, Shelf.SNAPSHOT_W)
+    if ok then os.remove(Shelf.draftFile(dir, view.doc_path)) end   -- the real page replaces it
+    return ok
+end
+
+-- Write `bb` (what the view shows) at most `w` wide to PNG `file`, by way of
+-- a temporary file so a cover never reads half of one. Returns whether it was
+-- written.
+function Shelf.writeSnapshot(bb, file, w)
+    return (pcall(function()
         local RenderImage = require("ui/renderimage")
-        local w, h = bb:getWidth(), bb:getHeight()
-        local s = math.min(1, Shelf.SNAPSHOT_W / w)
-        local small = RenderImage:scaleBlitBuffer(bb, math.max(1, math.floor(w * s)), math.max(1, math.floor(h * s)), false)
+        local bw, bh = bb:getWidth(), bb:getHeight()
+        local s = math.min(1, w / bw)
+        local small = RenderImage:scaleBlitBuffer(bb, math.max(1, math.floor(bw * s)), math.max(1, math.floor(bh * s)), false)
         local tmp = file .. ".tmp"
         local wrote = pcall(function() small:writePNG(tmp) end)
         if small ~= bb then small:free() end
         if not (wrote and os.rename(tmp, file)) then os.remove(tmp); error("not written") end
-    end)
-    if ok then os.remove(Shelf.draftFile(dir, view.doc_path)) end   -- the real page replaces it
-    return ok
+    end))
 end
 
 -- The default style changed: every notebook without its own is drawn again

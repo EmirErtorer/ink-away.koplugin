@@ -193,14 +193,19 @@ function InkAwayView:leaveDocument()
     self:layerCachesDrop()   -- a layered drawing's caches go with it
 end
 
--- Keep the snapshot of a notebook's first page its Bookshelf cover shows, if
--- the canvas shows that page (the current one unless `shows_first` says) and
--- it changed (see Shelf.takeSnapshot). Called once the page is saved. Nothing
--- without Bookshelf.
+-- Keep the snapshot its Bookshelf cover shows: a notebook's first page, if the
+-- canvas shows that page (the current one unless `shows_first` says) and it
+-- changed (see Shelf.takeSnapshot), or a drawing, if it changed since (see
+-- DrawingShelf.takeSnapshot). Called once the document is saved. Nothing
+-- without Bookshelf. Remembers the covers that follow it.
 function InkAwayView:shelfSnapshot(shows_first)
-    local Shelf = require("ink/bookshelf")
-    if not (Shelf.registered and self.notebook) then return end
-    if Shelf.takeSnapshot(self, shows_first) then self._shelf_snapped = true end
+    if self.notebook then
+        local Shelf = require("ink/bookshelf")
+        if Shelf.registered and Shelf.takeSnapshot(self, shows_first) then self._shelf_snapped = Shelf.covers end
+    else
+        local DShelf = require("ink/drawingshelf")
+        if DShelf.registered and DShelf.takeSnapshot(self) then self._shelf_snapped = DShelf.covers end
+    end
 end
 
 -- Start a new, empty document of `kind` in folder `dir` (the open document's by

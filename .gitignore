@@ -12,3 +12,6 @@ dist/
 
 # Performance test runs (results worth keeping go in tests/performance/results)
 tests/performance/out/
+
+# Python caches of the dev tools
+__pycache__/

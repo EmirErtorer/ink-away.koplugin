@@ -51,6 +51,24 @@ versions marked *Prerelease* were test builds.
   cover alone. A notebook not opened since has its first page drawn once in
   the background, small and only while no notebook or book is open. The long
   press sheet opens at once, also for a notebook with smudges.
+- Drawings on a Bookshelf shelf. A shelf can show "Ink Away drawings": each
+  drawing hangs face out in a frame, and a tap opens it in Ink Away. There
+  are twelve frames, from old to modern: Gilded Baroque, Louis XVI, Dutch
+  Ripple, Carved Victorian, Arts and Crafts, Art Deco, Museum Mat, Floating
+  Frame, Minimal Metal, Painted Box, Canvas Wrap and Instant Photo, each in a
+  few finishes (gold, antique gold or silver gilt, oak or walnut, and so on).
+  A new drawing gets a frame and finish at random, all twelve before any
+  comes again. A long press on a drawing on the shelf picks its frame and
+  finish, as does "Frame on the shelf" in a drawing's menu in the library.
+  A drawing keeps its frame through renames and moves.
+- The frames are as quick as the notebooks' covers: each was carved and lit
+  once ahead of time and comes as small pieces that are fitted round the
+  drawing, so a cover takes moments and the frame fits any drawing's shape.
+  The drawing on a cover is a picture Ink Away keeps as you close it, only
+  when it changed. With Bookshelf's "True cover aspect" on, the frame hugs
+  the drawing in its own shape; with it off (Bookshelf's default, which shows
+  every cover 2:3) the drawing fills a 2:3 frame, trimmed a little at its
+  sides, so it is never stretched.
 
 ### Changed
 - Pen pressure is now "Pen pressure (Beta)" in Pen and input, and starts off,

@@ -73,6 +73,11 @@ function InkAway:init()
     if not Shelf.register(self.ui, self) then
         UIManager:nextTick(function() Shelf.register(self.ui, self) end)
     end
+    -- and the drawings, in their frames, as another
+    local DrawingShelf = require("ink/drawingshelf")
+    if not DrawingShelf.register(self.ui, self) then
+        UIManager:nextTick(function() DrawingShelf.register(self.ui, self) end)
+    end
     -- emulator hook: INKAWAY_AUTOOPEN opens the canvas straight away, once; the
     -- variable is never set on a device
     if os.getenv("INKAWAY_AUTOOPEN") and not InkAway._autoopened then
