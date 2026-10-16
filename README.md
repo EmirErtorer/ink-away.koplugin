@@ -76,7 +76,7 @@ Export a transparent or white PNG, or a paged PDF, at your exact screen size.
 |---|---|
 | **Pens** | Fineliner, Ballpoint, Fountain, Calligraphy with its own nib angle, Pencil, Highlighter, Marker, Watercolor and Smudge, each with size, opacity, greys everywhere and full colour on colour screens. The highlighter, marker and watercolor blend with the page, and text stays black under the highlighter. A brush maker makes your own. |
 | **Pen case** | Up to 20 saved pens, each shown at its real size, with a floating strip of your first ones. |
-| **Pen pressure** | On the Kindle Scribe and Kobo readers with a stylus the line follows how hard you press. |
+| **Pen pressure** | On the Kindle Scribe and Kobo readers with a stylus the line can follow how hard you press. It is a Beta, turned on in Pen and input. |
 | **Hold to straighten** | Hold the pen still at the end of a stroke and a rough line, box, ellipse or triangle snaps clean. Writing is left alone. |
 | **Shapes** | Lines, curves, single and double arrows, rectangles, ellipses and triangles, filled or outlined, snapped to the grid or to 45°. A paint bucket fills an area in one tap. |
 | **Eraser** | Clears ink back to transparent, or removes whole strokes. It leaves pictures alone unless you ask, and can spare text too. |

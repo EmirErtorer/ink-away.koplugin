@@ -22,6 +22,15 @@ versions marked *Prerelease* were test builds.
   new notebooks start with. A notebook keeps its cover through renames, moves
   and the trash.
 
+### Changed
+- Pen pressure is now "Pen pressure (Beta)" in Pen and input, and starts off,
+  also on readers that had it on. It shows on readers with a pen: the Kindle
+  Scribe and the Kobo Elipsa, Sage, Elipsa 2E and Libra Colour. Another reader
+  shows it once Ink Away has seen a pen on it. It works with Palm rejection
+  on. While it is off the pen's pressure is not read at all: Pencil and
+  Calligraphy keep an even width, and Ballpoint and Fountain follow your
+  writing speed, as they do with a finger.
+
 ### Fixed
 - With the screen turned upside down (a Kobo Libra Colour held with its
   buttons on the left, for one) the page under Ink Away was dark: strokes

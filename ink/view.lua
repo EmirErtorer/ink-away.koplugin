@@ -155,7 +155,9 @@ function InkAwayView:init()
     -- the pen in hand, as the reader left it (see ink/penset.lua)
     self:applyPen(self:penset().cur)
     self.stabilizer  = self:getSetting("inkaway_stabilizer", 40)       -- 0..100
-    self.pen_pressure = self:getSetting("inkaway_pen_pressure", true) ~= false
+    -- the pen's own pressure, a Beta and off until chosen (4.x's on by default
+    -- "inkaway_pen_pressure" is left behind); see InkAwayView:realPressure
+    self.pen_pressure = self:getSetting("inkaway_pen_pressure_beta", false) == true
     self.pressure_curve = self:getSetting("inkaway_pressure_curve", "medium")   -- soft | medium | firm
     self.grid_on     = self:getSetting("inkaway_grid", false)
     self.grid_style  = self:getSetting("inkaway_grid_style", "square")  -- square | dots | lines | iso | thirds

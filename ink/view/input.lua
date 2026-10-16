@@ -12,6 +12,7 @@ local logger = require("logger")
 local _ = require("gettext")
 local PenBridge = require("ink/penbridge")
 local PenTest = require("ink/pentest")
+local Pens = require("ink/pens")
 local Pressure = require("ink/pressure")
 local Stylus = require("ink/stylus")
 
@@ -21,6 +22,9 @@ local Screen = Device.screen
 -- usually lifts a fraction of a second after the pen, so this stops it landing a
 -- stray mark or tap in the gap.
 local PEN_LIFT_DEBOUNCE = 0.35
+-- Kobo models made for a pen: Elipsa, Sage, Elipsa 2E, and the Libra Colour
+-- with its Tolino twin. KOReader has no flag for a Kobo stylus.
+local PEN_KOBOS = { Kobo_europa = true, Kobo_cadmus = true, Kobo_condor = true, Kobo_monza = true }
 
 -- Raw finger tracking (see installRawFinger): the tools drawn straight from touch
 -- frames, and how young or short a raw stroke may be for a second finger landing
@@ -120,10 +124,30 @@ function InkAwayView:applyPalmReject()
     end
 end
 
+-- Can this reader give a pen's pressure? A Wacom pen (Kindle Scribe,
+-- reMarkable), a Kobo made for a pen, or a reader Ink Away has seen a pen on;
+-- never Android, where KOReader passes none. Pen pressure (Beta) is offered
+-- only here.
+function InkAwayView:pressureReader()
+    if self:onAndroid() or not self:penCapable() then return false end
+    local inp = Device.input
+    if inp and inp.wacom_protocol then return true end
+    if PEN_KOBOS[Device.model] then return true end
+    return self:getSetting("inkaway_pen_seen", false) == true
+end
+
+-- Is the pen's own pressure used? With Pen pressure (Beta) on, on a reader that
+-- can give it, and palm rejection on (the pen's frames, pressure and all, come
+-- through onStylusSlot only then). Otherwise Ballpoint and Fountain follow the
+-- drawing speed and the other pens draw at their width (see beginStroke).
+function InkAwayView:realPressure()
+    return self.pen_pressure == true and self.palm_reject and self:pressureReader() or false
+end
+
 -- Keep the pen's pressure where KOReader drops it (a Kobo stylus); on a Wacom
 -- pen the bridge above already keeps it. See ink/pressure.lua.
 function InkAwayView:installPressure()
-    if self._pressure_hook or self.closing or self.pen_pressure == false then return end
+    if self._pressure_hook or self.closing or not self:realPressure() then return end
     local inp = Device.input
     if inp and not inp.wacom_protocol then
         local ok, h = pcall(Pressure.install, inp)
@@ -150,9 +174,11 @@ function InkAwayView:pressureMax()
 end
 
 -- A pen slot's raw pressure above the range's bottom, or nil when the pen gives
--- none. A Wacom firmware that sends no pressure events is asked directly.
+-- none or none is wanted: real pressure off, or the pen in hand does not draw
+-- with it. A Wacom firmware that sends no pressure events is asked directly.
 function InkAwayView:slotPressure(slot)
-    if self.pen_pressure == false then return nil end
+    if not self:realPressure() then return nil end
+    if self.tool ~= "pen" or not Pens.usesPressure(self.pen_style) then return nil end
     local raw = slot.pressure
     if type(raw) ~= "number" then
         local inp = self._stylus_input or Device.input
@@ -429,6 +455,11 @@ function InkAwayView:onStylusSlot(inp, slot)
     -- on that same slot even when the runtime never set Input.pen_slot. The pen slot
     -- is fixed per device, so once learned it stays until palm rejection is reset.
     if role == Stylus.ROLE_PEN then self._pen_seen = true end
+    -- a pen tip seen on this reader: Pen pressure (Beta) is offered from now on
+    if role == Stylus.ROLE_PEN and slot.tool == Stylus.TOOL_PEN and not self._pen_seen_kept then
+        self._pen_seen_kept = true
+        if self:getSetting("inkaway_pen_seen", false) ~= true then self:setSetting("inkaway_pen_seen", true) end
+    end
     if role == Stylus.ROLE_PEN and slot.tool == Stylus.TOOL_PEN and slot.slot ~= nil
             and (self._pen_owner == nil or slot.slot == self._pen_owner) then
         self._learned_pen_slot = slot.slot

@@ -36,6 +36,14 @@ local function world()
     return view, function(ms) clock = clock + ms end
 end
 
+-- Pen pressure (Beta) on with a pen in hand: the strokes here come in by finger,
+-- so the pen's own pressure is taken as on (the pressure is then full, as a pen
+-- held evenly gives)
+local function pressureOn(view)
+    view.pen_pressure = true
+    view.realPressure = function() return true end
+end
+
 -- a word's worth of letters: loops, a straight downstroke and a crossbar
 local function letters(x0, y0)
     local out = {}
@@ -109,7 +117,7 @@ for _, case in ipairs({
     local view, tick = world()
     view:choosePenType(case.pen)
     view:setTool("pen")
-    view.pen_pressure = true
+    pressureOn(view)
     -- each lift: what it redraws, and the time it takes
     local redrawn = {}
     local comp = view.composeRegion
@@ -159,7 +167,7 @@ for _, sym in ipairs({ "vert", "quad" }) do
     local view, tick = world()
     view:choosePenType("ballpoint")
     view:setTool("pen")
-    view.pen_pressure = true
+    pressureOn(view)
     view.symmetry = sym
     write(view, tick, letters(150, 400))
     local after = view.canvas_bb:copy()
@@ -180,7 +188,7 @@ do
     local view, tick = world()
     view:choosePenType("ballpoint")
     view:setTool("pen")
-    view.pen_pressure = true
+    pressureOn(view)
     local pts = {}
     for i = 0, 60 do pts[#pts + 1] = 200 + i * 10; pts[#pts + 1] = 900 end
     write(view, tick, { pts })
@@ -204,7 +212,7 @@ for _, pen in ipairs({ "ballpoint", "fountain", "felttip" }) do
     local view, tick = world()
     view:choosePenType(pen)
     view:setTool("pen")
-    view.pen_pressure = true
+    pressureOn(view)
     local v = view.view
     local sb = Device.screen.bb
     local function at(x, y) return { pos = { x = v.area_x + x, y = v.area_y + y } } end
@@ -241,7 +249,7 @@ do
     local view, tick = world()
     view:choosePenType("ballpoint")
     view:setTool("pen")
-    view.pen_pressure = true
+    pressureOn(view)
     view:setZoom(1.7)
     local v = view.view
     local pts = {}

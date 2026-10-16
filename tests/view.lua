@@ -1823,12 +1823,16 @@ do
     G_reader_settings.data.inkaway_pens, G_reader_settings.data.inkaway_pen_style = nil, nil
 end
 
--- ---- pen pressure: from the pen's frames into the stroke, and off on request ---
+-- ---- pen pressure (Beta): from the pen's frames into the stroke, off by default
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
     UIManager.reset()
     local InkAwayView = dofile("ink/view.lua")
+    -- off for everyone until chosen, also for a reader that had 4.x's setting on
+    _G.G_reader_settings.data.inkaway_pen_pressure = true
+    _G.G_reader_settings.data.inkaway_pen_pressure_beta = nil
     local view = InkAwayView:new{}
+    ok(view.pen_pressure == false and not view:realPressure(), "pressure: off by default, whatever 4.x's setting was")
     view.palm_reject = true
     view:applyPalmReject()
     view:setTool("pen")
@@ -1843,19 +1847,43 @@ do
         end
         view:onStylusSlot(Device.input, { slot = 4, id = -1, tool = 1, x = 200, y = v.area_y + 400, timev = 999999 })
         UIManager.fireScheduled()
+        return view.canvas.ops[#view.canvas.ops]
     end
-    penStroke({ 400, 900, 1600, 2400, 3200, 4000, 4000, 4000 })
-    local op = view.canvas.ops[#view.canvas.ops]
-    ok(op and op.style == "ballpoint" and op.pr ~= nil, "pressure: a ballpoint stroke keeps the pen's pressure")
-    ok(op and op.pr and op.pr[1] < op.pr[#op.pr], "pressure: harder at the end than the start")
-    view.pen_pressure = false
-    penStroke({ 400, 4000, 400, 4000 })
-    local op2 = view.canvas.ops[#view.canvas.ops]
-    ok(op2 ~= op and op2.pr == nil, "pressure: off in the pen settings, strokes keep none")
+    local function same(a, b)
+        if not (a and b) or #a ~= #b then return false end
+        for i = 1, #a do if a[i] ~= b[i] then return false end end
+        return true
+    end
+    -- off: Ballpoint and Fountain follow the speed, not the pen; the others keep none
+    local soft = penStroke({ 400, 400, 400, 400, 400, 400 })
+    local hard = penStroke({ 4000, 4000, 4000, 4000, 4000, 4000 })
+    ok(soft.pr ~= nil and same(soft.pr, hard.pr), "pressure off: a ballpoint follows the speed, the same however hard")
+    view.pen_style = "fountain"
+    ok(penStroke({ 400, 4000, 400, 4000 }).pr ~= nil, "pressure off: a fountain still follows the speed")
+    for _, style in ipairs({ "pencil", "calligraphy", "solid" }) do
+        view.pen_style = style
+        ok(penStroke({ 400, 4000, 400, 4000 }).pr == nil, "pressure off: a " .. style .. " stroke keeps none")
+    end
+    view.pen_style = "ballpoint"
+    ok(view:slotPressure({ pressure = 2000 }) == nil, "pressure off: the pen's pressure is never read")
+    -- on: the pen's own pressure
     view.pen_pressure = true
+    local op = penStroke({ 400, 900, 1600, 2400, 3200, 4000, 4000, 4000 })
+    ok(op and op.style == "ballpoint" and op.pr ~= nil, "pressure on: a ballpoint stroke keeps the pen's pressure")
+    ok(op and op.pr and op.pr[1] < op.pr[#op.pr], "pressure on: harder at the end than the start")
+    soft = penStroke({ 400, 400, 400, 400, 400, 400 })
+    hard = penStroke({ 4000, 4000, 4000, 4000, 4000, 4000 })
+    ok(soft.pr[#soft.pr] < hard.pr[#hard.pr], "pressure on: pressed harder, wider")
+    view.pen_style = "pencil"
+    ok(penStroke({ 400, 4000, 400, 4000 }).pr ~= nil, "pressure on: a pencil keeps it")
     view.pen_style = "solid"
-    penStroke({ 400, 4000 })
-    ok(view.canvas.ops[#view.canvas.ops].pr == nil, "pressure: a fineliner ignores pressure")
+    ok(penStroke({ 400, 4000 }).pr == nil, "pressure on: a fineliner ignores pressure")
+    ok(view:slotPressure({ pressure = 2000 }) == nil, "pressure on: not read for a pen that does not use it")
+    view.pen_style = "ballpoint"
+    ok(view:slotPressure({ pressure = 2000 }) == 2000, "pressure on: read for one that does")
+    view.palm_reject = false
+    ok(not view:realPressure(), "pressure on: not used with palm rejection off (no pen frames then)")
+    view.palm_reject = true
     -- a finger (no sensor): the fountain pen simulates it from speed
     view.palm_reject = false
     view:applyPalmReject()
@@ -1868,6 +1896,86 @@ do
     local op3 = view.canvas.ops[#view.canvas.ops]
     ok(#view.canvas.ops == n0 + 1 and op3.pr ~= nil, "pressure: a finger with the fountain pen gets a simulated pressure")
     view:onCloseWidget()
+
+    -- the setting: on readers that can give pressure only, saved under its own key
+    local function findRow(root, label)
+        local seen = {}
+        local function walk(t)
+            if type(t) ~= "table" or seen[t] then return nil end
+            seen[t] = true
+            if t.label == label and t.onTap then return t end
+            for k, c in pairs(t) do
+                if k ~= "parent" and k ~= "show_parent" then
+                    local r = walk(c)
+                    if r then return r end
+                end
+            end
+        end
+        return walk(root)
+    end
+    local function offered(vw)
+        vw:openPenInput()
+        local tg = findRow(vw._peninput_dialog, "Pen pressure (Beta)")
+        vw:closeSheet("_peninput_dialog")
+        return tg ~= nil
+    end
+    local inp = Device.input
+    local wacom, model = inp.wacom_protocol, Device.model
+    view = InkAwayView:new{}
+    ok(offered(view), "pressure setting: offered on a Wacom pen reader (a Kindle Scribe)")
+    view:openPenInput()
+    local tg = findRow(view._peninput_dialog, "Pen pressure (Beta)")
+    ok(tg and tg.is_on == false, "pressure setting: shows off")
+    local hint = false
+    local seen = {}
+    local function find(t) if type(t) ~= "table" or seen[t] then return end; seen[t] = true
+        if type(t.text) == "string" and t.text:find("Still being tested", 1, true)
+            and t.text:find("I'd love to hear about it on GitHub", 1, true) then hint = true end
+        for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then find(c) end end end
+    find(view._peninput_dialog)
+    ok(hint, "pressure setting: says it is still being tested")
+    if tg then tg:onTap() end
+    ok(view.pen_pressure == true and _G.G_reader_settings.data.inkaway_pen_pressure_beta == true,
+        "pressure setting: turned on and saved under its own key")
+    view:closeSheet("_peninput_dialog")
+    view:onCloseWidget()
+    ok(InkAwayView:new{}.pen_pressure == true, "pressure setting: on again after a restart")
+    _G.G_reader_settings.data.inkaway_pen_pressure_beta = nil
+    -- a reader without a pen (a Paperwhite): no setting, and none of its pressure
+    inp.wacom_protocol, Device.model = false, "Kindle_paperwhite4"
+    _G.G_reader_settings.data.inkaway_pen_seen = nil
+    view = InkAwayView:new{}
+    ok(not offered(view), "pressure setting: not offered on a reader without a pen")
+    view.pen_pressure = true
+    ok(not view:realPressure(), "pressure setting: and never used there, even if set")
+    view:onCloseWidget()
+    -- a Kobo made for a pen
+    for _, m in ipairs({ "Kobo_europa", "Kobo_cadmus", "Kobo_condor", "Kobo_monza" }) do
+        Device.model = m
+        view = InkAwayView:new{}
+        ok(offered(view), "pressure setting: offered on a " .. m)
+        view:onCloseWidget()
+    end
+    Device.model = "Kobo_io"   -- a Libra 2: no pen
+    view = InkAwayView:new{}
+    ok(not offered(view), "pressure setting: not on a Kobo without a pen")
+    -- another reader, once a pen tip is seen on it
+    view.palm_reject = true
+    view:applyPalmReject()
+    view:onStylusSlot(inp, { slot = 4, id = 7, tool = 1, x = 300, y = 500, timev = 1000 })
+    view:onStylusSlot(inp, { slot = 4, id = -1, tool = 1, x = 300, y = 500, timev = 9000 })
+    UIManager.fireScheduled()
+    ok(_G.G_reader_settings.data.inkaway_pen_seen == true and offered(view),
+        "pressure setting: offered once a pen has been seen on the reader")
+    view:onCloseWidget()
+    -- never on Android
+    view = InkAwayView:new{}
+    view._android = true
+    ok(not offered(view), "pressure setting: not on Android")
+    view:onCloseWidget()
+    inp.wacom_protocol, Device.model = wacom, model
+    _G.G_reader_settings.data.inkaway_pen_seen = nil
+    _G.G_reader_settings.data.inkaway_pen_pressure = nil
 end
 
 -- ---- the pen case: saved pens, kinds that remember, sizes that persist -------

@@ -315,10 +315,12 @@ function InkAwayView:beginStroke(sx, sy)
     end
     -- a new stroke pushes back the pending colour settle (see queueReconcile)
     if self._reconcile then UIManager:unschedule(self._reconcile_cb) end
-    -- pens whose width changes keep a pressure per point: the pen's own, or for
-    -- some pens one simulated from the drawing speed
+    -- pens whose width changes keep a pressure per point: the pen's own with Pen
+    -- pressure (Beta) on, else for Ballpoint and Fountain one simulated from the
+    -- drawing speed; Calligraphy and Pencil then keep none (Pencil as before 4.0)
     local st = style and Raster.STYLES[style]
-    self._live_pressured = (not is_erase) and self.pen_pressure ~= false and Pens.usesPressure(style) or false
+    self._live_pressured = (not is_erase) and Pens.usesPressure(style)
+        and (self:realPressure() or (st and st.sim)) and true or false
     self._live_sim = self._live_pressured and st and st.sim and self._pen_raw_pressure == nil or false
     self._live_p, self._lp_at = nil, nil
     local smudge = (not is_erase) and style == "smudge"

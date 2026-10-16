@@ -582,23 +582,26 @@ function InkAwayView:openPenInput()
         add(ToggleRow:new{ label = _("Pen taps menus and buttons"), is_on = self.pen_ui,
             width = content_w, parent = menu,
             callback = function(on) self.pen_ui = on; self:setSetting("inkaway_pen_ui", on) end })
-        -- pressure shapes Ballpoint, Fountain, Calligraphy and Pencil; with a pen
-        -- that reports it, how hard a press counts as firm is chosen below
-        add(vspan(10))
-        add(ToggleRow:new{ label = _("Pen pressure"), is_on = self.pen_pressure ~= false,
-            width = content_w, parent = menu, callback = function(on)
-                self.pen_pressure = on; self:setSetting("inkaway_pen_pressure", on)
-                if on then self:installPressure() else self:removePressure() end
-                again()
-            end })
-        if self.pen_pressure ~= false and self:penCapable() then
-            add(vspan(6))
-            add(self:segmentedRow({ { "soft", _("Light touch") }, { "medium", _("Medium") }, { "firm", _("Firm") } },
-                self.pressure_curve or "medium", content_w,
-                function(c) self.pressure_curve = c; self:setSetting("inkaway_pressure_curve", c); again() end))
+        -- the pen's own pressure, a Beta and off by default, offered only where
+        -- a pen can give it (see pressureReader); with it on, how hard a press
+        -- counts as firm is chosen below
+        if self:pressureReader() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Pen pressure (Beta)"), is_on = self.pen_pressure == true,
+                width = content_w, parent = menu, callback = function(on)
+                    self.pen_pressure = on; self:setSetting("inkaway_pen_pressure_beta", on)
+                    if on then self:installPressure() else self:removePressure() end
+                    again()
+                end })
+            if self.pen_pressure == true then
+                add(vspan(6))
+                add(self:segmentedRow({ { "soft", _("Light touch") }, { "medium", _("Medium") }, { "firm", _("Firm") } },
+                    self.pressure_curve or "medium", content_w,
+                    function(c) self.pressure_curve = c; self:setSetting("inkaway_pressure_curve", c); again() end))
+            end
+            add(vspan(4))
+            add(self:sheetHint(_("Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."), content_w))
         end
-        add(vspan(4))
-        add(self:sheetHint(_("Ballpoint, Fountain, Calligraphy and Pencil follow how hard you press. Without a pressure pen, Ballpoint and Fountain follow your speed instead."), content_w))
         -- a Boox: Ink Away asks for the fast refresh itself (see ink/einkdrive.lua)
         if self:onAndroid() and EinkDrive.detect() then
             add(vspan(10))

@@ -41,6 +41,7 @@ function InkAwayView:guideContext()
         book = book, canvas = not book,
         pen_capable = self:penCapable() and true or false,
         pen = (self.palm_reject and self:penCapable()) and true or false,
+        pressure = self:pressureReader() and true or false,
         colour = self:colorScreen() and true or false,
         android = self:onAndroid(),
         bindings = Actions.load(function(k) return self:getSetting(k) end),
