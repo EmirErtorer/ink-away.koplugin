@@ -351,12 +351,14 @@ do
     ok(fit ~= nil, "fit: Book ink offers it")
     view:closeSheet("_settings_dialog")
     view:setToolbarFit(true)
-    ok(view:fitsMargin() and view._vb_thick == 60 and v.area_x == 60, "fit: as wide as a 60 px left margin, the page beside it")
+    local gap = VBar.fitGap()
+    ok(gap > 0 and view:fitsMargin() and view._vb_thick == 60 - gap and v.area_x == 60 - gap,
+        "fit: a 60 px left margin, less a little space before the text (#17), the page beside it")
     local lo, hi = VBar.fitRange()
     view:setToolbarSide("right")
     ok(view._vb_thick == lo and v.area_w == W - lo, "fit: a margin too thin for icons gets the thinnest tappable toolbar")
     view:setToolbarSide("top")
-    ok(view._vb_thick == 45 and v.area_y == 45, "fit: at the top the header counts too")
+    ok(view._vb_thick == 45 - gap and v.area_y == 45 - gap, "fit: at the top the header counts too, less the space")
     view:setToolbarSide("bottom")
     ok(view._vb_thick == hi, "fit: a wide margin gets no more than the thickest")
     local isz = view._icon_sz

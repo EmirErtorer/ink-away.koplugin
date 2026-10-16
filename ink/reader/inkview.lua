@@ -409,12 +409,13 @@ function ReaderInkView:bookMargin(side)
     return px
 end
 
--- The toolbar's thickness when it fits the margin on its side, or nil for the
--- usual size (the setting off, or a book without margins).
+-- The toolbar's thickness when it fits the margin on its side, a little short of
+-- the text (VBar.fitGap), or nil for the usual size (the setting off, or a book
+-- without margins).
 function ReaderInkView:toolbarFit()
     if not self:fitsMargin() then return nil end
     local m = self:bookMargin(self._bar_side or "left")
-    return m and VBar.fitThickness(m) or nil
+    return m and VBar.fitThickness(m - VBar.fitGap()) or nil
 end
 
 -- Turn the margin fit on or off (from the book's settings).

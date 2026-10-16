@@ -32,6 +32,8 @@ versions marked *Prerelease* were test builds.
   writing speed, as they do with a finger.
 
 ### Fixed
+- With "Fit the toolbar in the margin" on, the book's toolbar ended right
+  where the text began. It now leaves a little space before the text.
 - With the screen turned upside down (a Kobo Libra Colour held with its
   buttons on the left, for one) the page under Ink Away was dark: strokes
   showed as white boxes and the eraser drew white, over a book and in

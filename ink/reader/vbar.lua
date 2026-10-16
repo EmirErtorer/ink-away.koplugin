@@ -34,6 +34,12 @@ function VBar.fitRange()
     return Screen:scaleBySize(26), Screen:scaleBySize(64)
 end
 
+-- The space left between a bar fitted in the margin and the book's text, so it
+-- does not end right where the text begins (about a millimetre).
+function VBar.fitGap()
+    return Screen:scaleBySize(6)
+end
+
 -- The bar's thickness for a margin `m` px wide, kept within fitRange.
 function VBar.fitThickness(m)
     local lo, hi = VBar.fitRange()
