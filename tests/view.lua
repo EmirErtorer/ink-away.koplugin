@@ -1081,6 +1081,17 @@ do
     ok(view.tool == prev_sel, "palm: the tool is restored after the side-button stroke")
     view:gestureBindings().pen_side = "highlighter"
     UIManager.fireScheduled()
+    -- with pencil.koplugin's input.lua the latch is kobo_eraser_active: the
+    -- Scribe's side button still highlights (#20)
+    view:setTool("pen")
+    Device.input.kobo_eraser_active = true
+    pen(0, midx, yy, 2)
+    ok(view.tool == "pen" and view.pen_style == "highlighter",
+        "palm: with pencil's input.lua the Scribe's side button highlights while held")
+    pen(-1, midx, yy, 2)
+    Device.input.kobo_eraser_active = nil
+    UIManager.fireScheduled()
+    ok(view.pen_style ~= "highlighter", "palm: and the pen is back after it")
 
     -- THE REGRESSION: a resting palm is routed to the stylus callback wearing tool
     -- 2 (MT_TOOL_PALM == TOOL_TYPE_ERASER) on a NON-pen slot. It must draw / erase
