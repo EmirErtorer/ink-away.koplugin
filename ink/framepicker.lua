@@ -45,8 +45,9 @@ local function preview(look, keep, maxw, maxh)
     return RenderImage:scaleBlitBuffer(bb, math.max(1, math.floor(w * s)), math.max(1, math.floor(h * s)), true)
 end
 
--- The frame grid. `o`: path (the drawing), open (opens it; shown as a button
--- when given), on_change.
+-- The frame grid: two pages of six, as the notebooks' cover sheet, opening on
+-- the page of the frame in use. `o`: path (the drawing), open (opens it; shown
+-- as a button when given), on_change.
 function FramePicker.show(o)
     local ThumbGrid = require("ink/ui/thumbgrid")
     local path = o.path
@@ -76,10 +77,14 @@ function FramePicker.show(o)
     if o.open then
         actions[#actions + 1] = { _("Open"), function() grid:close(); o.open() end, true }
     end
+    local list = items()
+    local start = 1
+    for i, it in ipairs(list) do if it.selected then start = i end end
     grid = ThumbGrid:new{
         title = Storage.stem(path),
-        items = items(),
-        cols = 4, rows = 3,
+        items = list,
+        start = start,
+        cols = 3, rows = 2,
         flash_open = false,
         actions = actions,
         render = function(it, maxw, maxh)
@@ -116,7 +121,7 @@ function FramePicker.finish(path, picture, keep, on_change)
     grid = ThumbGrid:new{
         title = FrameCover.names()[look.frame] or _("Finish"),
         items = items(),
-        cols = 4, rows = 1,
+        cols = 3, rows = 2,
         flash_open = false,
         close_label = _("Done"),
         render = function(it, maxw, maxh)
