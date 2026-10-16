@@ -154,6 +154,13 @@ With the [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) plugin inst
     <td width="50%" valign="top"><a href="assets/screenshots/bookshelf-drawings.png"><img src="assets/screenshots/bookshelf-drawings.png" alt="Drawings shelf"></a><br><sub>Drawings on a Bookshelf shelf, each in its own frame.</sub></td>
   </tr>
 </table>
+<table>
+  <tr>
+    <td width="33%" valign="top"><a href="assets/screenshots/bookshelf-covers.png"><img src="assets/screenshots/bookshelf-covers.png" alt="Cover styles"></a><br><sub>Hold a notebook to pick its cover style, or its colour.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/bookshelf-frames.png"><img src="assets/screenshots/bookshelf-frames.png" alt="Frames"></a><br><sub>Hold a drawing to pick its frame from twelve, shown on the drawing itself.</sub></td>
+    <td width="33%" valign="top"><a href="assets/screenshots/bookshelf-finishes.png"><img src="assets/screenshots/bookshelf-finishes.png" alt="Finishes"></a><br><sub>Each frame comes in a few finishes, here gold, antique gold and silver gilt.</sub></td>
+  </tr>
+</table>
 </details>
 
 ### Export
