@@ -12,6 +12,7 @@ ignore = { "21./_.*" }
 -- Tests reuse names, shadow and overwrite freely, and fill in a few stand-ins.
 files["tests/"] = { ignore = { "21", "23", "311", "4", "542" } }
 files["tests/scribe/harness.lua"] = { globals = { table = { fields = { "pack" } } } }
+files["tests/scribe/views.lua"] = { globals = { table = { fields = { "pack" } } } }
 
 -- build output
 exclude_files = { "dist/" }

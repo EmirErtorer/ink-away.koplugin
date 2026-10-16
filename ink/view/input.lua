@@ -98,27 +98,74 @@ function InkAwayView:deviceHasStylus()
     return Device.input and Device.input.wacom_protocol == true and true or false
 end
 
+-- Several Ink Away views can be open at once (a book's notes over its
+-- annotation, the canvas over a book), and KOReader keeps one stylus callback.
+-- The views holding the pen, oldest first, and the callback that held it before
+-- the first of them (another plugin's), so a view that closes gives the pen
+-- back to the one under it, or to that callback, never to nobody while a view
+-- still draws. They share one pen bridge, which goes with the last of them.
+local holders, outside_cb, ours = {}, nil, setmetatable({}, { __mode = "k" })
+local shared_bridge, bridge_users = nil, 0
+
+-- Take the pen for this view.
+function InkAwayView:takeStylus()
+    if self._stylus_cb then return end
+    local inp = Device.input
+    local cb = function(i, slot) return self:onStylusSlot(i, slot) end
+    self._stylus_cb = cb
+    ours[cb] = true
+    if #holders == 0 then
+        local cur = inp.stylus_callback
+        outside_cb = (cur and not ours[cur]) and cur or nil
+    end
+    holders[#holders + 1] = self
+    inp:registerStylusCallback(cb)
+end
+
+-- Give the pen back (see takeStylus); a callback registered since this view
+-- took the pen (another plugin's, a pen test) is left in place.
+function InkAwayView:releaseStylus()
+    local cb = self._stylus_cb
+    if not cb then return end
+    self._stylus_cb = nil
+    for i = #holders, 1, -1 do
+        if holders[i] == self or holders[i].closing then table.remove(holders, i) end
+    end
+    local inp = Device.input
+    if not inp or inp.stylus_callback ~= cb then return end
+    local top = holders[#holders]
+    if top and top._stylus_cb then
+        pcall(function() inp:registerStylusCallback(top._stylus_cb) end)
+    elseif outside_cb then
+        pcall(function() inp:registerStylusCallback(outside_cb) end)
+    else
+        pcall(function() inp:unregisterStylusCallback() end)
+    end
+    if #holders == 0 then outside_cb = nil end
+end
+
 -- Register or drop the stylus callback to match self.palm_reject. Called at
 -- startup and whenever the setting is toggled.
 function InkAwayView:applyPalmReject()
     if not self:penCapable() then return end
     if self.palm_reject then
-        if not self._stylus_cb then
-            self._stylus_cb = function(inp, slot) return self:onStylusSlot(inp, slot) end
-            Device.input:registerStylusCallback(self._stylus_cb)
-        end
+        self:takeStylus()
         -- Keep the pen's events on the pen's own slot so a resting palm can never
-        -- swallow its lift (Wacom devices only; see ink/penbridge.lua).
+        -- swallow its lift (Wacom devices only; see ink/penbridge.lua). A bridge
+        -- another open view installed is shared.
         if not self._pen_bridge and not self.closing then
-            local ok, h = pcall(PenBridge.install, Device.input)
-            self._pen_bridge = ok and h or nil
+            if not (shared_bridge and not shared_bridge.dead and shared_bridge.input == Device.input) then
+                local ok, h = pcall(PenBridge.install, Device.input)
+                shared_bridge, bridge_users = ok and h or nil, 0
+            end
+            self._pen_bridge = shared_bridge
+            if shared_bridge then bridge_users = bridge_users + 1 end
         end
         self:installPressure()
     else
         self:removePenBridge()
         if self._stylus_cb then
-            pcall(function() Device.input:unregisterStylusCallback() end)
-            self._stylus_cb = nil
+            self:releaseStylus()
             self:resetPenState()
         end
     end
@@ -198,10 +245,15 @@ end
 
 function InkAwayView:removePenBridge()
     self:removePressure()
-    if self._pen_bridge then
-        pcall(PenBridge.uninstall, self._pen_bridge)
-        self._pen_bridge = nil
+    local h = self._pen_bridge
+    if not h then return end
+    self._pen_bridge = nil
+    if h == shared_bridge then
+        bridge_users = bridge_users - 1
+        if bridge_users > 0 and not h.dead then return end   -- another view still draws
+        shared_bridge, bridge_users = nil, 0
     end
+    pcall(PenBridge.uninstall, h)
 end
 
 ------------------------------------------------------------------------------

@@ -1278,6 +1278,53 @@ do
     view:onCloseWidget()
 end
 
+-- ---- the pen passed between views: a book's notes over its annotation (#27) ----
+-- KOReader keeps one stylus callback. A view that closes or stops palm rejection
+-- gives the pen back to the view under it, or to the callback that held it
+-- before Ink Away (another plugin's, #38), never to nobody while a view draws.
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local inp = Device.input
+    local function open()
+        local v = InkAwayView:new{}
+        v.palm_reject = true
+        v:applyPalmReject()
+        return v
+    end
+    local other = function() return false end   -- another plugin's callback
+    inp.stylus_callback = other
+    local A = open()
+    ok(inp.stylus_callback == A._stylus_cb, "pen chain: the annotation takes the pen")
+    local B = open()
+    ok(inp.stylus_callback == B._stylus_cb, "pen chain: the notes over it take it")
+    B:onCloseWidget()
+    ok(inp.stylus_callback == A._stylus_cb, "pen chain: the notes closed, the annotation has the pen again")
+    A:onCloseWidget()
+    ok(inp.stylus_callback == other, "pen chain: the annotation closed, the other plugin has its pen back (#38)")
+    -- the other order: the one underneath closes first
+    inp.stylus_callback = nil
+    A = open(); B = open()
+    A:onCloseWidget()
+    ok(inp.stylus_callback == B._stylus_cb, "pen chain: the view underneath closed, the one on top keeps the pen")
+    B:onCloseWidget()
+    ok(inp.stylus_callback == nil, "pen chain: the last closed, nothing holds the pen")
+    -- palm rejection turned off on top gives the pen to the view underneath
+    A = open(); B = open()
+    B.palm_reject = false
+    B:applyPalmReject()
+    ok(inp.stylus_callback == A._stylus_cb, "pen chain: palm rejection off on top, the view underneath has the pen")
+    B:onCloseWidget(); A:onCloseWidget()
+    -- a callback registered since (a pen test) is left where it is
+    A = open()
+    local pentest = function() return true end
+    inp:registerStylusCallback(pentest)
+    A:onCloseWidget()
+    ok(inp.stylus_callback == pentest, "pen chain: a callback registered since is left in place")
+    inp.stylus_callback = nil
+end
+
 -- ---- SliderRow: drag updates value/fill/knob/text IN PLACE (no rebuild) -------
 do
     local SliderRow = require("ink/ui/controls").SliderRow

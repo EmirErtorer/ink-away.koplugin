@@ -89,6 +89,12 @@ versions marked *Prerelease* were test builds.
   refresh at every point the pen reported, more than the Scribe's display can
   show, so the requests queued up. The live ink is now shown at a steady pace
   of up to fifty refreshes a second, as on colour readers.
+- Closing Ink Away took the pen away from whatever had it before: another
+  plugin that draws with the pen lost it until it was opened again, and with
+  two Ink Away windows open (a book's notes and its annotation), closing one
+  left the other without palm rejection, so the hand drew lines. Closing a
+  window now gives the pen back to the one under it, or to the plugin that
+  had it.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 

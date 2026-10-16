@@ -421,10 +421,7 @@ function InkAwayView:onCloseWidget()
     self:uninstallRawFinger()
     self:stopEinkDrive()
     self:removePenBridge()
-    if self._stylus_cb then
-        pcall(function() Device.input:unregisterStylusCallback() end)
-        self._stylus_cb = nil
-    end
+    self:releaseStylus()   -- the pen goes back to the view under this one, if any
     UIManager:unschedule(self._pen_clear)
     UIManager:unschedule(self._pen_ui_end)
     UIManager:unschedule(self._finalize)
