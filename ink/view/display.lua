@@ -458,13 +458,29 @@ function InkAwayView:nowMs()
     return os.time() * 1000
 end
 
+-- A Kindle Scribe: an MTK panel with a Wacom pen. Its pen gives far more samples
+-- a second than a finger, and KOReader sends fast refreshes there without
+-- waiting for the panel, so a refresh per sample queues work faster than the
+-- display driver retires it: the ink falls seconds behind the pen and timers
+-- (holding still to straighten) fire while the pen's frames wait. Live
+-- refreshes are paced there as on a colour panel (see liveDirty), as the
+-- plugins made for the Scribe do.
+function InkAwayView:mtkPen()
+    if self._mtk_pen == nil then
+        local ok, r = pcall(function() return Device:isMTK() end)
+        local inp = Device.input
+        self._mtk_pen = (ok and r and inp and inp.wacom_protocol) and true or false
+    end
+    return self._mtk_pen
+end
+
 -- Refresh a live-drawing rect. On grey e-ink this is dirtyAreaRect. On a colour
--- panel or on Android the rect joins the pending one, which is sent at a bounded
--- pace (see LIVE_*_MS): the first sample shows at once, later ones go with the
--- next update.
+-- panel, on Android or on a Kindle Scribe the rect joins the pending one, which
+-- is sent at a bounded pace (see LIVE_*_MS): the first sample shows at once,
+-- later ones go with the next update.
 function InkAwayView:liveDirty(mode, r, pad)
     local android = self:onAndroid()
-    if not (android or self:colourPanel()) then return self:dirtyAreaRect(mode, r, pad) end
+    if not (android or self:colourPanel() or self:mtkPen()) then return self:dirtyAreaRect(mode, r, pad) end
     local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
     if not x0 then return end
     if self.capturing then self._blit_rect = growRect(self._blit_rect, x0, y0, x1, y1) end

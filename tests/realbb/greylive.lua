@@ -4,6 +4,7 @@
 -- moves, each covering only the pixels that sample changed (a sliver at the
 -- front of the stroke, not a box round the tip), and the screen equals the
 -- saved stroke. The smudge and the other pens keep their refresh per sample.
+-- A Kindle Scribe paces its live refreshes (see InkAwayView:mtkPen).
 -- Run (the test runner does this):  cd <emulator>/koreader && ./luajit <repo>/tests/realbb/greylive.lua <repo>
 local REPO = arg[1] or "."
 require("ffi/loadlib")
@@ -146,6 +147,50 @@ do
     local n = drag(view, tick, 300, 700, view.view.area_y + 500)
     ok(#rs > 0 and #rs < n, "colour: refreshes paced as before")
     view:onIaPanRelease(nil, { pos = { x = 700, y = view.view.area_y + 500 } }); view:flushPending()
+    done()
+end
+
+-- a Kindle Scribe (MTK panel, Wacom pen) paces its live refreshes: at most one
+-- every 20 ms for black ink (80 ms for grey), each covering all that changed
+-- since the last, still following the pen, and the end shown after the lift;
+-- a grey reader without that pen keeps a refresh per sample (above)
+for _i, pen in ipairs({ { "solid", { 0, 0, 0 }, "fast", 20 }, { "highlighter", nil, "ui", 80 } }) do
+    local view, rs, tick, done = world(false)
+    Device.isMTK = function() return true end
+    Device.input.wacom_protocol = true
+    local v = view.view
+    view:choosePenType(pen[1]); view:setTool("pen")
+    if pen[2] then view.pen_color = pen[2] end
+    view.pen_width, view.pen_alpha = 8, 255
+    local y = v.area_y + 600
+    for k = #rs, 1, -1 do rs[k] = nil end
+    local n = drag(view, tick, 300, 700, y)   -- 8 ms a sample
+    local live = count(rs, pen[3])
+    local most = math.floor(n * 8 / pen[4]) + 2
+    ok(view:mtkPen(), pen[1] .. " (Scribe): taken for a Kindle Scribe")
+    ok(live <= most and live >= math.floor(most / 2),
+        ("%s (Scribe): refreshes paced, %d for %d samples (at most %d)"):format(pen[1], live, n, most))
+    -- they follow the pen: one reaches its middle while it is still drawing
+    local mid = false
+    for _k, r in ipairs(rs) do
+        local g = r.region
+        if g and g.x <= 500 and g.x + g.w >= 500 then mid = true end
+    end
+    ok(mid, pen[1] .. " (Scribe): the ink shows as the pen goes, not only at the end")
+    view:onIaPanRelease(nil, { pos = { x = 700, y = y } })
+    view:flushPending()
+    tick(200); UIManager.fireScheduled()
+    -- all of the stroke was refreshed, its end included
+    local x0, x1 = math.huge, -math.huge
+    for _k, r in ipairs(rs) do
+        local g = r.region
+        if g and g.y <= y and g.y + g.h >= y then
+            x0 = math.min(x0, g.x); x1 = math.max(x1, g.x + g.w)
+        end
+    end
+    ok(x0 <= 300 and x1 >= 700, ("%s (Scribe): the whole stroke was refreshed, %d to %d"):format(pen[1], x0, x1))
+    Device.isMTK = nil
+    Device.input.wacom_protocol = false
     done()
 end
 

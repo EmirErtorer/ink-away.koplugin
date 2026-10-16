@@ -84,6 +84,11 @@ versions marked *Prerelease* were test builds.
   the others. That end now shows on the screen at once; it often waited for
   the page's next full redraw before. A page full of Ballpoint or Fountain
   writing draws faster too.
+- On a Kindle Scribe the ink could fall seconds behind the pen, and letters
+  written quickly came out straightened. Ink Away asked the screen for a
+  refresh at every point the pen reported, more than the Scribe's display can
+  show, so the requests queued up. The live ink is now shown at a steady pace
+  of up to fifty refreshes a second, as on colour readers.
 
 ## [4.1.0] - 2026-10-11 *Prerelease*
 
