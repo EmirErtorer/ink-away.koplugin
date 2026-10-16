@@ -419,9 +419,9 @@ function InkAwayView:paintShapePreview(bb, x, y)
         return
     end
     if sp.fill_color and not sp.fill then
-        Shapes.fill(sp, makePut(displayColor(Paint.inkOnPaper(sp.fill_color, self:paperRGB()), sp.fill_alpha)))
+        Shapes.fill(sp, makePut(displayColor(self:shownInk(sp.fill_color, self:paperRGB()), sp.fill_alpha)))
     end
-    Shapes.render(sp, makePut(displayColor(Paint.inkOnPaper(sp.color, self:paperRGB()), sp.alpha)))
+    Shapes.render(sp, makePut(displayColor(self:shownInk(sp.color, self:paperRGB()), sp.alpha)))
 end
 
 return InkAwayView

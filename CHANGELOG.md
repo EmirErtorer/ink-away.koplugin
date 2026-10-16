@@ -9,6 +9,9 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- On colour screens ink keeps its colour in KOReader's night mode: blue
+  stays blue instead of turning yellow, and dark ink turns light so it reads
+  on the dark page. Keep colours in night mode in Settings turns it off.
 - In annotation mode the eraser takes away the highlights it crosses, as it
   does ink, in one undo step with whatever ink it cut. A long press on a
   highlight (with a finger while palm rejection is on, or with the lasso)

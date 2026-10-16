@@ -5,6 +5,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local UIManager = require("ui/uimanager")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Paint = require("ink/paint")
@@ -12,6 +13,7 @@ local Palette = require("ink/palette")
 local Smudge = require("ink/smudge")
 local Wash = require("ink/wash")
 local Symmetry = require("ink/symmetry")
+local Theme = require("ink/ui/theme")
 
 local WHITE = Blitbuffer.COLOR_WHITE
 local displayColor = Paint.displayColor
@@ -28,7 +30,59 @@ local InkAwayView = {}
 function InkAwayView:opColor(op, paper)
     if op.kind == "erase" then return WHITE end
     if paper == nil then paper = self:paperRGB() end
-    return displayColor(Paint.inkOnPaper(op.color, paper), op.alpha or 255)
+    return displayColor(self:shownInk(op.color, paper), op.alpha or 255)
+end
+
+-- Are ink colours turned for KOReader's night mode (see Paint.nightInk)? On a
+-- colour screen in night mode, unless Keep colours in night mode is off.
+function InkAwayView:nightInk()
+    if not (Theme.nightMode() and self:colorScreen()) then return false end
+    return self:getSetting("inkaway_night_colours", true) ~= false
+end
+
+-- An ink colour as the screen shows it: on its paper (Paint.inkOnPaper), and
+-- turned for night mode when the colours are kept there. Not while drawing
+-- what is saved to a file (thumbnails, covers: see trueColours).
+function InkAwayView:shownInk(rgb, paper)
+    local c = Paint.inkOnPaper(rgb, paper)
+    if not self._true_colours and self:nightInk() then c = Paint.nightInk(c) end
+    return c
+end
+
+-- KOReader's night mode turned on or off (it inverts the screen on its own), or
+-- Keep colours in night mode (`setting`) turned on or off in night mode: on a
+-- colour screen the page is drawn again in the colours that now show right,
+-- once KOReader has made the change.
+function InkAwayView:nightModeChanged(setting)
+    if not self:colorScreen() then return end
+    if not setting and self:getSetting("inkaway_night_colours", true) == false then return end
+    if setting and not Theme.nightMode() then return end   -- (nothing shows differently by day)
+    UIManager:nextTick(function()
+        if self.closing or not self.canvas_bb then return end
+        self:composeCanvas()
+        self:renderView()
+        self._paint_all = true
+        UIManager:setDirty(self, "full")
+    end)
+end
+function InkAwayView:onToggleNightMode() self:nightModeChanged() end
+function InkAwayView:onSetNightMode() self:nightModeChanged() end
+
+-- Run fn drawing ink in its own colours whatever the night mode: for a page
+-- drawn to be kept (a thumbnail, a cover), which day mode shows too.
+function InkAwayView:trueColours(fn)
+    local was = self._true_colours
+    self._true_colours = true
+    local ok, err = pcall(fn)
+    self._true_colours = was
+    if not ok then error(err, 0) end
+end
+
+-- A see-through stroke as the screen shows it (its colour turned for night
+-- mode, see shownInk): the op itself, or a stand-in with the turned colour.
+function InkAwayView:shownWash(op)
+    if self._true_colours or not self:nightInk() or not op.color then return op end
+    return setmetatable({ color = Paint.nightInk(op.color) }, { __index = op })
 end
 
 -- A span writer clipped to `region` (a canvas rect {x0, y0, x1, y1}), or put
@@ -163,7 +217,7 @@ function InkAwayView:composeInto(dst, ops, bg_bb, template, reveal_text, reveal_
                 end
                 if op.kind == "shape" and op.fill_color and not op.fill then
                     fill_put = Symmetry.wrap(inRegion(
-                        spanWriter(dst, W, H, displayColor(Paint.inkOnPaper(op.fill_color, paper),
+                        spanWriter(dst, W, H, displayColor(self:shownInk(op.fill_color, paper),
                             op.fill_alpha or 255), nil), region),
                         op.sym, refx, refy)
                 end
@@ -197,8 +251,9 @@ function InkAwayView:washInto(dst, op, st, region)
     local W, H = self.view.canvas_w, self.view.canvas_h
     local m = Wash.cachedMask(op, st, W, H)
     if not m then return end
-    if region then Wash.blendBB(dst, m, op, st, region.x0, region.y0, region.x1, region.y1)
-    else Wash.blendBB(dst, m, op, st) end
+    local shown = self:shownWash(op)
+    if region then Wash.blendBB(dst, m, shown, st, region.x0, region.y0, region.x1, region.y1)
+    else Wash.blendBB(dst, m, shown, st) end
 end
 
 -- The buffer the eraser reveals under the ink. In a notebook that is the paper
@@ -365,7 +420,7 @@ function InkAwayView:stampOpIntoCanvas(op)
     local fill_put
     if op.kind == "shape" and op.fill_color and not op.fill then
         fill_put = spanWriter(self.canvas_bb, self.view.canvas_w, self.view.canvas_h,
-            displayColor(Paint.inkOnPaper(op.fill_color, self:paperRGB()), op.fill_alpha or 255), cacc)
+            displayColor(self:shownInk(op.fill_color, self:paperRGB()), op.fill_alpha or 255), cacc)
     end
     if op.sym and op.sym ~= "off" then
         local refx, refy = Symmetry.canvasRefs(self.view.canvas_w, self.view.canvas_h)

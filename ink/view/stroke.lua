@@ -39,7 +39,7 @@ local InkAwayView = {}
 -- Current live ink colour and width, from the active tool.
 function InkAwayView:liveColor()
     if self.tool == "erase" then return WHITE end
-    return displayColor(Paint.inkOnPaper(self.pen_color, self:paperRGB()), self.pen_alpha)
+    return displayColor(self:shownInk(self.pen_color, self:paperRGB()), self.pen_alpha)
 end
 function InkAwayView:liveWidth()
     return (self.tool == "erase") and self.eraser_width or self.pen_width

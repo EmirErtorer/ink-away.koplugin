@@ -91,6 +91,21 @@ local function uiFill(rgb)
     return Blitbuffer.ColorRGB32(r, g, b, 0xFF)
 end
 
+-- An ink colour {r,g,b} drawn so that KOReader's night mode, which inverts the
+-- whole screen, shows it in its own hue (#11): its hue turned half way round,
+-- its lightness and saturation kept. The inverted screen then shows the same
+-- hue with the lightness inverted, so dark blue ink is a light blue on the
+-- dark page and a yellow highlight a deep one under the light text. A grey
+-- (black, white) is left as it is and inverts as before.
+local function nightInk(rgb)
+    if not rgb then return rgb end
+    local r, g, b = rgb[1] or 0, rgb[2] or 0, rgb[3] or 0
+    local hi, lo = math.max(r, g, b), math.min(r, g, b)
+    if hi == lo then return rgb end
+    local s = hi + lo
+    return { s - r, s - g, s - b }
+end
+
 -- Is this a real colour (not black, white or grey)?
 local function isChromatic(color)
     if not (color and color.getColorRGB32) then return false end
@@ -209,6 +224,7 @@ Paint.strengthToLevel = strengthToLevel
 Paint.displayColor = displayColor
 Paint.uiFill = uiFill
 Paint.isChromatic = isChromatic
+Paint.nightInk = nightInk
 Paint.fillRect = fillRect
 Paint.outline = outline
 Paint.brushSample = brushSample

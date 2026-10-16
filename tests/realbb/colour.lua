@@ -325,6 +325,79 @@ do
     view:onCloseWidget(); done()
 end
 
+-- KOReader's night mode on a colour screen (#11): it inverts the whole screen,
+-- so the page is drawn with each colour's hue turned half way round and its
+-- lightness kept, and the inverted screen shows the colour's own hue (lightness
+-- inverted: dark ink light on the dark page). Black and greys stay as they are.
+-- Thumbnails, kept as files, keep their own colours; the setting turns it off.
+do
+    local Paint = require("ink/paint")
+    local function hue(r, g, b)
+        local hi, lo = math.max(r, g, b), math.min(r, g, b)
+        if hi == lo then return nil end
+        local d = hi - lo
+        local h
+        if hi == r then h = ((g - b) / d) % 6 elseif hi == g then h = (b - r) / d + 2 else h = (r - g) / d + 4 end
+        return h * 60
+    end
+    local blue = { 25, 45, 130 }
+    local n = Paint.nightInk(blue)
+    local shown = { 255 - n[1], 255 - n[2], 255 - n[3] }   -- what the inverted screen shows
+    ok(math.abs(hue(shown[1], shown[2], shown[3]) - hue(blue[1], blue[2], blue[3])) < 1,
+        "night: the screen shows the ink's own hue (blue stays blue)")
+    ok((math.max(shown[1], shown[2], shown[3]) + math.min(shown[1], shown[2], shown[3])) / 2 > 128,
+        "night: and dark blue shows light on the dark page")
+    ok(Paint.nightInk({ 0, 0, 0 })[1] == 0 and Paint.nightInk({ 128, 128, 128 })[2] == 128,
+        "night: black and grey are left as they are")
+    -- the page drawn in night mode
+    local view, modes, tick, done = world(BB.TYPE_BBRGB32)
+    Device.screen.night_mode = true
+    G_reader_settings.data.inkaway_night_colours = nil
+    view:choosePenType("solid"); view:setTool("pen")
+    view.pen_color, view.pen_width, view.pen_alpha = blue, 12, 255
+    local v = view.view
+    local y = v.area_y + 500
+    view:onIaTouch(nil, { pos = { x = 300, y = y } })
+    for i = 1, 8 do tick(8); view:onIaPan(nil, { pos = { x = 300 + i * 30, y = y } }) end
+    view:onIaPanRelease(nil, { pos = { x = 540, y = y } })
+    view:flushPending(); tick(2000); UIManager.fireScheduled()
+    local cx, cy = require("ink/geom").toCanvas(v, 420, y)
+    local r, g, b = rgb(view.canvas_bb, math.floor(cx), math.floor(cy))
+    ok(r == n[1] and g == n[2] and b == n[3], ("night: the stroke is drawn turned for night mode (%d,%d,%d)"):format(r, g, b))
+    view:composeCanvas()
+    r, g, b = rgb(view.canvas_bb, math.floor(cx), math.floor(cy))
+    ok(r == n[1] and g == n[2] and b == n[3], "night: and so when the page is drawn again")
+    -- a see-through pen too
+    local Wash = require("ink/wash")
+    local wop = { kind = "ink", style = "marker", color = { 210, 40, 40 }, alpha = 190, width = 20, pts = { 100, 100, 200, 100 } }
+    ok(view:shownWash(wop).color[2] == Paint.nightInk({ 210, 40, 40 })[2] and view:shownWash(wop).width == 20,
+        "night: a see-through pen's colour is turned, the rest of the stroke as it is")
+    ok(Wash ~= nil and wop.color[1] == 210, "night: the saved stroke keeps its colour")
+    -- a thumbnail (kept as a file) keeps the true colour
+    local tc
+    view:trueColours(function() tc = view:shownInk(blue, nil) end)
+    ok(tc[1] == 25 and tc[3] == 130, "night: a thumbnail is drawn in the ink's own colours")
+    -- the setting off: as before
+    G_reader_settings.data.inkaway_night_colours = false
+    view:composeCanvas()
+    r, g, b = rgb(view.canvas_bb, math.floor(cx), math.floor(cy))
+    ok(r == 25 and g == 45 and b == 130, "night: with Keep colours in night mode off, the ink's own colour as before")
+    -- day: the ink's own colour
+    G_reader_settings.data.inkaway_night_colours = nil
+    Device.screen.night_mode = false
+    view:composeCanvas()
+    r, g, b = rgb(view.canvas_bb, math.floor(cx), math.floor(cy))
+    ok(r == 25 and g == 45 and b == 130, "night: by day, the ink's own colour")
+    -- turning night mode on redraws the page in its night colours
+    Device.screen.night_mode = true
+    view:onToggleNightMode()
+    UIManager.fireScheduled()
+    r, g, b = rgb(view.canvas_bb, math.floor(cx), math.floor(cy))
+    ok(r == n[1] and g == n[2] and b == n[3], "night: turning night mode on draws the page again in its night colours")
+    Device.screen.night_mode = nil
+    view:onCloseWidget(); done()
+end
+
 print(("realbb colour: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)

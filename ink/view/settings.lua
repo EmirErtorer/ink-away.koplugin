@@ -281,6 +281,15 @@ function InkAwayView:openSettings()
             add(vspan(4))
             add(self:sheetHint(_("Off: colour ink shows black until the pen rests, which reads more clearly on some colour e-ink screens."), content_w))
             add(vspan(16))
+            add(ToggleRow:new{ label = _("Keep colours in night mode"),
+                is_on = self:getSetting("inkaway_night_colours", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_night_colours", on)
+                    self:nightModeChanged(true)
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."), content_w))
+            add(vspan(16))
         end
 
         -- grid (canvas) or paper (notebook), and beside it the paper's colour

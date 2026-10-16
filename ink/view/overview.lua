@@ -326,7 +326,9 @@ function InkAwayView:renderOtherPage(nb, i, maxw, maxh)
     local page = nb.pages[i]
     local scratch = Blitbuffer.new(W, H, self.canvas_bb and self.canvas_bb:getType() or Blitbuffer.TYPE_BBRGB32)
     local bg = nb.template.pdf_path and page.src and self:overviewPdfPage(nb.template.pdf_path, page.src, W, H)
-    self:withOwnImageCache(function() self:composeInto(scratch, page.ops, bg, nb:pageTemplate(i)) end)
+    self:trueColours(function()   -- (kept as a file, shown in day mode too)
+        self:withOwnImageCache(function() self:composeInto(scratch, page.ops, bg, nb:pageTemplate(i)) end)
+    end)
     if bg then bg:free() end
     local scale = math.min(maxw / W, maxh / H)
     local thumb = RenderImage:scaleBlitBuffer(scratch, math.max(1, math.floor(W * scale)),

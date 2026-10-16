@@ -564,7 +564,7 @@ function InkAwayView:renderPageThumb(index, maxw, maxh)
         self:ensureNotebookPDF()
         bg = self:renderPdfPage(self._nb_pdf_doc, page.src)
     end
-    self:composeInto(scratch, page.ops, bg, nb:pageTemplate(index))
+    self:trueColours(function() self:composeInto(scratch, page.ops, bg, nb:pageTemplate(index)) end)
     if bg then bg:free() end
     local scale = math.min(maxw / W, maxh / H)
     local tw = math.max(1, math.floor(W * scale))

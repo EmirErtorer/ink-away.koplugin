@@ -261,7 +261,7 @@ function InkAwayView:textPaints(ink, colour, paper)
         color = ink,
         highlight = grey_mark,
         ink = function(c)
-            local rgb = Paint.inkOnPaper(Text.unpackRGB(c), paper)
+            local rgb = self:shownInk(Text.unpackRGB(c), paper)
             if not colour then return Blitbuffer.Color8(math.floor(Paint.lum(rgb) + 0.5)), false end
             return rgbColor(rgb), not (rgb[1] == rgb[2] and rgb[2] == rgb[3])
         end,

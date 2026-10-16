@@ -371,7 +371,9 @@ function InkAwayView:renderDocThumb(path, maxw, maxh)
             if ok and img then bg = fitIntoCanvasBB(img, W, H) end
         end
     end
-    self:withOwnImageCache(function() self:composeInto(scratch, ops, bg, template) end)
+    self:trueColours(function()   -- (kept as a file, shown in day mode too)
+        self:withOwnImageCache(function() self:composeInto(scratch, ops, bg, template) end)
+    end)
     if bg then bg:free() end
     local scale = math.min(maxw / W, maxh / H)
     local thumb = RenderImage:scaleBlitBuffer(scratch, math.max(1, math.floor(W * scale)),
