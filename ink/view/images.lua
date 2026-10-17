@@ -74,8 +74,8 @@ function InkAwayView:removeBackground()
 end
 
 -- Let the reader pick a PNG or JPEG, starting in KOReader's home folder.
-function InkAwayView:pickImageFile(on_pick)
-    self:pickFile(self:homeDir(), function(path)
+function InkAwayView:pickImageFile(on_pick, start)
+    self:pickFile(start or self:homeDir(), function(path)
         local lower = path:lower()
         if lower:match("%.png$") or lower:match("%.jpe?g$") then
             on_pick(path)
@@ -360,6 +360,15 @@ function InkAwayView:chooseImage()
         add(vspan(16))
         add(self:actionButton(_("Local file"), content_w, function()
             closeSelf(); self:chooseLocalImage() end, true))
+        -- pictures sent from a phone or computer (see ink/view/receive.lua)
+        local sent = self:importedImageCount()
+        if sent > 0 then
+            add(vspan(10))
+            add(self:actionButton(string.format(_("From your phone (%d)"), sent), content_w, function()
+                closeSelf()
+                self:pickImageFile(function(path) self:insertImage(path) end, self:importedImagesDir())
+            end))
+        end
         add(vspan(10))
         add(self:actionButton(_("Browse online"), content_w, function()
             closeSelf(); self:browseOnlineImages() end))
@@ -405,6 +414,16 @@ function InkAwayView:openBackground()
 end
 
 -- Pick a local PNG or JPEG and insert it.
+-- How many pictures were sent to the reader (see ink/view/receive.lua).
+function InkAwayView:importedImageCount()
+    local dir = Storage.appRootPath() and Storage.join(Storage.appRootPath(), "imported images")
+    local n = 0
+    for _i, e in ipairs(dir and Storage.list(dir) or {}) do
+        if e.mode == "file" and e.name:sub(1, 1) ~= "." and e.name:lower():match("%.[jp][pn]e?g$") then n = n + 1 end
+    end
+    return n
+end
+
 function InkAwayView:chooseLocalImage()
     self:pickImageFile(function(path) self:insertImage(path) end)
 end

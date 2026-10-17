@@ -62,6 +62,12 @@ local function realInside(path, root)
     return rp == rr or rp:sub(1, #rr + 1) == rr .. "/"
 end
 
+-- An HTML reply, with the page's security policy (`nonce`: the one script
+-- the page may run).
+local function html(reply, code, body, nonce)
+    reply.send(code, Http.TYPES.html, body, { Page.csp(nonce), "X-Frame-Options: DENY" })
+end
+
 local function hex(rgb)
     return rgb and string.format("#%02x%02x%02x", rgb[1], rgb[2], rgb[3]) or nil
 end
@@ -99,7 +105,9 @@ function InkAwayView:startSend()
     local Server = require("ink/share/server")
     local Event = require("ui/event")
     local send = { token = Http.token(Http.randomBytes(12), 12), ip = ip, sent = 0, last = os.time(),
-        cache = Storage.join(Storage.cacheDir(), "send"), queue = {}, jobs = {}, thumbs = {}, cancelled = {} }
+        cache = Storage.join(Storage.cacheDir(), "send"), queue = {}, jobs = {}, thumbs = {}, cancelled = {},
+        -- adding files (see ink/view/receive.lua): off each time sharing starts
+        allow_upload = false, received = 0, importing = 0, arrived = {}, noted = {} }
     Storage.ensureDir(send.cache)
     send.server = Server.new{
         socket = socket,
@@ -122,7 +130,8 @@ function InkAwayView:startSend()
     self._send = send
     send.idle = function()
         if self._send ~= send then return end
-        if os.time() - send.last >= IDLE_MINUTES * 60 and not send.server:busy() and not send.running then
+        if os.time() - send.last >= IDLE_MINUTES * 60 and not send.server:busy() and not send.current
+                and send.importing == 0 then
             self:stopSend()
             self:closeSheet("_send_dialog")
             self:showNotice(_("Sharing stopped after a while with nothing sent"))
@@ -144,6 +153,7 @@ function InkAwayView:stopSend()
     UIManager:unschedule(send.idle)
     if send.status_tick then UIManager:unschedule(send.status_tick) end
     if send.thumb_tick then UIManager:unschedule(send.thumb_tick) end
+    if send.arrival_tick then UIManager:unschedule(send.arrival_tick) end
     if send.step then UIManager:unschedule(send.step) end
     if send.job then pcall(send.job.cancel) end
     if send.spec_done then pcall(send.spec_done) end
@@ -184,21 +194,40 @@ function InkAwayView:sendProgress()
     end
     local list = send.server:transfers()
     if #list > 0 then
-        local sent, total = 0, 0
-        for _i, t in ipairs(list) do sent = sent + t.sent; total = total + t.total end
-        local label = #list == 1
-            and string.format(_("Sending %s: %s of %s"), list[1].name, Http.size(sent), Http.size(total))
-            or string.format(_("Sending %d files: %s of %s"), #list, Http.size(sent), Http.size(total))
-        return { label = label, fraction = total > 0 and sent / total or 0,
-            cancel = function() send.server:cancelTransfers(); self:sendStatusChanged() end }
+        local sent, total, incoming = 0, 0, 0
+        for _i, t in ipairs(list) do
+            sent = sent + t.sent; total = total + t.total
+            if t.incoming then incoming = incoming + 1 end
+        end
+        local label
+        if #list == 1 then
+            label = string.format(incoming == 1 and _("Receiving %s: %s of %s") or _("Sending %s: %s of %s"),
+                list[1].name, Http.size(sent), Http.size(total))
+        else
+            label = string.format(incoming == #list and _("Receiving %d files: %s of %s")
+                or _("Sending %d files: %s of %s"), #list, Http.size(sent), Http.size(total))
+        end
+        return { label = label, fraction = total > 0 and sent / total or 0, cancel = function()
+            send.server:cancelTransfers()
+            send.server:cancelUploads("cancelled on the reader")
+            self:sendStatusChanged()
+        end }
+    end
+    if send.importing > 0 then
+        return { label = _("Adding to Library › Imported\u{2026}"), fraction = 1 }
     end
 end
 
 function InkAwayView:sendStatus()
     local send = self._send
     if not send then return "" end
-    if send.sent == 0 then return _("Waiting for your phone or computer\u{2026}") end
-    return send.sent == 1 and _("1 file sent") or string.format(_("%d files sent"), send.sent)
+    if send.sent == 0 and send.received == 0 then return _("Waiting for your phone or computer\u{2026}") end
+    local parts = {}
+    if send.sent > 0 then parts[#parts + 1] = send.sent == 1 and _("1 file sent") or string.format(_("%d files sent"), send.sent) end
+    if send.received > 0 then
+        parts[#parts + 1] = send.received == 1 and _("1 file received") or string.format(_("%d files received"), send.received)
+    end
+    return table.concat(parts, ", ")
 end
 
 -- Show the status again (at most every couple of seconds, as e-ink redraws the
@@ -209,8 +238,9 @@ function InkAwayView:sendStatusChanged()
     send.status_tick = function()
         send.status_tick = nil
         if self._send ~= send then return end
-        self:rebuildSheet("_send_dialog")
-        if self:sendProgress() then self:sendStatusChanged() end
+        -- (not under the arrivals question: the sheet below would be drawn over it)
+        if not self._arrived_dialog then self:rebuildSheet("_send_dialog") end
+        if self:sendProgress() or self._arrived_dialog then self:sendStatusChanged() end
     end
     UIManager:scheduleIn(2, send.status_tick)
 end
@@ -247,12 +277,29 @@ function InkAwayView:showSendSheet()
             local ProgressWidget = require("ui/widget/progresswidget")
             add(ProgressWidget:new{ width = content_w, height = S(12), percentage = prog.fraction })
             add(VerticalSpan:new{ width = S(10) })
-            add(self:actionButton(_("Cancel"), content_w, function()
-                prog.cancel()
-                self:rebuildSheet("_send_dialog")
-            end))
+            if prog.cancel then
+                add(self:actionButton(_("Cancel"), content_w, function()
+                    prog.cancel()
+                    self:rebuildSheet("_send_dialog")
+                end))
+            end
         else
             add(para(self:sendStatus(), 16, true, Blitbuffer.COLOR_DARK_GRAY))
+        end
+        add(VerticalSpan:new{ width = S(12) })
+        local ToggleRow = require("ink/ui/controls").ToggleRow
+        add(ToggleRow:new{ label = _("Allow adding files"), is_on = send.allow_upload, width = content_w,
+            parent = self._send_dialog, callback = function(on)
+                send.allow_upload = on
+                self:rebuildSheet("_send_dialog")
+            end })
+        if send.allow_upload then
+            add(VerticalSpan:new{ width = S(6) })
+            add(ToggleRow:new{ label = _("Ask to open notebooks that arrive"), is_on = self:askToOpenArrivals(),
+                width = content_w, parent = self._send_dialog,
+                callback = function(on) self:setSetting("inkaway_send_ask_open", on) end })
+            add(VerticalSpan:new{ width = S(6) })
+            add(para(_("PDFs, pictures and Ink Away files sent from the page go to Library › Imported and Insert picture › From your phone. Reload the page there to see Add files."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         end
         add(VerticalSpan:new{ width = S(10) })
         add(para(string.format(_("Your notebooks and drawings are there as PDF, PNG and Ink Away files. Sharing stops when you close this, or after %d minutes with nothing sent."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
@@ -296,13 +343,15 @@ function InkAwayView:sendRoute(req, reply)
     if not send then return reply.send(503, Http.TYPES.txt, "Stopped") end
     local base = "/" .. send.token .. "/"
     if req.path:sub(1, #base) ~= base and req.path .. "/" ~= base then
-        return reply.send(404, Http.TYPES.html, Page.gone())
+        return html(reply, 404, Page.gone())
     end
     local route = req.path:sub(#base + 1)
     local q = req.query
     if route == "" then return self:sendListing(q.d or "", reply) end
     if route == "export" then return self:sendExport(q.n, reply) end
     if route == "cancel" then return self:sendCancelPage(q.k, reply) end
+    if route == "upload" then return self:sendUpload(req, reply) end
+    if req.method ~= "GET" then return reply.send(405, Http.TYPES.txt, "Not here") end
     local path = self:sendPath(q.p)
     if not path then return reply.send(404, Http.TYPES.txt, "Not found") end
     if route == "file" then
@@ -327,7 +376,7 @@ end
 function InkAwayView:sendListing(rel, reply)
     local send = self._send
     local dir = self:sendPath(rel, true)
-    if not dir then return reply.send(404, Http.TYPES.html, Page.gone()) end
+    if not dir then return html(reply, 404, Page.gone()) end
     rel = Http.safeRel(rel)
     local base = "/" .. send.token .. "/"
     local function here(sub) return rel == "" and sub or (rel .. "/" .. sub) end
@@ -363,7 +412,11 @@ function InkAwayView:sendListing(rel, reply)
             links = links }
     end
     if rel == "" then o.exports = self:sendExportsList(base) end
-    reply.send(200, Http.TYPES.html, Page.render(o))
+    local R = self.RECEIVE_LIMITS
+    local nonce = Http.token(Http.randomBytes(12), 16)
+    o.upload = { allowed = send.allow_upload, url = base .. "upload", nonce = nonce,
+        limits = { pdf = R.limits.pdf, image = R.limits.image, inkaway = R.limits.inkaway }, max_pixels = R.max_pixels }
+    html(reply, 200, Page.render(o), nonce)
 end
 
 -- The folders exports are saved in: Ink Away's own, and the one chosen in
@@ -497,7 +550,7 @@ function InkAwayView:sendMade(path, kind, req, reply)
     if send.cancelled[key] then
         if req.query.retry ~= "1" then
             local again = base .. kind .. "?p=" .. Http.urlEncode(req.query.p or "") .. "&retry=1"
-            return reply.send(200, Http.TYPES.html, Page.render{ title = string.format("%s was cancelled", name),
+            return html(reply, 200, Page.render{ title = string.format("%s was cancelled", name),
                 crumbs = { { label = "Library", href = base }, { label = "Make it again", href = again } },
                 note = "Nothing more is made for it on the reader." })
         end
@@ -505,12 +558,12 @@ function InkAwayView:sendMade(path, kind, req, reply)
     end
     if job and job.state == "failed" and req.query.retry ~= "1" then
         send.jobs[key] = nil
-        return reply.send(200, Http.TYPES.html, notePage(base, string.format("Couldn't make %s", name),
+        return html(reply, 200, notePage(base, string.format("Couldn't make %s", name),
             "The reader couldn't make this file. Try again, or use the Ink Away file."))
     end
     if not job or job.state == "failed" or job.state == "cancelled" then
         if #send.queue >= MAX_JOBS then
-            return reply.send(503, Http.TYPES.html, notePage(base, "The reader is busy",
+            return html(reply, 503, notePage(base, "The reader is busy",
                 "It's making other files. Try again in a moment."))
         end
         job = { key = key, path = path, kind = kind, out = out, name = name, state = "queued" }
@@ -520,7 +573,7 @@ function InkAwayView:sendMade(path, kind, req, reply)
         self:sendStatusChanged()
     end
     local here = base .. kind .. "?p=" .. Http.urlEncode(req.query.p or "")
-    reply.send(200, Http.TYPES.html, progressPage(job, here, base .. "cancel?k=" .. Http.urlEncode(key)))
+    html(reply, 200, progressPage(job, here, base .. "cancel?k=" .. Http.urlEncode(key)))
 end
 
 -- The page's Cancel: stop that PDF or PNG, made or waiting.
@@ -529,7 +582,7 @@ function InkAwayView:sendCancelPage(key, reply)
     local base = "/" .. send.token .. "/"
     local job = key and send.jobs[key]
     if job then self:sendCancelJob(job) end
-    reply.send(200, Http.TYPES.html, notePage(base, "Cancelled", "Nothing more is made for it on the reader."))
+    html(reply, 200, notePage(base, "Cancelled", "Nothing more is made for it on the reader."))
 end
 
 -- Stop `job`: out of the queue, or stopped where it is (its part removed).

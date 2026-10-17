@@ -24,6 +24,20 @@ versions marked *Prerelease* were test builds.
   nothing on the reader can be changed from the page. The address holds a
   secret that changes each time, and sharing stops when you close it, when the
   reader sleeps, or after 15 minutes with nothing sent.
+- Add files from a phone or computer, through the same page: turn on "Allow
+  adding files" on the reader (it starts off every time), then choose files on
+  the page. A PDF becomes a notebook you can write on, in Library › Imported,
+  and the reader asks whether to open it, saying where it is; notebooks sent
+  together share one question, nothing waits for an answer, and "Don't ask
+  again" leaves just a note. Pictures go to Insert picture › From your phone,
+  and Ink Away files to Library › Imported. Pictures can be made smaller on the
+  phone before they are sent (Original, Large, Medium or Small, each showing
+  how much smaller), as a phone photo can be far larger than a reader can open.
+  Files only ever go into Ink Away's own folders, under names the reader
+  chooses; each is checked by what it is, not what it is called, against a
+  size limit and the space left on the reader, and kept only once it is whole.
+  Arrivals show their progress on the reader and can be cancelled from either
+  side.
 
 ## [4.2.0] - 2026-10-17
 

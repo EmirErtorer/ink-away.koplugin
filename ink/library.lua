@@ -23,7 +23,8 @@ end
 -- Folders in the "ink away" folder that hold Ink Away's own files (exports and
 -- downloaded pictures) rather than documents. The library leaves them out.
 Library.INTERNAL = { drawings = true, notebooks = true, exports = true,
-    ["online images"] = true, ["processed images"] = true }
+    ["online images"] = true, ["processed images"] = true,
+    ["imported pdfs"] = true, ["imported images"] = true }   -- (sent from a phone, see ink/view/receive.lua)
 
 -- Is `name` a document file?
 function Library.isDocument(name)

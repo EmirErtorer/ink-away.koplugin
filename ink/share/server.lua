@@ -6,7 +6,10 @@ tools), and each call does a little and never waits: it reads what requests
 have arrived so far, answers the ones complete, and hands the open downloads
 a few chunks each, so neither a big file nor a slow or hostile browser can
 stop the reader. A reply may also wait (a picture still being drawn) and be
-sent later. Only sends files the page's handler chooses (see ink/view/share.lua).
+sent later. A file sent to the reader (an upload) is read the same way, a few
+chunks a turn, into whatever the page's handler gives it, never past the size
+the browser announced. Only sends and takes the files the page's handler
+chooses (see ink/view/share.lua).
 ]]
 
 local Http = require("ink/share/http")
@@ -17,15 +20,16 @@ Server.__index = Server
 local CHUNK = 64 * 1024        -- read from a file at a time
 local BUDGET = 512 * 1024      -- sent per download per poll, at most
 local MAX_HEAD = 8 * 1024      -- a request's headers, at most
-local MAX_CONN = 16            -- connections at once (reading, waiting and sending)
+local MAX_CONN = 16            -- connections at once (reading, waiting, sending and receiving)
+local SILENT = 30              -- s an upload may go without a byte before it is dropped
 
 -- A server for `o.handler(req, reply)`, on the first free port of `o.ports`.
 -- `o.socket` is LuaSocket (tests pass their own); `o.head_timeout` is how long
 -- a request may take to arrive (s).
 function Server.new(o)
     return setmetatable({ handler = o.handler, ports = o.ports or { 8642, 8643, 8644, 8645, 8646 },
-        socket = o.socket or require("socket"), head_timeout = o.head_timeout or 5,
-        reading = {}, sends = {}, waiting = {}, requests = 0, files_sent = 0,
+        socket = o.socket or require("socket"), head_timeout = o.head_timeout or 5, silent = o.silent or SILENT,
+        reading = {}, sends = {}, waiting = {}, receiving = {}, requests = 0, files_sent = 0,
         on_activity = o.on_activity, make_event = o.make_event }, Server)
 end
 
@@ -53,13 +57,14 @@ function Server:stop()
     self.reading = {}
     for client, reply in pairs(self.waiting) do reply.gone = true; close(client) end
     self.waiting = {}
+    self:cancelUploads("stopped")
     if self.srv then close(self.srv); self.srv = nil end
 end
 
 function Server:running() return self.srv ~= nil end
 
 function Server:connections()
-    local n = #self.reading + #self.sends
+    local n = #self.reading + #self.sends + #self.receiving
     for _ in pairs(self.waiting) do n = n + 1 end
     return n
 end
@@ -94,18 +99,33 @@ function Server:reply(client)
             counts = name ~= nil, name = name, total = size, sent = 0 }
     end
     function r.wait() r.waiting = true; self.waiting[client] = r end
+    -- Take the request's body (`length` bytes) into `sink`: write(chunk) ->
+    -- true or nil, err; finish(r) once it is all here (it replies); abort(why)
+    -- if it stops short. `name` shows in the progress.
+    function r.receive(sink, length, name, expect_continue)
+        r.waiting = true   -- (answered by sink.finish, or on abort)
+        local item = { client = client, sink = sink, left = length, total = length, got = 0, name = name,
+            reply = r, last = self.socket.gettime() }
+        self.receiving[#self.receiving + 1] = item
+        client:settimeout(0)
+        if expect_continue then client:send("HTTP/1.1 100 Continue\r\n\r\n") end
+        if r.rest and #r.rest > 0 then self:feed(item, r.rest) end
+        r.rest = nil
+    end
     function r.open() return not done and not r.gone end
     return r
 end
 
--- Answer the request in `head` (complete) from `client`.
-function Server:dispatch(client, head)
+-- Answer the request in `head` (complete) from `client`; `rest` is what came
+-- after it (the start of an upload).
+function Server:dispatch(client, head, rest)
     local req = Http.parseRequest(head)
     local reply = self:reply(client)
+    reply.rest = rest
     if not req then
         return reply.send(400, Http.TYPES.txt, "Bad request")
-    elseif req.method ~= "GET" then
-        return reply.send(405, Http.TYPES.txt, "Only downloads here")
+    elseif req.method ~= "GET" and req.method ~= "POST" then
+        return reply.send(405, Http.TYPES.txt, "Not here")
     end
     self.requests = self.requests + 1
     if self.on_activity then pcall(self.on_activity) end
@@ -149,7 +169,7 @@ function Server:readRequests(now)
             self:reply(r.client).send(400, Http.TYPES.txt, "Request too big")
         elseif head_end then
             table.remove(self.reading, i)
-            self:dispatch(r.client, r.buf:sub(1, head_end - 1))
+            self:dispatch(r.client, r.buf:sub(1, head_end - 1), r.buf:sub(head_end + 4))
             active = true
         elseif err == "closed" or now > r.deadline then
             table.remove(self.reading, i)
@@ -169,6 +189,77 @@ function Server:checkWaiting()
             close(client)
         end
     end
+end
+
+-- Hand `data` (part of an upload) to its sink. Returns whether it goes on.
+function Server:feed(item, data)
+    if #data > item.left then data = data:sub(1, item.left) end   -- never past the announced size
+    item.got, item.left = item.got + #data, item.left - #data
+    local ok, wok, werr = pcall(item.sink.write, data)
+    if not (ok and wok) then
+        self:endUpload(item, (ok and werr) or wok or "write failed", 422)
+        return false
+    end
+    if item.left == 0 then
+        self:dropUpload(item)
+        local fok, ferr = pcall(item.sink.finish, item.reply)
+        if not fok then
+            pcall(item.sink.abort, ferr)
+            item.reply.send(500, Http.TYPES.txt, "Something went wrong on the reader: " .. tostring(ferr))
+        elseif item.reply.open() then
+            item.reply.send(200, Http.TYPES.txt, "OK")
+        end
+        return false
+    end
+    return true
+end
+
+function Server:dropUpload(item)
+    for i = #self.receiving, 1, -1 do if self.receiving[i] == item then table.remove(self.receiving, i) end end
+end
+
+-- Stop an upload short: its sink drops what it wrote, the browser is told why
+-- when it is still there (`code`), else the connection just closes.
+function Server:endUpload(item, why, code)
+    self:dropUpload(item)
+    pcall(item.sink.abort, why)
+    if code and self.srv then
+        item.reply.send(code, Http.TYPES.txt, tostring(why))
+    else
+        item.reply.gone = true
+        close(item.client)
+    end
+end
+
+-- Read some more of each upload, without waiting.
+function Server:pumpUploads(now)
+    local active = false
+    for i = #self.receiving, 1, -1 do
+        local item = self.receiving[i]
+        local taken = 0
+        while item and taken < BUDGET and item.left > 0 do
+            local data, err, partial = item.client:receive(math.min(CHUNK, item.left))
+            local got = data or partial
+            if got and #got > 0 then
+                item.last = now
+                taken = taken + #got
+                active = true
+                if not self:feed(item, got) then item = nil end
+            elseif err == "closed" then
+                self:endUpload(item, "the browser left")
+                item = nil
+            else
+                if now - item.last > self.silent then self:endUpload(item, "nothing came for a while") end
+                break
+            end
+        end
+    end
+    return active
+end
+
+-- Stop every upload coming in (the reader's Cancel, or stopping).
+function Server:cancelUploads(why)
+    for i = #self.receiving, 1, -1 do self:endUpload(self.receiving[i], why or "cancelled") end
 end
 
 function Server:finish(item)
@@ -218,6 +309,7 @@ function Server:waitEvent()
     local now = self.socket.gettime()
     local active = self:acceptNew(now)
     if self:readRequests(now) then active = true end
+    if self:pumpUploads(now) then active = true end
     self:checkWaiting()
     for i = #self.sends, 1, -1 do
         local item = self.sends[i]
@@ -230,14 +322,20 @@ function Server:waitEvent()
     return nil
 end
 
--- The downloads going out: { name, sent, total } for each named file.
+-- The downloads going out and the uploads coming in: { name, sent, total,
+-- incoming } for each named file.
 function Server:transfers()
     local out = {}
     for _, item in ipairs(self.sends) do
         if item.name and item.total then out[#out + 1] = { name = item.name, sent = item.sent, total = item.total } end
     end
+    for _, item in ipairs(self.receiving) do
+        out[#out + 1] = { name = item.name or "file", sent = item.got, total = item.total, incoming = true }
+    end
     return out
 end
+
+function Server:uploads() return #self.receiving end
 
 -- Stop every download going out (the reader's Cancel).
 function Server:cancelTransfers()
@@ -246,7 +344,7 @@ function Server:cancelTransfers()
     end
 end
 
--- Downloads still going.
-function Server:busy() return #self.sends > 0 end
+-- Downloads still going, or uploads still coming.
+function Server:busy() return #self.sends > 0 or #self.receiving > 0 end
 
 return Server

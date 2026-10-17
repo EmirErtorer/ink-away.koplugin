@@ -177,7 +177,7 @@ With the [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) plugin inst
 | **PNG** | Transparent or white, at your screen size, of the whole page or an area you pick, with or without the grid. |
 | **PDF** | A notebook, some of its pages, or a whole folder at once, with bookmarks for titled pages, working links and page numbers, on white or sandpaper paper. |
 | **Bookshelf ornament** | With the Bookshelf plugin installed, save a drawing straight into its ornaments. |
-| **Send to phone or computer** | Scan a QR code on the reader with any phone or computer on the same Wi-Fi and download your notebooks and drawings as PDF, PNG or Ink Away files in its browser. Nothing to install, no account, and nothing leaves your home network. |
+| **Send to phone or computer** | Scan a QR code on the reader with any phone or computer on the same Wi-Fi and download your notebooks and drawings as PDF, PNG or Ink Away files in its browser. Turn on Allow adding files to send PDFs (they become notebooks), pictures (made smaller on the phone if you like) and Ink Away files the other way. Nothing to install, no account, and nothing leaves your home network. |
 
 ### Pen, screen and colour
 

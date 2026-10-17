@@ -2807,6 +2807,159 @@ do
     view:onCloseWidget()
 end
 
+-- ---- files sent from a phone or computer (ink/view/receive.lua) ----------
+do
+    local TestEnv = require("testenv")
+    local Storage = require("ink/storage")
+    local Folder = require("ink/folder")
+    local Http = require("ink/share/http")
+    local Project = require("ink/project")
+    local LIB = TestEnv.libraryDir() .. "/receivetest"
+    local IMG = LIB .. "-images"
+    local PDFS = LIB .. "-pdfs"
+    os.execute("rm -rf '" .. LIB .. "' '" .. IMG .. "' '" .. PDFS .. "'; mkdir -p '" .. LIB .. "' '" .. IMG .. "' '" .. PDFS .. "'")
+    local saved_lib = G_reader_settings.data.inkaway_library_dir
+    G_reader_settings.data.inkaway_library_dir = LIB
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    view.importedImagesDir = function() return IMG end
+    view.importedPdfsDir = function() return PDFS end
+    local uploads_now = 0
+    local function freshSend(allow)
+        view._send = { allow_upload = allow, received = 0, importing = 0, arrived = {}, noted = {}, last = 0,
+            server = { uploads = function() return uploads_now end, transfers = function() return {} end,
+                cancelTransfers = function() end, cancelUploads = function() end } }
+    end
+    freshSend(true)
+    local notices = {}
+    view.showNotice = function(_, t) notices[#notices + 1] = t end
+    -- a fake connection: the reply, and the sink the upload is read into
+    local function upload(kind, name, data, o)
+        o = o or {}
+        local got = {}
+        local reply = { open = function() return true end }
+        function reply.send(code, _, body) got.code, got.body = code, body end
+        function reply.receive(sink, len) got.sink, got.len = sink, len end
+        view:sendUpload({ method = o.method or "POST", query = { kind = kind, name = name, batch = "b1", i = 1, n = 1 },
+            headers = { ["content-length"] = o.length or tostring(#data) } }, reply)
+        if not got.sink then return got end
+        local step = o.step or 4096
+        for k = 1, #data, step do
+            local wok, werr = got.sink.write(data:sub(k, k + step - 1))
+            if not wok then got.sink.abort(werr); got.refused = werr; return got end
+            if o.abort_after and k > o.abort_after then got.sink.abort("left"); got.aborted = true; return got end
+        end
+        got.sink.finish(reply)
+        return got
+    end
+    local function files(dir)
+        local t = {}
+        for _, e in ipairs(Storage.list(dir)) do t[#t + 1] = e.name end
+        table.sort(t)
+        return table.concat(t, ",")
+    end
+    local function be32(n) return string.char(math.floor(n / 16777216) % 256, math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256) end
+    local function be16(n) return string.char(math.floor(n / 256) % 256, n % 256) end
+    local function jpeg(w, h, pad) return "\255\216\255\192" .. be16(17) .. "\8" .. be16(h) .. be16(w) .. "\3"
+        .. string.rep("c", 9) .. string.rep("j", pad or 20000) .. "\255\217" end
+    local function png(w, h) return "\137PNG\r\n\26\n" .. be32(13) .. "IHDR" .. be32(w) .. be32(h) .. "\8\6\0\0\0" .. string.rep("p", 5000) end
+
+    -- turned away before anything is written
+    freshSend(false)
+    local r = upload("image", "a.jpg", jpeg(100, 100))
+    ok(r.code == 403 and not r.sink and r.body:find("turned off"), "receive: off on the reader, nothing is taken")
+    freshSend(true)
+    ok(upload("exe", "x.sh", "#!/bin/sh").code == 415, "receive: only PDFs, pictures and Ink Away files")
+    ok(upload("pdf", "x.pdf", "%PDF-1.4", { length = "" }).code == 411, "receive: a size is needed")
+    ok(upload("pdf", "x.pdf", "%PDF-1.4", { length = "-5" }).code == 411
+        and upload("pdf", "x.pdf", "%PDF-1.4", { length = "1.5" }).code == 411, "receive: and a sensible one")
+    ok(upload("image", "x.jpg", "", { length = tostring(31 * 1024 * 1024) }).code == 413, "receive: a picture over 30 MB is turned away")
+    ok(upload("pdf", "x.pdf", "", { length = tostring(301 * 1024 * 1024) }).code == 413, "receive: a PDF over 300 MB too")
+    uploads_now = 2
+    ok(upload("image", "x.jpg", jpeg(10, 10)).code == 503, "receive: at most two coming in at once")
+    uploads_now = 0
+    view._send.received = 100
+    ok(upload("image", "x.jpg", jpeg(10, 10)).code == 429, "receive: at most 100 files a sharing")
+    view._send.received = 0
+    package.loaded.util = { diskUsage = function() return { available = 70 * 1024 * 1024 } end }
+    ok(upload("image", "x.jpg", jpeg(10, 10), { length = tostring(8 * 1024 * 1024) }).code == 507,
+        "receive: the reader always keeps some space free")
+    package.loaded.util = nil
+    ok(files(IMG) == "" and files(PDFS) == "", "receive: and nothing was written for any of them")
+
+    -- a picture
+    r = upload("image", "../../Holiday photo.HEIC", jpeg(3000, 2000), { step = 7 })
+    ok(r.code == 200 and files(IMG) == "Holiday photo.jpg", "receive: a picture lands in its folder, named by the reader (" .. files(IMG) .. ")")
+    ok(#view._send.noted == 1 and view._send.noted[1].kind == "image", "receive: and will be told about")
+    r = upload("image", "Holiday photo.jpg", jpeg(3000, 2000))
+    ok(files(IMG) == "Holiday photo (2).jpg,Holiday photo.jpg", "receive: never over another one")
+    r = upload("image", "drawing.jpg", png(800, 600))
+    ok(r.code == 200 and files(IMG):find("drawing.png", 1, true), "receive: named by what it is, not what it's called")
+    r = upload("image", "huge.jpg", jpeg(8064, 6048))
+    ok(r.code == 413 and r.body:find("8064 x 6048") and not files(IMG):find("huge"), "receive: a picture too large for a reader is turned away")
+    r = upload("image", "fake.jpg", "%PDF-1.7 not a picture" .. string.rep("x", 100))
+    ok(r.refused and not files(IMG):find("fake"), "receive: a file pretending to be a picture is refused at its first bytes")
+    r = upload("image", "cut.jpg", jpeg(100, 100, 50000), { abort_after = 8000 })
+    ok(r.aborted and not files(IMG):find("cut") and not files(IMG):find("%.part"), "receive: one cut short leaves nothing behind")
+    ok(not files(IMG):find("^%."), "receive: no hidden part files left at all")
+
+    -- an Ink Away file
+    local doc = Project.serialize({ w = 10, h = 10, ops = { { kind = "ink", pts = { 1, 1, 2, 2 }, width = 2 } } })
+    r = upload("inkaway", "Sketch.inkaway", doc)
+    local IMPORTED = view:importedFolder()
+    ok(r.code == 200 and Storage.exists(IMPORTED .. "/Sketch.inkaway"), "receive: an Ink Away file lands in Library > Imported")
+    ok(Folder.load(IMPORTED).order[1] == "Sketch.inkaway", "receive: and joins its folder's order")
+    ok(#view._send.arrived == 1 and view._send.arrived[1].name == "Sketch", "receive: a notebook or drawing waits for the question")
+    local marker = os.tmpname(); os.remove(marker)
+    r = upload("inkaway", "Evil.inkaway", 'return { ops = {}, x = os.execute("touch ' .. marker .. '") }')
+    ok(r.code == 422 and not Storage.exists(IMPORTED .. "/Evil.inkaway"), "receive: an Ink Away file that tries to run code is refused")
+    ok(not Storage.exists(marker), "receive: and its code never ran")
+    r = upload("pdf", "Report.pdf", "PK\3\4 a zip, not a PDF" .. string.rep("z", 200))
+    ok(r.refused and files(PDFS) == "", "receive: a file pretending to be a PDF is refused")
+
+    -- the question, once nothing more is coming
+    uploads_now = 1
+    view:arrivalsMaybeDone()
+    UIManager.fireScheduled()
+    ok(view._arrived_dialog == nil, "receive: no question while files are still coming")
+    uploads_now = 0
+    UIManager.fireScheduled()
+    ok(view._arrived_dialog ~= nil, "receive: then one question for what arrived")
+    ok(#notices >= 1 and notices[#notices]:find("pictures"), "receive: and a note about the pictures (" .. tostring(notices[#notices]) .. ")")
+    -- more arriving while it is up: the same question, brought up to date
+    local first = view._arrived_dialog
+    view:arrived{ kind = "notebook", name = "Second", path = IMPORTED .. "/Sketch.inkaway" }
+    UIManager.fireScheduled()
+    ok(view._arrived_dialog == first and #view._send.arrived == 2, "receive: more notebooks join the question already up")
+    -- opening one while more are coming waits for them
+    local opened
+    view.openDocument = function(_, p) opened = p end
+    uploads_now = 1
+    view:openArrived(view._send.arrived[1])
+    ok(opened == nil and view._send.open_after ~= nil and view._arrived_dialog == nil,
+        "receive: opening while more are coming waits for them")
+    uploads_now = 0
+    view:arrivalsMaybeDone()
+    UIManager.fireScheduled()
+    ok(opened == IMPORTED .. "/Sketch.inkaway", "receive: and opens once they are in")
+    -- Don't ask again
+    freshSend(true)
+    view:setSetting("inkaway_send_ask_open", false)
+    view:arrived{ kind = "notebook", name = "Third", path = IMPORTED .. "/Sketch.inkaway" }
+    UIManager.fireScheduled()
+    ok(view._arrived_dialog == nil and #view._send.arrived == 0 and notices[#notices]:find("Library", 1, true),
+        "receive: after Don't ask again, a note instead of the question")
+    view:setSetting("inkaway_send_ask_open", true)
+    ok(view:askToOpenArrivals(), "receive: and asking can be turned back on")
+
+    view._send = nil
+    G_reader_settings.data.inkaway_library_dir = saved_lib
+    view:onCloseWidget()
+end
+
 -- ---- a library folder's colour and icon -----------------------------------
 do
     local TestEnv = require("testenv")

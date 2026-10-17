@@ -20,14 +20,26 @@ big = table.concat(big)   -- 3 MB
 local f = io.open(tmp, "wb"); f:write(big); f:close()
 
 local waiting, sent_after, events = nil, 0, 0
+local upload
 local srv = Server.new{
-    socket = socket, ports = { 18642, 18643, 18644 }, head_timeout = 0.6,
+    socket = socket, ports = { 18642, 18643, 18644 }, head_timeout = 0.6, silent = 0.8,
     make_event = function() events = events + 1; return "InputEvent" end,
     handler = function(req, reply)
+        if req.method ~= "GET" and req.path ~= "/t/up" then return reply.send(405, Http.TYPES.txt, "Not here") end
         if req.path == "/t/" then return reply.send(200, Http.TYPES.html, "<p>hello " .. (req.query.d or "") .. "</p>") end
         if req.path == "/t/big" then return reply.file(tmp, Http.TYPES.pdf, "Big.pdf", function() sent_after = sent_after + 1 end) end
         if req.path == "/t/wait" then waiting = reply; return reply.wait() end
         if req.path == "/t/boom" then error("kaboom") end
+        if req.path == "/t/up" then
+            local len = tonumber(req.headers["content-length"])
+            local got = {}
+            upload = { got = got }
+            return reply.receive({
+                write = function(chunk) got[#got + 1] = chunk; if req.query.refuse and #got == 1 then return nil, "refused" end; return true end,
+                finish = function(r) upload.done = true; r.send(200, Http.TYPES.txt, "got " .. #table.concat(got)) end,
+                abort = function(why) upload.aborted = why end,
+            }, len, "up.bin", (req.headers.expect or "") == "100-continue")
+        end
     end,
 }
 local port = srv:start()
@@ -41,6 +53,16 @@ srv2:stop()
 -- KOReader's loop: waitEvent until it gives nothing, as UIManager:processZMQs
 local function turn()
     for _ in srv.waitEvent, srv do end
+end
+
+-- turn the loop until cond() (the server has caught up), at most a second
+local function turnUntil(cond)
+    for _ = 1, 200 do
+        turn()
+        if cond() then return true end
+        socket.sleep(0.005)
+    end
+    return false
 end
 
 -- a browser: send a request, then read while the loop turns
@@ -78,9 +100,10 @@ ok(turns > 3, ("sent over several turns of the loop, not all at once (%d)"):form
 ok(sent_after == 1 and srv.files_sent == 1, "counted once it is all sent")
 
 -- a reply that waits: the PDF is made, then sent
+waiting = nil
 local c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
 c:send("GET /t/wait HTTP/1.1\r\n\r\n"); c:settimeout(0)
-for _ = 1, 20 do turn() end
+turnUntil(function() return waiting ~= nil end)
 ok(waiting ~= nil and waiting.open(), "a reply can wait")
 local d = c:receive(1)
 ok(d == nil, "and nothing goes out meanwhile")
@@ -147,12 +170,13 @@ head, body = fetch("/t/")
 ok(head:match("^HTTP/1%.1 200"), "and the reader answers again")
 
 -- a browser that leaves while its reply waits is noticed
+waiting = nil
 c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
 c:send("GET /t/wait HTTP/1.1\r\n\r\n")
-for _ = 1, 10 do turn() end
+for _ = 1, 200 do turn(); if waiting then break end; socket.sleep(0.005) end
 local left = waiting
 c:close()
-for _ = 1, 10 do turn() end
+turnUntil(function() return left and left.gone end)
 ok(left.gone == true and not left.open(), "a browser that left while waiting is noticed")
 
 -- a download's progress, and the reader's Cancel
@@ -191,10 +215,106 @@ for _ = 1, 200 do turn() end
 ok(not srv:busy(), "a download whose browser left is dropped")
 ok(srv.files_sent == 1, "and not counted as sent")
 
+-- uploads: a body in pieces, exactly its announced size, never more
+-- send all of `data` from a non-blocking client, the loop turning meanwhile
+local function sendAll(c, data)
+    local i, stuck = 1, 0
+    while i <= #data and stuck < 300 do
+        local last, err, partial = c:send(data, i)
+        if err == "closed" then return end   -- the reader closed it (refused)
+        local n = (last or partial or (i - 1)) + 1
+        stuck = n == i and stuck + 1 or 0
+        i = n
+        turn()
+    end
+end
+local function post(path, body, pieces, extra_head, announced)
+    local c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+    c:settimeout(0)
+    sendAll(c, "POST " .. path .. " HTTP/1.1\r\nContent-Length: " .. (announced or #body) .. "\r\n" .. (extra_head or "") .. "\r\n")
+    local step = math.ceil(#body / (pieces or 1))
+    for k = 1, #body, step do sendAll(c, body:sub(k, k + step - 1)) end
+    return c
+end
+local function answer(c, turns)
+    local parts = {}
+    for _ = 1, turns or 200 do
+        turn()
+        local data, e, partial = c:receive(65536)
+        if data or partial then parts[#parts + 1] = data or partial end
+        if e == "closed" then break end
+    end
+    c:close()
+    return table.concat(parts)
+end
+local payload = big:sub(1, 700000)
+c = post("/t/up", payload, 9)
+local ans = answer(c)
+ok(upload.done and table.concat(upload.got) == payload, "an upload in pieces arrives whole, exactly")
+ok(ans:find("got 700000", 1, true), "and is answered once it is all here")
+
+c = post("/t/up", payload .. "EXTRA BYTES THE BROWSER SHOULD NOT SEND", 3, nil, #payload)
+answer(c)
+ok(#table.concat(upload.got) == #payload, "nothing past its announced size is taken")
+
+-- curl's "Expect: 100-continue": the reader says go on, then reads
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:send("POST /t/up HTTP/1.1\r\nContent-Length: 5\r\nExpect: 100-continue\r\n\r\n")
+local cont = ""
+c:settimeout(0)
+for _ = 1, 20 do
+    turn()
+    local d, _, partial = c:receive("*l")
+    cont = cont .. (d or partial or "")
+    if cont:find("Continue", 1, true) then break end
+end
+ok(cont and cont:find("100 Continue", 1, true), "Expect: 100-continue is answered")
+c:send("hello")
+ok(answer(c):find("got 5", 1, true), "and the body taken after it")
+
+-- a browser that leaves mid-upload: the sink is told, the server goes on
+upload = nil
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:send("POST /t/up HTTP/1.1\r\nContent-Length: 100000\r\n\r\n" .. string.rep("x", 1000))
+turnUntil(function() return upload ~= nil and #upload.got > 0 end)
+c:close()
+turnUntil(function() return upload.aborted ~= nil end)
+ok(upload and upload.aborted and not upload.done, "a browser leaving mid-upload stops it (" .. tostring(upload and upload.aborted) .. ")")
+ok(srv:uploads() == 0, "and nothing is left coming in")
+
+-- one that goes quiet mid-upload is dropped after a while, without holding the loop
+upload = nil
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:send("POST /t/up HTTP/1.1\r\nContent-Length: 100000\r\n\r\nabc")
+local t1, worst2 = socket.gettime(), 0
+while socket.gettime() - t1 < 1.2 do
+    local t0b = socket.gettime(); turn(); worst2 = math.max(worst2, socket.gettime() - t0b); socket.sleep(0.02)
+end
+ok(upload and upload.aborted and srv:uploads() == 0, "a silent upload is dropped")
+ok(worst2 < 0.02, ("and never holds the loop (%.1f ms)"):format(worst2 * 1000))
+c:close()
+
+-- the sink refusing (not the kind of file it should be): stopped at once, told why
+c = post("/t/up?refuse=1", payload, 5)
+ans = answer(c)
+ok(upload.aborted and ans:find("422", 1, true) and ans:find("refused", 1, true), "a refused upload is stopped and told why")
+
+-- the reader's Cancel, and stopping, mid-upload
+upload = nil
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:send("POST /t/up HTTP/1.1\r\nContent-Length: 100000\r\n\r\nabc")
+turnUntil(function() return srv:uploads() > 0 end)
+local tr = srv:transfers()
+ok(tr[1] and tr[1].incoming and tr[1].total == 100000, "an upload shows in the progress, coming in")
+srv:cancelUploads()
+ok(upload.aborted and srv:uploads() == 0, "Cancel stops it")
+c:close()
+
 -- stopping, with a reply still waiting
+waiting = nil
 c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
 c:send("GET /t/wait HTTP/1.1\r\n\r\n")
-for _ = 1, 10 do turn() end
+turnUntil(function() return waiting ~= nil end)
 srv:stop()
 c:settimeout(1)
 local _, err = c:receive(1)
