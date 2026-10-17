@@ -53,7 +53,7 @@ button.btn{border:0;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .levels{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px;align-items:center}
 .levels .lt{width:100%;font-size:14px;color:var(--mute)}
 .levels label{background:var(--chip);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600}
-.levels input{margin:0 6px 0 0;accent-color:#7fb84a}
+.levels input{margin:0 6px 0 0;accent-color:var(--acc)}
 .flist{list-style:none;margin:10px 0;padding:0}
 .flist li{border-top:1px solid var(--line);padding:9px 0;font-size:14px}
 .flist li:first-child{border-top:0}
@@ -61,7 +61,7 @@ button.btn{border:0;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .flist .s{color:var(--mute)}
 .flist .e{color:#c0392b}
 .flist .ok{color:#3c8a2e}
-.flist progress{width:100%;height:8px;margin-top:6px;accent-color:#7fb84a}
+.flist progress{width:100%;height:8px;margin-top:6px;accent-color:var(--acc)}
 #msg{font-size:14px;margin-top:8px}
 ]]
 
@@ -74,7 +74,7 @@ function Page.render(o)
     add('<!doctype html><html lang="en"><head><meta charset="utf-8">')
     add('<meta name="viewport" content="width=device-width,initial-scale=1">')
     add('<meta name="robots" content="noindex">')
-    add("<title>" .. esc(o.title) .. " · Ink Away</title><style>" .. CSS .. "</style></head><body>")
+    add("<title>" .. esc(o.title) .. " · Ink Away</title><style>" .. CSS .. Page.accentCSS(o.accent) .. "</style></head><body>")
     add('<header><div class="brand">Ink Away</div><h1>' .. esc(o.title) .. "</h1>")
     if o.crumbs and #o.crumbs > 0 then
         local parts = {}
@@ -243,6 +243,23 @@ function Page.uploadCard(u)
         .. '<button id="stop" class="btn" hidden>Cancel</button></div><div id="msg"></div>'
         .. '<noscript><p>Sending needs JavaScript turned on in this browser.</p></noscript></div>'
         .. '<script nonce="' .. esc(u.nonce) .. '">' .. conf .. SCRIPT .. '</script>'
+end
+
+-- The theme colour on the page, the reader's own (see Page.accent): CSS
+-- that sets it, or "" for Ink Away's green.
+function Page.accentCSS(a)
+    if not a then return "" end
+    return ":root{--acc:" .. a.fill .. ";--acc-ink:" .. a.ink .. "}"
+end
+
+-- The page's colours from the reader's theme: { fill = "#rrggbb", ink =
+-- "#rrggbb" for text on it } for `rgb` ({r,g,b}, or nil for Ink Away's green),
+-- with dark or light text, whichever reads (`dark_text`).
+function Page.accent(rgb, dark_text)
+    if type(rgb) ~= "table" then return nil end
+    local function c(v) return math.max(0, math.min(255, math.floor(tonumber(v) or 0))) end
+    return { fill = string.format("#%02x%02x%02x", c(rgb[1]), c(rgb[2]), c(rgb[3])),
+        ink = dark_text and "#1a1a1a" or "#ffffff" }
 end
 
 -- The page shown for an old or mistyped address.

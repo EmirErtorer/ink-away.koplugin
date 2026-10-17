@@ -26,6 +26,7 @@ local CenterContainer = require("ui/widget/container/centercontainer")
 local Geom = require("ui/geometry")
 local logger = require("logger")
 local _ = require("gettext")
+local Accent = require("ink/accent")
 local Export = require("ink/export")
 local Folder = require("ink/folder")
 local FolderLook = require("ink/folderlook")
@@ -66,6 +67,16 @@ end
 -- the page may run).
 local function html(reply, code, body, nonce)
     reply.send(code, Http.TYPES.html, body, { Page.csp(nonce), "X-Frame-Options: DENY" })
+end
+
+-- The page's theme colour: the reader's own (a preset, one from the wheel, or
+-- black) on a colour screen, and Ink Away's green on a grey one, where the
+-- reader's theme is always black. nil means the green the page starts with.
+local function pageAccent(colour_screen)
+    if not colour_screen then return nil end
+    local a = Accent.get()
+    if a.rgb then return Page.accent(a.rgb, a.dark_text) end
+    return Page.accent({ 0, 0, 0 }, false)   -- black, chosen on a colour screen
 end
 
 local function hex(rgb)
@@ -436,6 +447,7 @@ function InkAwayView:sendListing(rel, reply)
     local nonce = Http.token(Http.randomBytes(12), 16)
     o.upload = { allowed = send.allow_upload, url = base .. "upload", nonce = nonce,
         limits = { pdf = R.limits.pdf, image = R.limits.image, inkaway = R.limits.inkaway }, max_pixels = R.max_pixels }
+    o.accent = pageAccent(self:colorScreen())
     html(reply, 200, Page.render(o), nonce)
 end
 
@@ -540,7 +552,7 @@ end
 
 -- The page shown while a PDF or PNG is made: it reloads itself every couple
 -- of seconds, and the reload that finds it ready downloads it.
-local function progressPage(job, here, cancel)
+local function progressPage(job, here, cancel, accent)
     local n, i = job.n or 0, job.i or 0
     local what = n > 1 and string.format("%d of %d pages", math.min(i + 1, n), n) or "Almost ready\u{2026}"
     if job.state == "queued" then what = "Waiting for the files before it\u{2026}" end
@@ -554,7 +566,7 @@ local function progressPage(job, here, cancel)
         .. '@media (prefers-color-scheme:dark){body{background:#141613;color:#eef0ea}}'
         .. 'main{width:min(420px,90vw);text-align:center}h1{font-size:20px;margin:0 0 6px;word-break:break-word}'
         .. 'p{color:#6b7066;margin:6px 0}.bar{height:12px;border-radius:6px;background:#e3e6df;overflow:hidden;margin:18px 0}'
-        .. '.bar i{display:block;height:100%;background:#9fd665;width:' .. pct .. '%}'
+        .. '.bar i{display:block;height:100%;background:' .. (accent and accent.fill or '#9fd665') .. ';width:' .. pct .. '%}'
         .. 'a{display:inline-block;margin-top:14px;padding:8px 16px;border-radius:999px;background:#eef1ea;color:inherit;'
         .. 'text-decoration:none;font-weight:600}</style></head><body><main>'
         .. '<h1>Preparing ' .. Http.html(job.name) .. '</h1><p>' .. Http.html(what) .. '</p>'
@@ -563,8 +575,8 @@ local function progressPage(job, here, cancel)
 end
 
 -- A short page with a way back to the library.
-local function notePage(base, title, text)
-    return Page.render{ title = title, crumbs = { { label = "Library", href = base } }, note = text }
+local function notePage(base, title, text, accent)
+    return Page.render{ title = title, crumbs = { { label = "Library", href = base } }, note = text, accent = accent }
 end
 
 -- Send the document at `path` as a PDF or PNG (`kind`): the copy made for
@@ -607,7 +619,7 @@ function InkAwayView:sendMade(path, kind, req, reply)
         self:sendStatusChanged()
     end
     local here = base .. kind .. "?p=" .. Http.urlEncode(req.query.p or "")
-    html(reply, 200, progressPage(job, here, base .. "cancel?k=" .. Http.urlEncode(key)))
+    html(reply, 200, progressPage(job, here, base .. "cancel?k=" .. Http.urlEncode(key), pageAccent(self:colorScreen())))
 end
 
 -- The page's Cancel: stop that PDF or PNG, made or waiting.

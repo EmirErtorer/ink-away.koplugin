@@ -152,6 +152,16 @@ ok(up:find('name="lv" value="small"', 1, true) and up:find("Original", 1, true),
 local off = Page.render{ title = "L", upload = { allowed = false } }
 ok(not off:find("<script", 1, true) and off:find("Allow adding files", 1, true), "off on the reader: no script, and how to turn it on")
 
+-- the page's theme colour
+local acc = Page.accent({ 0x24, 0x57, 0xD6 }, false)
+ok(acc.fill == "#2457d6" and acc.ink == "#ffffff", "a theme colour, with white text on it")
+ok(Page.accent({ 0xF2, 0xC9, 0x4C }, true).ink == "#1a1a1a", "dark text on a light theme")
+ok(Page.accent(nil) == nil and Page.accentCSS(nil) == "", "none: Ink Away's green stays")
+ok(Page.accent({ 300, -5, "x" }, false).fill == "#ff0000", "a colour out of range is clamped")
+local themed = Page.render{ title = "L", accent = acc }
+ok(themed:find(":root{--acc:#2457d6;--acc-ink:#ffffff}", 1, true), "the page uses it")
+ok(not Page.render{ title = "L" }:find("--acc:#2457d6", 1, true), "and only when given")
+
 -- an Ink Away file from another device: data only, never code
 local real = Project.serialize({ w = 1200, h = 1600, ops = { { kind = "ink", pts = { 1, 2.5, -3, 4e-7 }, width = 2,
     color = { 255, 0, 0 } }, { kind = "text", paras = { { spans = { { t = 'say "hi" while for function() .. os.exit()\n' } } } } } } })

@@ -2979,6 +2979,30 @@ do
     ok(not view:askToOpenArrivals(), "receive: over a book, a note instead (no notebook to open there)")
     view.reader_mode = nil
 
+    -- the page in the reader's theme colour
+    local Accent = require("ink/accent")
+    local function listing()
+        view._send = { token = "tok", allow_upload = false }
+        local body
+        view:sendListing("", { send = function(_, _, b) body = b end, open = function() return true end })
+        return body or ""
+    end
+    local real_colour = view.colorScreen
+    view.colorScreen = function() return true end
+    Accent.set({ 0x7B, 0x3F, 0xB0 })
+    ok(listing():find("--acc:#7b3fb0;--acc-ink:#ffffff", 1, true), "page: a colour screen's theme colour")
+    Accent.set({ 0x12, 0x34, 0x56 })
+    ok(listing():find("--acc:#123456", 1, true), "page: one picked on the wheel too")
+    Accent.set(nil)
+    ok(listing():find("--acc:#000000;--acc-ink:#ffffff", 1, true), "page: black, when black was chosen")
+    view.colorScreen = function() return false end
+    Accent.apply({ 0x7B, 0x3F, 0xB0 }, false)
+    local grey = listing()
+    ok(not grey:find(":root{--acc:#", 1, true) and grey:find("--acc:#9fd665", 1, true),
+        "page: a grey screen's page is Ink Away green")
+    view.colorScreen = real_colour
+    Accent.set(nil)
+
     view._send = nil
     G_reader_settings.data.inkaway_library_dir = saved_lib
     view:onCloseWidget()

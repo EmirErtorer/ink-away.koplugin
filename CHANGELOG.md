@@ -38,6 +38,8 @@ versions marked *Prerelease* were test builds.
   size limit and the space left on the reader, and kept only once it is whole.
   Arrivals show their progress on the reader and can be cancelled from either
   side.
+- The page on the phone or computer takes Ink Away's theme colour, the one
+  picked in Settings, or Ink Away green on a reader without a colour screen.
 
 ## [4.2.0] - 2026-10-17
 
