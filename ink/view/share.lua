@@ -174,9 +174,12 @@ function InkAwayView:sendProgress()
     local job = send.current
     if job then
         local n, i = job.n or 0, job.i or 0
-        local label = n > 1 and string.format(_("Making %s: page %d of %d"), job.name, math.min(i + 1, n), n)
-            or string.format(_("Making %s\u{2026}"), job.name)
-        if #send.queue > 0 then label = label .. "\n" .. string.format(_("%d more waiting"), #send.queue) end
+        local label = string.format(_("Preparing %s"), job.name)
+        if n > 1 then label = label .. "\n" .. string.format(_("%d of %d pages"), math.min(i + 1, n), n) end
+        if #send.queue > 0 then
+            label = label .. "\n" .. (#send.queue == 1 and _("1 more after it")
+                or string.format(_("%d more after it"), #send.queue))
+        end
         return { label = label, fraction = n > 0 and i / n or 0, cancel = function() self:sendCancelAll() end }
     end
     local list = send.server:transfers()
@@ -452,13 +455,13 @@ end
 -- of seconds, and the reload that finds it ready downloads it.
 local function progressPage(job, here, cancel)
     local n, i = job.n or 0, job.i or 0
-    local what = n > 1 and string.format("Page %d of %d", math.min(i + 1, n), n) or "Starting\u{2026}"
+    local what = n > 1 and string.format("%d of %d pages", math.min(i + 1, n), n) or "Almost ready\u{2026}"
     if job.state == "queued" then what = "Waiting for the files before it\u{2026}" end
     local pct = n > 0 and math.floor(100 * i / n) or 0
     return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         .. '<meta name="viewport" content="width=device-width,initial-scale=1">'
         .. '<meta http-equiv="refresh" content="2;url=' .. Http.html(here) .. '">'
-        .. '<title>Making ' .. Http.html(job.name) .. '</title><style>'
+        .. '<title>Preparing ' .. Http.html(job.name) .. '</title><style>'
         .. 'body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;'
         .. 'background:#f6f7f4;color:#1d1f1b;display:flex;min-height:100vh;align-items:center;justify-content:center}'
         .. '@media (prefers-color-scheme:dark){body{background:#141613;color:#eef0ea}}'
@@ -467,7 +470,7 @@ local function progressPage(job, here, cancel)
         .. '.bar i{display:block;height:100%;background:#9fd665;width:' .. pct .. '%}'
         .. 'a{display:inline-block;margin-top:14px;padding:8px 16px;border-radius:999px;background:#eef1ea;color:inherit;'
         .. 'text-decoration:none;font-weight:600}</style></head><body><main>'
-        .. '<h1>Making ' .. Http.html(job.name) .. '</h1><p>' .. Http.html(what) .. '</p>'
+        .. '<h1>Preparing ' .. Http.html(job.name) .. '</h1><p>' .. Http.html(what) .. '</p>'
         .. '<div class="bar"><i></i></div><p>The download starts by itself when it\'s ready.</p>'
         .. '<a href="' .. Http.html(cancel) .. '">Cancel</a></main></body></html>'
 end
