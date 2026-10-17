@@ -6,6 +6,21 @@ All notable changes to Ink Away are listed here, newest first. Versions follow
 is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/releases);
 versions marked *Prerelease* were test builds.
 
+## [Unreleased]
+
+### Added
+- Send to phone or computer: get your notebooks and drawings onto a phone or
+  computer over Wi-Fi, with nothing to install. In the library's menu, or in
+  Export, it shows a QR code and an address; on any phone or computer on the
+  same Wi-Fi, scan the code or type the address into a browser. The page lists
+  your folders and documents with their pictures, and gives each one as a PDF,
+  a PNG (drawings) or its Ink Away file, along with the files you already
+  exported. PDFs and PNGs are made when you ask for them. The reader serves the
+  page itself: nothing goes over the internet or through anyone's server, and
+  nothing on the reader can be changed from the page. The address holds a
+  secret that changes each time, and sharing stops when you close it, when the
+  reader sleeps, or after 15 minutes with nothing sent.
+
 ## [4.2.0] - 2026-10-17
 
 Everything from the 4.1.0 and 4.1.1 prereleases, now tested on readers, plus

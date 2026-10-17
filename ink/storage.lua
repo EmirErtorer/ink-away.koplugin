@@ -113,6 +113,17 @@ function Storage.list(dir)
     return out
 end
 
+-- The size of the file at `p` in bytes, or nil.
+function Storage.size(p)
+    local fs = getLfs()
+    if fs then return fs.attributes(p, "size") end
+    local f = io.open(p, "rb")
+    if not f then return nil end
+    local n = f:seek("end")
+    f:close()
+    return n
+end
+
 -- When the file or folder at `p` last changed, or nil.
 function Storage.mtime(p)
     local fs = getLfs()

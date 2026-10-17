@@ -3325,7 +3325,8 @@ do
     view:libraryItemMenu(view._library.items[1])
     ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: holding a card shows its menu")
     view:libraryMenu()
-    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: the library menu offers import, sort and the trash")
+    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 4,
+        "lib: the library menu offers import, sort, sending to a phone or computer and the trash")
     ButtonDialog.last.buttons[2][1].callback()
     ok(G_reader_settings.data.inkaway_library_sort == "name", "lib: sorting by name is remembered")
     G_reader_settings.data.inkaway_library_sort = nil

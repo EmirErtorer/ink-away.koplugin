@@ -150,6 +150,8 @@ function InkAwayView:libraryMenu()
             self:setSetting("inkaway_library_sort", by_name and "recent" or "name")
             self:refreshLibrary()
         end } },
+        { { text = _("Send to phone or computer\u{2026}"), callback = function()
+            UIManager:close(dialog); self:openSend() end } },
         { { text = _("Trash\u{2026}"), callback = function() UIManager:close(dialog); self:openTrash() end } },
     } }
     UIManager:show(dialog)

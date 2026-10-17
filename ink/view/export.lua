@@ -264,6 +264,10 @@ function InkAwayView:openExport()
             add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
                 closeSelf(); self:saveOrnament() end))
         end
+        -- (see ink/view/share.lua)
+        add(vspan(10))
+        add(self:actionButton(_("Send to phone or computer\u{2026}"), content_w, function()
+            closeSelf(); self:openSend() end))
         return content
     end
     self:showSheet("_save_dialog", build)
@@ -473,13 +477,43 @@ function InkAwayView:writePDF(path)
         bg_opaque = bg_opaque, numbers = o.numbers, quality = quality, outline = outline, links = links })
 end
 
+-- Add the pages of the document at `path` to `acc` (pages, templates, sources,
+-- places): a notebook's pages on their own paper, or a drawing as one page.
+-- Returns its bookmark (the titled pages of a notebook under it), or nil when
+-- the file holds no document.
+function InkAwayView:collectDocumentPages(path, acc)
+    local data = Project.load(path)
+    if not data then return nil end
+    local pages, templates, sources = acc.pages, acc.templates, acc.sources
+    acc.places = acc.places or {}
+    local item = { title = Storage.stem(Storage.baseName(path)), page = #pages + 1, kids = {} }
+    if Project.isNotebook(data) then
+        local nb = Notebook.fromData(data)
+        for i, page in ipairs(nb.pages) do
+            pages[#pages + 1] = page.ops
+            acc.places[#pages] = { path = path, id = page.id }
+            templates[#pages] = self:pageExportTemplate(nb, i, "page", true)
+            if nb.template.pdf_path and page.src then
+                sources[#pages] = { pdf = nb.template.pdf_path, src = page.src }
+            end
+            if page.title then item.kids[#item.kids + 1] = { title = page.title, page = #pages } end
+        end
+    else
+        pages[#pages + 1] = Layers.drawnOfFile(data.ops or {}, data.layers)
+        acc.places[#pages] = { path = path }
+        templates[#pages] = dress({ style = "blank" }, Palette.paperRGB(data.paper))
+        if type(data.bg) == "string" and Storage.exists(data.bg) then sources[#pages] = { image = data.bg } end
+    end
+    return item
+end
+
 -- Add the pages of folder `dir` to `acc` (pages, templates, sources): its
 -- subfolders first, then its documents, in the overview's tab order. Returns
 -- the outline: a bookmark per folder and document, with the titled pages of a
 -- notebook under it.
 function InkAwayView:collectFolderPages(dir, acc)
     local folders, docs = self:binderEntries(dir)
-    local pages, templates, sources = acc.pages, acc.templates, acc.sources
+    local pages = acc.pages
     acc.places = acc.places or {}   -- each page's document and id, for links
     local outline = {}
     for _, f in ipairs(folders) do
@@ -488,40 +522,17 @@ function InkAwayView:collectFolderPages(dir, acc)
         if #pages >= first then outline[#outline + 1] = { title = f.name, page = first, kids = kids } end
     end
     for _, d in ipairs(docs) do
-        local data = Project.load(d.path)
-        if data then
-            local item = { title = Storage.stem(d.name), page = #pages + 1, kids = {} }
-            if Project.isNotebook(data) then
-                local nb = Notebook.fromData(data)
-                for i, page in ipairs(nb.pages) do
-                    pages[#pages + 1] = page.ops
-                    acc.places[#pages] = { path = d.path, id = page.id }
-                    templates[#pages] = self:pageExportTemplate(nb, i, "page", true)
-                    if nb.template.pdf_path and page.src then
-                        sources[#pages] = { pdf = nb.template.pdf_path, src = page.src }
-                    end
-                    if page.title then item.kids[#item.kids + 1] = { title = page.title, page = #pages } end
-                end
-            else
-                pages[#pages + 1] = Layers.drawnOfFile(data.ops or {}, data.layers)
-                acc.places[#pages] = { path = d.path }
-                templates[#pages] = dress({ style = "blank" }, Palette.paperRGB(data.paper))
-                if type(data.bg) == "string" and Storage.exists(data.bg) then sources[#pages] = { image = data.bg } end
-            end
-            outline[#outline + 1] = item
-        end
+        local item = self:collectDocumentPages(d.path, acc)
+        if item then outline[#outline + 1] = item end
     end
     return outline
 end
 
--- Export folder `dir` with everything in it, its subfolders too, as one PDF:
--- each notebook's pages on their own paper, each drawing a page, and nested
--- bookmarks for the folders, documents and titled pages.
-function InkAwayView:exportFolderPDF(dir)
-    self:leaveDocument()   -- so the open document's latest changes are in its file
+-- The PDF job's spec (see runPdfJob) for the pages gathered in `acc` (see
+-- collectDocumentPages): links between them kept, backgrounds rendered page by
+-- page, and the PDFs they come from closed when the job ends.
+function InkAwayView:pagesPdfSpec(acc, outline)
     local W, H = self.view.canvas_w, self.view.canvas_h
-    local acc = { pages = {}, templates = {}, sources = {}, places = {} }
-    local outline = self:collectFolderPages(dir, acc)
     -- links to pages in the folder become links in the PDF, across notebooks too
     local at = {}
     for j, p in ipairs(acc.places) do
@@ -535,10 +546,6 @@ function InkAwayView:exportFolderPDF(dir)
         end)
     end
     local pages, templates, sources = acc.pages, acc.templates, acc.sources
-    if #pages == 0 then
-        UIManager:show(InfoMessage:new{ text = _("There is nothing to export in this folder."), timeout = 3 })
-        return
-    end
     -- page backgrounds are rendered as each page is written: a PDF page from its
     -- document (kept open until the export ends) or a drawing's picture
     local docs_open = {}
@@ -566,13 +573,26 @@ function InkAwayView:exportFolderPDF(dir)
         for _, doc in pairs(docs_open) do if doc then pcall(function() doc:close() end) end end
         docs_open = {}
     end
+    return { pages = pages, w = W, h = H, bg = bg, outline = outline, links = links,
+        template = function(j) return templates[j] end, done = closeDocs }
+end
+
+-- Export folder `dir` with everything in it, its subfolders too, as one PDF:
+-- each notebook's pages on their own paper, each drawing a page, and nested
+-- bookmarks for the folders, documents and titled pages.
+function InkAwayView:exportFolderPDF(dir)
+    self:leaveDocument()   -- so the open document's latest changes are in its file
+    local acc = { pages = {}, templates = {}, sources = {}, places = {} }
+    local outline = self:collectFolderPages(dir, acc)
+    if #acc.pages == 0 then
+        UIManager:show(InfoMessage:new{ text = _("There is nothing to export in this folder."), timeout = 3 })
+        return
+    end
+    local spec = self:pagesPdfSpec(acc, outline)
     self:askExportPath{
         title = _("Export the folder as PDF"), name = Storage.baseName(dir), default = Storage.baseName(dir),
         dir = self:defaultExportDir(), ext = "pdf",
-        on_path = function(path)
-            self:runPdfJob(path, { pages = pages, w = W, h = H, bg = bg, outline = outline, links = links,
-                template = function(j) return templates[j] end, done = closeDocs })
-        end,
+        on_path = function(path) self:runPdfJob(path, spec) end,
     }
 end
 
