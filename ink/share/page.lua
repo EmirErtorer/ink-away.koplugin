@@ -147,20 +147,27 @@ function kindOf(f){var n=f.name.toLowerCase();
  return null;}
 function level(){var r=document.querySelector('input[name=lv]:checked');return r?r.value:'large';}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
+function decode(f){
+ // the quick way where it works; else the browser's own image loading, which
+ // copes with very large phone photos where the other runs out of memory
+ function viaImg(){return new Promise(function(res,rej){var u=URL.createObjectURL(f),im=new Image();
+  im.onload=function(){res({src:im,w:im.naturalWidth,h:im.naturalHeight,close:function(){URL.revokeObjectURL(u);}});};
+  im.onerror=function(){URL.revokeObjectURL(u);rej(new Error("x"));};im.src=u;});}
+ if(!window.createImageBitmap)return viaImg();
+ return createImageBitmap(f).then(function(b){return {src:b,w:b.width,h:b.height,close:function(){b.close&&b.close();}};},viaImg);}
 function shrink(f,key){
  var L=LV[key];
- if(!window.createImageBitmap)return Promise.reject(new Error("This browser can't resize pictures."));
- return createImageBitmap(f).then(function(b){
-  var w=b.width,h=b.height,png=f.type==='image/png',jpg=/^image\/jpe?g$/.test(f.type);
-  if(!L&&(png||jpg)&&w*h<=C.maxpx){b.close&&b.close();return {blob:f,w:w,h:h,same:true};}
+ return decode(f).then(function(d){
+  var w=d.w,h=d.h,png=f.type==='image/png',jpg=/^image\/jpe?g$/.test(f.type);
+  if(!L&&(png||jpg)&&w*h<=C.maxpx){d.close();return {blob:f,w:w,h:h,same:true};}
   var s=L?Math.min(1,L.m/Math.max(w,h)):1,cw=Math.max(1,Math.round(w*s)),ch=Math.max(1,Math.round(h*s));
-  if(cw*ch>C.maxpx){b.close&&b.close();throw new Error(w+' x '+h+' is too large for the reader at this size. Choose a smaller one.');}
+  if(cw*ch>C.maxpx){d.close();throw new Error(w+' x '+h+' is too large for the reader at this size. Choose a smaller one.');}
   var c=document.createElement('canvas');c.width=cw;c.height=ch;var x=c.getContext('2d');
   if(!png){x.fillStyle='#fff';x.fillRect(0,0,cw,ch);}
-  x.drawImage(b,0,0,cw,ch);b.close&&b.close();
+  x.drawImage(d.src,0,0,cw,ch);d.close();
   return new Promise(function(res,rej){c.toBlob(function(o){o?res({blob:o,w:cw,h:ch}):rej(new Error("Couldn't make it smaller."));},
    png?'image/png':'image/jpeg',L?L.q:0.92);});
- },function(){throw new Error("This picture can't be read here (try another browser, or a JPEG).");});}
+ },function(e){if(e&&e.message&&e.message.length>2)throw e;throw new Error("This picture can't be read here (try another browser, or a JPEG).");});}
 function show(it){
  var key=level(),r=it.res[key];it.s.className='s';
  if(it.kind!=='image'){it.s.textContent=sz(it.f.size)+(it.f.size>C.lim[it.kind]?'':'');

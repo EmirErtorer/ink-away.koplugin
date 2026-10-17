@@ -300,16 +300,71 @@ function Trash.restore(root, id, insert_page)
     return target
 end
 
--- Delete item `id` for good.
+-- The PDF a notebook file at `path` is written over, when it is one sent to
+-- the reader (see ink/view/receive.lua): read from the start of the file,
+-- where its template is.
+local function sentPdfOf(path)
+    local app = Storage.appRootPath()
+    if not app then return nil end
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local head = f:read(256 * 1024) or ""
+    f:close()
+    local pdf = head:match('%["pdf_path"%]=("[^"\n]*")')
+    pdf = pdf and pdf:sub(2, -2)
+    local dir = Storage.join(app, "imported pdfs") .. "/"
+    return pdf and pdf:sub(1, #dir) == dir and pdf or nil
+end
+
+-- The documents under `p` (a file or a folder, its hidden ones too), not
+-- following links (a link to a folder above would never end) and at most a
+-- dozen folders deep.
+local function isLink(p)
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    return ok and lfs and lfs.symlinkattributes and lfs.symlinkattributes(p, "mode") == "link"
+end
+local function eachDoc(p, fn, depth)
+    depth = depth or 0
+    if depth > 12 or isLink(p) then return end
+    if Storage.isDir(p) then
+        for _, e in ipairs(Storage.list(p)) do eachDoc(e.path, fn, depth + 1) end
+    elseif p:match("%." .. Project.EXT .. "$") then
+        fn(p)
+    end
+end
+
+-- Delete the PDFs in `pdfs` (sent to the reader) that no document in the
+-- library or the trash still uses.
+local function releasePdfs(root, pdfs)
+    if not next(pdfs) then return end
+    eachDoc(root, function(doc)
+        local pdf = sentPdfOf(doc)
+        if pdf then pdfs[pdf] = nil end
+    end)
+    for pdf in pairs(pdfs) do os.remove(pdf) end
+end
+
+-- Delete item `id` for good. A PDF sent to the reader goes with the last
+-- notebook written over it.
 function Trash.forget(root, id)
     local data = load(root)
     local item = find(data, id)
     if not item then return false end
     local base = Storage.join(dirOf(root), item.id)
-    if item.kind == "doc" then os.remove(base .. "." .. Project.EXT)
-    elseif item.kind == "page" then os.remove(base .. ".page")
-    else Storage.removeTree(base) end
-    return drop(root, data, id)
+    local pdfs = {}
+    local function note(doc) local pdf = sentPdfOf(doc); if pdf then pdfs[pdf] = true end end
+    if item.kind == "doc" then
+        note(base .. "." .. Project.EXT)
+        os.remove(base .. "." .. Project.EXT)
+    elseif item.kind == "page" then
+        os.remove(base .. ".page")
+    else
+        eachDoc(base, note)
+        Storage.removeTree(base)
+    end
+    local done = drop(root, data, id)
+    pcall(releasePdfs, root, pdfs)
+    return done
 end
 
 -- Delete everything in the trash for good.

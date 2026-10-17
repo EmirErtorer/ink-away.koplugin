@@ -2917,6 +2917,27 @@ do
     r = upload("inkaway", "Evil.inkaway", 'return { ops = {}, x = os.execute("touch ' .. marker .. '") }')
     ok(r.code == 422 and not Storage.exists(IMPORTED .. "/Evil.inkaway"), "receive: an Ink Away file that tries to run code is refused")
     ok(not Storage.exists(marker), "receive: and its code never ran")
+    -- one pointing at files elsewhere on the reader: kept, but without them
+    local sneaky = Project.serialize({ w = 10, h = 10, ops = {
+        { kind = "image", path = "/mnt/onboard/Private/passport.jpg", x = 0, y = 0, w = 5, h = 5 } } },
+        { bg = "/etc/passwd" })
+    r = upload("inkaway", "Sneaky.inkaway", sneaky)
+    local kept = Project.load(IMPORTED .. "/Sneaky.inkaway")
+    ok(r.code == 200 and kept and kept.ops[1].path == nil and kept.bg == nil and kept.ops[1].kind == "image",
+        "receive: references to files elsewhere on the reader are dropped from a sent file")
+    -- two big uploads at once count each other's space
+    package.loaded.util = { diskUsage = function() return { available = 500 * 1024 * 1024 } end }
+    local first_reply = { open = function() return true end, send = function() end }
+    local held
+    function first_reply.receive(sink) held = sink end
+    view:sendUpload({ method = "POST", query = { kind = "pdf", name = "a.pdf" },
+        headers = { ["content-length"] = tostring(250 * 1024 * 1024) } }, first_reply)
+    ok(held ~= nil, "receive: a 250 MB PDF fits")
+    ok(upload("pdf", "b.pdf", "", { length = tostring(250 * 1024 * 1024) }).code == 507,
+        "receive: a second one at once doesn't, counting the first")
+    held.abort("test")
+    ok((view._send.incoming or 0) == 0, "receive: and the space is given back when the first stops")
+    package.loaded.util = nil
     r = upload("pdf", "Report.pdf", "PK\3\4 a zip, not a PDF" .. string.rep("z", 200))
     ok(r.refused and files(PDFS) == "", "receive: a file pretending to be a PDF is refused")
 
@@ -2930,10 +2951,10 @@ do
     ok(view._arrived_dialog ~= nil, "receive: then one question for what arrived")
     ok(#notices >= 1 and notices[#notices]:find("pictures"), "receive: and a note about the pictures (" .. tostring(notices[#notices]) .. ")")
     -- more arriving while it is up: the same question, brought up to date
-    local first = view._arrived_dialog
+    local first, count = view._arrived_dialog, #view._send.arrived
     view:arrived{ kind = "notebook", name = "Second", path = IMPORTED .. "/Sketch.inkaway" }
     UIManager.fireScheduled()
-    ok(view._arrived_dialog == first and #view._send.arrived == 2, "receive: more notebooks join the question already up")
+    ok(view._arrived_dialog == first and #view._send.arrived == count + 1, "receive: more notebooks join the question already up")
     -- opening one while more are coming waits for them
     local opened
     view.openDocument = function(_, p) opened = p end
@@ -2954,6 +2975,9 @@ do
         "receive: after Don't ask again, a note instead of the question")
     view:setSetting("inkaway_send_ask_open", true)
     ok(view:askToOpenArrivals(), "receive: and asking can be turned back on")
+    view.reader_mode = true
+    ok(not view:askToOpenArrivals(), "receive: over a book, a note instead (no notebook to open there)")
+    view.reader_mode = nil
 
     view._send = nil
     G_reader_settings.data.inkaway_library_dir = saved_lib

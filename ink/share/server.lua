@@ -21,7 +21,10 @@ local CHUNK = 64 * 1024        -- read from a file at a time
 local BUDGET = 512 * 1024      -- sent per download per poll, at most
 local MAX_HEAD = 8 * 1024      -- a request's headers, at most
 local MAX_CONN = 16            -- connections at once (reading, waiting, sending and receiving)
-local SILENT = 30              -- s an upload may go without a byte before it is dropped
+local SILENT = 30              -- s an upload or download may go without a byte before it is dropped
+local WAIT_LIMIT = 120         -- s a reply may wait (a picture being drawn) before it gives up
+local LINGER = 2               -- s a refused upload's browser is read (and ignored) after the answer
+local EVENT_EVERY = 1          -- s between the events that keep the reader awake
 
 -- A server for `o.handler(req, reply)`, on the first free port of `o.ports`.
 -- `o.socket` is LuaSocket (tests pass their own); `o.head_timeout` is how long
@@ -29,8 +32,10 @@ local SILENT = 30              -- s an upload may go without a byte before it is
 function Server.new(o)
     return setmetatable({ handler = o.handler, ports = o.ports or { 8642, 8643, 8644, 8645, 8646 },
         socket = o.socket or require("socket"), head_timeout = o.head_timeout or 5, silent = o.silent or SILENT,
-        reading = {}, sends = {}, waiting = {}, receiving = {}, requests = 0, files_sent = 0,
-        on_activity = o.on_activity, make_event = o.make_event }, Server)
+        wait_limit = o.wait_limit or WAIT_LIMIT,
+        reading = {}, sends = {}, waiting = {}, receiving = {}, draining = {}, requests = 0, files_sent = 0,
+        on_activity = o.on_activity, make_event = o.make_event, on_error = o.on_error, on_stop = o.on_stop,
+        last_event = 0 }, Server)
 end
 
 -- Listen on all addresses. Returns the port, or nil and the error.
@@ -58,13 +63,18 @@ function Server:stop()
     for client, reply in pairs(self.waiting) do reply.gone = true; close(client) end
     self.waiting = {}
     self:cancelUploads("stopped")
-    if self.srv then close(self.srv); self.srv = nil end
+    for _, d in ipairs(self.draining) do close(d.client) end
+    self.draining = {}
+    if self.srv then
+        close(self.srv); self.srv = nil
+        if self.on_stop then pcall(self.on_stop) end
+    end
 end
 
 function Server:running() return self.srv ~= nil end
 
 function Server:connections()
-    local n = #self.reading + #self.sends + #self.receiving
+    local n = #self.reading + #self.sends + #self.receiving + #self.draining
     for _ in pairs(self.waiting) do n = n + 1 end
     return n
 end
@@ -82,6 +92,11 @@ function Server:reply(client)
         self.waiting[client] = nil
         if not self.srv or r.gone then close(client); return end   -- stopped or left meanwhile
         item.client = client
+        item.last = self.socket.gettime()
+        -- a body the browser is still sending (a refused upload): it is read and
+        -- dropped for a moment after the answer, or closing now would cut the
+        -- answer off and the page would only say the reader can't be reached
+        item.linger = r.unread
         client:settimeout(0)
         self.sends[#self.sends + 1] = item
     end
@@ -98,12 +113,13 @@ function Server:reply(client)
         queue{ buf = Http.header(200, ctype or Http.typeOf(path), size, extra), file = f, after = after,
             counts = name ~= nil, name = name, total = size, sent = 0 }
     end
-    function r.wait() r.waiting = true; self.waiting[client] = r end
+    function r.wait() r.waiting = true; r.since = self.socket.gettime(); self.waiting[client] = r end
     -- Take the request's body (`length` bytes) into `sink`: write(chunk) ->
     -- true or nil, err; finish(r) once it is all here (it replies); abort(why)
     -- if it stops short. `name` shows in the progress.
     function r.receive(sink, length, name, expect_continue)
         r.waiting = true   -- (answered by sink.finish, or on abort)
+        r.unread = nil     -- (its body is read now)
         local item = { client = client, sink = sink, left = length, total = length, got = 0, name = name,
             reply = r, last = self.socket.gettime() }
         self.receiving[#self.receiving + 1] = item
@@ -122,6 +138,9 @@ function Server:dispatch(client, head, rest)
     local req = Http.parseRequest(head)
     local reply = self:reply(client)
     reply.rest = rest
+    if req and tonumber(req.headers["content-length"] or "0") then
+        reply.unread = (tonumber(req.headers["content-length"] or "0") or 0) > #(rest or "")
+    end
     if not req then
         return reply.send(400, Http.TYPES.txt, "Bad request")
     elseif req.method ~= "GET" and req.method ~= "POST" then
@@ -131,7 +150,8 @@ function Server:dispatch(client, head, rest)
     if self.on_activity then pcall(self.on_activity) end
     local ok, err = pcall(self.handler, req, reply)
     if not ok then
-        reply.send(500, Http.TYPES.txt, "Something went wrong on the reader: " .. tostring(err))
+        if self.on_error then pcall(self.on_error, err) end
+        reply.send(500, Http.TYPES.txt, "Something went wrong on the reader.")
     elseif not reply.waiting and reply.open() then
         reply.send(404, Http.TYPES.txt, "Not found")
     end
@@ -180,13 +200,28 @@ function Server:readRequests(now)
 end
 
 -- Notice browsers that left while their reply waited.
-function Server:checkWaiting()
+function Server:checkWaiting(now)
     for client, reply in pairs(self.waiting) do
         local _, err = client:receive(0)
         if err == "closed" then
             reply.gone = true
             self.waiting[client] = nil
             close(client)
+        elseif reply.since and now - reply.since > self.wait_limit then
+            reply.send(503, Http.TYPES.txt, "The reader took too long.")
+            reply.gone = true
+        end
+    end
+end
+
+-- Read and drop what a refused upload's browser still sends, then close.
+function Server:drain(now)
+    for i = #self.draining, 1, -1 do
+        local d = self.draining[i]
+        local _, err = d.client:receive(65536)
+        if err == "closed" or now > d.until_t then
+            close(d.client)
+            table.remove(self.draining, i)
         end
     end
 end
@@ -205,7 +240,8 @@ function Server:feed(item, data)
         local fok, ferr = pcall(item.sink.finish, item.reply)
         if not fok then
             pcall(item.sink.abort, ferr)
-            item.reply.send(500, Http.TYPES.txt, "Something went wrong on the reader: " .. tostring(ferr))
+            if self.on_error then pcall(self.on_error, ferr) end
+            item.reply.send(500, Http.TYPES.txt, "Something went wrong on the reader.")
         elseif item.reply.open() then
             item.reply.send(200, Http.TYPES.txt, "OK")
         end
@@ -224,6 +260,7 @@ function Server:endUpload(item, why, code)
     self:dropUpload(item)
     pcall(item.sink.abort, why)
     if code and self.srv then
+        item.reply.unread = item.left > 0
         item.reply.send(code, Http.TYPES.txt, tostring(why))
     else
         item.reply.gone = true
@@ -262,14 +299,20 @@ function Server:cancelUploads(why)
     for i = #self.receiving, 1, -1 do self:endUpload(self.receiving[i], why or "cancelled") end
 end
 
-function Server:finish(item)
+function Server:finish(item, lingering)
     if item.file then pcall(item.file.close, item.file); item.file = nil end
-    close(item.client)
+    if lingering and item.linger and self.srv then
+        pcall(item.client.shutdown, item.client, "send")
+        self.draining[#self.draining + 1] = { client = item.client, until_t = self.socket.gettime() + LINGER }
+    else
+        close(item.client)
+    end
     for i = #self.sends, 1, -1 do if self.sends[i] == item then table.remove(self.sends, i) end end
 end
 
--- Send `item` up to BUDGET bytes now. Returns whether it is still going.
-function Server:pump(item)
+-- Send `item` up to BUDGET bytes now. Returns how much went (0 when its
+-- browser isn't taking any); a browser that takes nothing for a while is let go.
+function Server:pump(item, now)
     local sent = 0
     while sent < BUDGET do
         if item.buf == "" and item.file then
@@ -284,20 +327,22 @@ function Server:pump(item)
         if item.buf == "" then
             if item.counts then self.files_sent = self.files_sent + 1 end
             local after = item.after
-            self:finish(item)
+            self:finish(item, true)
             if after then pcall(after) end
-            return false
+            return sent
         end
         local last, err, partial = item.client:send(item.buf)
         local n = last or partial or 0
         item.buf = item.buf:sub(n + 1)
         sent = sent + n
+        if n > 0 then item.last = now end
         if not last then
-            if err ~= "timeout" then self:finish(item); return false end   -- the browser went away
-            return true   -- its buffer is full: more next time
+            if err ~= "timeout" then self:finish(item); return sent end   -- the browser went away
+            if now and item.last and now - item.last > self.silent then self:finish(item) end   -- it stopped taking any
+            return sent   -- its buffer is full: more next time
         end
     end
-    return true
+    return sent
 end
 
 -- One turn of KOReader's loop, never waiting. Returns an event while in use
@@ -310,12 +355,15 @@ function Server:waitEvent()
     local active = self:acceptNew(now)
     if self:readRequests(now) then active = true end
     if self:pumpUploads(now) then active = true end
-    self:checkWaiting()
+    self:checkWaiting(now)
+    self:drain(now)
     for i = #self.sends, 1, -1 do
         local item = self.sends[i]
-        if item then self:pump(item); active = true end
+        if item and self:pump(item, now) > 0 then active = true end
     end
-    if active and self.make_event then
+    -- only when something really moved, and not every turn
+    if active and self.make_event and now - self.last_event >= EVENT_EVERY then
+        self.last_event = now
         self.yielded = true
         return self.make_event()
     end

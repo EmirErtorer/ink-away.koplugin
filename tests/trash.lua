@@ -185,6 +185,46 @@ do
     ok(r == nil and err, "deleting what is not there says so")
 end
 
+-- a PDF sent to the reader goes with the last notebook written over it
+do
+    local APP = ROOT .. "/app"
+    local SENT = APP .. "/imported pdfs"
+    os.execute("mkdir -p '" .. SENT .. "' '" .. ROOT .. "/Imported'")
+    local real_root = Storage.appRootPath
+    Storage.appRootPath = function() return APP end
+    local pdf = SENT .. "/Report.pdf"
+    local f = assert(io.open(pdf, "wb")); f:write("%PDF-1.4"); f:close()
+    local function nbOn(path)
+        local nb = Notebook.forPdf(100, 100, { style = "blank", pdf_path = pdf }, 2)
+        assert(Project.saveNotebook(nb, path))
+    end
+    local one, two = ROOT .. "/Imported/Report.inkaway", ROOT .. "/Imported/Report copy.inkaway"
+    nbOn(one); nbOn(two)
+    local it1 = Trash.putDocument(ROOT, one, true)
+    Trash.forget(ROOT, it1.id)
+    ok(Storage.exists(pdf), "sent PDF: kept while another notebook is written over it")
+    local it2 = Trash.putDocument(ROOT, two, true)
+    ok(Storage.exists(pdf), "sent PDF: kept while its notebook waits in the trash")
+    Trash.forget(ROOT, it2.id)
+    ok(not Storage.exists(pdf), "sent PDF: gone with the last notebook on it, deleted for good")
+    -- a PDF the reader imported itself, from its own files, is never touched
+    local own = ROOT .. "/Book.pdf"
+    f = assert(io.open(own, "wb")); f:write("%PDF-1.4"); f:close()
+    local nb = Notebook.forPdf(100, 100, { style = "blank", pdf_path = own }, 1)
+    assert(Project.saveNotebook(nb, ROOT .. "/Imported/Mine.inkaway"))
+    local it3 = Trash.putDocument(ROOT, ROOT .. "/Imported/Mine.inkaway", true)
+    Trash.forget(ROOT, it3.id)
+    ok(Storage.exists(own), "a PDF from the reader's own files is never deleted")
+    -- a link in the library to a folder above it doesn't make the search go round forever
+    os.execute("ln -s '" .. ROOT .. "' '" .. ROOT .. "/Imported/loop'")
+    f = assert(io.open(pdf, "wb")); f:write("%PDF-1.4"); f:close()
+    nbOn(one)
+    local it4 = Trash.putDocument(ROOT, one, true)
+    Trash.forget(ROOT, it4.id)
+    ok(not Storage.exists(pdf), "a link to a folder above is not followed")
+    Storage.appRootPath = real_root
+end
+
 os.execute("rm -rf '" .. ROOT .. "'")
 print(("trash: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

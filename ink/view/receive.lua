@@ -30,6 +30,7 @@ local Folder = require("ink/folder")
 local Http = require("ink/share/http")
 local Notebook = require("ink/notebook")
 local Project = require("ink/project")
+local SafeData = require("ink/share/safedata")
 local Storage = require("ink/storage")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -39,7 +40,8 @@ local function S(px) return Screen:scaleBySize(px) end
 local InkAwayView = {}
 
 -- What may be sent, and how big.
-local LIMITS = { pdf = 300 * 1024 * 1024, image = 30 * 1024 * 1024, inkaway = 20 * 1024 * 1024 }
+local LIMITS = { pdf = 300 * 1024 * 1024, image = 30 * 1024 * 1024, inkaway = 10 * 1024 * 1024 }
+local MAX_PDF_PAGES = 2000             -- a PDF with more is not made into a notebook
 local MAX_PIXELS = 16 * 1000 * 1000   -- a picture larger than this is too much for a reader to open
 local RESERVE = 64 * 1024 * 1024      -- free space always left on the reader
 local MAX_FILES = 100                 -- files one sharing may take
@@ -47,12 +49,28 @@ local MAX_UPLOADS = 2                 -- coming in at once
 InkAwayView.RECEIVE_LIMITS = { limits = LIMITS, max_pixels = MAX_PIXELS }
 
 -- Where things sent to the reader go.
-function InkAwayView:importedFolder() return Storage.join(self:libraryDir(), _("Imported")) end
+-- (one name in every language: a translated name would make a second folder
+-- whenever KOReader's language changed)
+function InkAwayView:importedFolder() return Storage.join(self:libraryDir(), "Imported") end
+
+-- Parts of uploads cut short by a power cut or a crash: removed when sharing
+-- starts again.
+function InkAwayView:clearUploadParts()
+    for _i, dir in ipairs({ self:importedPdfsDir(), self:importedImagesDir(), self:importedFolder() }) do
+        for _j, e in ipairs(dir and Storage.list(dir) or {}) do
+            if e.mode == "file" and e.name:match("^%..*%.part$") then os.remove(e.path) end
+        end
+    end
+end
 function InkAwayView:importedPdfsDir() return Storage.appDir("imported pdfs") end
 function InkAwayView:importedImagesDir() return Storage.appDir("imported images") end
 
 -- Ask to open notebooks that arrive? (Don't ask again turns it off.)
-function InkAwayView:askToOpenArrivals() return self:getSetting("inkaway_send_ask_open", true) ~= false end
+-- (Over a book there is nothing to open a notebook in: a note then.)
+function InkAwayView:askToOpenArrivals()
+    if self.reader_mode or self.over_book then return false end
+    return self:getSetting("inkaway_send_ask_open", true) ~= false
+end
 
 local function jsonReply(reply, code, ok, message)
     local esc = message:gsub('[%c"\\]', function(c) return string.format("\\u%04x", c:byte()) end)
@@ -107,12 +125,21 @@ function InkAwayView:sendUpload(req, reply)
     local dir = kind == "pdf" and self:importedPdfsDir() or kind == "image" and self:importedImagesDir()
         or (Storage.ensureDir(self:importedFolder()) and self:importedFolder())
     if not dir then return jsonReply(reply, 507, false, "The reader has nowhere to put it.") end
+    -- the space it needs, besides what the uploads still coming will take
     local free = available(dir)
-    if free and free - length < RESERVE then
+    if free and free - (send.incoming or 0) - length < RESERVE then
         return jsonReply(reply, 507, false, "There isn't enough space left on the reader.")
     end
     local sink = self:uploadSink(kind, dir, req.query.name, req.query.batch, tonumber(req.query.i), tonumber(req.query.n))
     if not sink then return jsonReply(reply, 507, false, "The reader couldn't save it.") end
+    send.incoming = (send.incoming or 0) + length
+    local released = false
+    local function release()
+        if not released then released = true; send.incoming = math.max(0, (send.incoming or 0) - length) end
+    end
+    local finish, abort = sink.finish, sink.abort
+    sink.finish = function(r) release(); return finish(r) end
+    sink.abort = function(why) release(); return abort(why) end
     reply.receive(sink, length, Http.cleanName(req.query.name, nil, 40),
         (req.headers.expect or ""):lower() == "100-continue")
 end
@@ -154,7 +181,7 @@ function InkAwayView:uploadSink(kind, dir, sent_name, batch, i, n)
         f:close(); f = nil
         -- a file shorter than its check: look once more at the whole start
         local rf = io.open(part, "rb")
-        local start = rf and rf:read(512 * 1024) or ""
+        local start = rf and rf:read(1024 * 1024) or ""   -- (a phone's EXIF can come before the size)
         if rf then rf:close() end
         what = Http.sniff(start)
         local ext = kind == "image" and what or kind
@@ -174,9 +201,29 @@ function InkAwayView:uploadSink(kind, dir, sent_name, batch, i, n)
                     "This picture is %d x %d, too large for an e-reader. Choose a smaller size on the page.", w, h))
             end
         elseif kind == "inkaway" then
-            if not Project.load(part) then
+            -- read as data only, never run; then written again as Ink Away writes
+            -- its own, without any reference to a file elsewhere on the reader
+            local rf2 = io.open(part, "rb")
+            local text = rf2 and rf2:read("*a") or ""
+            if rf2 then rf2:close() end
+            local data, why = SafeData.decode(text)
+            text = nil   -- luacheck: ignore
+            local fine = type(data) == "table" and type(data.w) == "number" and type(data.h) == "number"
+                and data.w > 0 and data.h > 0 and data.w < 20000 and data.h < 20000
+                and (type(data.ops) == "table" or type(data.pages) == "table")
+            if not fine then
+                logger.info("InkAway: a sent Ink Away file was refused:", why)
                 os.remove(part)
                 return jsonReply(reply, 422, false, "The reader can't read this Ink Away file.")
+            end
+            local root = Storage.appRootPath()
+            local dropped = SafeData.dropOutside(data, function(p)
+                return root ~= nil and p:sub(1, #root + 1) == root .. "/" and not p:find("/%.%./") and not p:find("/%.%.$")
+            end)
+            if dropped > 0 then logger.info("InkAway: a sent Ink Away file pointed elsewhere:", dropped) end
+            if not Storage.writeAtomic(part, Project.encode(data)) then
+                os.remove(part)
+                return jsonReply(reply, 507, false, "The reader couldn't save it.")
             end
         end
         local name = freeName(dir, Http.cleanName(sent_name, ext))
@@ -217,6 +264,7 @@ function InkAwayView:importArrivedPdf(arrival)
         pcall(function() pages = doc:getPageCount() or 1 end)
         pcall(function() doc:close() end)
         if not pages or pages < 1 then pages = 1 end
+        if pages > MAX_PDF_PAGES then error("too many pages") end
         local nb = Notebook.forPdf(self.screen_w, self.screen_h, {
             style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = arrival.path,
         }, pages)
@@ -233,9 +281,12 @@ function InkAwayView:importArrivedPdf(arrival)
     if not ok then
         logger.warn("InkAway: import of a sent PDF failed:", nb_path)
         os.remove(arrival.path)
-        self:showNotice(string.format(_("Couldn't open %s as a notebook"), arrival.name))
+        if not self.closing then
+            self:showNotice(string.format(_("Couldn't open %s as a notebook"), arrival.name))
+        end
         return self:arrivalsMaybeDone()
     end
+    if self.closing then return end   -- (Ink Away closed meanwhile: the notebook is there, nothing to ask)
     self:refreshLibrary()
     self:arrived{ kind = "notebook", name = Storage.stem(arrival.name), path = nb_path, batch = arrival.batch,
         last = arrival.last }

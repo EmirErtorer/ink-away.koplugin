@@ -7,6 +7,8 @@ package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
 local Http = require("ink/share/http")
 local Page = require("ink/share/page")
 local Net = require("ink/share/net")
+local SafeData = require("ink/share/safedata")
+local Project = require("ink/project")
 
 local checks, failures = 0, 0
 local function ok(c, what) checks = checks + 1; if not c then failures = failures + 1; print("FAIL: " .. what) end end
@@ -72,12 +74,23 @@ local fake_sock = { udp = function() return {
     setpeername = function() return 1 end, getsockname = function() return "192.168.4.40", 50000 end, close = function() end } end }
 ok(Net.localIP(fake_sock, function() return "" end) == "192.168.4.40", "the address the system sends from")
 local no_route = { udp = function() return { setpeername = function() error("no route") end, close = function() end } end }
-local outputs = { ["ip -4 route get 192.0.2.1"] = "", ["ip -4 addr"] = "inet 127.0.0.1/8\n    inet 10.1.2.3/24 brd",
-    ifconfig = "" }
-ok(Net.localIP(no_route, function(cmd) return outputs[cmd] or "" end) == "10.1.2.3", "else what the system lists")
-ok(Net.localIP(nil, function(cmd) return cmd == "ifconfig" and "inet addr:192.168.0.9  Bcast" or "" end) == "192.168.0.9",
+local IPADDR = "1: lo: <LOOPBACK,UP>\n    inet 127.0.0.1/8 scope host lo\n2: usb0: <UP>\n    inet 192.168.15.244/24 scope global usb0\n"
+    .. "3: wlan0: <BROADCAST,UP>\n    inet 10.1.2.3/24 brd 10.1.2.255 scope global wlan0\n"
+ok(Net.localIP(no_route, function(cmd) return cmd == "ip -4 addr" and IPADDR or "" end) == "10.1.2.3",
+    "else what the system lists, Wi-Fi first: never a Kindle's USB network")
+ok(Net.localIP(fake_sock, function(cmd) return cmd == "ip -4 addr" and IPADDR or "" end, "wlan0") == "10.1.2.3",
+    "the interface KOReader uses for Wi-Fi comes first")
+local usb_sock = { udp = function() return {
+    setpeername = function() return 1 end, getsockname = function() return "192.168.15.244", 1 end, close = function() end } end }
+ok(Net.localIP(usb_sock, function(cmd) return cmd == "ip -4 addr" and IPADDR or "" end) == "10.1.2.3",
+    "a route out through USB is not taken for the Wi-Fi")
+local IFCONFIG = "usb0      Link encap:Ethernet  HWaddr ee:\n          inet addr:192.168.15.244  Bcast:192.168.15.255\n"
+    .. "wlan0     Link encap:Ethernet  HWaddr 00:\n          inet addr:192.168.0.9  Bcast:192.168.0.255\n"
+ok(Net.localIP(nil, function(cmd) return cmd == "ifconfig" and IFCONFIG or "" end) == "192.168.0.9",
     "old ifconfig output too (Kindle, Kobo)")
 ok(Net.localIP(nil, function() return "" end) == nil, "no network, no address")
+ok(Net.localIP(nil, function(cmd) return cmd == "ip -4 addr" and "1: lo: <UP>\n    inet 127.0.0.1/8\n" or "" end) == nil,
+    "only the loopback: no address")
 local ran = {}
 Net.openFirewall(8642, function(cmd) ran[#ran + 1] = cmd end)
 Net.closeFirewall(8642, function(cmd) ran[#ran + 1] = cmd end)
@@ -138,6 +151,50 @@ ok(not up:find('upload"><script>', 1, true), "the address in it is escaped")
 ok(up:find('name="lv" value="small"', 1, true) and up:find("Original", 1, true), "picture sizes to pick from")
 local off = Page.render{ title = "L", upload = { allowed = false } }
 ok(not off:find("<script", 1, true) and off:find("Allow adding files", 1, true), "off on the reader: no script, and how to turn it on")
+
+-- an Ink Away file from another device: data only, never code
+local real = Project.serialize({ w = 1200, h = 1600, ops = { { kind = "ink", pts = { 1, 2.5, -3, 4e-7 }, width = 2,
+    color = { 255, 0, 0 } }, { kind = "text", paras = { { spans = { { t = 'say "hi" while for function() .. os.exit()\n' } } } } } } })
+ok(SafeData.isData(real), "a real drawing is data (code words inside its text are just text)")
+local nb = Project.serializeNotebook(require("ink/notebook").new(1200, 1600, { style = "lines" }))
+ok(SafeData.isData(nb), "a real notebook is data")
+ok(SafeData.isData("return { a = 1, ['b'] = -inf, c = nan, d = nil, e = true, f = 0x1F, g = 1.5e+10 }"),
+    "plain keys, odd numbers, true, nil")
+for _, bad in ipairs({
+    "return { x = os.execute('rm -rf /') }",
+    "return { (function() while true do end end)() }",
+    "while true do end return {}",
+    "return { a = b }",
+    "return { a = f{} }",
+    "return { 'a' .. 'b' }",
+    "local s = 'x' for i = 1, 40 do s = s .. s end return { s }",
+    "return { #{} }",
+    "return { [[long]] }",
+    "return { a = 1 } -- comment",
+    "return { a = 1 + 2 }",
+    "return { x = getmetatable('').__index }",
+    "return { a == 1 }",
+    "return { 1 } return { 2 }",
+    "{ a = 1 }",
+    "return { 'unfinished }",
+    "return { 1 2abc }",
+    "",
+}) do
+    ok(not SafeData.isData(bad), "not data: " .. bad:sub(1, 50))
+    ok(SafeData.decode(bad) == nil, "and never read: " .. bad:sub(1, 50))
+end
+local d = SafeData.decode(real)
+ok(d and d.w == 1200 and d.ops[1].pts[2] == 2.5, "a real drawing reads back")
+-- references to files elsewhere are dropped; Ink Away's own folders stay
+local t = { template = { pdf_path = "/mnt/onboard/Private/taxes.pdf", style = "blank" }, bg = "/mnt/onboard/.kobo/screen.png",
+    ops = { { kind = "image", path = "/mnt/us/documents/secret.jpg", src_path = "/etc/shadow" },
+        { kind = "image", path = "/mnt/onboard/.adds/koreader/ink away/imported images/a.jpg" } },
+    pages = { { ops = { { kind = "image", path = "/x/y.png" } } } } }
+local inside = function(p) return p:sub(1, 37) == "/mnt/onboard/.adds/koreader/ink away/" end
+ok(SafeData.dropOutside(t, inside) == 5, "five references outside Ink Away dropped")
+ok(t.template.pdf_path == nil and t.bg == nil and t.ops[1].path == nil and t.ops[1].src_path == nil
+    and t.pages[1].ops[1].path == nil, "pictures, background and PDF elsewhere are gone")
+ok(t.ops[2].path ~= nil and t.template.style == "blank", "one in Ink Away's folders stays, and so does the rest")
 
 print(("share: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

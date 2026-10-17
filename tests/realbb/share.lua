@@ -18,18 +18,24 @@ local big = {}
 for i = 1, 3 * 1024 do local n = tostring(i); big[i] = n .. string.rep(".", 1023 - #n) .. "\n" end
 big = table.concat(big)   -- 3 MB
 local f = io.open(tmp, "wb"); f:write(big); f:close()
+local huge = os.tmpname()
+f = io.open(huge, "wb"); for _ = 1, 13 do f:write(big) end; f:close()   -- 39 MB
 
 local waiting, sent_after, events = nil, 0, 0
 local upload
 local srv = Server.new{
-    socket = socket, ports = { 18642, 18643, 18644 }, head_timeout = 0.6, silent = 0.8,
+    socket = socket, ports = { 18642, 18643, 18644 }, head_timeout = 0.6, silent = 0.8, wait_limit = 0.8,
     make_event = function() events = events + 1; return "InputEvent" end,
     handler = function(req, reply)
-        if req.method ~= "GET" and req.path ~= "/t/up" then return reply.send(405, Http.TYPES.txt, "Not here") end
+        if req.method ~= "GET" and req.path ~= "/t/up" and req.path ~= "/t/refuse" then
+            return reply.send(405, Http.TYPES.txt, "Not here")
+        end
         if req.path == "/t/" then return reply.send(200, Http.TYPES.html, "<p>hello " .. (req.query.d or "") .. "</p>") end
+        if req.path == "/t/huge" then return reply.file(huge, Http.TYPES.pdf, "Huge.pdf") end
         if req.path == "/t/big" then return reply.file(tmp, Http.TYPES.pdf, "Big.pdf", function() sent_after = sent_after + 1 end) end
         if req.path == "/t/wait" then waiting = reply; return reply.wait() end
-        if req.path == "/t/boom" then error("kaboom") end
+        if req.path == "/t/boom" then error("kaboom /secret/path") end
+        if req.path == "/t/refuse" then return reply.send(403, Http.TYPES.txt, "Turned off on the reader") end
         if req.path == "/t/up" then
             local len = tonumber(req.headers["content-length"])
             local got = {}
@@ -121,7 +127,8 @@ ok(table.concat(got):find("\r\n\r\nmade$"), "then goes out when ready")
 head = fetch("/t/nothing")
 ok(head:match("^HTTP/1%.1 404"), "a page nobody answers is not found")
 head, body = fetch("/t/boom")
-ok(head:match("^HTTP/1%.1 500") and body:find("kaboom"), "a mistake on the reader is a 500, and the server goes on")
+ok(head:match("^HTTP/1%.1 500") and not body:find("kaboom") and not body:find("secret"),
+    "a mistake on the reader is a 500 that shows nothing of the reader's insides")
 head = fetch("/t/", "POST")
 ok(head:match("^HTTP/1%.1 405"), "nothing can be sent to the reader")
 
@@ -310,6 +317,40 @@ srv:cancelUploads()
 ok(upload.aborted and srv:uploads() == 0, "Cancel stops it")
 c:close()
 
+-- a download whose browser stops reading (but stays connected) is let go
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:setoption("tcp-nodelay", true)
+c:send("GET /t/huge HTTP/1.1\r\n\r\n")
+turnUntil(function() return srv:busy() end)
+local sent_before = srv.files_sent
+local t2 = socket.gettime()
+while socket.gettime() - t2 < 3 and srv:busy() do turn(); socket.sleep(0.02) end
+ok(not srv:busy() and srv.files_sent == sent_before, "a browser that stops taking a download is let go after a while")
+c:close()
+
+-- a refused upload: the browser still sending gets the reason, not a reset
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:settimeout(0)
+sendAll(c, "POST /t/refuse HTTP/1.1\r\nContent-Length: 2000000\r\n\r\n")
+sendAll(c, string.rep("z", 300000))
+ans = answer(c, 300)
+ok(ans:find("403", 1, true) and ans:find("Turned off on the reader", 1, true),
+    "a refused upload's browser gets the reason while it is still sending")
+
+-- a reply that waits too long gives up
+waiting = nil
+c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
+c:send("GET /t/wait HTTP/1.1\r\n\r\n")
+turnUntil(function() return waiting ~= nil end)
+local t3 = socket.gettime()
+while socket.gettime() - t3 < 1.5 and not waiting.gone do turn(); socket.sleep(0.02) end
+ok(waiting.gone and answer(c, 50):find("503", 1, true), "a reply waiting too long gives up with a 503")
+
+-- the events that keep the reader awake: not every turn
+local before = events
+for _ = 1, 30 do fetch("/t/") end
+ok(events - before <= 3, ("keeping awake doesn't flood KOReader's loop (%d events for 30 requests)"):format(events - before))
+
 -- stopping, with a reply still waiting
 waiting = nil
 c = socket.tcp(); c:settimeout(1); assert(c:connect("127.0.0.1", port))
@@ -327,5 +368,6 @@ waiting.send(200, Http.TYPES.txt, "late")   -- a PDF finished after stopping: no
 ok(not srv:busy(), "a reply after stopping goes nowhere")
 
 os.remove(tmp)
+os.remove(huge)
 print(("realbb share: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

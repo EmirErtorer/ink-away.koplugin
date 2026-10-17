@@ -98,7 +98,8 @@ end
 function InkAwayView:startSend()
     local oks, socket = pcall(require, "socket")
     if not oks then return false, _("This reader can't share over Wi-Fi.") end
-    local ip = Net.localIP(socket)
+    local okn, NetworkMgr = pcall(require, "ui/network/manager")
+    local ip = Net.localIP(socket, nil, okn and NetworkMgr and NetworkMgr.interface or nil)
     if not ip then
         return false, _("This reader has no address on a network yet. Connect it to Wi-Fi and try again.")
     end
@@ -109,11 +110,18 @@ function InkAwayView:startSend()
         -- adding files (see ink/view/receive.lua): off each time sharing starts
         allow_upload = false, received = 0, importing = 0, arrived = {}, noted = {} }
     Storage.ensureDir(send.cache)
+    -- what a crash or a power cut left from the last sharing
+    for _i, e in ipairs(Storage.list(send.cache)) do os.remove(e.path) end
+    pcall(self.clearUploadParts, self)
+    local kindle = deviceIs("isKindle")
     send.server = Server.new{
         socket = socket,
         handler = function(req, reply) self:sendRoute(req, reply) end,
         on_activity = function() send.last = os.time() end,
         make_event = function() return Event:new("InputEvent") end,   -- keeps the reader awake while in use
+        on_error = function(err) logger.warn("InkAway: send:", err) end,
+        -- the Kindle's firewall is closed again however the server stops (KOReader quitting too)
+        on_stop = kindle and function() Net.closeFirewall(send.port) end or nil,
     }
     local port, perr = send.server:start()
     if not port then
@@ -122,11 +130,13 @@ function InkAwayView:startSend()
     end
     send.port = port
     send.url = string.format("http://%s:%d/%s/", ip, port, send.token)
-    if deviceIs("isKindle") then
+    if kindle then
         Net.closeFirewall(port)   -- (a rule left by a crash is not added twice)
         Net.openFirewall(port)
     end
     UIManager:insertZMQ(send.server)
+    -- no light sleep (a Kobo's standby) while sharing: the phone couldn't reach it
+    if UIManager.preventStandby then UIManager:preventStandby(); send.standby = true end
     self._send = send
     send.idle = function()
         if self._send ~= send then return end
@@ -158,8 +168,8 @@ function InkAwayView:stopSend()
     if send.job then pcall(send.job.cancel) end
     if send.spec_done then pcall(send.spec_done) end
     UIManager:removeZMQ(send.server)
-    send.server:stop()
-    if deviceIs("isKindle") then Net.closeFirewall(send.port) end
+    send.server:stop()   -- (closes the Kindle's firewall again, see on_stop)
+    if send.standby then UIManager:allowStandby(); send.standby = nil end
     for _i, e in ipairs(Storage.list(send.cache)) do os.remove(e.path) end
     logger.info("InkAway: sharing stopped")
 end
@@ -169,6 +179,15 @@ function InkAwayView:onSuspend()
     if self._send then
         self:stopSend()
         self:closeSheet("_send_dialog")
+    end
+end
+
+-- Wi-Fi went away: nothing can reach the page any more.
+function InkAwayView:onNetworkDisconnected()
+    if self._send then
+        self:stopSend()
+        self:closeSheet("_send_dialog")
+        self:showNotice(_("Sharing stopped: Wi-Fi is off"))
     end
 end
 
@@ -248,6 +267,7 @@ end
 function InkAwayView:showSendSheet()
     local send = self._send
     if not send then return end
+    if self._send_dialog then return self:rebuildSheet("_send_dialog") end   -- (already up: no second one)
     local content_w = self:sheetWidth()
     local closeSelf = function() self:closeSheet("_send_dialog") end
     local function para(text, size, bold, color)
@@ -302,7 +322,7 @@ function InkAwayView:showSendSheet()
             add(para(_("PDFs, pictures and Ink Away files sent from the page go to Library › Imported and Insert picture › From your phone. Reload the page there to see Add files."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         end
         add(VerticalSpan:new{ width = S(10) })
-        add(para(string.format(_("Your notebooks and drawings are there as PDF, PNG and Ink Away files. Sharing stops when you close this, or after %d minutes with nothing sent."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+        add(para(string.format(_("Your notebooks and drawings are there as PDF, PNG and Ink Away files. Sharing stops when you close this, or after %d minutes with nothing sent. Use it on a Wi-Fi you trust: anyone on it who has this address can open the page."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         return content
     end
     self:showSheet("_send_dialog", build)
@@ -423,8 +443,13 @@ end
 -- Settings when it is another.
 function InkAwayView:sendExportDirs()
     local dirs, seen = {}, {}
+    local app = Storage.appRootPath()
     for _i, d in ipairs({ Storage.appDir("exports"), self:exportDir() }) do
-        if d and not seen[d] and Storage.isDir(d) then seen[d] = true; dirs[#dirs + 1] = d end
+        -- only Ink Away's own folders: a chosen export folder elsewhere (the
+        -- books' folder, say) is not offered
+        if d and not seen[d] and Storage.isDir(d) and app and realInside(d, app) then
+            seen[d] = true; dirs[#dirs + 1] = d
+        end
     end
     return dirs
 end
@@ -455,7 +480,9 @@ end
 -- An exported file, by its name.
 function InkAwayView:sendExport(name, reply)
     name = tostring(name or "")
-    if name == "" or name:find("[/\\%z]") or name:sub(1, 1) == "." then
+    local ext = name:match("%.(%w+)$")
+    ext = ext and ext:lower()
+    if name == "" or name:find("[/\\%z]") or name:sub(1, 1) == "." or (ext ~= "pdf" and ext ~= "png") then
         return reply.send(404, Http.TYPES.txt, "Not found")
     end
     for _i, dir in ipairs(self:sendExportDirs()) do
@@ -473,6 +500,13 @@ function InkAwayView:sendThumb(path, reply)
     local send = self._send
     local file = Storage.join(Storage.cacheDir(), Library.thumbName(path, Storage.mtime(path), THUMB_W, THUMB_H))
     if Storage.exists(file) then return reply.file(file, Http.TYPES.png, nil) end
+    -- the library's own picture of it, any size (the browser scales it): no drawing at all
+    local prefix = string.format("%s-%d-", Library.pathCode(path), Storage.mtime(path) or 0)
+    for _i, e in ipairs(Storage.list(Storage.cacheDir())) do
+        if e.name:sub(1, #prefix) == prefix and e.name:match("%.png$") then
+            return reply.file(e.path, Http.TYPES.png, nil)
+        end
+    end
     if #send.thumbs >= MAX_THUMBS then return reply.send(503, Http.TYPES.txt, "Busy") end
     reply.wait()
     send.thumbs[#send.thumbs + 1] = { path = path, file = file, reply = reply }
@@ -659,14 +693,23 @@ function InkAwayView:sendNextJob()
                 bb:free()
                 os.rename(tmp, item.out)
             end)
-            if not ok then logger.warn("InkAway: send: png failed:", err) end
+            if not ok then logger.warn("InkAway: send: png failed:", err); os.remove(item.out .. ".part") end
             item.i = 1
             finished(ok)
         end
         UIManager:scheduleIn(0.05, send.step)
         return
     end
-    -- a PDF, one page per step so the reader keeps up
+    -- a PDF, one page per step so the reader keeps up, and never filling the reader
+    local function roomLeft()
+        local okd, util = pcall(require, "util")
+        local u = okd and util and util.diskUsage and util.diskUsage(send.cache)
+        return not (u and u.available) or u.available > 64 * 1024 * 1024
+    end
+    if not roomLeft() then
+        logger.warn("InkAway: send: not enough space for a PDF")
+        return finished(false)
+    end
     local ok, err = pcall(function()
         local acc = { pages = {}, templates = {}, sources = {}, places = {} }
         local entry = self:collectDocumentPages(item.path, acc)
@@ -701,6 +744,12 @@ function InkAwayView:sendNextJob()
             return finished(false)
         end
         item.i = job.i or item.i
+        if item.i % 10 == 0 and not roomLeft() then
+            logger.warn("InkAway: send: the reader is nearly full, PDF stopped")
+            pcall(job.cancel)
+            if send.spec_done then pcall(send.spec_done); send.spec_done = nil end
+            return finished(false)
+        end
         self:sendStatusChanged()
         send.step = step
         UIManager:scheduleIn(0.02, step)

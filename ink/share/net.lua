@@ -20,11 +20,37 @@ local function run(cmd)
     return out
 end
 
--- The reader's address on its network, or nil without one. The address the
--- system would send from (a UDP socket only picks its route: nothing is sent),
--- else what the system's tools list.
-function Net.localIP(socket, runner)
+-- The addresses `ip -4 addr` or `ifconfig` list, as { iface, ip } in order.
+local function listed(runner)
+    local out = {}
+    local iface
+    for line in (runner("ip -4 addr") .. "\n"):gmatch("([^\n]*)\n") do
+        iface = line:match("^%d+:%s*([^:@%s]+)") or iface
+        local ip = line:match("inet%s+(%d+%.%d+%.%d+%.%d+)")
+        if ip and iface then out[#out + 1] = { iface = iface, ip = ip } end
+    end
+    if #out == 0 then
+        iface = nil
+        for line in (runner("ifconfig") .. "\n"):gmatch("([^\n]*)\n") do
+            iface = line:match("^([%w%.%-_]+)[%s:]") or iface
+            local ip = line:match("inet addr:(%d+%.%d+%.%d+%.%d+)") or line:match("inet%s+(%d+%.%d+%.%d+%.%d+)")
+            if ip and iface then out[#out + 1] = { iface = iface, ip = ip } end
+        end
+    end
+    return out
+end
+
+-- The reader's address on its Wi-Fi, or nil without one: on `iface` (the
+-- interface KOReader uses for Wi-Fi) when known, else the address the system
+-- would send from (a UDP socket only picks its route: nothing is sent), else
+-- the first Wi-Fi-looking one the system lists. A USB network (a Kindle's
+-- usbnet, say) is never chosen over Wi-Fi.
+function Net.localIP(socket, runner, iface)
     runner = runner or run
+    local all = listed(runner)
+    if iface then
+        for _, a in ipairs(all) do if a.iface == iface and isLan(a.ip) then return a.ip end end
+    end
     if socket and socket.udp then
         local udp = socket.udp()
         if udp then
@@ -33,17 +59,20 @@ function Net.localIP(socket, runner)
                 return udp:getsockname()
             end)
             pcall(udp.close, udp)
-            if ok and isLan(ip) then return ip end
+            local usb = false
+            for _, a in ipairs(all) do if a.ip == ip and a.iface:match("^usb") then usb = true end end
+            if ok and isLan(ip) and not usb then return ip end
         end
     end
     local ip = runner("ip -4 route get 192.0.2.1"):match("%ssrc%s+(%d+%.%d+%.%d+%.%d+)")
-    if isLan(ip) then return ip end
-    for cand in runner("ip -4 addr"):gmatch("inet%s+(%d+%.%d+%.%d+%.%d+)") do
-        if isLan(cand) then return cand end
-    end
-    for _, pat in ipairs({ "inet addr:(%d+%.%d+%.%d+%.%d+)", "inet%s+(%d+%.%d+%.%d+%.%d+)" }) do
-        for cand in runner("ifconfig"):gmatch(pat) do
-            if isLan(cand) then return cand end
+    local via_usb = false
+    for _, a in ipairs(all) do if a.ip == ip and a.iface:match("^usb") then via_usb = true end end
+    if isLan(ip) and not via_usb then return ip end
+    for _, pat in ipairs({ "^wl", "^eth", "^en", "." }) do
+        for _, a in ipairs(all) do
+            if a.iface:match(pat) and not a.iface:match("^usb") and not a.iface:match("^lo") and isLan(a.ip) then
+                return a.ip
+            end
         end
     end
     return nil
