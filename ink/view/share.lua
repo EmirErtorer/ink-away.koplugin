@@ -4,9 +4,12 @@ web page on the home Wi-Fi (see ink/share/), and a phone or computer on the
 same network opens it from a QR code or the address under it. The page lists
 the library's folders and documents with their pictures, and hands out each
 one as a PDF, a PNG (a drawing) or its Ink Away file, plus the files already
-exported. PDFs and PNGs are made when asked for, one at a time, and kept
-until sharing stops. Nothing leaves the home network, and nothing can be
-changed from the page. Sharing stops when the sheet closes, when the reader
+exported. PDFs and PNGs are made when asked for, one at a time and a page per
+tick, with their progress on the reader and on the page (which reloads itself
+and downloads the file once it is ready), and either can cancel; they are
+kept until sharing stops. Pictures for the page are drawn one at a time in
+the background. Nothing leaves the home network, and nothing can be changed
+from the page. Sharing stops when the sheet closes, when the reader
 sleeps, when Ink Away closes, or after a while with nothing asked for.
 Part of InkAwayView (see ink/view.lua).
 ]]
@@ -37,6 +40,8 @@ local function S(px) return Screen:scaleBySize(px) end
 
 local IDLE_MINUTES = 15
 local THUMB_W, THUMB_H = 240, 320
+local MAX_JOBS = 8        -- PDFs and PNGs waiting to be made, at most
+local MAX_THUMBS = 64     -- pictures waiting to be drawn, at most
 
 local InkAwayView = {}
 
@@ -45,6 +50,16 @@ local function deviceIs(name)
     if type(f) ~= "function" then return false end
     local ok, yes = pcall(f, Device)
     return ok and yes == true
+end
+
+-- Is `path` inside folder `root` once links are followed? (A link the reader
+-- made in the library could lead anywhere.) True where it can't be told.
+local function realInside(path, root)
+    local ok, util = pcall(require, "ffi/util")
+    if not (ok and util and util.realpath) then return true end
+    local rp, rr = util.realpath(path), util.realpath(root)
+    if not (rp and rr) then return false end
+    return rp == rr or rp:sub(1, #rr + 1) == rr .. "/"
 end
 
 local function hex(rgb)
@@ -84,7 +99,7 @@ function InkAwayView:startSend()
     local Server = require("ink/share/server")
     local Event = require("ui/event")
     local send = { token = Http.token(Http.randomBytes(12), 12), ip = ip, sent = 0, last = os.time(),
-        cache = Storage.join(Storage.cacheDir(), "send"), jobs = {} }
+        cache = Storage.join(Storage.cacheDir(), "send"), queue = {}, jobs = {}, thumbs = {}, cancelled = {} }
     Storage.ensureDir(send.cache)
     send.server = Server.new{
         socket = socket,
@@ -99,7 +114,10 @@ function InkAwayView:startSend()
     end
     send.port = port
     send.url = string.format("http://%s:%d/%s/", ip, port, send.token)
-    if deviceIs("isKindle") then Net.openFirewall(port) end
+    if deviceIs("isKindle") then
+        Net.closeFirewall(port)   -- (a rule left by a crash is not added twice)
+        Net.openFirewall(port)
+    end
     UIManager:insertZMQ(send.server)
     self._send = send
     send.idle = function()
@@ -125,6 +143,8 @@ function InkAwayView:stopSend()
     self._send = nil
     UIManager:unschedule(send.idle)
     if send.status_tick then UIManager:unschedule(send.status_tick) end
+    if send.thumb_tick then UIManager:unschedule(send.thumb_tick) end
+    if send.step then UIManager:unschedule(send.step) end
     if send.job then pcall(send.job.cancel) end
     if send.spec_done then pcall(send.spec_done) end
     UIManager:removeZMQ(send.server)
@@ -146,21 +166,48 @@ end
 -- The sheet
 ------------------------------------------------------------------------------
 
+-- What the reader is doing for the page now: { label, fraction (0..1),
+-- cancel = function } for a PDF or PNG being made or files going out, or nil.
+function InkAwayView:sendProgress()
+    local send = self._send
+    if not send then return nil end
+    local job = send.current
+    if job then
+        local n, i = job.n or 0, job.i or 0
+        local label = n > 1 and string.format(_("Making %s: page %d of %d"), job.name, math.min(i + 1, n), n)
+            or string.format(_("Making %s\u{2026}"), job.name)
+        if #send.queue > 0 then label = label .. "\n" .. string.format(_("%d more waiting"), #send.queue) end
+        return { label = label, fraction = n > 0 and i / n or 0, cancel = function() self:sendCancelAll() end }
+    end
+    local list = send.server:transfers()
+    if #list > 0 then
+        local sent, total = 0, 0
+        for _i, t in ipairs(list) do sent = sent + t.sent; total = total + t.total end
+        local label = #list == 1
+            and string.format(_("Sending %s: %s of %s"), list[1].name, Http.size(sent), Http.size(total))
+            or string.format(_("Sending %d files: %s of %s"), #list, Http.size(sent), Http.size(total))
+        return { label = label, fraction = total > 0 and sent / total or 0,
+            cancel = function() send.server:cancelTransfers(); self:sendStatusChanged() end }
+    end
+end
+
 function InkAwayView:sendStatus()
     local send = self._send
     if not send then return "" end
-    if send.running then return string.format(_("Making %s\u{2026}"), send.running) end
     if send.sent == 0 then return _("Waiting for your phone or computer\u{2026}") end
     return send.sent == 1 and _("1 file sent") or string.format(_("%d files sent"), send.sent)
 end
 
--- Show the status again (at most every few seconds, as e-ink redraws the sheet).
+-- Show the status again (at most every couple of seconds, as e-ink redraws the
+-- sheet), and keep showing it while something is going on.
 function InkAwayView:sendStatusChanged()
     local send = self._send
     if not send or send.status_tick then return end
     send.status_tick = function()
         send.status_tick = nil
-        if self._send == send then self:rebuildSheet("_send_dialog") end
+        if self._send ~= send then return end
+        self:rebuildSheet("_send_dialog")
+        if self:sendProgress() then self:sendStatusChanged() end
     end
     UIManager:scheduleIn(2, send.status_tick)
 end
@@ -190,7 +237,20 @@ function InkAwayView:showSendSheet()
         end
         add(para(send.url, 18, true))
         add(VerticalSpan:new{ width = S(14) })
-        add(para(self:sendStatus(), 16, true, Blitbuffer.COLOR_DARK_GRAY))
+        local prog = self:sendProgress()
+        if prog then
+            add(para(prog.label, 16, true))
+            add(VerticalSpan:new{ width = S(8) })
+            local ProgressWidget = require("ui/widget/progresswidget")
+            add(ProgressWidget:new{ width = content_w, height = S(12), percentage = prog.fraction })
+            add(VerticalSpan:new{ width = S(10) })
+            add(self:actionButton(_("Cancel"), content_w, function()
+                prog.cancel()
+                self:rebuildSheet("_send_dialog")
+            end))
+        else
+            add(para(self:sendStatus(), 16, true, Blitbuffer.COLOR_DARK_GRAY))
+        end
         add(VerticalSpan:new{ width = S(10) })
         add(para(string.format(_("Your notebooks and drawings are there as PDF, PNG and Ink Away files. Sharing stops when you close this, or after %d minutes with nothing sent."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         return content
@@ -220,6 +280,7 @@ function InkAwayView:sendPath(rel, want_dir)
     -- the library's own folders (exports, legacy folders) are not part of it
     local first = rel:match("^[^/]+")
     if first and Library.INTERNAL[first] then return nil end
+    if not realInside(path, root) then return nil end
     if want_dir then return Storage.isDir(path) and path or nil end
     if not (Storage.exists(path) and not Storage.isDir(path) and Library.isDocument(Storage.baseName(path))) then
         return nil
@@ -238,6 +299,7 @@ function InkAwayView:sendRoute(req, reply)
     local q = req.query
     if route == "" then return self:sendListing(q.d or "", reply) end
     if route == "export" then return self:sendExport(q.n, reply) end
+    if route == "cancel" then return self:sendCancelPage(q.k, reply) end
     local path = self:sendPath(q.p)
     if not path then return reply.send(404, Http.TYPES.txt, "Not found") end
     if route == "file" then
@@ -245,9 +307,9 @@ function InkAwayView:sendRoute(req, reply)
     elseif route == "thumb" then
         return self:sendThumb(path, reply)
     elseif route == "pdf" then
-        return self:sendMade(path, "pdf", reply)
-    elseif route == "png" then
-        return self:sendMade(path, "png", reply)
+        return self:sendMade(path, "pdf", req, reply)
+    elseif route == "png" and not Library.isNotebookFile(path) then
+        return self:sendMade(path, "png", req, reply)
     end
     reply.send(404, Http.TYPES.txt, "Not found")
 end
@@ -342,113 +404,253 @@ function InkAwayView:sendExport(name, reply)
     end
     for _i, dir in ipairs(self:sendExportDirs()) do
         local path = Storage.join(dir, name)
-        if Storage.exists(path) and not Storage.isDir(path) then
+        if Storage.exists(path) and not Storage.isDir(path) and realInside(path, dir) then
             return reply.file(path, Http.typeOf(name), name, function() self:sendCounted() end)
         end
     end
     reply.send(404, Http.TYPES.txt, "Not found")
 end
 
--- A document's picture for the page, from the library's thumbnail cache.
+-- A document's picture for the page: from the library's thumbnail cache, or
+-- drawn in the background (one at a time, see sendNextThumb) and sent then.
 function InkAwayView:sendThumb(path, reply)
+    local send = self._send
     local file = Storage.join(Storage.cacheDir(), Library.thumbName(path, Storage.mtime(path), THUMB_W, THUMB_H))
-    if not Storage.exists(file) then
-        local ok, bb = pcall(self.docThumb, self, path, THUMB_W, THUMB_H)
-        if ok and bb then bb:free() end
+    if Storage.exists(file) then return reply.file(file, Http.TYPES.png, nil) end
+    if #send.thumbs >= MAX_THUMBS then return reply.send(503, Http.TYPES.txt, "Busy") end
+    reply.wait()
+    send.thumbs[#send.thumbs + 1] = { path = path, file = file, reply = reply }
+    self:sendNextThumb()
+end
+
+function InkAwayView:sendNextThumb()
+    local send = self._send
+    if not send or send.thumb_tick or #send.thumbs == 0 then return end
+    send.thumb_tick = function()
+        send.thumb_tick = nil
+        if self._send ~= send then return end
+        local t = table.remove(send.thumbs, 1)
+        if t and t.reply.open() then
+            if not Storage.exists(t.file) then
+                local ok, bb = pcall(self.docThumb, self, t.path, THUMB_W, THUMB_H)
+                if ok and bb then bb:free() end
+            end
+            if Storage.exists(t.file) then t.reply.file(t.file, Http.TYPES.png, nil)
+            else t.reply.send(404, Http.TYPES.txt, "No picture") end
+        end
+        self:sendNextThumb()
     end
-    if not Storage.exists(file) then return reply.send(404, Http.TYPES.txt, "No picture") end
-    reply.file(file, Http.TYPES.png, nil)
+    -- after a PDF's page, when one is being made, so the two take turns
+    UIManager:scheduleIn(0.05, send.thumb_tick)
 end
 
 ------------------------------------------------------------------------------
 -- PDFs and PNGs, made when asked for
 ------------------------------------------------------------------------------
 
+-- The page shown while a PDF or PNG is made: it reloads itself every couple
+-- of seconds, and the reload that finds it ready downloads it.
+local function progressPage(job, here, cancel)
+    local n, i = job.n or 0, job.i or 0
+    local what = n > 1 and string.format("Page %d of %d", math.min(i + 1, n), n) or "Starting\u{2026}"
+    if job.state == "queued" then what = "Waiting for the files before it\u{2026}" end
+    local pct = n > 0 and math.floor(100 * i / n) or 0
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        .. '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        .. '<meta http-equiv="refresh" content="2;url=' .. Http.html(here) .. '">'
+        .. '<title>Making ' .. Http.html(job.name) .. '</title><style>'
+        .. 'body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;'
+        .. 'background:#f6f7f4;color:#1d1f1b;display:flex;min-height:100vh;align-items:center;justify-content:center}'
+        .. '@media (prefers-color-scheme:dark){body{background:#141613;color:#eef0ea}}'
+        .. 'main{width:min(420px,90vw);text-align:center}h1{font-size:20px;margin:0 0 6px;word-break:break-word}'
+        .. 'p{color:#6b7066;margin:6px 0}.bar{height:12px;border-radius:6px;background:#e3e6df;overflow:hidden;margin:18px 0}'
+        .. '.bar i{display:block;height:100%;background:#9fd665;width:' .. pct .. '%}'
+        .. 'a{display:inline-block;margin-top:14px;padding:8px 16px;border-radius:999px;background:#eef1ea;color:inherit;'
+        .. 'text-decoration:none;font-weight:600}</style></head><body><main>'
+        .. '<h1>Making ' .. Http.html(job.name) .. '</h1><p>' .. Http.html(what) .. '</p>'
+        .. '<div class="bar"><i></i></div><p>The download starts by itself when it\'s ready.</p>'
+        .. '<a href="' .. Http.html(cancel) .. '">Cancel</a></main></body></html>'
+end
+
+-- A short page with a way back to the library.
+local function notePage(base, title, text)
+    return Page.render{ title = title, crumbs = { { label = "Library", href = base } }, note = text }
+end
+
 -- Send the document at `path` as a PDF or PNG (`kind`): the copy made for
--- this sharing when there is one, else made now, after any being made.
-function InkAwayView:sendMade(path, kind, reply)
+-- this sharing when there is one, else a page following it being made.
+function InkAwayView:sendMade(path, kind, req, reply)
     local send = self._send
+    local base = "/" .. send.token .. "/"
     local out = Storage.join(send.cache, string.format("%s-%d.%s", Library.pathCode(path), Storage.mtime(path) or 0, kind))
+    local key = Storage.baseName(out)
     local name = Storage.stem(Storage.baseName(path)) .. "." .. kind
-    local function deliver()
-        if not reply.open() then return end
-        if Storage.exists(out) then
-            reply.file(out, Http.TYPES[kind], name, function() self:sendCounted() end)
-        else
-            reply.send(500, Http.TYPES.txt, "Couldn't make the " .. kind:upper() .. " on the reader.")
-        end
+    if Storage.exists(out) then
+        return reply.file(out, Http.TYPES[kind], name, function() self:sendCounted() end)
     end
-    if Storage.exists(out) then return deliver() end
-    reply.wait()
-    send.jobs[#send.jobs + 1] = { path = path, kind = kind, out = out, name = name, deliver = deliver }
-    self:sendNextJob()
+    local job = send.jobs[key]
+    -- cancelled (on the reader or the page): the page's reloads don't start it
+    -- again, only Make it again does
+    if send.cancelled[key] then
+        if req.query.retry ~= "1" then
+            local again = base .. kind .. "?p=" .. Http.urlEncode(req.query.p or "") .. "&retry=1"
+            return reply.send(200, Http.TYPES.html, Page.render{ title = string.format("%s was cancelled", name),
+                crumbs = { { label = "Library", href = base }, { label = "Make it again", href = again } },
+                note = "Nothing more is made for it on the reader." })
+        end
+        send.cancelled[key] = nil
+    end
+    if job and job.state == "failed" and req.query.retry ~= "1" then
+        send.jobs[key] = nil
+        return reply.send(200, Http.TYPES.html, notePage(base, string.format("Couldn't make %s", name),
+            "The reader couldn't make this file. Try again, or use the Ink Away file."))
+    end
+    if not job or job.state == "failed" or job.state == "cancelled" then
+        if #send.queue >= MAX_JOBS then
+            return reply.send(503, Http.TYPES.html, notePage(base, "The reader is busy",
+                "It's making other files. Try again in a moment."))
+        end
+        job = { key = key, path = path, kind = kind, out = out, name = name, state = "queued" }
+        send.jobs[key] = job
+        send.queue[#send.queue + 1] = job
+        self:sendNextJob()
+        self:sendStatusChanged()
+    end
+    local here = base .. kind .. "?p=" .. Http.urlEncode(req.query.p or "")
+    reply.send(200, Http.TYPES.html, progressPage(job, here, base .. "cancel?k=" .. Http.urlEncode(key)))
+end
+
+-- The page's Cancel: stop that PDF or PNG, made or waiting.
+function InkAwayView:sendCancelPage(key, reply)
+    local send = self._send
+    local base = "/" .. send.token .. "/"
+    local job = key and send.jobs[key]
+    if job then self:sendCancelJob(job) end
+    reply.send(200, Http.TYPES.html, notePage(base, "Cancelled", "Nothing more is made for it on the reader."))
+end
+
+-- Stop `job`: out of the queue, or stopped where it is (its part removed).
+function InkAwayView:sendCancelJob(job)
+    local send = self._send
+    if not send then return end
+    for i = #send.queue, 1, -1 do if send.queue[i] == job then table.remove(send.queue, i) end end
+    job.state = "cancelled"
+    send.jobs[job.key] = nil
+    send.cancelled[job.key] = true
+    if send.current == job then self:sendStopCurrent() end
+    self:sendStatusChanged()
+end
+
+-- The reader's Cancel: every PDF and PNG being made or waiting.
+function InkAwayView:sendCancelAll()
+    local send = self._send
+    if not send then return end
+    for _i, job in ipairs(send.queue) do
+        job.state = "cancelled"; send.jobs[job.key] = nil; send.cancelled[job.key] = true
+    end
+    send.queue = {}
+    if send.current then
+        send.current.state = "cancelled"
+        send.jobs[send.current.key] = nil
+        send.cancelled[send.current.key] = true
+        self:sendStopCurrent()
+    end
+end
+
+-- Stop the PDF or PNG being made, safely: its file is closed and removed, the
+-- PDFs it read from are closed, and the next one starts.
+function InkAwayView:sendStopCurrent()
+    local send = self._send
+    if send.step then UIManager:unschedule(send.step); send.step = nil end
+    if send.job then pcall(send.job.cancel); send.job = nil end
+    if send.spec_done then pcall(send.spec_done); send.spec_done = nil end
+    send.current = nil
+    UIManager:nextTick(function() self:sendNextJob() end)
 end
 
 -- Start the next PDF or PNG waiting, one at a time.
 function InkAwayView:sendNextJob()
     local send = self._send
-    if not send or send.running then return end
-    local item = table.remove(send.jobs, 1)
+    if not send or send.current then return end
+    local item = table.remove(send.queue, 1)
     if not item then return end
-    -- several asked for the same file: the first one makes it
-    if Storage.exists(item.out) then item.deliver(); return self:sendNextJob() end
-    send.running = item.name
-    self:sendStatusChanged()
-    local function finished()
-        if self._send ~= send then return end
-        send.running, send.job, send.spec_done = nil, nil, nil
+    send.current = item
+    item.state, item.i, item.n = "running", 0, item.kind == "png" and 1 or 0
+    local function finished(ok)
+        if self._send ~= send or send.current ~= item then return end
+        send.current, send.job, send.spec_done, send.step = nil, nil, nil, nil
         send.last = os.time()
-        item.deliver()
+        if ok and Storage.exists(item.out) then
+            item.state = "done"
+            send.jobs[item.key] = nil   -- (the file says it is ready)
+        else
+            item.state = "failed"
+            os.remove(item.out)
+        end
         self:sendStatusChanged()
         UIManager:nextTick(function() self:sendNextJob() end)
     end
     if item.kind == "png" then
         -- a drawing at its full size, on its paper
-        UIManager:nextTick(function()
-            if self._send ~= send then return end
+        send.step = function()
+            send.step = nil
+            if self._send ~= send or send.current ~= item then return end
             local ok, err = pcall(function()
                 local bb = self:renderDocThumb(item.path, self.view.canvas_w, self.view.canvas_h)
                 if not bb then error("no picture") end
-                bb:writePNG(item.out)
+                local tmp = item.out .. ".part"
+                bb:writePNG(tmp)
                 bb:free()
+                os.rename(tmp, item.out)
             end)
-            if not ok then logger.warn("InkAway: send: png failed:", err); os.remove(item.out) end
-            finished()
-        end)
+            if not ok then logger.warn("InkAway: send: png failed:", err) end
+            item.i = 1
+            finished(ok)
+        end
+        UIManager:scheduleIn(0.05, send.step)
         return
     end
     -- a PDF, one page per step so the reader keeps up
-    local acc = { pages = {}, templates = {}, sources = {}, places = {} }
-    local entry = self:collectDocumentPages(item.path, acc)
-    if not entry or #acc.pages == 0 then return finished() end
-    local spec = self:pagesPdfSpec(acc, { entry })
-    local tmp = item.out .. ".part"
-    local job, jerr = Export.notebookPDFJob(spec.pages, spec.w, spec.h, spec.template, tmp, 85,
-        Storage.settingsDir(), spec.bg, { outline = spec.outline, links = spec.links })
-    if not job then
-        logger.warn("InkAway: send: pdf failed:", jerr)
-        if spec.done then spec.done() end
-        return finished()
+    local ok, err = pcall(function()
+        local acc = { pages = {}, templates = {}, sources = {}, places = {} }
+        local entry = self:collectDocumentPages(item.path, acc)
+        if not entry or #acc.pages == 0 then error("nothing to put in it") end
+        local spec = self:pagesPdfSpec(acc, { entry })
+        send.spec_done = spec.done
+        local job, jerr = Export.notebookPDFJob(spec.pages, spec.w, spec.h, spec.template, item.out .. ".part", 85,
+            Storage.settingsDir(), spec.bg, { outline = spec.outline, links = spec.links })
+        if not job then error(jerr) end
+        send.job = job
+        item.n = #spec.pages
+    end)
+    if not ok then
+        logger.warn("InkAway: send: pdf failed:", err)
+        if send.spec_done then pcall(send.spec_done); send.spec_done = nil end
+        return finished(false)
     end
-    send.job, send.spec_done = job, spec.done
+    local job = send.job
     local function step()
+        send.step = nil
         if self._send ~= send or send.job ~= job then return end
-        local state, err = job.step()
-        if state == "done" then
-            if spec.done then spec.done() end
-            send.spec_done = nil
-            os.rename(tmp, item.out)
-            return finished()
-        elseif not state then
-            logger.warn("InkAway: send: pdf failed:", err)
-            if spec.done then spec.done() end
-            send.spec_done = nil
-            os.remove(tmp)
-            return finished()
+        -- a page that fails to draw fails the PDF, never KOReader
+        local sok, state, serr = pcall(job.step)
+        if sok and state == "done" then
+            if send.spec_done then pcall(send.spec_done); send.spec_done = nil end
+            os.rename(item.out .. ".part", item.out)
+            return finished(true)
+        elseif not sok or not state then
+            logger.warn("InkAway: send: pdf failed:", sok and serr or state)
+            pcall(job.cancel)
+            if send.spec_done then pcall(send.spec_done); send.spec_done = nil end
+            return finished(false)
         end
+        item.i = job.i or item.i
+        self:sendStatusChanged()
+        send.step = step
         UIManager:scheduleIn(0.02, step)
     end
-    UIManager:scheduleIn(0.02, step)
+    send.step = step
+    UIManager:scheduleIn(0.02, send.step)
 end
 
 return InkAwayView

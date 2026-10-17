@@ -15,7 +15,11 @@ versions marked *Prerelease* were test builds.
   same Wi-Fi, scan the code or type the address into a browser. The page lists
   your folders and documents with their pictures, and gives each one as a PDF,
   a PNG (drawings) or its Ink Away file, along with the files you already
-  exported. PDFs and PNGs are made when you ask for them. The reader serves the
+  exported. PDFs and PNGs are made when you ask for them, a page at a time so
+  the reader stays responsive, with a progress bar and a Cancel button on the
+  reader and on the phone, where the download starts by itself once the file
+  is ready. Downloads going out show their progress and can be cancelled too.
+  A slow or unreliable phone or network can't hold the reader up. The reader serves the
   page itself: nothing goes over the internet or through anyone's server, and
   nothing on the reader can be changed from the page. The address holds a
   secret that changes each time, and sharing stops when you close it, when the
