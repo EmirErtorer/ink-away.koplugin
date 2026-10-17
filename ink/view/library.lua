@@ -58,7 +58,7 @@ end
 
 -- The cards for library folder `dir`: its folders, then its documents.
 function InkAwayView:libraryItems(dir)
-    local folders, docs = Library.list(dir, self:libraryDir(), self:getSetting("inkaway_library_sort"))
+    local folders, docs, pics = Library.list(dir, self:libraryDir(), self:getSetting("inkaway_library_sort"))
     local looks = self:folderLooks(dir, folders)
     local items = {}
     for _, f in ipairs(folders) do
@@ -67,6 +67,10 @@ function InkAwayView:libraryItems(dir)
     for _, d in ipairs(docs) do
         items[#items + 1] = { label = Storage.stem(d.name), path = d.path, mtime = d.mtime,
             selected = (d.path == self.doc_path) }
+    end
+    -- pictures (sent from a phone, or copied in): seen here, placed with Add image
+    for _, p in ipairs(pics or {}) do
+        items[#items + 1] = { label = Storage.stem(p.name), path = p.path, mtime = p.mtime, picture = true }
     end
     return items
 end
@@ -82,6 +86,7 @@ function InkAwayView:openLibrary(dir, over_grid)
     if not Storage.within(dir, root) or not Storage.isDir(dir) then dir = root end
     self:closeSheet("_library")
     pcall(require("ink/trash").purge, root)   -- what has waited its 30 days goes
+    pcall(self.sortImported, self)            -- (what older test versions put in Imported itself)
     self._lib_dir = dir
     local start = 1
     local items = self:libraryItems(dir)
@@ -108,7 +113,10 @@ function InkAwayView:openLibrary(dir, over_grid)
             { "\u{22EF}", function() self:libraryMenu() end },
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,
-        render = function(it, w, h) return self:docThumb(it.path, w, h) end,
+        render = function(it, w, h)
+            if it.picture then return self:pictureThumb(it.path, w, h) end
+            return self:docThumb(it.path, w, h)
+        end,
         on_pick = function(it) self:libraryPick(it) end,
         on_hold = function(it) self:libraryItemMenu(it) end,
         on_close = function() self._library = nil end,
@@ -134,27 +142,48 @@ end
 -- A tap on a card: into a folder, or open a document and close the library.
 function InkAwayView:libraryPick(it)
     if it.folder then return self:libraryGo(it.path) end
+    if it.picture then return self:viewPicture(it.path) end
     if self._library then self._library:close() end
     self:openDocument(it.path)
 end
 
--- The library's menu: import a PDF, and the sort order.
+-- The library's menu (the ... button), as a sheet: Phone or computer over
+-- Wi-Fi, writing on a PDF already on the reader, the order, and the trash,
+-- each with a line saying what it does.
 function InkAwayView:libraryMenu()
-    local dialog
-    local by_name = self:getSetting("inkaway_library_sort") == "name"
-    dialog = ButtonDialog:new{ buttons = {
-        { { text = _("Import a PDF\u{2026}"), callback = function()
-            UIManager:close(dialog); self:openPdfAsNotebook(self._lib_dir) end } },
-        { { text = by_name and _("Sort by date") or _("Sort by name"), callback = function()
-            UIManager:close(dialog)
-            self:setSetting("inkaway_library_sort", by_name and "recent" or "name")
-            self:refreshLibrary()
-        end } },
-        { { text = _("Send to phone or computer\u{2026}"), callback = function()
-            UIManager:close(dialog); self:openSend() end } },
-        { { text = _("Trash\u{2026}"), callback = function() UIManager:close(dialog); self:openTrash() end } },
-    } }
-    UIManager:show(dialog)
+    local field = "_library_menu"
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local build = function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        local function option(label, hint, cb, dark)
+            add(VerticalSpan:new{ width = S(12) })
+            add(self:actionButton(label, content_w, function() closeSelf(); cb() end, dark))
+            add(VerticalSpan:new{ width = S(4) })
+            add(self:sheetHint(hint, content_w))
+        end
+        add(self:sheetTitle(self:libraryTitle(self._lib_dir or self:libraryDir()), content_w, _("Close"), closeSelf))
+        option(_("Phone or computer (Wi-Fi)\u{2026}"),
+            _("Send your notebooks and drawings to a phone or computer, or add PDFs and pictures from one, with a QR code."),
+            function() self:openSend() end, true)
+        option(_("Write on a PDF from this reader\u{2026}"),
+            _("Pick a PDF that is already on this reader. It becomes a notebook in this folder."),
+            function() self:openPdfAsNotebook(self._lib_dir) end)
+        add(VerticalSpan:new{ width = S(16) })
+        add(self:sheetLabel(_("Order"), true))
+        add(VerticalSpan:new{ width = S(6) })
+        add(self:segmentedRow({ { "recent", _("Newest first") }, { "name", _("By name") } },
+            self:getSetting("inkaway_library_sort") == "name" and "name" or "recent", content_w, function(v)
+                self:setSetting("inkaway_library_sort", v)
+                self:refreshLibrary()
+                self:rebuildSheet(field)
+            end))
+        option(_("Trash\u{2026}"), string.format(_("Deleted notebooks, drawings, pictures and folders wait here for %d days."),
+            require("ink/trash").KEEP_DAYS), function() self:openTrash() end)
+        return content
+    end
+    self:showSheet(field, build)
 end
 
 -- The menu of one card, from a hold.
@@ -168,6 +197,17 @@ function InkAwayView:libraryItemMenu(it)
         { act(_("Rename\u{2026}"), function() self:promptRenameItem(it) end),
           act(_("Move to\u{2026}"), function() self:moveItem(it) end) },
     }
+    if it.picture then
+        rows = {
+            { act(_("View"), function() self:viewPicture(it.path) end),
+              act(_("Rename\u{2026}"), function() self:promptRenameItem(it) end) },
+            { act(_("Move to\u{2026}"), function() self:moveItem(it) end),
+              act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) },
+        }
+        dialog = ButtonDialog:new{ title = it.label, buttons = rows }
+        UIManager:show(dialog)
+        return
+    end
     if it.folder then
         rows[#rows + 1] = { act(_("Colour and icon\u{2026}"), function() self:folderLookSheet(it) end) }
         rows[#rows + 1] = { act(_("Export as PDF\u{2026}"), function() self:exportFolderPDF(it.path) end),
@@ -244,7 +284,8 @@ function InkAwayView:promptRenameItem(it)
             local name = (text or ""):gsub("[/\\]", "_"):match("^%s*(.-)%s*$")
             if name == "" or name == it.label then return end
             local dir = Storage.dirName(it.path)
-            local new = it.folder and Storage.join(dir, name) or Storage.join(dir, Storage.fileName(name, Project.EXT))
+            local ext = it.picture and (Storage.baseName(it.path):match("%.([^.]+)$") or "jpg") or Project.EXT
+            local new = it.folder and Storage.join(dir, name) or Storage.join(dir, Storage.fileName(name, ext))
             if Storage.exists(new) and new:lower() ~= it.path:lower() then
                 UIManager:show(InfoMessage:new{ text = string.format(
                     _("There is already something called \u{201C}%s\u{201D} here."), name) })
@@ -291,17 +332,27 @@ end
 -- there.
 function InkAwayView:moveItem(it)
     self:chooseLibraryFolder(it.path, function(dir)
-        local new, err = Library.move(it.path, dir)
+        local new, err = self:moveInto(it.path, dir)
         if not new then
             UIManager:show(InfoMessage:new{ text = _("Could not move it.\n") .. tostring(err) })
             return
         end
-        if new ~= it.path then
-            -- its tab colour, Bookshelf cover and folder look go with it
-            local old_name, new_name = Storage.baseName(it.path), Storage.baseName(new)
-            local from = Folder.load(Storage.dirName(it.path))
-            local color, cover, look = from.colors[old_name], from.covers[old_name], from.folders[old_name]
-            Folder.update(Storage.dirName(it.path), function(d) Folder.forget(d, old_name) end)
+        self:refreshLibrary()
+    end)
+end
+
+-- Move the file or folder at `path` into folder `dir`, under a free name; its
+-- tab colour, Bookshelf cover and folder look go with it, and the open
+-- document follows. Returns the new path, or nil, err.
+function InkAwayView:moveInto(path, dir)
+    local new, err = Library.move(path, dir)
+    if not new then return nil, err end
+    if new ~= path then
+        local old_name, new_name = Storage.baseName(path), Storage.baseName(new)
+        local from = Folder.load(Storage.dirName(path))
+        local color, cover, look = from.colors[old_name], from.covers[old_name], from.folders[old_name]
+        Folder.update(Storage.dirName(path), function(d) Folder.forget(d, old_name) end)
+        if not Library.isPicture(new_name) then
             Folder.update(dir, function(d)
                 Folder.add(d, new_name)
                 if color ~= nil then d.colors[new_name] = color end
@@ -309,9 +360,9 @@ function InkAwayView:moveItem(it)
                 if look ~= nil then d.folders[new_name] = look end
             end)
         end
-        self:pathMoved(it.path, new)
-        self:refreshLibrary()
-    end)
+    end
+    self:pathMoved(path, new)
+    return new
 end
 
 -- A folder chooser inside the library: browse folders, make new ones, and pick
@@ -554,6 +605,41 @@ function InkAwayView:docThumb(path, maxw, maxh)
         pcall(function() thumb:writePNG(file) end)
     end
     return thumb
+end
+
+-- The picture at `path` shrunk to fit maxw x maxh, from the thumbnail cache
+-- when it hasn't changed, else drawn now and cached. Nil for a picture too
+-- large to open on a reader (it says how large before anything is decoded).
+function InkAwayView:pictureThumb(path, maxw, maxh)
+    local dir = Storage.cacheDir()
+    local file = Storage.join(dir, Library.thumbName(path, Storage.mtime(path), maxw, maxh))
+    if Storage.exists(file) then
+        local ok, bb = pcall(function() return RenderImage:renderImageFile(file, false) end)
+        if ok and bb then return bb end
+    end
+    local f = io.open(path, "rb")
+    local head = f and f:read(1024 * 1024) or ""
+    if f then f:close() end
+    local w, h = require("ink/share/http").imageSize(head)
+    if not w or w * h > 40 * 1000 * 1000 then return nil end
+    local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
+    if not (ok and img) then return nil end
+    local s = math.min(maxw / img:getWidth(), maxh / img:getHeight(), 1)
+    local thumb = RenderImage:scaleBlitBuffer(img, math.max(1, math.floor(img:getWidth() * s)),
+        math.max(1, math.floor(img:getHeight() * s)), false)
+    if thumb ~= img then img:free() end
+    self:dropThumbs(path)
+    pcall(function() thumb:writePNG(file) end)
+    return thumb
+end
+
+-- Show the picture at `path` on the whole screen (KOReader's image viewer:
+-- pinch to zoom, a tap or Back to close).
+function InkAwayView:viewPicture(path)
+    local ok, ImageViewer = pcall(require, "ui/widget/imageviewer")
+    if not ok then return end
+    UIManager:show(ImageViewer:new{ file = path, fullscreen = true, with_title_bar = true,
+        title_text = Storage.baseName(path), modal = true })
 end
 
 -- Delete every cached thumbnail of the document at `path`.

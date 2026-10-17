@@ -2815,9 +2815,10 @@ do
     local Http = require("ink/share/http")
     local Project = require("ink/project")
     local LIB = TestEnv.libraryDir() .. "/receivetest"
-    local IMG = LIB .. "-images"
-    local PDFS = LIB .. "-pdfs"
-    os.execute("rm -rf '" .. LIB .. "' '" .. IMG .. "' '" .. PDFS .. "'; mkdir -p '" .. LIB .. "' '" .. IMG .. "' '" .. PDFS .. "'")
+    local IMG = LIB .. "/Imported/Pictures"
+    local BOOKS = LIB .. "/Imported/Notebooks and drawings"
+    local PDFS = LIB .. "-pdfs"   -- (the PDFs' hidden home)
+    os.execute("rm -rf '" .. LIB .. "' '" .. PDFS .. "'; mkdir -p '" .. LIB .. "' '" .. PDFS .. "'")
     local saved_lib = G_reader_settings.data.inkaway_library_dir
     G_reader_settings.data.inkaway_library_dir = LIB
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
@@ -2825,7 +2826,6 @@ do
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
     UIManager:show(view)
-    view.importedImagesDir = function() return IMG end
     view.importedPdfsDir = function() return PDFS end
     local uploads_now = 0
     local function freshSend(allow)
@@ -2888,7 +2888,8 @@ do
     ok(upload("image", "x.jpg", jpeg(10, 10), { length = tostring(8 * 1024 * 1024) }).code == 507,
         "receive: the reader always keeps some space free")
     package.loaded.util = nil
-    ok(files(IMG) == "" and files(PDFS) == "", "receive: and nothing was written for any of them")
+    ok(not Storage.exists(IMG) or files(IMG) == "", "receive: and nothing was written for any of them")
+    ok(files(PDFS) == "", "receive: (no PDF either)")
 
     -- a picture
     r = upload("image", "../../Holiday photo.HEIC", jpeg(3000, 2000), { step = 7 })
@@ -2910,19 +2911,20 @@ do
     local doc = Project.serialize({ w = 10, h = 10, ops = { { kind = "ink", pts = { 1, 1, 2, 2 }, width = 2 } } })
     r = upload("inkaway", "Sketch.inkaway", doc)
     local IMPORTED = view:importedFolder()
-    ok(r.code == 200 and Storage.exists(IMPORTED .. "/Sketch.inkaway"), "receive: an Ink Away file lands in Library > Imported")
-    ok(Folder.load(IMPORTED).order[1] == "Sketch.inkaway", "receive: and joins its folder's order")
+    ok(r.code == 200 and Storage.exists(BOOKS .. "/Sketch.inkaway"),
+        "receive: an Ink Away file lands in Library > Imported > Notebooks and drawings")
+    ok(Folder.load(BOOKS).order[1] == "Sketch.inkaway", "receive: and joins its folder's order")
     ok(#view._send.arrived == 1 and view._send.arrived[1].name == "Sketch", "receive: a notebook or drawing waits for the question")
     local marker = os.tmpname(); os.remove(marker)
     r = upload("inkaway", "Evil.inkaway", 'return { ops = {}, x = os.execute("touch ' .. marker .. '") }')
-    ok(r.code == 422 and not Storage.exists(IMPORTED .. "/Evil.inkaway"), "receive: an Ink Away file that tries to run code is refused")
+    ok(r.code == 422 and not Storage.exists(BOOKS .. "/Evil.inkaway"), "receive: an Ink Away file that tries to run code is refused")
     ok(not Storage.exists(marker), "receive: and its code never ran")
     -- one pointing at files elsewhere on the reader: kept, but without them
     local sneaky = Project.serialize({ w = 10, h = 10, ops = {
         { kind = "image", path = "/mnt/onboard/Private/passport.jpg", x = 0, y = 0, w = 5, h = 5 } } },
         { bg = "/etc/passwd" })
     r = upload("inkaway", "Sneaky.inkaway", sneaky)
-    local kept = Project.load(IMPORTED .. "/Sneaky.inkaway")
+    local kept = Project.load(BOOKS .. "/Sneaky.inkaway")
     ok(r.code == 200 and kept and kept.ops[1].path == nil and kept.bg == nil and kept.ops[1].kind == "image",
         "receive: references to files elsewhere on the reader are dropped from a sent file")
     -- two big uploads at once count each other's space
@@ -2941,6 +2943,11 @@ do
     r = upload("pdf", "Report.pdf", "PK\3\4 a zip, not a PDF" .. string.rep("z", 200))
     ok(r.refused and files(PDFS) == "", "receive: a file pretending to be a PDF is refused")
 
+    -- nothing ever lands in Imported itself: only its three folders
+    local top = {}
+    for _, e in ipairs(Storage.list(IMPORTED)) do if e.name:sub(1, 1) ~= "." then top[#top + 1] = e.name end end
+    table.sort(top)
+    ok(table.concat(top, ",") == "Notebooks and drawings,Pictures", "receive: Imported holds only its folders (" .. table.concat(top, ",") .. ")")
     -- the question, once nothing more is coming
     uploads_now = 1
     view:arrivalsMaybeDone()
@@ -2952,7 +2959,7 @@ do
     ok(#notices >= 1 and notices[#notices]:find("pictures"), "receive: and a note about the pictures (" .. tostring(notices[#notices]) .. ")")
     -- more arriving while it is up: the same question, brought up to date
     local first, count = view._arrived_dialog, #view._send.arrived
-    view:arrived{ kind = "notebook", name = "Second", path = IMPORTED .. "/Sketch.inkaway" }
+    view:arrived{ kind = "notebook", name = "Second", path = BOOKS .. "/Sketch.inkaway" }
     UIManager.fireScheduled()
     ok(view._arrived_dialog == first and #view._send.arrived == count + 1, "receive: more notebooks join the question already up")
     -- opening one while more are coming waits for them
@@ -2965,11 +2972,11 @@ do
     uploads_now = 0
     view:arrivalsMaybeDone()
     UIManager.fireScheduled()
-    ok(opened == IMPORTED .. "/Sketch.inkaway", "receive: and opens once they are in")
+    ok(opened == BOOKS .. "/Sketch.inkaway", "receive: and opens once they are in")
     -- Don't ask again
     freshSend(true)
     view:setSetting("inkaway_send_ask_open", false)
-    view:arrived{ kind = "notebook", name = "Third", path = IMPORTED .. "/Sketch.inkaway" }
+    view:arrived{ kind = "notebook", name = "Third", path = BOOKS .. "/Sketch.inkaway" }
     UIManager.fireScheduled()
     ok(view._arrived_dialog == nil and #view._send.arrived == 0 and notices[#notices]:find("Library", 1, true),
         "receive: after Don't ask again, a note instead of the question")
@@ -2978,6 +2985,30 @@ do
     view.reader_mode = true
     ok(not view:askToOpenArrivals(), "receive: over a book, a note instead (no notebook to open there)")
     view.reader_mode = nil
+
+    -- what earlier test versions left in the wrong places is sorted
+    local APP = LIB .. "-app"
+    os.execute("mkdir -p '" .. APP .. "/imported images'")
+    local real_app = Storage.appRootPath
+    Storage.appRootPath = function() return APP end
+    local function put(path, text) local fh = assert(io.open(path, "wb")); fh:write(text); fh:close() end
+    put(APP .. "/imported images/old.jpg", jpeg(10, 10))
+    put(IMPORTED .. "/Loose drawing.inkaway", Project.serialize({ w = 10, h = 10, ops = {} }))
+    local Notebook = require("ink/notebook")
+    local pnb = Notebook.forPdf(10, 10, { style = "blank", pdf_path = PDFS .. "/Old.pdf" }, 1)
+    assert(Project.saveNotebook(pnb, IMPORTED .. "/Old.inkaway"))
+    put(IMPORTED .. "/stray.png", png(10, 10))
+    view._imported_sorted = nil
+    view:sortImported()
+    ok(Storage.exists(IMG .. "/old.jpg") and not Storage.exists(APP .. "/imported images/old.jpg"),
+        "sort: a picture from the old hidden folder moves to Imported > Pictures")
+    ok(Storage.exists(BOOKS .. "/Loose drawing.inkaway"), "sort: a drawing in Imported itself moves to Notebooks and drawings")
+    ok(Storage.exists(IMPORTED .. "/PDFs/Old.inkaway"), "sort: a notebook on a sent PDF moves to PDFs")
+    ok(Storage.exists(IMG .. "/stray.png"), "sort: a picture in Imported itself moves to Pictures")
+    local loose = {}
+    for _, e in ipairs(Storage.list(IMPORTED)) do if e.mode == "file" and e.name:sub(1, 1) ~= "." then loose[#loose + 1] = e.name end end
+    ok(#loose == 0, "sort: nothing is left in Imported itself (" .. table.concat(loose, ",") .. ")")
+    Storage.appRootPath = real_app
 
     -- the page in the reader's theme colour
     local Accent = require("ink/accent")
@@ -3526,11 +3557,16 @@ do
     view:libraryItemMenu(view._library.items[1])
     ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: holding a card shows its menu")
     view:libraryMenu()
-    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 4,
-        "lib: the library menu offers import, sort, sending to a phone or computer and the trash")
-    ButtonDialog.last.buttons[2][1].callback()
+    local menu = view._library_menu
+    ok(menu ~= nil and findButton(menu, "Phone or computer (Wi-Fi)\u{2026}") and findButton(menu, "Trash\u{2026}")
+        and findButton(menu, "Write on a PDF from this reader\u{2026}"),
+        "lib: the library menu is a sheet: phone or computer, a PDF from this reader, order and trash")
+    local by_name = findButton(menu, "By name")
+    ok(by_name ~= nil, "lib: the order is a choice of two")
+    if by_name then by_name.callback() end
     ok(G_reader_settings.data.inkaway_library_sort == "name", "lib: sorting by name is remembered")
     G_reader_settings.data.inkaway_library_sort = nil
+    view:closeSheet("_library_menu")
 
     -- the File sheet
     view:openDocumentSheet()

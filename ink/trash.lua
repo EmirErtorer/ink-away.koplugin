@@ -116,6 +116,14 @@ function Trash.list(root)
     return items
 end
 
+-- What an item's stored name ends in: a document's extension, a picture's own
+-- (".jpg"), nothing for a folder.
+local function suffix(item)
+    if item.kind == "doc" then return "." .. Project.EXT end
+    if item.kind == "picture" then return "." .. (item.ext or "jpg") end
+    return ""
+end
+
 -- Move a file or folder at `path` into the trash as `item`. Returns the item,
 -- or nil, err.
 local function putPath(root, path, item)
@@ -126,7 +134,7 @@ local function putPath(root, path, item)
     item.from = path
     item.when = Trash.now()
     item.place = binderPlace(Storage.dirName(path), Storage.baseName(path))
-    local stored = Storage.join(dirOf(root), item.id .. (item.kind == "doc" and ("." .. Project.EXT) or ""))
+    local stored = Storage.join(dirOf(root), item.id .. suffix(item))
     local ok, err = os.rename(path, stored)
     if not ok then return nil, err end
     Folder.update(Storage.dirName(path), function(d) Folder.forget(d, Storage.baseName(path)) end)
@@ -143,6 +151,12 @@ end
 -- it is a notebook (for how it is listed). Returns the item, or nil, err.
 function Trash.putDocument(root, path, nb)
     return putPath(root, path, { kind = "doc", name = Storage.stem(path), nb = nb and true or false })
+end
+
+-- Move the picture (a JPEG or PNG) at `path` to the trash.
+function Trash.putPicture(root, path)
+    local ext = (Storage.baseName(path):match("%.([^.]+)$") or "jpg"):lower()
+    return putPath(root, path, { kind = "picture", name = Storage.stem(path), ext = ext })
 end
 
 -- Move the folder at `path`, with everything in it, to the trash.
@@ -282,8 +296,8 @@ function Trash.restore(root, id, insert_page)
     if not ensureDirs(dir, root) then return nil, "its folder could not be made" end
     local target = item.from
     if Storage.exists(target) then
-        if item.kind == "doc" then
-            target = Storage.uniquePath(dir, Storage.stem(item.from), Project.EXT)
+        if item.kind == "doc" or item.kind == "picture" then
+            target = Storage.uniquePath(dir, Storage.stem(item.from), item.kind == "doc" and Project.EXT or item.ext or "jpg")
         else
             local n = 2
             repeat
@@ -292,7 +306,7 @@ function Trash.restore(root, id, insert_page)
             until not Storage.exists(target)
         end
     end
-    local stored = Storage.join(dirOf(root), item.id .. (item.kind == "doc" and ("." .. Project.EXT) or ""))
+    local stored = Storage.join(dirOf(root), item.id .. suffix(item))
     local ok, err = os.rename(stored, target)
     if not ok then return nil, err end
     rebind(dir, Storage.baseName(target), item.place)
@@ -358,6 +372,8 @@ function Trash.forget(root, id)
         os.remove(base .. "." .. Project.EXT)
     elseif item.kind == "page" then
         os.remove(base .. ".page")
+    elseif item.kind == "picture" then
+        os.remove(base .. suffix(item))
     else
         eachDoc(base, note)
         Storage.removeTree(base)

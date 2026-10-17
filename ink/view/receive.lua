@@ -1,11 +1,12 @@
 --[[
 Adding files from a phone or computer, through Send to phone or computer's
 page (see ink/view/share.lua), while "Allow adding files" is on for that
-sharing (it starts off every time). Only into Ink Away's own folders, under
-names the reader chooses:
-  a PDF   -> "imported pdfs", then a notebook on it in Library > Imported
-  a JPEG or PNG -> "imported images", for Insert picture > From your phone
-  an Ink Away file -> Library > Imported
+sharing. Only into Ink Away's own folders, under names the reader chooses,
+each kind in its own folder of Library > Imported (never in Imported itself):
+  a PDF            -> a notebook on it in Imported > PDFs (the PDF file itself
+                      kept once, in the hidden "imported pdfs" folder)
+  a JPEG or PNG    -> Imported > Pictures (also Add image > Sent from your phone)
+  an Ink Away file -> Imported > Notebooks and drawings
 Every file is checked by what it is, not what it is called, against a size
 limit and the space left on the reader, written to a hidden part file and
 only kept once it is whole and checked; anything cut short is removed.
@@ -48,22 +49,75 @@ local MAX_FILES = 100                 -- files one sharing may take
 local MAX_UPLOADS = 2                 -- coming in at once
 InkAwayView.RECEIVE_LIMITS = { limits = LIMITS, max_pixels = MAX_PIXELS }
 
--- Where things sent to the reader go.
--- (one name in every language: a translated name would make a second folder
--- whenever KOReader's language changed)
+-- Where things sent to the reader go: a folder each in Library > Imported.
+-- (One name in every language: a translated name would make a second folder
+-- whenever KOReader's language changed.)
+local SUB = { image = "Pictures", pdf = "PDFs", inkaway = "Notebooks and drawings" }
+InkAwayView.IMPORTED_SUB = SUB
 function InkAwayView:importedFolder() return Storage.join(self:libraryDir(), "Imported") end
+
+-- The folder of Library > Imported for `kind` ("image", "pdf" or "inkaway"),
+-- made when missing, or nil when it can't be.
+function InkAwayView:importedDir(kind)
+    local top = self:importedFolder()
+    local dir = SUB[kind] and Storage.join(top, SUB[kind])
+    if not (dir and Storage.ensureDir(top) and Storage.ensureDir(dir)) then return nil end
+    return dir
+end
+
+-- Where `kind` is, as the reader reads it: "Library › Imported › Pictures".
+function InkAwayView:importedPlace(kind)
+    return _("Library") .. " › Imported › " .. (SUB[kind] or "")
+end
 
 -- Parts of uploads cut short by a power cut or a crash: removed when sharing
 -- starts again.
 function InkAwayView:clearUploadParts()
-    for _i, dir in ipairs({ self:importedPdfsDir(), self:importedImagesDir(), self:importedFolder() }) do
+    for _i, dir in ipairs({ self:importedPdfsDir(), self:importedDir("image"), self:importedDir("inkaway") }) do
         for _j, e in ipairs(dir and Storage.list(dir) or {}) do
             if e.mode == "file" and e.name:match("^%..*%.part$") then os.remove(e.path) end
         end
     end
 end
+-- The hidden home of the PDFs sent to the reader (one copy each; the notebook
+-- in Imported > PDFs is written over it).
 function InkAwayView:importedPdfsDir() return Storage.appDir("imported pdfs") end
-function InkAwayView:importedImagesDir() return Storage.appDir("imported images") end
+-- Pictures sent to the reader (Add image > Sent from your phone opens it).
+function InkAwayView:importedImagesDir() return self:importedDir("image") end
+
+-- Put what earlier test versions left in the wrong place where it belongs:
+-- pictures from the old hidden "imported images" folder, and files sitting in
+-- Imported itself, each into its own folder of Imported. Once a session.
+function InkAwayView:sortImported()
+    if self._imported_sorted then return end
+    self._imported_sorted = true
+    local app = Storage.appRootPath()
+    local old_pics = app and Storage.join(app, "imported images")
+    for _i, e in ipairs(old_pics and Storage.list(old_pics) or {}) do
+        if e.mode == "file" and e.name:sub(1, 1) ~= "." and require("ink/library").isPicture(e.name) then
+            local dir = self:importedDir("image")
+            if dir then self:moveInto(e.path, dir) end
+        end
+    end
+    local top = self:importedFolder()
+    if not Storage.isDir(top) then return end
+    local pdfs = (self:importedPdfsDir() or "") .. "/"
+    for _i, e in ipairs(Storage.list(top)) do
+        if e.mode == "file" and e.name:sub(1, 1) ~= "." then
+            local kind
+            if require("ink/library").isPicture(e.name) then
+                kind = "image"
+            elseif require("ink/library").isDocument(e.name) then
+                local data = Project.load(e.path)
+                local t = data and data.template
+                local pdf = type(t) == "table" and t.pdf_path
+                kind = (type(pdf) == "string" and pdf:sub(1, #pdfs) == pdfs) and "pdf" or "inkaway"
+            end
+            local dir = kind and self:importedDir(kind)
+            if dir then pcall(self.moveInto, self, e.path, dir) end
+        end
+    end
+end
 
 -- Ask to open notebooks that arrive? (Don't ask again turns it off.)
 -- (Over a book there is nothing to open a notebook in: a note then.)
@@ -122,8 +176,8 @@ function InkAwayView:sendUpload(req, reply)
         return jsonReply(reply, 429, false, "That's enough for one go. Stop and start sharing again for more.")
     end
     if send.server:uploads() >= MAX_UPLOADS then return jsonReply(reply, 503, false, "The reader is busy. Try again.") end
-    local dir = kind == "pdf" and self:importedPdfsDir() or kind == "image" and self:importedImagesDir()
-        or (Storage.ensureDir(self:importedFolder()) and self:importedFolder())
+    -- (a PDF itself goes to its hidden home; its notebook to Imported > PDFs, see importArrivedPdf)
+    local dir = kind == "pdf" and self:importedPdfsDir() or self:importedDir(kind)
     if not dir then return jsonReply(reply, 507, false, "The reader has nowhere to put it.") end
     -- the space it needs, besides what the uploads still coming will take
     local free = available(dir)
@@ -239,16 +293,17 @@ function InkAwayView:uploadSink(kind, dir, sent_name, batch, i, n)
         if kind == "pdf" then
             send.importing = send.importing + 1
             UIManager:nextTick(function() self:importArrivedPdf(arrival) end)
-            jsonReply(reply, 200, true, string.format("Sent. The reader is adding %s to Library › Imported.", name))
+            jsonReply(reply, 200, true, string.format("Sent. It's becoming a notebook in %s.", self:importedPlace("pdf")))
         elseif kind == "image" then
             self:arrived(arrival)
-            jsonReply(reply, 200, true, string.format("Sent. %s is in the reader's imported pictures.", name))
+            jsonReply(reply, 200, true, string.format("Sent to %s.", self:importedPlace("image")))
         else
             Folder.update(dir, function(d) Folder.add(d, name) end)
             arrival.kind = "notebook"
+            arrival.from = "inkaway"
             arrival.name = Storage.stem(name)
             self:arrived(arrival)
-            jsonReply(reply, 200, true, string.format("Sent to Library › Imported: %s", name))
+            jsonReply(reply, 200, true, string.format("Sent to %s.", self:importedPlace("inkaway")))
         end
     end
     return sink
@@ -268,8 +323,8 @@ function InkAwayView:importArrivedPdf(arrival)
         local nb = Notebook.forPdf(self.screen_w, self.screen_h, {
             style = "blank", size = self.grid_size or 40, strength = self.grid_strength or 45, pdf_path = arrival.path,
         }, pages)
-        local dir = self:importedFolder()
-        if not Storage.ensureDir(dir) then error("no Imported folder") end
+        local dir = self:importedDir("pdf")
+        if not dir then error("no Imported > PDFs folder") end
         local name = freeName(dir, Storage.fileName(Storage.stem(arrival.name), Project.EXT))
         local path = Storage.join(dir, name)
         local sok, serr = Project.saveNotebook(nb, path)
@@ -288,8 +343,8 @@ function InkAwayView:importArrivedPdf(arrival)
     end
     if self.closing then return end   -- (Ink Away closed meanwhile: the notebook is there, nothing to ask)
     self:refreshLibrary()
-    self:arrived{ kind = "notebook", name = Storage.stem(arrival.name), path = nb_path, batch = arrival.batch,
-        last = arrival.last }
+    self:arrived{ kind = "notebook", from = "pdf", name = Storage.stem(arrival.name), path = nb_path,
+        batch = arrival.batch, last = arrival.last }
 end
 
 ------------------------------------------------------------------------------
@@ -345,21 +400,23 @@ end
 -- once Don't ask again is on.
 function InkAwayView:noteArrivals()
     local send = self._send
-    local pics, books = 0, 0
+    local count = { image = 0, pdf = 0, inkaway = 0 }
     for _i, a in ipairs(send.noted) do
-        if a.kind == "image" then pics = pics + 1 else books = books + 1 end
+        local k = a.kind == "image" and "image" or (a.from or "pdf")
+        count[k] = count[k] + 1
     end
     send.noted = {}
     local parts = {}
-    if books > 0 then
-        parts[#parts + 1] = books == 1 and _("1 notebook is in Library › Imported")
-            or string.format(_("%d notebooks are in Library › Imported"), books)
+    local words = { pdf = { _("1 notebook from a PDF"), _("%d notebooks from PDFs") },
+        inkaway = { _("1 notebook or drawing"), _("%d notebooks and drawings") },
+        image = { _("1 picture"), _("%d pictures") } }
+    for _i, k in ipairs({ "pdf", "inkaway", "image" }) do
+        if count[k] > 0 then
+            local what = count[k] == 1 and words[k][1] or string.format(words[k][2], count[k])
+            parts[#parts + 1] = string.format(_("%s in %s"), what, self:importedPlace(k))
+        end
     end
-    if pics > 0 then
-        parts[#parts + 1] = pics == 1 and _("1 picture is in Insert picture › From your phone")
-            or string.format(_("%d pictures are in Insert picture › From your phone"), pics)
-    end
-    self:showNotice(table.concat(parts, ". "))
+    self:showNotice(_("Arrived: ") .. table.concat(parts, "; "))
 end
 
 -- The question: the notebooks that arrived, each to open, or later; and
@@ -378,8 +435,12 @@ function InkAwayView:showArrivals()
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("From your phone or computer"), content_w, _("Later"), closeSelf))
         add(VerticalSpan:new{ width = S(10) })
-        add(para(#list == 1 and string.format(_("%s is in Library › Imported. Open it now?"), list[1].name)
-            or string.format(_("%d notebooks are in Library › Imported. Open one now?"), #list)))
+        local where = list[1] and self:importedPlace(list[1].from or "pdf")
+        for _i, a in ipairs(list) do
+            if self:importedPlace(a.from or "pdf") ~= where then where = _("Library") .. " › Imported" end
+        end
+        add(para(#list == 1 and string.format(_("%s arrived in %s. Open it now?"), list[1].name, where)
+            or string.format(_("%d notebooks arrived in %s. Open one now?"), #list, where)))
         if self:arrivalsComing() then
             add(VerticalSpan:new{ width = S(6) })
             add(para(_("More are still coming."), 14))
@@ -403,7 +464,7 @@ function InkAwayView:showArrivals()
             parent = self._arrived_dialog,
             callback = function(on) self:setSetting("inkaway_send_ask_open", not on) end })
         add(VerticalSpan:new{ width = S(4) })
-        add(para(_("Notebooks that arrive are put in Library › Imported either way. Asking can be turned back on in Send to phone or computer."), 13))
+        add(para(_("Either way they stay in Library › Imported. To be asked again, turn on \"Ask to open notebooks that arrive\" in Phone or computer (Wi-Fi)."), 13))
         return content
     end
     self:showSheet("_arrived_dialog", build)

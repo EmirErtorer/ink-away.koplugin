@@ -266,7 +266,7 @@ function InkAwayView:openExport()
         end
         -- (see ink/view/share.lua)
         add(vspan(10))
-        add(self:actionButton(_("Send to phone or computer\u{2026}"), content_w, function()
+        add(self:actionButton(_("Send to phone or computer (Wi-Fi)\u{2026}"), content_w, function()
             closeSelf(); self:openSend() end))
         return content
     end

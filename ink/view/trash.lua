@@ -38,6 +38,8 @@ function InkAwayView:trashPath(path, is_folder, dir)
     local item, err
     if is_folder then
         item, err = Trash.putFolder(root, path)
+    elseif Library.isPicture(Storage.baseName(path)) then
+        item, err = Trash.putPicture(root, path)
     elseif Storage.exists(path) then
         item, err = Trash.putDocument(root, path, Library.isNotebookFile(path))
     elseif not (holds_open and not self.doc_written) then
@@ -150,6 +152,7 @@ function InkAwayView:trashRow(it)
     end
     local place = string.format(_("From %s"), self:searchPlace(Storage.dirName(it.from)))
     if it.kind == "folder" then return "folder", it.name, { place, when } end
+    if it.kind == "picture" then return "image", it.name, { place, when } end
     return it.nb and "notebook" or "pen", it.name, { place, when }
 end
 

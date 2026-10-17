@@ -6,16 +6,16 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
-local Font = require("ui/font")
 local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
-local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
+local Library = require("ink/library")
 local Storage = require("ink/storage")
+local ThumbGrid = require("ink/ui/thumbgrid")
 
 local Screen = Device.screen
 local bbToRGBA = ImageProc.bbToRGBA
@@ -356,26 +356,31 @@ function InkAwayView:chooseImage()
     local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
+        local function hint(text)
+            add(vspan(4))
+            add(self:sheetHint(text, content_w))
+        end
         add(self:sheetTitle(_("Add image"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
-        add(self:actionButton(_("Local file"), content_w, function()
+        add(self:actionButton(_("From this reader"), content_w, function()
             closeSelf(); self:chooseLocalImage() end, true))
+        hint(_("A picture file already on this reader."))
         -- pictures sent from a phone or computer (see ink/view/receive.lua)
         local sent = self:importedImageCount()
         if sent > 0 then
-            add(vspan(10))
-            add(self:actionButton(string.format(_("From your phone (%d)"), sent), content_w, function()
-                closeSelf()
-                self:pickImageFile(function(path) self:insertImage(path) end, self:importedImagesDir())
-            end))
+            add(vspan(12))
+            add(self:actionButton(string.format(_("Sent from your phone (%d)"), sent), content_w, function()
+                closeSelf(); self:chooseSentPicture() end))
+            hint(_("The pictures in Library › Imported › Pictures."))
         end
-        add(vspan(10))
-        add(self:actionButton(_("Browse online"), content_w, function()
+        add(vspan(12))
+        add(self:actionButton(_("Get from your phone or computer"), content_w, function()
+            closeSelf(); self:openSend{ adding = true } end))
+        hint(_("Shows a QR code. Scan it on your phone or computer, on the same Wi-Fi, to send pictures here."))
+        add(vspan(12))
+        add(self:actionButton(_("Search online"), content_w, function()
             closeSelf(); self:browseOnlineImages() end))
-        add(vspan(8))
-        add(TextBoxWidget:new{ text = _("Browsing needs Wi-Fi. Ink Away itself never requires a connection."),
-            face = Font:getFace("cfont", 13), width = content_w,
-            fgcolor = Blitbuffer.ColorRGB32(0x80, 0x80, 0x80, 0xFF) })
+        hint(_("Free pictures from Wikimedia and Openverse. Needs Wi-Fi; Ink Away itself never does."))
         if not (self.notebook or self.reader_mode) then   -- a notebook's paper, or the book, is the background
             add(vspan(14))
             add(self:actionButton(_("Background\u{2026}"), content_w, function()
@@ -384,6 +389,28 @@ function InkAwayView:chooseImage()
         return content
     end
     self:showSheet("_img_src_dialog", build)
+end
+
+-- The pictures sent from a phone or computer, as a grid of them: a tap puts
+-- one on the page.
+function InkAwayView:chooseSentPicture()
+    local dir = self:importedImagesDir()
+    local _f, _d, pics = Library.list(dir or "", nil, "recent")
+    local items = {}
+    for _i, p in ipairs(pics or {}) do
+        items[#items + 1] = { label = Storage.stem(p.name), path = p.path, picture = true }
+    end
+    local grid
+    grid = ThumbGrid:new{
+        title = _("Sent from your phone"),
+        items = items,
+        flash_open = false,
+        close_label = _("Cancel"),
+        empty_text = _("Nothing sent yet."),
+        render = function(it, w, h) return self:pictureThumb(it.path, w, h) end,
+        on_pick = function(it) grid:close(); self:insertImage(it.path) end,
+    }
+    UIManager:show(grid)
 end
 
 -- The background sheet: open a picture to draw over, or remove it.
@@ -416,7 +443,7 @@ end
 -- Pick a local PNG or JPEG and insert it.
 -- How many pictures were sent to the reader (see ink/view/receive.lua).
 function InkAwayView:importedImageCount()
-    local dir = Storage.appRootPath() and Storage.join(Storage.appRootPath(), "imported images")
+    local dir = Storage.join(self:importedFolder(), self.IMPORTED_SUB.image)   -- (not made just to count)
     local n = 0
     for _i, e in ipairs(dir and Storage.list(dir) or {}) do
         if e.mode == "file" and e.name:sub(1, 1) ~= "." and e.name:lower():match("%.[jp][pn]e?g$") then n = n + 1 end

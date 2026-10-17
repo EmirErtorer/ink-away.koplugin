@@ -87,7 +87,8 @@ function CoverPicker.show(o)
     local actions = {}
     if not o.default then
         actions[#actions + 1] = { _("Colour"), function() CoverPicker.colour(path, snapshot, pages, changed) end }
-        actions[#actions + 1] = { _("Use for all"), function()
+        -- (the style a notebook without its own gets: in practice, new notebooks)
+        actions[#actions + 1] = { _("Use for new notebooks"), function()
             Shelf.setDefaultStyle(look.style)
             Shelf.setLook(path, false)
             Shelf.defaultChanged()

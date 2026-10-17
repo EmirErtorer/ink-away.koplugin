@@ -9,37 +9,45 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
-- Send to phone or computer: get your notebooks and drawings onto a phone or
-  computer over Wi-Fi, with nothing to install. In the library's menu, or in
-  Export, it shows a QR code and an address; on any phone or computer on the
-  same Wi-Fi, scan the code or type the address into a browser. The page lists
-  your folders and documents with their pictures, and gives each one as a PDF,
-  a PNG (drawings) or its Ink Away file, along with the files you already
-  exported. PDFs and PNGs are made when you ask for them, a page at a time so
-  the reader stays responsive, with a progress bar and a Cancel button on the
-  reader and on the phone, where the download starts by itself once the file
-  is ready. Downloads going out show their progress and can be cancelled too.
-  A slow or unreliable phone or network can't hold the reader up. The reader serves the
-  page itself: nothing goes over the internet or through anyone's server, and
-  nothing on the reader can be changed from the page. The address holds a
-  secret that changes each time, and sharing stops when you close it, when the
-  reader sleeps, or after 15 minutes with nothing sent.
-- Add files from a phone or computer, through the same page: turn on "Allow
-  adding files" on the reader (it starts off every time), then choose files on
-  the page. A PDF becomes a notebook you can write on, in Library › Imported,
-  and the reader asks whether to open it, saying where it is; notebooks sent
-  together share one question, nothing waits for an answer, and "Don't ask
-  again" leaves just a note. Pictures go to Insert picture › From your phone,
-  and Ink Away files to Library › Imported. Pictures can be made smaller on the
-  phone before they are sent (Original, Large, Medium or Small, each showing
-  how much smaller), as a phone photo can be far larger than a reader can open.
-  Files only ever go into Ink Away's own folders, under names the reader
-  chooses; each is checked by what it is, not what it is called, against a
-  size limit and the space left on the reader, and kept only once it is whole.
-  Arrivals show their progress on the reader and can be cancelled from either
-  side.
-- The page on the phone or computer takes Ink Away's theme colour, the one
-  picked in Settings, or Ink Away green on a reader without a colour screen.
+- Phone or computer (Wi-Fi): get your notebooks and drawings onto a phone or
+  computer, or add PDFs and pictures from one, with nothing to install. Open
+  it from the library's menu, Export, or Add image; the reader shows a QR code
+  and an address, and any phone or computer on the same Wi-Fi opens a page in
+  its browser. The page lists your folders, documents and pictures, and gives
+  each document as a PDF, a PNG (drawings) or its Ink Away file. PDFs and PNGs
+  are made when you ask for them, a page at a time so the reader stays
+  responsive, with progress and Cancel on both sides. The reader serves the
+  page itself: nothing goes over the internet or through anyone's server. The
+  address holds a secret that changes each time, and sharing stops when you
+  close it, when the reader sleeps, when Wi-Fi goes, or after 15 minutes of
+  nothing happening. The page takes Ink Away's theme colour (green on a reader
+  without a colour screen).
+- Adding files from the page, with "Allow adding files" on (on when opened
+  from Add image, off otherwise, and switchable either way). Everything sent
+  arrives in Library › Imported, each kind in its own folder: PDFs become
+  notebooks you can write on in Imported › PDFs (the PDF itself is kept once),
+  pictures go to Imported › Pictures, and Ink Away files to Imported ›
+  Notebooks and drawings. The reader asks whether to open notebooks that
+  arrive, saying where they are (notebooks arriving together share one
+  question, and "Don't ask again" leaves a note). Pictures can be made smaller
+  on the phone first (Original, Large, Medium or Small, showing how much
+  smaller). Every file is checked by what it is, against size limits and the
+  space left, and only kept once whole; an Ink Away file is read as data only
+  and loses any reference to files elsewhere on the reader.
+- Pictures in the library: JPEGs and PNGs in a library folder (Imported ›
+  Pictures, for one) show as picture cards. Tap one to see it full screen;
+  hold it to rename, move or delete it (deleted pictures wait in the trash).
+- Add image has clearer choices: From this reader, Sent from your phone (the
+  pictures in Imported › Pictures, as a grid), Get from your phone or computer
+  (the QR code, ready to receive), Search online and Background.
+
+### Changed
+- The library's ⋯ menu is a sheet like the others, each option with a line
+  saying what it does: Phone or computer (Wi-Fi), Write on a PDF from this
+  reader, the order, and Trash.
+- The cover style new notebooks get on Bookshelf is now set from a notebook's
+  long press sheet ("Use for new notebooks", which was "Use for all") rather
+  than in Settings.
 
 ## [4.2.0] - 2026-10-17
 

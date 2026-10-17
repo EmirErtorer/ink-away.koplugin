@@ -52,32 +52,40 @@ function Library.isNotebookFile(path)
     return false
 end
 
--- What is in library folder `dir`: its subfolders and documents, without hidden
--- entries (and, at `root`, without the internal folders). Folders come by name,
--- documents by `sort`: "name", or most recently changed first. Returns folders,
--- documents; each entry is { name, path, mtime }.
+-- Is `name` a picture the library shows (a JPEG or PNG)?
+function Library.isPicture(name)
+    local ext = tostring(name):match("%.([^.]+)$")
+    ext = ext and ext:lower()
+    return ext == "jpg" or ext == "jpeg" or ext == "png"
+end
+
+-- What is in library folder `dir`: its subfolders, documents and pictures,
+-- without hidden entries (and, at `root`, without the internal folders).
+-- Folders come by name, documents and pictures by `sort`: "name", or most
+-- recently changed first. Returns folders, documents, pictures; each entry is
+-- { name, path, mtime }.
 function Library.list(dir, root, sort)
-    local folders, docs = {}, {}
+    local folders, docs, pics = {}, {}, {}
     for _, e in ipairs(Storage.list(dir)) do
         if e.name:sub(1, 1) ~= "." then
             if e.mode == "directory" then
                 if not (dir == root and Library.INTERNAL[e.name]) then folders[#folders + 1] = e end
             elseif e.mode == "file" and Library.isDocument(e.name) then
                 docs[#docs + 1] = e
+            elseif e.mode == "file" and Library.isPicture(e.name) then
+                pics[#pics + 1] = e
             end
         end
     end
     local function byName(a, b) return a.name:lower() < b.name:lower() end
-    table.sort(folders, byName)
-    if sort == "name" then
-        table.sort(docs, byName)
-    else
-        table.sort(docs, function(a, b)
-            if a.mtime ~= b.mtime then return a.mtime > b.mtime end
-            return byName(a, b)
-        end)
+    local function byDate(a, b)
+        if a.mtime ~= b.mtime then return (a.mtime or 0) > (b.mtime or 0) end
+        return byName(a, b)
     end
-    return folders, docs
+    table.sort(folders, byName)
+    table.sort(docs, sort == "name" and byName or byDate)
+    table.sort(pics, sort == "name" and byName or byDate)
+    return folders, docs, pics
 end
 
 -- Move the file or folder at `path` into folder `dir`, under a free name.
@@ -92,7 +100,9 @@ function Library.move(path, dir)
         local n = 2
         while Storage.exists(target) do target = Storage.join(dir, string.format("%s (%d)", base, n)); n = n + 1 end
     else
-        target = Storage.uniquePath(dir, Storage.stem(path), Project.EXT)
+        -- a file keeps its own kind: a picture stays a .jpg or .png
+        local ext = Storage.baseName(path):match("%.([^.]+)$") or Project.EXT
+        target = Storage.uniquePath(dir, Storage.stem(path), ext)
     end
     local ok, err = os.rename(path, target)
     if not ok then return nil, err end

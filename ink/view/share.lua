@@ -89,11 +89,17 @@ end
 
 -- Open Send to phone or computer: Wi-Fi first (KOReader asks to turn it on,
 -- then comes back here), then the server and its sheet.
-function InkAwayView:openSend()
-    if self._send then return self:showSendSheet() end
+-- `o.adding`: opened to add files (from Add image), so Allow adding files
+-- starts on; it can still be turned off on the sheet.
+function InkAwayView:openSend(o)
+    o = o or {}
+    if self._send then
+        if o.adding then self._send.allow_upload = true end
+        return self:showSendSheet()
+    end
     local okn, NetworkMgr = pcall(require, "ui/network/manager")
     if okn and NetworkMgr and NetworkMgr.willRerunWhenConnected
-            and NetworkMgr:willRerunWhenConnected(function() self:openSend() end) then
+            and NetworkMgr:willRerunWhenConnected(function() if not self.closing then self:openSend(o) end end) then
         return
     end
     self:leaveDocument()   -- the open document's latest changes go out too
@@ -102,6 +108,7 @@ function InkAwayView:openSend()
         UIManager:show(InfoMessage:new{ icon = "notice-warning", text = err })
         return
     end
+    if o.adding then self._send.allow_upload = true end
     self:showSendSheet()
 end
 
@@ -124,6 +131,7 @@ function InkAwayView:startSend()
     -- what a crash or a power cut left from the last sharing
     for _i, e in ipairs(Storage.list(send.cache)) do os.remove(e.path) end
     pcall(self.clearUploadParts, self)
+    pcall(self.sortImported, self)
     local kindle = deviceIs("isKindle")
     send.server = Server.new{
         socket = socket,
@@ -155,7 +163,7 @@ function InkAwayView:startSend()
                 and send.importing == 0 then
             self:stopSend()
             self:closeSheet("_send_dialog")
-            self:showNotice(_("Sharing stopped after a while with nothing sent"))
+            self:showNotice(string.format(_("Phone or computer sharing stopped: nothing happened for %d minutes"), IDLE_MINUTES))
             return
         end
         UIManager:scheduleIn(60, send.idle)
@@ -198,7 +206,7 @@ function InkAwayView:onNetworkDisconnected()
     if self._send then
         self:stopSend()
         self:closeSheet("_send_dialog")
-        self:showNotice(_("Sharing stopped: Wi-Fi is off"))
+        self:showNotice(_("Phone or computer sharing stopped: Wi-Fi is off"))
     end
 end
 
@@ -244,7 +252,7 @@ function InkAwayView:sendProgress()
         end }
     end
     if send.importing > 0 then
-        return { label = _("Adding to Library › Imported\u{2026}"), fraction = 1 }
+        return { label = _("Making a notebook in Library › Imported › PDFs\u{2026}"), fraction = 1 }
     end
 end
 
@@ -288,7 +296,7 @@ function InkAwayView:showSendSheet()
     local build = function()
         local content = VerticalGroup:new{ align = "center" }
         local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Send to phone or computer"), content_w, _("Stop"), closeSelf))
+        add(self:sheetTitle(_("Phone or computer (Wi-Fi)"), content_w, _("Stop"), closeSelf))
         add(VerticalSpan:new{ width = S(10) })
         add(para(_("On a phone or computer on the same Wi-Fi, scan the code or open this address in a browser:")))
         add(VerticalSpan:new{ width = S(12) })
@@ -330,10 +338,13 @@ function InkAwayView:showSendSheet()
                 width = content_w, parent = self._send_dialog,
                 callback = function(on) self:setSetting("inkaway_send_ask_open", on) end })
             add(VerticalSpan:new{ width = S(6) })
-            add(para(_("PDFs, pictures and Ink Away files sent from the page go to Library › Imported and Insert picture › From your phone. Reload the page there to see Add files."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+            add(para(_("Files sent from the page arrive in Library › Imported, each kind in its own folder: PDFs (as notebooks you can write on), Pictures, and Notebooks and drawings. If the page was already open, reload it."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+        else
+            add(VerticalSpan:new{ width = S(6) })
+            add(para(_("Turn on to send PDFs and pictures to this reader from the page."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         end
         add(VerticalSpan:new{ width = S(10) })
-        add(para(string.format(_("Your notebooks and drawings are there as PDF, PNG and Ink Away files. Sharing stops when you close this, or after %d minutes with nothing sent. Use it on a Wi-Fi you trust: anyone on it who has this address can open the page."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+        add(para(string.format(_("Sharing stops when you close this, or after %d minutes of nothing happening. Use a Wi-Fi you trust: anyone on it with this address can open the page."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         return content
     end
     self:showSheet("_send_dialog", build)
@@ -363,7 +374,8 @@ function InkAwayView:sendPath(rel, want_dir)
     if first and Library.INTERNAL[first] then return nil end
     if not realInside(path, root) then return nil end
     if want_dir then return Storage.isDir(path) and path or nil end
-    if not (Storage.exists(path) and not Storage.isDir(path) and Library.isDocument(Storage.baseName(path))) then
+    local name = Storage.baseName(path)
+    if not (Storage.exists(path) and not Storage.isDir(path) and (Library.isDocument(name) or Library.isPicture(name))) then
         return nil
     end
     return path
@@ -385,8 +397,13 @@ function InkAwayView:sendRoute(req, reply)
     if req.method ~= "GET" then return reply.send(405, Http.TYPES.txt, "Not here") end
     local path = self:sendPath(q.p)
     if not path then return reply.send(404, Http.TYPES.txt, "Not found") end
+    local picture = Library.isPicture(Storage.baseName(path))
     if route == "file" then
-        return reply.file(path, Http.TYPES.inkaway, Storage.baseName(path), function() self:sendCounted() end)
+        return reply.file(path, picture and Http.typeOf(path) or Http.TYPES.inkaway, Storage.baseName(path),
+            function() self:sendCounted() end)
+    elseif picture then
+        if route == "thumb" then return self:sendThumb(path, reply, true) end
+        return reply.send(404, Http.TYPES.txt, "Not found")
     elseif route == "thumb" then
         return self:sendThumb(path, reply)
     elseif route == "pdf" then
@@ -411,10 +428,10 @@ function InkAwayView:sendListing(rel, reply)
     rel = Http.safeRel(rel)
     local base = "/" .. send.token .. "/"
     local function here(sub) return rel == "" and sub or (rel .. "/" .. sub) end
-    local folders, docs = Library.list(dir, self:libraryDir(), self:getSetting("inkaway_library_sort"))
+    local folders, docs, pics = Library.list(dir, self:libraryDir(), self:getSetting("inkaway_library_sort"))
     local looks = #folders > 0 and Folder.load(dir).folders or {}
     local o = { title = rel == "" and _("Library") or Storage.baseName(dir), folders = {}, docs = {},
-        note = _("Served by your reader over your Wi-Fi. Close Send to phone or computer on the reader when you're done.") }
+        note = _("Served by your reader over your Wi-Fi. When you're done, close Phone or computer (Wi-Fi) on the reader.") }
     -- the way back up
     if rel ~= "" then
         o.crumbs = { { label = _("Library"), href = base } }
@@ -441,6 +458,13 @@ function InkAwayView:sendListing(rel, reply)
         o.docs[#o.docs + 1] = { name = Storage.stem(d.name), thumb = base .. "thumb?p=" .. p,
             kind = (notebook and _("Notebook") or _("Drawing")) .. " · " .. os.date("%d %b %Y", d.mtime or 0),
             links = links }
+    end
+    o.pictures = {}
+    for _i, pic in ipairs(pics or {}) do
+        local p = Http.urlEncode(here(pic.name))
+        o.pictures[#o.pictures + 1] = { name = Storage.stem(pic.name), thumb = base .. "thumb?p=" .. p,
+            kind = _("Picture") .. " · " .. os.date("%d %b %Y", pic.mtime or 0),
+            links = { { label = _("Download"), href = base .. "file?p=" .. p, main = true } } }
     end
     if rel == "" then o.exports = self:sendExportsList(base) end
     local R = self.RECEIVE_LIMITS
@@ -508,7 +532,7 @@ end
 
 -- A document's picture for the page: from the library's thumbnail cache, or
 -- drawn in the background (one at a time, see sendNextThumb) and sent then.
-function InkAwayView:sendThumb(path, reply)
+function InkAwayView:sendThumb(path, reply, picture)
     local send = self._send
     local file = Storage.join(Storage.cacheDir(), Library.thumbName(path, Storage.mtime(path), THUMB_W, THUMB_H))
     if Storage.exists(file) then return reply.file(file, Http.TYPES.png, nil) end
@@ -521,7 +545,7 @@ function InkAwayView:sendThumb(path, reply)
     end
     if #send.thumbs >= MAX_THUMBS then return reply.send(503, Http.TYPES.txt, "Busy") end
     reply.wait()
-    send.thumbs[#send.thumbs + 1] = { path = path, file = file, reply = reply }
+    send.thumbs[#send.thumbs + 1] = { path = path, file = file, reply = reply, picture = picture }
     self:sendNextThumb()
 end
 
@@ -534,7 +558,7 @@ function InkAwayView:sendNextThumb()
         local t = table.remove(send.thumbs, 1)
         if t and t.reply.open() then
             if not Storage.exists(t.file) then
-                local ok, bb = pcall(self.docThumb, self, t.path, THUMB_W, THUMB_H)
+                local ok, bb = pcall(t.picture and self.pictureThumb or self.docThumb, self, t.path, THUMB_W, THUMB_H)
                 if ok and bb then bb:free() end
             end
             if Storage.exists(t.file) then t.reply.file(t.file, Http.TYPES.png, nil)

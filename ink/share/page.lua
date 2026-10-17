@@ -93,9 +93,9 @@ function Page.render(o)
         end
         add("</div>")
     end
-    if #(o.docs or {}) > 0 then
-        add('<h2>Notebooks and drawings</h2><div class="grid">')
-        for _, d in ipairs(o.docs) do
+    local function cards(list)
+        add('<div class="grid">')
+        for _, d in ipairs(list) do
             add('<div class="doc">')
             if d.thumb then add('<img loading="lazy" alt="" src="' .. esc(d.thumb) .. '">') end
             add('<div class="meta"><div class="name">' .. esc(d.name) .. '</div><div class="kind">'
@@ -108,7 +108,16 @@ function Page.render(o)
             add("</div></div>")
         end
         add("</div>")
-    elseif #(o.folders or {}) == 0 then
+    end
+    if #(o.docs or {}) > 0 then
+        add('<h2>Notebooks and drawings</h2>')
+        cards(o.docs)
+    end
+    if #(o.pictures or {}) > 0 then
+        add('<h2>Pictures</h2>')
+        cards(o.pictures)
+    end
+    if #(o.docs or {}) == 0 and #(o.pictures or {}) == 0 and #(o.folders or {}) == 0 then
         add('<p class="empty">Nothing here yet.</p>')
     end
     if #(o.exports or {}) > 0 then
@@ -228,8 +237,8 @@ function Page.uploadCard(u)
     local conf = string.format('window.IA={url:"%s",maxpx:%d,lim:{pdf:%d,image:%d,inkaway:%d}};',
         esc(u.url), u.max_pixels, u.limits.pdf, u.limits.image, u.limits.inkaway)
     return '<div class="add"><h2>Add to Ink Away</h2>'
-        .. '<p>PDFs become notebooks in Library › Imported. Pictures go to Insert picture › From your phone. '
-        .. 'Ink Away files go to Library › Imported.</p>'
+        .. '<p>What you send arrives on the reader in Library › Imported, each kind in its own folder: '
+        .. 'PDFs (as notebooks you can write on), Pictures, and Notebooks and drawings.</p>'
         .. '<label class="btn main">Choose files<input id="f" type="file" multiple '
         .. 'accept=".pdf,.inkaway,application/pdf,image/*"></label>'
         .. '<div id="lv" class="levels" hidden><div class="lt">Picture size: smaller pictures send faster '
@@ -265,7 +274,7 @@ end
 -- The page shown for an old or mistyped address.
 function Page.gone()
     return Page.render{ title = "This link has expired",
-        note = "On your reader, open Send to phone or computer again and scan the new code." }
+        note = "On your reader, open Phone or computer (Wi-Fi) again and scan the new code." }
 end
 
 return Page
