@@ -332,9 +332,14 @@ function InkAwayView:chooseGestureAction(t)
     local function pick(id)
         closeSelf()
         local info = Actions.preview(b, t.id, id)
-        if #info.also == 0 then return apply(id, false) end
+        -- (only the triggers this reader has: a Kobo pen was asked about a
+        -- second side button it does not have)
+        local shown, also = {}, {}
+        for _i, tr in ipairs(self:availableTriggers()) do shown[tr.id] = true end
+        for _i, other in ipairs(info.also) do if shown[other] then also[#also + 1] = other end end
+        if #also == 0 then return apply(id, false) end
         local names = {}
-        for _i, other in ipairs(info.also) do names[#names + 1] = _(Actions.trigger(other).label) end
+        for _i, other in ipairs(also) do names[#names + 1] = _(Actions.trigger(other).label) end
         self:ask{ title = _("Already in use"),
             text = string.format(_("%s already does \"%s\". Use it only for %s, or for both?"),
                 table.concat(names, ", "), self:actionLabel(id), _(t.label)),

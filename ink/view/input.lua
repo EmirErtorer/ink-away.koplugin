@@ -106,6 +106,56 @@ end
 local holders, outside_cb, ours = {}, nil, setmetatable({}, { __mode = "k" })
 local shared_bridge, bridge_users = nil, 0
 
+-- With palm rejection off the pen draws as a touch, through KOReader's gesture
+-- detector, and Ink Away only watches it: the part of the pen that touches down
+-- on the page (the eraser end, or the pen with a side button held) swaps in what
+-- the reader chose for it, for that stroke, and it is put back once the stroke
+-- is finished. No frame is ever taken (false), so drawing, menus and fingers are
+-- what they were without the watch. KOReader marks the eraser end and a held
+-- button only for a reader that watches the pen, which is why they did nothing
+-- with palm rejection off, though the pen test saw them (#13).
+function InkAwayView:watchPen(input, slot)
+    local facts = self:stylusFacts(input)
+    local role = Stylus.classify(slot, facts)
+    local sn = slot.slot or 0
+    -- the pen's slot, learned from a plain pen frame as with palm rejection on
+    -- (see onStylusSlot), so the eraser end and a held button are trusted there
+    if role == Stylus.ROLE_PEN and slot.tool == Stylus.TOOL_PEN and slot.slot ~= nil then
+        self._learned_pen_slot = slot.slot
+    end
+    if role ~= Stylus.ROLE_PEN and role ~= Stylus.ROLE_PEN_OUT then return false end
+    if self._watch_slot ~= nil and sn ~= self._watch_slot then return false end
+    self._watch_state = self._watch_state or Stylus.new()
+    local step = Stylus.step(self._watch_state, role == Stylus.ROLE_PEN_OUT and -1 or slot.id)
+    if step == "down" then
+        self._watch_slot = sn
+        if self._watch_settle then UIManager:unschedule(self._watch_settle) end
+        self:restoreHeld()
+        local act = Stylus.penAction(slot, facts)
+        -- (on the page only: a tap on the toolbar or a menu keeps the tool as it is)
+        local on_page
+        if slot.x and slot.y then on_page = not self:penOnUI(self:penScreenXY(slot))
+        else local top = self:touchTarget(); on_page = top == nil or top == self end
+        if act ~= Stylus.ACT_DRAW and on_page then self:holdAction(act) end
+    elseif step == "up" then
+        self._watch_slot = nil
+        self._watch_tries = 0
+        -- the stroke the swap was for is finished after this frame reaches the
+        -- gesture detector, and committed a moment later: put the tool back then
+        self._watch_settle = self._watch_settle or function()
+            if self.closing then return end
+            if (self.capturing or self.pending_lift or self.lassoing) and self._watch_tries < 40 then
+                self._watch_tries = self._watch_tries + 1
+                UIManager:scheduleIn(0.05, self._watch_settle)
+                return
+            end
+            self:restoreHeld()
+        end
+        UIManager:nextTick(self._watch_settle)
+    end
+    return false
+end
+
 -- Take the pen for this view.
 function InkAwayView:takeStylus()
     if self._stylus_cb then return end
@@ -126,6 +176,7 @@ end
 function InkAwayView:releaseStylus()
     local cb = self._stylus_cb
     if not cb then return end
+    if self._watch_settle then UIManager:unschedule(self._watch_settle) end
     self._stylus_cb = nil
     for i = #holders, 1, -1 do
         if holders[i] == self or holders[i].closing then table.remove(holders, i) end
@@ -143,8 +194,10 @@ function InkAwayView:releaseStylus()
     if #holders == 0 then outside_cb = nil end
 end
 
--- Register or drop the stylus callback to match self.palm_reject. Called at
--- startup and whenever the setting is toggled.
+-- Hook the pen to match self.palm_reject. Called at startup and whenever the
+-- setting is toggled. With palm rejection on Ink Away takes the pen's frames;
+-- with it off it only watches them (see watchPen), so the pen's eraser end and
+-- side buttons still do what they are set to.
 function InkAwayView:applyPalmReject()
     if not self:penCapable() then return end
     if self.palm_reject then
@@ -163,10 +216,8 @@ function InkAwayView:applyPalmReject()
         self:installPressure()
     else
         self:removePenBridge()
-        if self._stylus_cb then
-            self:releaseStylus()
-            self:resetPenState()
-        end
+        if self._stylus_cb then self:resetPenState() end
+        self:takeStylus()
     end
 end
 
@@ -264,6 +315,8 @@ end
 -- so turning it off mid-stroke never leaves the tool stuck on erase or lasso.
 function InkAwayView:resetPenState()
     UIManager:unschedule(self._pen_clear)
+    if self._watch_settle then UIManager:unschedule(self._watch_settle) end
+    self._watch_state, self._watch_slot = nil, nil
     self._pen_fab, self._pen_fab_stroke = nil, nil
     self:restoreHeld()
     self._pen_state = Stylus.new()
@@ -515,7 +568,8 @@ end
 -- slot; that includes a resting palm (MT_TOOL_PALM == ERASER == 2), so slots are
 -- classified first and only a trusted pen drives the drawing.
 function InkAwayView:onStylusSlot(inp, slot)
-    if not self.palm_reject or self.closing then return false end
+    if self.closing then return false end
+    if not self.palm_reject then return self:watchPen(inp or Device.input, slot) end
     local input = inp or Device.input
     self._stylus_input = input
     local facts = self:stylusFacts(input)

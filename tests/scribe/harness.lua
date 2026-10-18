@@ -105,7 +105,9 @@ local function newWorld(opts)
     CLOCK.T = 1000.0
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
-    view.palm_reject = true
+    -- (opts.kobo: a Kobo pen on the touch panel, no Wacom digitizer; opts.palm =
+    -- false: palm rejection off, the pen only watched)
+    view.palm_reject = opts.palm ~= false
     if opts.pen_ui ~= nil then view.pen_ui = opts.pen_ui end
     view:applyPalmReject()
     view:setTool(opts.tool or "pen")
@@ -117,7 +119,7 @@ local function newWorld(opts)
         isSDL = function() return false end, isAndroid = function() return false end,
         isPocketBook = function() return false end, isRemarkable = function() return false end }
     local input = Input:new{ device = fakeDevice, input = {}, event_map = {}, group = { Back = {} } }
-    input.wacom_protocol = true                    -- KindleScribe:init (kindle/device.lua:1896)
+    input.wacom_protocol = not opts.kobo           -- KindleScribe:init (kindle/device.lua:1896)
     input:registerStylusCallback(view._stylus_cb)  -- the real Input calls cb(input, slot)
     -- KOReader pauses input (Input:inhibitInput) as it opens a book, as the
     -- reader sleeps and for some popups, and puts its handlers back on the Input
@@ -126,7 +128,7 @@ local function newWorld(opts)
     if opts.paused == "before" then input:inhibitInput(true); input:inhibitInput(false) end
     if opts.paused == "during" then input:inhibitInput(true) end
     local bridge
-    if PenBridge and not opts.no_bridge then
+    if PenBridge and not opts.no_bridge and not opts.kobo then
         bridge = PenBridge.install(input)
         if not bridge then print("  (the pen bridge did not install)") end
     end
@@ -156,7 +158,7 @@ local function newWorld(opts)
     end
 
     local map = { touch = "onIaTouch", pan = "onIaPan", hold_pan = "onIaHoldPan",
-        pan_release = "onIaPanRelease", hold_release = "onIaHoldRel", swipe = "onIaSwipe",
+        pan_release = "onIaPanRelease", hold_release = "onIaHoldRel", swipe = "onIaSwipe", multiswipe = "onIaMultiSwipe",
         tap = "onIaTap", hold = "onIaHold", two_finger_pan = "onIaTwoPan",
         two_finger_pan_release = "onIaTwoPanRel", two_finger_tap = "onIaTwoTap",
         two_finger_swipe = "onIaTwoSwipe", pinch = "onIaPinch", spread = "onIaSpread" }
@@ -343,4 +345,4 @@ local function report(name, w, extra)
 end
 
 return { tick = function(w, dt_ms) w.T = w.T + dt_ms / 1000; CLOCK.T = w.T; tick() end, newWorld = newWorld, report = report, pen = pen, panel = panel, UIManager = UIManager,
-         use_bridge = use_bridge, PenBridge = PenBridge, PEN_FD = PEN_FD, PANEL_FD = PANEL_FD }
+         use_bridge = use_bridge, PenBridge = PenBridge, PEN_FD = PEN_FD, PANEL_FD = PANEL_FD, C = C }

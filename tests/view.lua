@@ -1319,10 +1319,14 @@ do
     view:closeSheet("_pen_dialog")
     view.sheetWidth = sw
 
-    -- turning it off unregisters the callback
+    -- turning it off keeps only a watch on the pen (its eraser end and buttons,
+    -- #13): the callback stays, and takes no frame, so the pen draws as a touch
     view.palm_reject = false
     view:applyPalmReject()
-    ok(Device.input.stylus_callback == nil, "palm: disabling it removes the stylus callback")
+    local watch = Device.input.stylus_callback
+    ok(watch ~= nil and watch == view._stylus_cb, "palm: disabled, the pen is still watched")
+    ok(watch and watch(Device.input, { slot = 0, id = 7, tool = 1, x = 300, y = 600 }) == false,
+        "palm: but none of its frames is taken")
     view:onCloseWidget()
 end
 
@@ -1694,12 +1698,15 @@ do
     ok(inp.stylus_callback == B._stylus_cb, "pen chain: the view underneath closed, the one on top keeps the pen")
     B:onCloseWidget()
     ok(inp.stylus_callback == nil, "pen chain: the last closed, nothing holds the pen")
-    -- palm rejection turned off on top gives the pen to the view underneath
+    -- palm rejection turned off on top: that view only watches the pen (its
+    -- buttons, #13), and gives it back to the one underneath as it closes
     A = open(); B = open()
     B.palm_reject = false
     B:applyPalmReject()
-    ok(inp.stylus_callback == A._stylus_cb, "pen chain: palm rejection off on top, the view underneath has the pen")
-    B:onCloseWidget(); A:onCloseWidget()
+    ok(inp.stylus_callback == B._stylus_cb, "pen chain: palm rejection off on top, that view watches the pen")
+    B:onCloseWidget()
+    ok(inp.stylus_callback == A._stylus_cb, "pen chain: and gives it back to the view underneath")
+    A:onCloseWidget()
     -- a callback registered since (a pen test) is left where it is
     A = open()
     local pentest = function() return true end
