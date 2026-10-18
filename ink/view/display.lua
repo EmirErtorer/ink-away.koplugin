@@ -11,6 +11,7 @@ local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local EinkDrive = require("ink/einkdrive")
+local ElipsaDrive = require("ink/elipsadrive")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
@@ -353,6 +354,32 @@ function InkAwayView:stopEinkDrive()
     EinkDrive.release()
 end
 
+-- The original Elipsa needs the handwriting ioctl and a worker so
+-- display ioctls cannot hold the input loop behind the moving nib (or finger).
+function InkAwayView:startElipsaDrive()
+    if self._elipsa_drive or self.closing then return end
+    self._elipsa_drive = ElipsaDrive.acquire(Device, Screen, UIManager,
+        function(...) logger.warn(...) end) or nil
+end
+
+-- Drain refreshes before the view's buffers and orientation are restored.
+function InkAwayView:stopElipsaDrive()
+    if not self._elipsa_drive then return end
+    self._elipsa_drive = nil
+    ElipsaDrive.release()
+end
+
+-- The sleep hook releases the worker; an open view takes it again on wake.
+function InkAwayView:onResume()
+    self:startElipsaDrive()
+end
+
+-- Keep the preview even after a worker failure: synchronous fallback still uses
+-- DU, so any black preview must be restored and settled at the end of its stroke.
+function InkAwayView:elipsaDriven()
+    return self._elipsa_drive == true
+end
+
 -- Is Ink Away asking the panel for its waveforms itself?
 function InkAwayView:einkDriven()
     return self._eink_drive == true and EinkDrive.active()
@@ -360,9 +387,9 @@ end
 
 -- Is live ink shown with the fast black-and-white waveform whatever the pen,
 -- with one refresh settling grey and colour once the pen rests? On a colour panel,
--- where the colour waveform blocks on each sample, and on a Boox Ink Away drives.
+-- a Boox Ink Away drives, or the original Elipsa's handwriting worker.
 function InkAwayView:fastLive()
-    return self:colourPanel() or self:einkDriven()
+    return self:colourPanel() or self:einkDriven() or self:elipsaDriven()
 end
 
 

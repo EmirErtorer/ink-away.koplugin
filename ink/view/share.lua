@@ -194,6 +194,7 @@ end
 
 -- KOReader puts the reader to sleep: sharing stops (its network goes too).
 function InkAwayView:onSuspend()
+    self:stopElipsaDrive()
     if self._send then
         self:stopSend()
         self:closeSheet("_send_dialog")
