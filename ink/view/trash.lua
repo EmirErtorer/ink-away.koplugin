@@ -211,7 +211,7 @@ function InkAwayView:openTrash()
                         self:openTrash()
                     end,
                 })
-            end))
+            end, nil, nil, "trash"))
         end
         return content
     end

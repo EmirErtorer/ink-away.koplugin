@@ -140,7 +140,7 @@ function InkAwayView:updatesButton(w, before)
     return self:actionButton(news or _("Updates"), w, function()
         if before then before() end
         self:openUpdates()
-    end, news ~= nil)
+    end, news ~= nil, nil, "update")
 end
 
 -- Start a check now, asking KOReader to connect first if it is offline, and

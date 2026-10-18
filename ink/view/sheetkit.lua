@@ -354,19 +354,29 @@ end
 -- A rounded action button of any width, grey by default and in the accent
 -- (black unless the reader chose a colour) when `dark`. `size` "small" makes a
 -- compact one (the selection's menu); true a primary action (New drawing, New
--- notebook) with a larger face.
-function InkAwayView:actionButton(label, w, cb, dark, size)
+-- notebook) with a larger face. `icon` (a name in ink/icons) goes before the
+-- label, so a button reads at a glance.
+function InkAwayView:actionButton(label, w, cb, dark, size, icon)
     local a = Accent.get()
     local small = size == "small"
     local h = Screen:scaleBySize(small and 40 or 48)
     local radius = Screen:scaleBySize(small and 12 or 14)
+    local isz, igap = Screen:scaleBySize(small and 18 or 20), Screen:scaleBySize(10)
+    local iw = icon and self:tileIcon(icon, isz, dark)
     local text = TextWidget:new{ text = label, face = Font:getFace("cfont", small and 15 or (size and 20 or 17)),
-        bold = true, fgcolor = dark and a.text or BLACK, max_width = w - Screen:scaleBySize(8) }
-    if dark and a.chromatic then return self:accentButton(w, h, radius, text, cb) end
+        bold = true, fgcolor = dark and a.text or BLACK,
+        max_width = w - Screen:scaleBySize(8) - (iw and isz + igap or 0) }
+    local content = text
+    if iw then
+        -- (fgcolor: a text Button's tap highlight inverts its label's colour)
+        content = HorizontalGroup:new{ align = "center", fgcolor = text.fgcolor,
+            iw, HorizontalSpan:new{ width = igap }, text }
+    end
+    if dark and a.chromatic then return self:accentButton(w, h, radius, content, cb) end
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0,
         radius = radius, background = dark and a.fill or TILE_BG,
         margin = 0, padding = 0, callback = cb, show_parent = self }
-    self:setButtonLabel(b, text)
+    self:setButtonLabel(b, content)
     return b
 end
 
@@ -431,8 +441,8 @@ function InkAwayView:pagerRow(page, pages, w, gap, on_turn)
 end
 
 -- A sheet of actions: a title with a Close pill, a note, then `rows`, each a
--- list of { label, callback[, dark] } laid out side by side. Every action
--- closes the sheet first.
+-- list of { label, callback[, dark], icon = name } laid out side by side.
+-- Every action closes the sheet first.
 function InkAwayView:openActionSheet(field, title, note, rows)
     self:closeSheet(field)
     local content_w, gap = self:sheetWidth()
@@ -451,7 +461,7 @@ function InkAwayView:openActionSheet(field, title, note, rows)
             local hg = HorizontalGroup:new{ align = "center" }
             for i, a in ipairs(row) do
                 if i > 1 then table.insert(hg, HorizontalSpan:new{ width = gap }) end
-                table.insert(hg, self:actionButton(a[1], w, function() closeSelf(); a[2]() end, a[3]))
+                table.insert(hg, self:actionButton(a[1], w, function() closeSelf(); a[2]() end, a[3], nil, a.icon))
             end
             add(hg)
         end

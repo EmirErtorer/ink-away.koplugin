@@ -363,28 +363,28 @@ function InkAwayView:chooseImage()
         add(self:sheetTitle(_("Add image"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
         add(self:actionButton(_("From this reader"), content_w, function()
-            closeSelf(); self:chooseLocalImage() end, true))
+            closeSelf(); self:chooseLocalImage() end, true, nil, "reader"))
         hint(_("A picture file on this reader."))
         -- pictures sent from a phone or computer (see ink/view/receive.lua)
         local sent = self:importedImageCount()
         if sent > 0 then
             add(vspan(12))
             add(self:actionButton(string.format(_("Sent from your phone (%d)"), sent), content_w, function()
-                closeSelf(); self:chooseSentPicture() end))
+                closeSelf(); self:chooseSentPicture() end, nil, nil, "inbox"))
             hint(_("From Library › Imported › Pictures."))
         end
         add(vspan(12))
         add(self:actionButton(_("Get from your phone or computer"), content_w, function()
-            closeSelf(); self:openSend{ adding = true } end))
+            closeSelf(); self:openSend{ adding = true } end, nil, nil, "qr"))
         hint(_("Scan a QR code to send pictures over Wi-Fi."))
         add(vspan(12))
         add(self:actionButton(_("Search online"), content_w, function()
-            closeSelf(); self:browseOnlineImages() end))
+            closeSelf(); self:browseOnlineImages() end, nil, nil, "globe"))
         hint(_("Free pictures from Wikimedia and Openverse. Needs Wi-Fi."))
         if not (self.notebook or self.reader_mode) then   -- a notebook's paper, or the book, is the background
             add(vspan(14))
             add(self:actionButton(_("Background\u{2026}"), content_w, function()
-                closeSelf(); self:openBackground() end))
+                closeSelf(); self:openBackground() end, nil, nil, "background"))
         end
         return content
     end
@@ -427,11 +427,11 @@ function InkAwayView:openBackground()
         add(self:sheetTitle(_("Background image"), content_w, _("Done"), closeSelf))
         add(vspan(16))
         add(self:actionButton(_("Open image as background"), content_w,
-            function() closeSelf(); self:chooseBackground() end))
+            function() closeSelf(); self:chooseBackground() end, nil, nil, "image"))
         if self.bg_bb then
             add(vspan(8))
             add(self:actionButton(_("Remove the background picture"), content_w,
-                function() closeSelf(); self:removeBackground() end, true))
+                function() closeSelf(); self:removeBackground() end, true, nil, "trash"))
         end
         add(vspan(12))
         local hint = self.bg_bb

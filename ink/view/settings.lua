@@ -241,8 +241,8 @@ function InkAwayView:openSettings()
     self:ensureUserIcons()
     local content_w = self:sheetWidth()
     local closeSelf = function() self:closeSheet("_settings_dialog") end
-    local function act(label, w, cb, dark)
-        return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
+    local function act(label, w, cb, dark, icon)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, dark, nil, icon)
     end
 
     local build = function(menu)
@@ -303,7 +303,7 @@ function InkAwayView:openSettings()
                         t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
                         self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
                     end }
-                end),
+                end, nil, "page"),
                 HorizontalSpan:new{ width = Screen:scaleBySize(12) },
                 self:paperColourButton(_("Colour: ") .. paper_name, half, function() self:openPaperColour() end) })
             add(vspan(12))
@@ -326,7 +326,7 @@ function InkAwayView:openSettings()
                 habits = _("Habit tracker"), cornell = _("Cornell") }
             local cur = self.grid_on and self.grid_style or "off"
             add(HorizontalGroup:new{ align = "center",
-                act(_("Grid: ") .. (GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end),
+                act(_("Grid: ") .. (GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end, nil, "grid"),
                 HorizontalSpan:new{ width = Screen:scaleBySize(12) },
                 self:paperColourButton(_("Paper: ") .. paper_name, half, function() self:openPaperColour() end) })
         end
@@ -350,7 +350,7 @@ function InkAwayView:openSettings()
         add(self:sheetHint(_("Fast strokes leave faint marks; a full refresh clears them this often."), content_w))
         add(vspan(10))
         -- one full refresh now, as the "Refresh the screen" gesture does
-        add(act(_("Refresh the screen"), content_w, function() self:refreshScreen() end))
+        add(act(_("Refresh the screen"), content_w, function() self:refreshScreen() end, nil, "refresh"))
         add(vspan(16))
 
         -- where documents are kept, and what opening Ink Away shows
@@ -359,10 +359,10 @@ function InkAwayView:openSettings()
         -- the library and export folders side by side, each named for its folder
         add(HorizontalGroup:new{ align = "center",
             act(_("Library: ") .. Storage.baseName(self:libraryDir()), half,
-                function() self:chooseLibraryRoot() end),
+                function() self:chooseLibraryRoot() end, nil, "library"),
             HorizontalSpan:new{ width = Screen:scaleBySize(12) },
             act(_("Exports: ") .. Storage.baseName(self:defaultExportDir()), half,
-                function() self:chooseExportRoot() end) })
+                function() self:chooseExportRoot() end, nil, "export") })
         add(vspan(10))
         add(self:sheetLabel(_("When Ink Away opens")))
         add(vspan(6))
@@ -376,9 +376,9 @@ function InkAwayView:openSettings()
         -- the gestures, and beside them Updates (what is new, when there is news)
         add(HorizontalGroup:new{ align = "center",
             act(_("Gestures and pen buttons"), half, function()
-                self:closeSheet("_settings_dialog"); self:openGestureSettings() end),
+                self:closeSheet("_settings_dialog"); self:openGestureSettings() end, nil, "ges_tap"),
             HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-            self:actionButton(_("Updates"), half, function() closeSelf(); self:openUpdates() end) })
+            self:actionButton(_("Updates"), half, function() closeSelf(); self:openUpdates() end, nil, nil, "update") })
         return content
     end
     self:showSheet("_settings_dialog", build)

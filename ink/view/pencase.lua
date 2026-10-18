@@ -383,7 +383,8 @@ function InkAwayView:openPenSettings()
         end
 
         add(vspan(12))
-        add(self:actionButton(_("Pen and input settings"), content_w, function() closeSelf(); self:openPenInput() end))
+        add(self:actionButton(_("Pen and input settings"), content_w, function() closeSelf(); self:openPenInput() end,
+            nil, nil, "sliders"))
         return content
     end
     self:showSheet("_pen_dialog", build, { on_close = function() self._pen_strip = nil end })
@@ -455,7 +456,8 @@ function InkAwayView:openPenTypes(adding)
         end
         if #mine < PEN_CUSTOM_CAP then
             add(vspan(14))
-            add(self:actionButton(_("Make a brush"), content_w, function() closeSelf(); self:openBrushMaker() end))
+            add(self:actionButton(_("Make a brush"), content_w, function() closeSelf(); self:openBrushMaker() end,
+                nil, nil, "brush"))
         end
         return content
     end
@@ -623,7 +625,8 @@ function InkAwayView:openPenInput()
         -- the pen test is the app's (over a book it would only take the book away)
         if not (self.reader_mode or self.floating) then
             add(vspan(14))
-            add(self:actionButton(_("Test pen and touch"), content_w, function() closeSelf(); self:openPenTest() end))
+            add(self:actionButton(_("Test pen and touch"), content_w, function() closeSelf(); self:openPenTest() end,
+                nil, nil, "target"))
         end
         return content
     end

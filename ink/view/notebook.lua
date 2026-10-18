@@ -374,8 +374,8 @@ function InkAwayView:openPageMenu()
     local content_w, gap = self:sheetWidth()
     local halfW = math.floor((content_w - gap) / 2)
     local closeSelf = function() self:closeSheet("_page_dialog") end
-    local function act(label, w, cb)
-        return self:actionButton(label, w, function() closeSelf(); cb() end)
+    local function act(label, w, cb, icon)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, nil, nil, icon)
     end
     local function row2(a, b)
         return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
@@ -388,32 +388,32 @@ function InkAwayView:openPageMenu()
         add(self:sheetLabel(string.format(_("Page %d of %d"), nb.index, nb:count())
             .. (page.star and "  \u{2605}" or "")))
         add(vspan(12))
-        add(act(_("Go to page\u{2026}"), content_w, function() self:nbJumpPrompt() end))
+        add(act(_("Go to page\u{2026}"), content_w, function() self:nbJumpPrompt() end, "hash"))
         add(vspan(8))
-        add(row2(act(_("Rename\u{2026}"), halfW, function() self:nbRenamePage() end),
-                 act(page.star and _("Unstar") or _("Star"), halfW, function() self:nbToggleStar() end)))
+        add(row2(act(_("Rename\u{2026}"), halfW, function() self:nbRenamePage() end, "rename"),
+                 act(page.star and _("Unstar") or _("Star"), halfW, function() self:nbToggleStar() end, "star")))
         add(vspan(8))
-        add(row2(act(_("Insert before"), halfW, function() self:nbInsertPageBefore() end),
-                 act(_("Duplicate"), halfW, function() self:nbDuplicatePage() end)))
+        add(row2(act(_("Insert before"), halfW, function() self:nbInsertPageBefore() end, "newpage"),
+                 act(_("Duplicate"), halfW, function() self:nbDuplicatePage() end, "duplicate")))
         add(vspan(8))
-        add(row2(act(_("Move\u{2026}"), halfW, function() self:nbMovePrompt() end),
-                 act(_("Paper\u{2026}"), halfW, function() self:nbPagePaper() end)))
+        add(row2(act(_("Move\u{2026}"), halfW, function() self:nbMovePrompt() end, "move"),
+                 act(_("Paper\u{2026}"), halfW, function() self:nbPagePaper() end, "page")))
         add(vspan(8))
-        add(row2(act(_("Save as template\u{2026}"), halfW, function() self:nbSaveTemplate() end),
-                 act(_("From template\u{2026}"), halfW, function() self:nbFromTemplate() end)))
+        add(row2(act(_("Save as template\u{2026}"), halfW, function() self:nbSaveTemplate() end, "template"),
+                 act(_("From template\u{2026}"), halfW, function() self:nbFromTemplate() end, "template")))
         add(vspan(8))
         if self:nbHasContents() and not page.contents then
-            add(act(_("Go to the contents page"), content_w, function() self:goToContents() end))
+            add(act(_("Go to the contents page"), content_w, function() self:goToContents() end, "contents"))
             add(vspan(8))
         end
         add(act(self:nbHasContents() and _("Update the contents page") or _("Make a contents page"), content_w,
-            function() self:nbMakeContents() end))
+            function() self:nbMakeContents() end, "contents"))
         add(vspan(8))
         if Clipboard.count() > 0 then
-            add(row2(act(_("Paste"), halfW, function() self:pasteAt(nil) end),
-                     act(_("Delete page"), halfW, function() self:nbDeletePage() end)))
+            add(row2(act(_("Paste"), halfW, function() self:pasteAt(nil) end, "clipboard"),
+                     act(_("Delete page"), halfW, function() self:nbDeletePage() end, "trash")))
         else
-            add(act(_("Delete page"), content_w, function() self:nbDeletePage() end))
+            add(act(_("Delete page"), content_w, function() self:nbDeletePage() end, "trash"))
         end
         return content
     end

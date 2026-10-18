@@ -482,7 +482,9 @@ function InkAwayView:openLayerMenu(id)
     local content_w, gap = self:sheetWidth()
     local half = math.floor((content_w - gap) / 2)
     local function closeSelf() self:closeSheet("_layer_menu") end
-    local function act(label, cb) return self:actionButton(label, half, function() closeSelf(); cb() end) end
+    local function act(label, cb, icon)
+        return self:actionButton(label, half, function() closeSelf(); cb() end, nil, nil, icon)
+    end
     local function row(a, b)
         return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b }
     end
@@ -494,14 +496,14 @@ function InkAwayView:openLayerMenu(id)
             VerticalSpan:new{ width = Screen:scaleBySize(6) },
             self:sheetHint(T(_("Layer %1 of %2. New drawing goes on this layer."), pos, #c.layers), content_w, 14),
             VerticalSpan:new{ width = Screen:scaleBySize(14) },
-            row(act(shown and _("Hide") or _("Show"), function() self:layerToggleShown(id) end),
-                act(_("Rename\u{2026}"), function() self:layerRename(id) end)),
+            row(act(shown and _("Hide") or _("Show"), function() self:layerToggleShown(id) end, "eye"),
+                act(_("Rename\u{2026}"), function() self:layerRename(id) end, "rename")),
             VerticalSpan:new{ width = gap },
-            row(act(_("Move up"), function() self:layerMove(id, 1) end),
-                act(_("Move down"), function() self:layerMove(id, -1) end)),
+            row(act(_("Move up"), function() self:layerMove(id, 1) end, "arrow_up"),
+                act(_("Move down"), function() self:layerMove(id, -1) end, "arrow_down")),
             VerticalSpan:new{ width = gap },
-            row(act(_("Merge down"), function() self:layerMergeDown(id) end),
-                act(_("Delete\u{2026}"), function() self:layerDelete(id) end)),
+            row(act(_("Merge down"), function() self:layerMergeDown(id) end, "mergedown"),
+                act(_("Delete\u{2026}"), function() self:layerDelete(id) end, "trash")),
         }
     end
     self:showSheet("_layer_menu", build)

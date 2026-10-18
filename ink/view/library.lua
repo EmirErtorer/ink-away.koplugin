@@ -8,7 +8,6 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
-local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -98,17 +97,10 @@ function InkAwayView:openLibrary(dir, over_grid)
         folder_icon = self:iconPath("folder"),
         folder_tile = self.folderTile,
         flash_open = not (over_grid or self:colourPanel()),   -- (see ThumbGrid:onShow)
-        empty_text = _("Nothing here yet. Start a drawing or a notebook with the buttons above."),
+        empty_text = _("Nothing here yet. Make a drawing, a notebook or a folder with + New."),
         actions = {
-            { "+ " .. _("Drawing"), function()
-                local d = self._lib_dir
-                self._library:close()
-                self:newDrawing(d)
-            end, true },
-            { "+ " .. _("Notebook"), function() self:openNotebookPaper(self._lib_dir) end, true },
-            { "+ " .. _("Folder"), function()
-                self:promptNewFolder(self._lib_dir, function() self:refreshLibrary() end)
-            end, true },
+            -- one button for what can be made here, so a folder's name has room
+            { "+ " .. _("New"), function() self:libraryNewSheet() end, true },
             { _("Search"), function() self:openSearch("library") end, icon = self:iconPath("search") },
             { "\u{22EF}", function() self:libraryMenu() end },
         },
@@ -147,6 +139,38 @@ function InkAwayView:libraryPick(it)
     self:openDocument(it.path)
 end
 
+-- What + New offers in the library: a drawing, a notebook or a folder, made in
+-- the folder shown.
+function InkAwayView:libraryNewSheet()
+    local field = "_library_new"
+    local content_w, gap = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local function drawing(from_image)
+        closeSelf()
+        local d = self._lib_dir
+        if self._library then self._library:close() end
+        if from_image then self:newFromImage(d) else self:newDrawing(d) end
+    end
+    local build = function()
+        return VerticalGroup:new{ align = "left",
+            self:sheetTitle(string.format(_("New in %s"), self:libraryTitle(self._lib_dir or self:libraryDir())),
+                content_w, _("Cancel"), closeSelf),
+            VerticalSpan:new{ width = S(14) },
+            self:actionTile("pen", _("Drawing"), _("A blank page. Hold to start from a picture."), content_w,
+                function() drawing(false) end, function() drawing(true) end),
+            VerticalSpan:new{ width = gap },
+            self:actionTile("notebook", _("Notebook"), _("Choose its paper, a PDF or a template"), content_w,
+                function() closeSelf(); self:openNotebookPaper(self._lib_dir) end),
+            VerticalSpan:new{ width = gap },
+            self:actionTile("folder", _("Folder"), _("To keep notebooks and drawings together"), content_w,
+                function()
+                    closeSelf()
+                    self:promptNewFolder(self._lib_dir, function() self:refreshLibrary() end)
+                end) }
+    end
+    self:showSheet(field, build)
+end
+
 -- The library's menu (the ... button), as a sheet: Phone or computer over
 -- Wi-Fi, writing on a PDF already on the reader, the order, and the trash,
 -- each with a line saying what it does.
@@ -157,19 +181,19 @@ function InkAwayView:libraryMenu()
     local build = function()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
-        local function option(label, hint, cb, dark)
+        local function option(label, hint, cb, dark, icon)
             add(VerticalSpan:new{ width = S(12) })
-            add(self:actionButton(label, content_w, function() closeSelf(); cb() end, dark))
+            add(self:actionButton(label, content_w, function() closeSelf(); cb() end, dark, nil, icon))
             add(VerticalSpan:new{ width = S(4) })
             add(self:sheetHint(hint, content_w))
         end
         add(self:sheetTitle(self:libraryTitle(self._lib_dir or self:libraryDir()), content_w, _("Close"), closeSelf))
         option(_("Phone or computer (Wi-Fi)\u{2026}"),
             _("Send your notebooks and drawings to a phone or computer, or add PDFs and pictures from one, with a QR code."),
-            function() self:openSend() end, true)
+            function() self:openSend() end, true, "qr")
         option(_("Write on a PDF from this reader\u{2026}"),
             _("Pick a PDF that is already on this reader. It becomes a notebook in this folder."),
-            function() self:openPdfAsNotebook(self._lib_dir) end)
+            function() self:openPdfAsNotebook(self._lib_dir) end, nil, "pdfpen")
         add(VerticalSpan:new{ width = S(16) })
         add(self:sheetLabel(_("Order"), true))
         add(VerticalSpan:new{ width = S(6) })
@@ -180,59 +204,46 @@ function InkAwayView:libraryMenu()
                 self:rebuildSheet(field)
             end))
         option(_("Trash\u{2026}"), string.format(_("Deleted notebooks, drawings, pictures and folders wait here for %d days."),
-            require("ink/trash").KEEP_DAYS), function() self:openTrash() end)
+            require("ink/trash").KEEP_DAYS), function() self:openTrash() end, nil, "trash")
         return content
     end
     self:showSheet(field, build)
 end
 
--- The menu of one card, from a hold.
+-- The menu of one card, from a hold: a sheet of its actions, each with its icon.
 function InkAwayView:libraryItemMenu(it)
-    local dialog
-    local function act(text, fn)
-        return { text = text, callback = function() UIManager:close(dialog); fn() end }
-    end
-    local rows = {
-        { act(_("Open"), function() self:libraryPick(it) end) },
-        { act(_("Rename\u{2026}"), function() self:promptRenameItem(it) end),
-          act(_("Move to\u{2026}"), function() self:moveItem(it) end) },
-    }
+    local function act(text, icon, fn) return { text, fn, icon = icon } end
+    local open = act(_("Open"), "open", function() self:libraryPick(it) end)
+    local rename = act(_("Rename\u{2026}"), "rename", function() self:promptRenameItem(it) end)
+    local move = act(_("Move to\u{2026}"), "move", function() self:moveItem(it) end)
+    local delete = act(_("Delete\u{2026}"), "trash", function() self:confirmDeleteItem(it) end)
+    local rows
     if it.picture then
-        rows = {
-            { act(_("View"), function() self:viewPicture(it.path) end),
-              act(_("Rename\u{2026}"), function() self:promptRenameItem(it) end) },
-            { act(_("Move to\u{2026}"), function() self:moveItem(it) end),
-              act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) },
-        }
-        dialog = ButtonDialog:new{ title = it.label, buttons = rows }
-        UIManager:show(dialog)
-        return
-    end
-    if it.folder then
-        rows[#rows + 1] = { act(_("Colour and icon\u{2026}"), function() self:folderLookSheet(it) end) }
-        rows[#rows + 1] = { act(_("Export as PDF\u{2026}"), function() self:exportFolderPDF(it.path) end),
-            act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
+        rows = { { act(_("View"), "eye", function() self:viewPicture(it.path) end), rename }, { move, delete } }
+    elseif it.folder then
+        rows = { { open }, { rename, move },
+            { act(_("Colour and icon\u{2026}"), "palette", function() self:folderLookSheet(it) end) },
+            { act(_("Export as PDF\u{2026}"), "export", function() self:exportFolderPDF(it.path) end), delete } }
     else
-        rows[1][2] = act(_("Export\u{2026}"), function()
-            self:libraryPick(it)
-            if self.doc_path == it.path then self:openExport() end
-        end)
-        rows[#rows + 1] = { act(_("Duplicate"), function() self:duplicateItem(it) end),
-            act(_("Delete\u{2026}"), function() self:confirmDeleteItem(it) end) }
+        rows = { { open, act(_("Export\u{2026}"), "export", function()
+                self:libraryPick(it)
+                if self.doc_path == it.path then self:openExport() end
+            end) },
+            { rename, move },
+            { act(_("Duplicate"), "duplicate", function() self:duplicateItem(it) end), delete } }
         -- a notebook's cover on a Bookshelf shelf, when Bookshelf is installed
         if require("ink/bookshelf").registered and Library.isNotebookFile(it.path) then
-            rows[#rows + 1] = { act(_("Cover on the shelf\u{2026}"), function()
+            rows[#rows + 1] = { act(_("Cover on the shelf\u{2026}"), "cover", function()
                 require("ink/coverpicker").show{ path = it.path, view = self }
             end) }
         elseif require("ink/drawingshelf").registered and not Library.isNotebookFile(it.path) then
             -- a drawing's frame on a Bookshelf shelf
-            rows[#rows + 1] = { act(_("Frame on the shelf\u{2026}"), function()
+            rows[#rows + 1] = { act(_("Frame on the shelf\u{2026}"), "frame", function()
                 require("ink/framepicker").show{ path = it.path }
             end) }
         end
     end
-    dialog = ButtonDialog:new{ title = it.label, buttons = rows }
-    UIManager:show(dialog)
+    self:openActionSheet("_item_menu", it.label, nil, rows)
 end
 
 ------------------------------------------------------------------------------

@@ -782,11 +782,11 @@ function InkAwayView:openSelectionMenu(panel)
                           act(_("Remove link"), function() self:selUnlink() end) }))
             elseif not self.reader_mode then   -- over a book there are no pages to link to
                 add(self:actionButton(_("Link to page\u{2026}"), content_w, function() self:selLink() end,
-                    false, "small"))
+                    false, "small", "link"))
             end
             if k.n == 1 and k.image == 1 then
                 add(self:actionButton(_("Remove background"), content_w, function()
-                    self:closeSelectionMenu(); self:removeImageBackground(); again() end, false, "small"))
+                    self:closeSelectionMenu(); self:removeImageBackground(); again() end, false, "small", "wand"))
             end
             add(row({ act(_("To front"), function() self:selToFront(); again() end),
                       act("\u{2715} " .. _("Delete"), function() self:closeSelectionMenu(); self:selDelete() end),

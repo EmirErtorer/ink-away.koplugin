@@ -3139,10 +3139,7 @@ do
     ok(item("Art") and item("Art").look == nil and item("School").look == nil, "look: folders start plain")
     ok(lib.folder_tile ~= nil, "look: the library draws folders in their looks")
     view:libraryItemMenu(item("School"))
-    local found
-    for _, row in ipairs(ButtonDialog.last.buttons) do
-        for _, b in ipairs(row) do if b.text == "Colour and icon\u{2026}" then found = b end end
-    end
+    local found = findButton(view._item_menu, "Colour and icon\u{2026}")
     ok(found ~= nil, "look: a folder's menu offers Colour and icon")
     found.callback()
     ok(view._folder_look ~= nil, "look: it opens the sheet")
@@ -3538,10 +3535,15 @@ do
     ok(BB.out_of_bounds == 0, "lib: the grid paints in bounds")
 
     -- a new folder from the header's + Folder, then a new drawing made inside it
-    local plus_folder
-    for _, a in ipairs(lib.actions) do if a[1] == "+ Folder" then plus_folder = a end end
-    ok(plus_folder and plus_folder[3], "lib: + Folder sits in the header, filled like + Drawing and + Notebook")
-    plus_folder[2]()
+    local plus_new
+    for _, a in ipairs(lib.actions) do if a[1] == "+ New" then plus_new = a end end
+    ok(plus_new and plus_new[3] and #lib.actions == 3, "lib: one filled + New sits in the header, with Search and the menu")
+    plus_new[2]()
+    local new_sheet = view._library_new
+    ok(new_sheet and findButton(new_sheet, "Drawing") and findButton(new_sheet, "Notebook") and findButton(new_sheet, "Folder"),
+        "lib: + New offers a drawing, a notebook and a folder")
+    findButton(new_sheet, "Folder").callback()
+    ok(view._library_new == nil, "lib: and closes as one is picked")
     answer("School")
     ok(Storage.isDir(LIB .. "/School") and labels(lib) == "/School,First", "lib: New folder makes a folder, listed first")
     view:libraryPick(lib.items[1])
@@ -3630,7 +3632,11 @@ do
 
     -- the hold menu and the library menu open
     view:libraryItemMenu(view._library.items[1])
-    ok(ButtonDialog.last and #ButtonDialog.last.buttons == 3, "lib: holding a card shows its menu")
+    local im = view._item_menu
+    ok(im and findButton(im, "Open") and findButton(im, "Export\u{2026}") and findButton(im, "Rename\u{2026}")
+        and findButton(im, "Move to\u{2026}") and findButton(im, "Duplicate") and findButton(im, "Delete\u{2026}"),
+        "lib: holding a card shows its menu as a sheet")
+    view:closeSheet("_item_menu")
     view:libraryMenu()
     local menu = view._library_menu
     ok(menu ~= nil and findButton(menu, "Phone or computer (Wi-Fi)\u{2026}") and findButton(menu, "Trash\u{2026}")
@@ -3852,8 +3858,8 @@ do
     local item
     for _, it in ipairs(view._library.items) do if it.path == coverPath then item = it end end
     view:libraryItemMenu(item)
-    local exportBtn = ButtonDialog.last.buttons[1][2]
-    ok(exportBtn and exportBtn.text:find("Export"), "export: the library offers Export")
+    local exportBtn = findButton(view._item_menu, "Export\u{2026}")
+    ok(exportBtn ~= nil, "export: the library offers Export")
     exportBtn.callback()
     ok(view.doc_path == coverPath and view._save_dialog ~= nil and view._library == nil,
         "export: from the library it opens the document's export sheet")
@@ -4852,10 +4858,7 @@ do
 
     view:openLibrary(LIB)
     view:libraryItemMenu(view._library.items[1])
-    local found
-    for _, row in ipairs(ButtonDialog.last.buttons) do
-        for _, b in ipairs(row) do if b.text:find("Export as PDF", 1, true) then found = b end end
-    end
+    local found = findButton(view._item_menu, "Export as PDF\u{2026}")
     ok(found ~= nil, "folder: a folder's menu offers Export as PDF")
     found.callback()
     ok(InputDialog.last and InputDialog.last.input == "Physics", "folder: the PDF is named after the folder")
@@ -4991,11 +4994,14 @@ do
     ok(data and #data.pages[1].ops == 1 and data.pages[1].title == "Plan" and data.template.style == "cornell",
         "new: its first page is the template, on its paper")
 
-    -- the library's + Drawing starts a drawing in the folder shown, in one tap
+    -- the library's + New, then Drawing, starts a drawing in the folder shown
     view:openLibrary(LIB .. "/School")
     view._library.actions[1][2]()
-    ok(view._library == nil and not view.notebook and Storage.dirName(view.doc_path) == LIB .. "/School",
-        "new: + Drawing makes a drawing in that folder at once")
+    ok(view._library_new ~= nil, "new: + New opens its sheet")
+    findButton(view._library_new, "Drawing").callback()
+    ok(view._library == nil and view._library_new == nil and not view.notebook
+        and Storage.dirName(view.doc_path) == LIB .. "/School",
+        "new: + New, Drawing makes a drawing in that folder at once")
 
     -- holding New drawing starts one over a picture, named after it and saved
     local PathChooser = require("ui/widget/pathchooser")

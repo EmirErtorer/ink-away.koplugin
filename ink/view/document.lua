@@ -497,8 +497,8 @@ function InkAwayView:openDocumentSheet()
     local content_w, gap = self:sheetWidth()
     local thirdW = math.floor((content_w - 2 * gap) / 3)
     local closeSelf = function() self:closeSheet("_doc_dialog") end
-    local function act(label, w, cb, dark)
-        return self:actionButton(label, w, function() closeSelf(); cb() end, dark)
+    local function act(label, w, cb, dark, icon)
+        return self:actionButton(label, w, function() closeSelf(); cb() end, dark, nil, icon)
     end
     local status = self.doc_written
         and string.format(_("Saved automatically in %s"), self:docPlace())
@@ -511,11 +511,11 @@ function InkAwayView:openDocumentSheet()
         add(self:sheetHint(status, content_w, 15))
         add(vspan(16))
         add(HorizontalGroup:new{ align = "center",
-            act(_("Rename\u{2026}"), thirdW, function() self:promptRename() end),
+            act(_("Rename\u{2026}"), thirdW, function() self:promptRename() end, nil, "rename"),
             HorizontalSpan:new{ width = gap },
-            act(_("Duplicate"), thirdW, function() self:duplicateDocument() end),
+            act(_("Duplicate"), thirdW, function() self:duplicateDocument() end, nil, "duplicate"),
             HorizontalSpan:new{ width = gap },
-            act(_("Export\u{2026}"), thirdW, function() self:openExport() end) })
+            act(_("Export\u{2026}"), thirdW, function() self:openExport() end, nil, "export") })
         -- a drawing's layers (view/layers.lua): off until turned on
         if self:layersAllowed() then
             add(vspan(12))

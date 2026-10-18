@@ -262,12 +262,12 @@ function InkAwayView:openExport()
         if o.fmt == "png" and self:ornamentsDir() then
             add(vspan(10))
             add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
-                closeSelf(); self:saveOrnament() end))
+                closeSelf(); self:saveOrnament() end, nil, nil, "frame"))
         end
         -- (see ink/view/share.lua)
         add(vspan(10))
         add(self:actionButton(_("Send to phone or computer (Wi-Fi)\u{2026}"), content_w, function()
-            closeSelf(); self:openSend() end))
+            closeSelf(); self:openSend() end, nil, nil, "qr"))
         return content
     end
     self:showSheet("_save_dialog", build)
