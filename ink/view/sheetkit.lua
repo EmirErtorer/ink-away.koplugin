@@ -28,7 +28,6 @@ local Accent = require("ink/accent")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Raster = require("ink/raster")
-local Storage = require("ink/storage")
 local IconMenu = require("ink/ui/iconmenu")
 local Theme = require("ink/ui/theme")
 

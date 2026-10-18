@@ -6,7 +6,6 @@ sheet opens from the library's menu.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Device = require("device")
