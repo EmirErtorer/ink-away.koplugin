@@ -409,6 +409,9 @@ function InkAwayView:chooseSentPicture()
         empty_text = _("Nothing sent yet."),
         render = function(it, w, h) return self:pictureThumb(it.path, w, h) end,
         on_pick = function(it) grid:close(); self:insertImage(it.path) end,
+        -- (the grid covered the toolbar too: repaint all of the view, not just
+        -- the area the new picture asks for)
+        on_close = function() self:uncovered() end,
     }
     UIManager:show(grid)
 end

@@ -59,6 +59,25 @@ function InkAwayView:docDir()
     return dir or self:libraryDir()
 end
 
+-- Is `dir` the Imported folder or inside it? Imported holds only what came from
+-- another device.
+function InkAwayView:inImported(dir)
+    return dir ~= nil and Storage.within(dir, self:importedFolder())
+end
+
+-- The folder something new or copied goes in when asked for `dir`: the library
+-- itself instead of anywhere in Imported. The second result is true when it
+-- moved there.
+function InkAwayView:writableDir(dir)
+    if self:inImported(dir) then return self:libraryDir(), true end
+    return dir, false
+end
+
+-- Say that something meant for Imported went in the library instead.
+function InkAwayView:noteNotImported(what)
+    self:showNotice(string.format(_("%s is in Library: Imported only holds what you sent"), what))
+end
+
 -- Is there anything in the document worth a file: ink, a background picture,
 -- more than one page, or pages over an imported PDF?
 function InkAwayView:docHasContent()
@@ -212,13 +231,15 @@ end
 -- default), named `name` (a dated default when nil). `setup` builds it: it
 -- clears the canvas or enters notebook mode.
 function InkAwayView:beginDocument(kind, name, setup, dir)
-    dir = dir or self:docDir()
+    local moved
+    dir, moved = self:writableDir(dir or self:docDir())
     self:leaveDocument()
     self.doc_path = Storage.uniquePath(dir, name or Library.defaultName(self:docKindLabel(kind)), Project.EXT)
     self.doc_written = false
     self.save_area, self.export_opts = nil, nil
     setup()
     self:resetSaveState()
+    if moved then self:noteNotImported(_("The new document")) end
 end
 
 -- Replace the drawing with `ops`, dropping every selection and cached image.
@@ -400,14 +421,19 @@ function InkAwayView:duplicateDocument()
         UIManager:show(InfoMessage:new{ text = _("There is nothing to copy yet."), timeout = 2 })
         return
     end
-    local copy, err = Library.duplicate(self.doc_path)
+    local into, moved = self:writableDir(Storage.dirName(self.doc_path))
+    local copy, err = Library.duplicate(self.doc_path, into)
     if not copy then
         UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
         return
     end
     Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
     if self:openDocument(copy) then
-        self:showNotice(string.format(_("Now in the copy, \u{201C}%s\u{201D}"), Storage.stem(copy)))
+        if moved then
+            self:noteNotImported(string.format(_("The copy, \u{201C}%s\u{201D},"), Storage.stem(copy)))
+        else
+            self:showNotice(string.format(_("Now in the copy, \u{201C}%s\u{201D}"), Storage.stem(copy)))
+        end
     end
 end
 

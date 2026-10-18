@@ -3039,6 +3039,81 @@ do
     view:onCloseWidget()
 end
 
+-- ---- nothing new, copied or moved goes into Imported --------------------
+-- Imported holds only what came from another device: a new document made from
+-- an imported one, a copy, a new folder or a move all go elsewhere.
+do
+    local TestEnv = require("testenv")
+    local Storage = require("ink/storage")
+    local Project = require("ink/project")
+    local InputDialog = require("ui/widget/inputdialog")
+    local LIB = TestEnv.libraryDir() .. "/keepouttest"
+    local IMPORTED = LIB .. "/Imported"
+    os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. IMPORTED .. "/PDFs' '" .. IMPORTED .. "/Pictures' '" .. LIB .. "/Maths'")
+    local saved_lib = G_reader_settings.data.inkaway_library_dir
+    G_reader_settings.data.inkaway_library_dir = LIB
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local notices = {}
+    view.showNotice = function(_, t) notices[#notices + 1] = t end
+    local sent = IMPORTED .. "/PDFs/Sent.inkaway"
+    local fh = assert(io.open(sent, "w")); fh:write(Project.serialize({ w = 10, h = 10, ops = {} })); fh:close()
+    ok(view:inImported(IMPORTED) and view:inImported(IMPORTED .. "/PDFs") and not view:inImported(LIB)
+        and not view:inImported(LIB .. "/Imported pictures"), "keep out: Imported and only Imported is told apart")
+    ok(view:openDocument(sent), "keep out: an imported document opens")
+    view:newDrawing()
+    ok(Storage.dirName(view.doc_path) == LIB, "keep out: a new drawing from an imported document goes in Library (" .. view.doc_path .. ")")
+    ok(notices[#notices] and notices[#notices]:find("Library", 1, true), "keep out: and says so")
+    view:openDocument(sent)
+    view:newNotebook("blank")
+    ok(Storage.dirName(view.doc_path) == LIB, "keep out: a new notebook too")
+    view:newDrawing(IMPORTED .. "/Pictures")
+    ok(Storage.dirName(view.doc_path) == LIB, "keep out: + Drawing while looking in Imported too")
+    view:newDrawing(LIB .. "/Maths")
+    ok(Storage.dirName(view.doc_path) == LIB .. "/Maths", "keep out: other folders are as before")
+    -- copies
+    view:openDocument(sent)
+    view:duplicateDocument()
+    ok(Storage.dirName(view.doc_path) == LIB and view.doc_path ~= sent, "keep out: Duplicate of an imported document goes in Library")
+    local n0 = #notices
+    view:duplicateItem({ path = sent, label = "Sent" })
+    local copies = 0
+    for _, e in ipairs(Storage.list(LIB)) do if e.name:match("^Sent.*%.inkaway$") then copies = copies + 1 end end
+    ok(copies == 2 and #notices > n0, "keep out: so does a library Duplicate (" .. copies .. ")")
+    local inside = {}
+    for _, e in ipairs(Storage.list(IMPORTED .. "/PDFs")) do inside[#inside + 1] = e.name end
+    ok(#inside == 1 and inside[1] == "Sent.inkaway", "keep out: Imported > PDFs still holds just the sent one (" .. table.concat(inside, ",") .. ")")
+    -- a new folder asked for in Imported
+    local made
+    view:promptNewFolder(IMPORTED .. "/PDFs", function(path) made = path end)
+    local d = InputDialog.last
+    d.input = "Homework"
+    for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    ok(made == LIB .. "/Homework" and Storage.isDir(LIB .. "/Homework") and not Storage.exists(IMPORTED .. "/PDFs/Homework"),
+        "keep out: a new folder asked for in Imported is made in Library")
+    -- Move to never offers Imported
+    UIManager.shown = nil
+    view:chooseLibraryFolder(LIB .. "/Maths", function() end)
+    local grid = UIManager.shown
+    local labels = {}
+    for _, it in ipairs(grid and grid.items or {}) do labels[#labels + 1] = it.label end
+    table.sort(labels)
+    ok(table.concat(labels, ",") == "Homework", "keep out: Move to offers no Imported (" .. table.concat(labels, ",") .. ")")
+    if grid and grid.close then grid:close() end
+    -- the Sent from your phone grid covers the toolbar: closing it repaints all
+    UIManager.shown = nil
+    view:chooseSentPicture()
+    local sg = UIManager.shown
+    view._paint_all = false
+    if sg then sg:close() end
+    ok(sg and view._paint_all == true, "sent pictures: closing the grid repaints the toolbar too")
+    G_reader_settings.data.inkaway_library_dir = saved_lib
+    view:onCloseWidget()
+end
+
 -- ---- a library folder's colour and icon -----------------------------------
 do
     local TestEnv = require("testenv")

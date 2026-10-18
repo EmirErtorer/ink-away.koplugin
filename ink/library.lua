@@ -111,8 +111,8 @@ end
 
 -- Copy the document at `path` next to it under a free name. Returns the new
 -- path, or nil, err.
-function Library.duplicate(path)
-    local target = Storage.uniquePath(Storage.dirName(path), Storage.stem(path), Project.EXT)
+function Library.duplicate(path, dir)
+    local target = Storage.uniquePath(dir or Storage.dirName(path), Storage.stem(path), Project.EXT)
     local ok, err = Storage.copyFile(path, target)
     if not ok then return nil, err end
     return target

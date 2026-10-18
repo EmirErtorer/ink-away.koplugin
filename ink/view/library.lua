@@ -241,6 +241,8 @@ end
 
 -- Ask for a name and make that folder in `dir`; `after(path)` runs once it is made.
 function InkAwayView:promptNewFolder(dir, after)
+    local moved
+    dir, moved = self:writableDir(dir)
     self:promptText{ title = _("New folder"), hint = _("Folder name"), ok_text = _("Create"),
         on_ok = function(text)
             local name = (text or ""):gsub("[/\\]", "_"):match("^%s*(.-)%s*$")
@@ -255,6 +257,7 @@ function InkAwayView:promptNewFolder(dir, after)
                 UIManager:show(InfoMessage:new{ text = _("Could not create the folder.") })
                 return
             end
+            if moved then self:noteNotImported(string.format("\u{201C}%s\u{201D}", name)) end
             if after then after(path) end
         end }
 end
@@ -303,13 +306,15 @@ function InkAwayView:promptRenameItem(it)
 end
 
 function InkAwayView:duplicateItem(it)
-    local copy, err = Library.duplicate(it.path)
+    local into, moved = self:writableDir(Storage.dirName(it.path))
+    local copy, err = Library.duplicate(it.path, into)
     if not copy then
         UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
         return
     end
     Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
     self:refreshLibrary()
+    if moved then self:noteNotImported(_("The copy")) end
 end
 
 -- The question before something goes to the trash: a document or folder
@@ -377,7 +382,8 @@ function InkAwayView:chooseLibraryFolder(moving, on_pick)
         local looks = self:folderLooks(cur, folders)
         local out = {}
         for _, f in ipairs(folders) do
-            if not (moving and Storage.within(f.path, moving)) then
+            -- (never into Imported: it holds only what came from another device)
+            if not (moving and Storage.within(f.path, moving)) and not self:inImported(f.path) then
                 out[#out + 1] = { label = f.name, path = f.path, folder = true, look = FolderLook.clean(looks[f.name]) }
             end
         end
