@@ -20,7 +20,7 @@ function InkAwayView:wipeBegin(sx, sy)
             { text = not self.text_erase_protect, pictures = self.erase_bg }),
         areas = {}, rows = {}, removed = 0, path = {} }
     self.capturing, self.pending_lift = true, nil
-    self:wipeTo(sx, sy)
+    self:addScreenPoint(sx, sy, true)   -- (the first point, with the eraser's outline)
 end
 
 -- Move the eraser to screen (sx, sy), with its mirror copies: remove the lines

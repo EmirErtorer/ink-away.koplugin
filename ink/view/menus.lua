@@ -19,11 +19,15 @@ local Brushes = require("ink/brushes")
 local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Penset = require("ink/penset")
+local EraserRing = require("ink/ui/eraserring")
+local PenSample = require("ink/ui/pensample")
 local SliderRow = require("ink/ui/controls").SliderRow
+local Strip = require("ink/ui/strip")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
 local BLACK = Blitbuffer.COLOR_BLACK
+local WHITE = Blitbuffer.COLOR_WHITE
 local HAIRLINE = Paint.HAIRLINE
 local TILE_BG = Paint.TILE_BG
 local CARET_BG = Paint.CARET_BG
@@ -115,8 +119,16 @@ function InkAwayView:confirmDeleteBrush(key, label)
     }
 end
 
--- The eraser sheet: a size slider, the Erase pictures and Erase whole strokes
--- toggles, and Protect text from eraser.
+-- A w x h picture of the eraser, `d` screen pixels across, clearing a line of
+-- ink, with the outline it shows while erasing: its true shape and size.
+function InkAwayView:eraserSample(w, h, d)
+    local bb = PenSample.render({ width = 1 }, w, h, math.max(2, Screen:scaleBySize(5)))
+    EraserRing.paint(bb, w / 2, h / 2, d / 2, true)
+    return bb
+end
+
+-- The eraser sheet: the eraser at its real size, a size slider, the Erase
+-- pictures and Erase whole strokes toggles, and Protect text from eraser.
 function InkAwayView:openEraserSettings()
     if self:rebuildSheet("_eraser_dialog") then return end
     self:ensureUserIcons()
@@ -126,10 +138,28 @@ function InkAwayView:openEraserSettings()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Eraser"), content_w, _("Done"), closeSelf))
-        add(vspan(16))
+        add(vspan(12))
+        -- the eraser at its real size on screen (at this zoom), as its outline
+        -- shows while erasing; one too big for the strip is shown smaller
+        local strip = Strip:new{ w = content_w - 2 * Screen:scaleBySize(3), h = Screen:scaleBySize(96) }
+        local function preview()
+            local zoom = (self.view and self.view.zoom) or 1
+            local real = math.max(1, self.eraser_width * zoom)
+            local shown = math.min(real, strip.h - Screen:scaleBySize(8))
+            strip.note = shown < real and string.format(_("shown at %d%%"), math.floor(shown / real * 100 + 0.5)) or nil
+            strip:setImage(self:eraserSample(strip.w, strip.h, shown))
+        end
+        preview()
+        add(FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = HAIRLINE, radius = Screen:scaleBySize(10),
+            padding = Screen:scaleBySize(2), margin = 0, background = WHITE, strip })
+        add(vspan(10))
         add(SliderRow:new{ label = _("Size"), value = self.eraser_width, min = 4, max = 120,
             width = content_w, parent = menu, format = pxfmt,
-            on_set = function(v) self.eraser_width = math.max(1, v) end })
+            on_set = function(v)
+                self.eraser_width = math.max(1, v)
+                preview()
+                if strip.dimen then UIManager:setDirty(menu, "fast", strip.dimen) end
+            end })
         add(vspan(14))
         local pictures = ToggleRow:new{ label = _("Erase pictures"), is_on = self.erase_bg,
             compact = true, parent = menu,

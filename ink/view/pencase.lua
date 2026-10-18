@@ -21,8 +21,6 @@ local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
-local GestureRange = require("ui/gesturerange")
-local InputContainer = require("ui/widget/container/inputcontainer")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -36,6 +34,7 @@ local PenSample = require("ink/ui/pensample")
 local Penset = require("ink/penset")
 local Raster = require("ink/raster")
 local SliderRow = require("ink/ui/controls").SliderRow
+local Strip = require("ink/ui/strip")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 local Theme = require("ink/ui/theme")
 
@@ -220,43 +219,6 @@ local function rows(list, per, gap)
         table.insert(out, row)
     end
     return out
-end
-
--- The pen in hand on a strip of paper, at its real width on screen. Updated in
--- place while the size or opacity slider moves; a tap opens the kinds of pen.
-local Strip = InputContainer:extend{ w = 0, h = 0, bb = nil, on_tap = nil, note = nil }
-function Strip:init()
-    self.dimen = GeomUI:new{ x = 0, y = 0, w = self.w, h = self.h }
-    Theme.keep(self)   -- the pen at its size and colour, in dark too
-    if Device:isTouchDevice() then
-        self.ges_events = { StripTap = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } } }
-    end
-end
-function Strip:getSize() return GeomUI:new{ w = self.w, h = self.h } end
-function Strip:paintTo(bb, x, y)
-    self.dimen.x, self.dimen.y = x, y
-    bb:paintRect(x, y, self.w, self.h, WHITE)
-    if self.bb then bb:blitFrom(self.bb, x, y, 0, 0, self.w, self.h) end
-    if self.note then
-        -- a pen wider than the strip is shown smaller, and says so
-        local t = TextWidget:new{ text = self.note, face = Font:getFace("cfont", 12), fgcolor = LABEL }
-        local sz = t:getSize()
-        local m = Screen:scaleBySize(3)
-        bb:paintRect(x + self.w - sz.w - 2 * m, y + self.h - sz.h - m, sz.w + 2 * m, sz.h + m, WHITE)
-        t:paintTo(bb, x + self.w - sz.w - m, y + self.h - sz.h)
-        t:free()
-    end
-end
-function Strip:setImage(new)
-    if self.bb then self.bb:free() end
-    self.bb = new
-end
-function Strip:onStripTap()
-    if self.on_tap then self.on_tap() end
-    return true
-end
-function Strip:onCloseWidget()
-    if self.bb then self.bb:free(); self.bb = nil end
 end
 
 ------------------------------------------------------------------------------

@@ -457,6 +457,7 @@ function InkAwayView:onCloseWidget()
     self:saveDocument()
     self:shelfSnapshot()   -- before the page's buffers go
     self:freeThumbs()   -- release any decoded online-image thumbnails
+    self:eraserCursorFree()
     -- Close any of our popups so nothing is left shown or referenced.
     for _, key in ipairs({ "_pen_dialog", "_shape_dialog", "_shape_line_dialog", "_fill_dialog", "_eraser_dialog", "_chooser_dialog", "_grid_dialog", "_bg_dialog", "_goto_dialog", "_paste_dialog", "_search_sheet", "_trash_sheet", "_trash_item", "_img_src_dialog", "_image_browser_dialog", "_img_search_dialog", "_settings_dialog", "_page_dialog", "_save_dialog", "_text_fmt", "_text_settings", "_doc_dialog", "_new_dialog", "_library", "_overview",
             "_peninput_dialog", "_pentypes_dialog", "_gestures_dialog", "_gesture_pick", "_penfav_menu" }) do
@@ -1014,7 +1015,7 @@ end
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
-    "paper", "updates", "layers", "keys", "share", "receive", "dialogs" }
+    "paper", "updates", "layers", "keys", "share", "receive", "dialogs", "erasecursor" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

@@ -241,19 +241,35 @@ end
 -- clean line; strength 0 draws the raw point. The `lift` point is taken as it
 -- is: the smoothed line trails the pen, and would otherwise stop short of where
 -- the pen left (a quick highlighter stroke missed the last word).
+-- The eraser's outline (view/erasecursor.lua) comes off before each point is
+-- erased and back on after it, where the eraser now is.
 function InkAwayView:addScreenPoint(sx, sy, fresh, lift)
-    if self._wipe then return self:wipeTo(sx, sy) end   -- the whole-stroke eraser
-    local cx, cy = self:toCanvasClamped(sx, sy)
-    if fresh or lift then
-        self.sm_x, self.sm_y = cx, cy
+    local erasing = self.tool == "erase"
+    local was = erasing and self:eraserCursorHide() or nil
+    local cx, cy
+    if self._wipe then   -- the whole-stroke eraser
+        self:wipeTo(sx, sy)
+        cx, cy = self._wipe.x, self._wipe.y
     else
-        local a = InkGeom.stabilizerAlpha(self.stabilizer)
-        self.sm_x, self.sm_y = InkGeom.ema(self.sm_x, self.sm_y, cx, cy, a)
-        cx, cy = self.sm_x, self.sm_y
+        cx, cy = self:toCanvasClamped(sx, sy)
+        if fresh or lift then
+            self.sm_x, self.sm_y = cx, cy
+        else
+            local a = InkGeom.stabilizerAlpha(self.stabilizer)
+            self.sm_x, self.sm_y = InkGeom.ema(self.sm_x, self.sm_y, cx, cy, a)
+            cx, cy = self.sm_x, self.sm_y
+        end
+        local p = self._live_pressured and self:livePressure(sx, sy, fresh) or nil
+        self.canvas:addPoint(cx, cy, p)
+        self:stampLive(cx, cy, fresh, p)
     end
-    local p = self._live_pressured and self:livePressure(sx, sy, fresh) or nil
-    self.canvas:addPoint(cx, cy, p)
-    self:stampLive(cx, cy, fresh, p)
+    if not erasing then return end
+    -- (at the lift the outline stays off: the eraser has left the page)
+    if lift then
+        self:eraserCursorGone(was)
+    else
+        self:eraserCursorShow(cx, cy, was)
+    end
 end
 
 -- The pressure (0-255) for a new point of a pressured stroke: the pen's own when
@@ -359,6 +375,7 @@ end
 -- A lift: hold the stroke open for COALESCE_SEC in case the panel dropped the
 -- contact and it comes back nearby.
 function InkAwayView:scheduleFinalize(sx, sy)
+    self:eraserCursorOff()   -- (the eraser lifted: its outline goes at once)
     self.pending_lift = { x = sx, y = sy }
     UIManager:unschedule(self._finalize)
     UIManager:scheduleIn(COALESCE_SEC, self._finalize)
@@ -600,6 +617,7 @@ function InkAwayView:finalizeStroke()
     self._straight_at = nil
     self.pending_lift = nil
     self.capturing = false
+    self:eraserCursorOff()
     if self._wipe then return self:wipeEnd() end
     -- the live stroke wrote canvas_bb directly; resync the mirror over it
     self:markCanvasDirtyAcc(self._lw_cacc)

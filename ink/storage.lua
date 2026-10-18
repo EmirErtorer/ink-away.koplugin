@@ -86,7 +86,11 @@ end
 -- folder outside KOReader.
 function Storage.cacheDir()
     local data = Storage.dataDir()
-    if not data then return Storage.settingsDir() end
+    if not data then
+        -- (outside KOReader, the tests: a folder of its own, never all of /tmp)
+        local dir = Storage.settingsDir() .. "/inkaway-cache"
+        return Storage.ensureDir(dir) and dir or Storage.settingsDir()
+    end
     local dir = data .. "/cache/inkaway"
     Storage.ensureDir(data .. "/cache")
     return Storage.ensureDir(dir) and dir or Storage.settingsDir()
