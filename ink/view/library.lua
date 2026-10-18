@@ -8,13 +8,11 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
-local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -260,12 +258,12 @@ function InkAwayView:promptNewFolder(dir, after)
             if name == "" or name:sub(1, 1) == "." then return end
             local path = Storage.join(dir, name)
             if Storage.exists(path) then
-                UIManager:show(InfoMessage:new{ text = string.format(
-                    _("There is already something called \u{201C}%s\u{201D} here."), name) })
+                self:tell(string.format(
+                    _("There is already something called \u{201C}%s\u{201D} here."), name))
                 return
             end
             if not Storage.ensureDir(path) then
-                UIManager:show(InfoMessage:new{ text = _("Could not create the folder.") })
+                self:tell(_("Could not create the folder."))
                 return
             end
             if moved then self:noteNotImported(string.format("\u{201C}%s\u{201D}", name)) end
@@ -301,13 +299,13 @@ function InkAwayView:promptRenameItem(it)
             local ext = it.picture and (Storage.baseName(it.path):match("%.([^.]+)$") or "jpg") or Project.EXT
             local new = it.folder and Storage.join(dir, name) or Storage.join(dir, Storage.fileName(name, ext))
             if Storage.exists(new) and new:lower() ~= it.path:lower() then
-                UIManager:show(InfoMessage:new{ text = string.format(
-                    _("There is already something called \u{201C}%s\u{201D} here."), name) })
+                self:tell(string.format(
+                    _("There is already something called \u{201C}%s\u{201D} here."), name))
                 return
             end
             local ok, err = os.rename(it.path, new)
             if not ok then
-                UIManager:show(InfoMessage:new{ text = _("Could not rename.\n") .. tostring(err) })
+                self:tell(_("Could not rename.\n") .. tostring(err))
                 return
             end
             Folder.update(dir, function(d) Folder.rename(d, Storage.baseName(it.path), Storage.baseName(new)) end)
@@ -320,7 +318,7 @@ function InkAwayView:duplicateItem(it)
     local into, moved = self:writableDir(Storage.dirName(it.path))
     local copy, err = Library.duplicate(it.path, into)
     if not copy then
-        UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
+        self:tell(_("Could not duplicate.\n") .. tostring(err))
         return
     end
     Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
@@ -330,18 +328,20 @@ end
 
 -- The question before something goes to the trash: a document or folder
 -- called `label`, or a page when there is no label.
-function InkAwayView:deleteQuestion(label, is_folder)
-    local text = not label and _("Delete this page?")
-        or is_folder and string.format(_("Delete the folder \u{201C}%s\u{201D} and everything in it?"), label)
-        or string.format(_("Delete \u{201C}%s\u{201D}?"), label)
-    return text .. "\n" .. string.format(_("It stays in the trash for %d days."), require("ink/trash").KEEP_DAYS)
+-- Ask before something goes to the trash: the item called `label` (a folder
+-- with `is_folder`), or the page shown when there is no label. on_ok() deletes.
+function InkAwayView:askDelete(label, is_folder, on_ok)
+    local days = string.format(_("It stays in the trash for %d days."), require("ink/trash").KEEP_DAYS)
+    self:ask{
+        title = not label and _("Delete this page?") or string.format(_("Delete \u{201C}%s\u{201D}?"), label),
+        text = is_folder and (_("The folder and everything in it go.") .. " " .. days) or days,
+        ok_text = _("Delete"), ok_icon = "trash", on_ok = on_ok }
 end
 
 function InkAwayView:confirmDeleteItem(it)
-    UIManager:show(ConfirmBox:new{ text = self:deleteQuestion(it.label, it.folder), ok_text = _("Delete"),
-        ok_callback = function()
-            if self:trashPath(it.path, it.folder, self._lib_dir) then self:refreshLibrary() end
-        end })
+    self:askDelete(it.label, it.folder, function()
+        if self:trashPath(it.path, it.folder, self._lib_dir) then self:refreshLibrary() end
+    end)
 end
 
 -- Pick a destination folder in the library and move the card's file or folder
@@ -350,7 +350,7 @@ function InkAwayView:moveItem(it)
     self:chooseLibraryFolder(it.path, function(dir)
         local new, err = self:moveInto(it.path, dir)
         if not new then
-            UIManager:show(InfoMessage:new{ text = _("Could not move it.\n") .. tostring(err) })
+            self:tell(_("Could not move it.\n") .. tostring(err))
             return
         end
         self:refreshLibrary()

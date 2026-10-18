@@ -22,7 +22,6 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
 local GestureRange = require("ui/gesturerange")
-local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -311,8 +310,8 @@ function InkAwayView:openPenSettings()
             background = TILE_BG, margin = 0, padding = 0, show_parent = self,
             callback = function()
                 if #case.favs >= Penset.FAV_CAP then
-                    UIManager:show(InfoMessage:new{ text = string.format(
-                        _("You have %d pens, as many as the menu holds. Hold one and Remove it to make room."), Penset.FAV_CAP) })
+                    self:tell(string.format(
+                        _("You have %d pens, as many as the menu holds. Hold one and Remove it to make room."), Penset.FAV_CAP))
                     return
                 end
                 closeSelf(); self:openPenTypes(true)
@@ -547,9 +546,9 @@ function InkAwayView:openPenInput()
                 -- where KOReader can't hand over the pen it stays off (see penCapable)
                 if on and not self:penCapable() then
                     again()
-                    UIManager:show(InfoMessage:new{ text = self:onAndroid() and _(
+                    self:tell(self:onAndroid() and _(
                         "On Android, palm rejection needs a KOReader newer than 2026.07.1 (a nightly build from August 2026 or later). Earlier versions report the pen as a finger, so Ink Away can't tell it from your hand. Your pen draws as it is.")
-                        or _("Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing.") })
+                        or _("Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing."))
                     return
                 end
                 self.palm_reject = on; self:setSetting("inkaway_palm_reject", on); self:applyPalmReject()

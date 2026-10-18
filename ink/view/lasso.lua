@@ -7,7 +7,6 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local GeomUI = require("ui/geometry")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local Device = require("device")
 local _ = require("gettext")
@@ -63,7 +62,7 @@ function InkAwayView:lassoFinish()
     if got then
         self:openSelectionMenu()
     else
-        UIManager:show(InfoMessage:new{ text = _("Nothing inside the loop."), timeout = 2 })
+        self:showNotice(_("Nothing inside the loop."), 2)
     end
 end
 

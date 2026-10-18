@@ -59,10 +59,8 @@ function Book:save()
         logger.warn("Ink Away: could not save the book's ink in", self.sidecar)
         if not self._save_warned then
             self._save_warned = true
-            local InfoMessage = require("ui/widget/infomessage")
             local _ = require("gettext")
-            UIManager:show(InfoMessage:new{ icon = "notice-warning",
-                text = _("Ink Away could not save this book's ink: its folder can't be written to.") })
+            require("ink/view").tellAnywhere(_("Ink Away could not save this book's ink: its folder can't be written to."))
         end
     end
     self.has_file = kept ~= nil and (#data.items > 0 or data.notes ~= nil)
@@ -518,10 +516,8 @@ function Book:annotate()
     if self._view and shown(self._view) then return end
     self._view = nil
     if self:data().read_only then
-        local InfoMessage = require("ui/widget/infomessage")
         local _ = require("gettext")
-        UIManager:show(InfoMessage:new{
-            text = _("This book's ink was saved by a newer Ink Away. Update Ink Away to change it.") })
+        require("ink/view").tellAnywhere(_("This book's ink was saved by a newer Ink Away. Update Ink Away to change it."))
         return
     end
     local ok, ReaderInkView = pcall(require, "ink/reader/inkview")

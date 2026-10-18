@@ -11,7 +11,6 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -94,7 +93,7 @@ end
 function InkAwayView:goToPage(to)
     if to.path and to.path ~= self.doc_path then
         if not Storage.exists(to.path) then
-            UIManager:show(InfoMessage:new{ text = _("The notebook this leads to is no longer there."), timeout = 3 })
+            self:showNotice(_("The notebook this leads to is no longer there."), 3)
             return false
         end
         if not self:openDocument(to.path) then return false end
@@ -103,7 +102,7 @@ function InkAwayView:goToPage(to)
     if not nb then return true end
     local i = Links.pageIndex(nb, to)
     if not i then
-        UIManager:show(InfoMessage:new{ text = _("The page this leads to is no longer there."), timeout = 3 })
+        self:showNotice(_("The page this leads to is no longer there."), 3)
         return false
     end
     if i ~= nb.index then self:nbGoTo(i) end
@@ -138,7 +137,7 @@ function InkAwayView:goToContents()
             return true
         end
     end
-    UIManager:show(InfoMessage:new{ text = _("This notebook has no contents page yet: the page menu makes one."), timeout = 3 })
+    self:showNotice(_("This notebook has no contents page yet: the page menu makes one."), 3)
     return false
 end
 
@@ -350,8 +349,8 @@ function InkAwayView:nbMakeContents()
     self:resetLasso()
     local entries = Links.contentsEntries(nb)
     if #entries == 0 then
-        UIManager:show(InfoMessage:new{ text = _("The contents lists the pages that have a title. "
-            .. "Give pages a title first: tap the page number, then Rename."), timeout = 5 })
+        self:tell(_("The contents lists the pages that have a title. "
+            .. "Give pages a title first: tap the page number, then Rename."), { timeout = 5 })
         return
     end
     local t = nb.template or {}

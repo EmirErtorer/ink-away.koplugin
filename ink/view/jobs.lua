@@ -1,12 +1,11 @@
 --[[
 Long jobs (a PDF export, a search) run a step at a time from the UI loop, so
-the screen keeps updating and a tap on the progress bar can stop them. Every
+the screen keeps updating and Stop on the progress sheet can end them. Every
 step runs protected: an error ends the job with a message instead of reaching
 KOReader.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
@@ -18,7 +17,7 @@ local InkAwayView = {}
 --                  number up to o.max), or nil, err on failure, or "abort" to
 --                  end quietly (the job was dropped elsewhere)
 --   max, title     the progress bar's length and title
---   subtitle       under the title ("Tap to stop" by default)
+--   subtitle       a line under the title, when given
 --   dismiss_text   asked before stopping, when given
 --   quiet          seconds to work before the bar shows (0: show it at once);
 --                  a job done by then never shows one
@@ -33,12 +32,9 @@ function InkAwayView:runSteps(o)
     local function closeProgress()
         local p = progress
         progress = nil
-        if p then
-            if p.close then pcall(p.close, p) else UIManager:close(p) end
-        end
+        if p then pcall(p.close) end
     end
-    -- the job is marked over before the bar closes: KOReader's bar calls its
-    -- dismiss callback whenever it closes, and that must not stop a finished job
+    -- (the job is marked over before its progress closes)
     local function stop(how, err)
         if job.over then return end
         job.over = true
@@ -59,30 +55,14 @@ function InkAwayView:runSteps(o)
     end
     local function showProgress()
         if progress or job.over then return end
-        local pok, ProgressbarDialog = pcall(require, "ui/widget/progressbardialog")
-        if pok and ProgressbarDialog then
-            progress = ProgressbarDialog:new{
-                title = o.title,
-                subtitle = o.subtitle or _("Tap to stop"),
-                progress_max = math.max(1, o.max or 1),
-                refresh_time_seconds = 1,
-                dismissable = true,
-                dismiss_text = o.dismiss_text,
-                dismiss_callback = function()
-                    progress = nil   -- the reader closed it
-                    stop("cancel")
-                end,
-            }
-            progress:show()
-        else
-            progress = InfoMessage:new{ text = o.title }
-            UIManager:show(progress)
-        end
+        progress = self:showProgress{ title = o.title, note = o.subtitle, max = o.max,
+            stop_ask = o.dismiss_text, on_stop = function()
+                progress = nil   -- (the reader stopped it)
+                stop("cancel")
+            end }
     end
     local function report(n)
-        if progress and progress.reportProgress and type(n) == "number" then
-            pcall(progress.reportProgress, progress, n)
-        end
+        if progress then progress.report(n) end
     end
     local step
     step = function()

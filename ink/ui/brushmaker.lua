@@ -9,7 +9,6 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
-local InputDialog = require("ui/widget/inputdialog")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 local Font = require("ui/font")
@@ -264,23 +263,17 @@ function BrushMaker:promptName()
     -- otherwise open behind it (keyboard included)
     local on_save, params, init_name = self.on_save, self.params, self.init_name
     UIManager:close(self)
-    local dlg
-    dlg = InputDialog:new{
+    if not self.prompt then return end
+    self.prompt{
         title = _("Name this brush"),
         input = init_name or os.date("brush-%H%M%S"),
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
-            { text = _("Save"), is_enter_default = true, callback = function()
-                local name = dlg:getInputText()
-                UIManager:close(dlg)
-                if not name or name == "" then return end
-                name = name:gsub("[/\\%[%]\"]", " ")   -- keep it a plain, storable name
-                if on_save then on_save(name, params) end
-            end },
-        }},
+        ok_text = _("Save"),
+        on_ok = function(name)
+            if not name or name == "" then return end
+            name = name:gsub("[/\\%[%]\"]", " ")   -- keep it a plain, storable name
+            if on_save then on_save(name, params) end
+        end,
     }
-    UIManager:show(dlg)
-    dlg:onShowKeyboard()
 end
 
 function BrushMaker:onCloseWidget()

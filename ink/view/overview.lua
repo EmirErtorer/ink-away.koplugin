@@ -9,14 +9,11 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
-local ConfirmBox = require("ui/widget/confirmbox")
-local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
@@ -437,7 +434,7 @@ function InkAwayView:editNotebookAt(path, fn, page)
     fn(doc.nb)
     local ok, err = Project.saveNotebook(doc.nb, path, nil, { export = doc.data and doc.data.export })
     if not ok then
-        UIManager:show(InfoMessage:new{ text = _("Could not save.\n") .. tostring(err) })
+        self:tell(_("Could not save.\n") .. tostring(err))
         return false
     end
     self:dropThumbs(path)
@@ -449,26 +446,21 @@ end
 -- on_pick(path, label) gets the one chosen.
 function InkAwayView:chooseNotebook(title, dir, except, on_pick)
     local root = self._ov.root
-    local dialog
     local function show(d)
-        local rows = {}
-        local function row(text, fn)
-            rows[#rows + 1] = { { text = text, callback = function() UIManager:close(dialog); fn() end } }
-        end
+        local items = {}
         if d ~= root and Storage.within(d, root) then
             local up = Storage.dirName(d)
-            row("\u{2039} " .. self:overviewFolderTitle(up), function() show(up) end)
+            items[1] = { label = "\u{2039} " .. self:overviewFolderTitle(up), cb = function() show(up) end }
         end
         for _, tab in ipairs((self:overviewTabs(d))) do
             if tab.folder then
-                row(tab.label .. "  \u{203A}", function() show(tab.path) end)
+                items[#items + 1] = { label = tab.label .. "  \u{203A}", icon = "folder", cb = function() show(tab.path) end }
             elseif tab.path ~= except then
-                row(tab.label, function() on_pick(tab.path, tab.label) end)
+                items[#items + 1] = { label = tab.label, icon = "notebook", cb = function() on_pick(tab.path, tab.label) end }
             end
         end
-        if #rows == 0 then rows[1] = { { text = _("No other notebook here"), enabled = false } } end
-        dialog = ButtonDialog:new{ title = title .. "\n" .. self:overviewFolderTitle(d), buttons = rows }
-        UIManager:show(dialog)
+        self:chooseFromList{ title = title, note = self:overviewFolderTitle(d), items = items,
+            empty = _("No other notebook here"), close_text = _("Cancel") }
     end
     show(dir)
 end
@@ -480,21 +472,16 @@ function InkAwayView:overviewPageMenu(it)
     local doc = self:overviewDoc(path)
     if not doc.nb then return end
     local page = it.page
-    local dialog
-    local function act(text, fn)
-        return { text = text, callback = function() UIManager:close(dialog); fn() end }
-    end
-    dialog = ButtonDialog:new{ title = page.title or string.format(_("Page %d"), it.index), buttons = {
-        { act(_("Rename\u{2026}"), function() self:overviewRenamePage(path, page) end),
-          act(page.star and _("Unstar") or _("Star"), function()
+    self:openActionSheet("_ov_menu", page.title or string.format(_("Page %d"), it.index), nil, {
+        { { _("Rename\u{2026}"), function() self:overviewRenamePage(path, page) end, icon = "rename" },
+          { page.star and _("Unstar") or _("Star"), function()
               self:editNotebookAt(path, function() page.star = (not page.star) or nil end, page)
               self:refreshOverview()
-          end) },
-        { act(_("Move to\u{2026}"), function() self:overviewSendPage(path, page, true) end),
-          act(_("Copy to\u{2026}"), function() self:overviewSendPage(path, page, false) end) },
-        { act(_("Delete\u{2026}"), function() self:overviewDeletePage(path, page) end) },
-    } }
-    UIManager:show(dialog)
+          end, icon = "star" } },
+        { { _("Move to\u{2026}"), function() self:overviewSendPage(path, page, true) end, icon = "move" },
+          { _("Copy to\u{2026}"), function() self:overviewSendPage(path, page, false) end, icon = "duplicate" } },
+        { { _("Delete\u{2026}"), function() self:overviewDeletePage(path, page) end, icon = "trash" } },
+    })
 end
 
 function InkAwayView:overviewRenamePage(path, page)
@@ -514,17 +501,16 @@ end
 function InkAwayView:overviewDeletePage(path, page)
     local nb = self:overviewDoc(path).nb
     if nb:count() <= 1 then
-        UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
+        self:showNotice(_("A notebook keeps at least one page."), 2)
         return
     end
-    UIManager:show(ConfirmBox:new{ text = self:deleteQuestion(),
-        ok_text = _("Delete"), ok_callback = function()
-            self:editNotebookAt(path, function(n)
-                local i = indexOf(n, page)
-                if i and self:trashPage(path, n, i) then n:takePage(i) end
-            end)
-            self:refreshOverview()
-        end })
+    self:askDelete(nil, false, function()
+        self:editNotebookAt(path, function(n)
+            local i = indexOf(n, page)
+            if i and self:trashPage(path, n, i) then n:takePage(i) end
+        end)
+        self:refreshOverview()
+    end)
 end
 
 -- Move (or copy) a page to the end of another notebook, in this folder or any
@@ -532,7 +518,7 @@ end
 function InkAwayView:overviewSendPage(path, page, move)
     local src_nb = self:overviewDoc(path).nb
     if move and src_nb:count() <= 1 then
-        UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
+        self:showNotice(_("A notebook keeps at least one page."), 2)
         return
     end
     self:chooseNotebook(move and _("Move the page to") or _("Copy the page to"), self._ov.dir, path,
@@ -556,38 +542,34 @@ end
 -- Hold on a tab: open, export, rename, colour, move up or down, delete. A
 -- folder opens in the overview and exports as one PDF.
 function InkAwayView:overviewTabMenu(tab)
-    local dialog
-    local function act(text, fn)
-        return { text = text, callback = function() UIManager:close(dialog); fn() end }
-    end
+    local function act(text, icon, fn) return { text, fn, icon = icon } end
     local it = { label = tab.label, path = tab.path, folder = tab.folder }
     local open, export
     if tab.folder then
-        open = act(_("Open"), function() self:overviewGo(tab.path) end)
-        export = act(_("Export as PDF\u{2026}"), function() self:exportFolderPDF(tab.path) end)
+        open = act(_("Open"), "open", function() self:overviewGo(tab.path) end)
+        export = act(_("Export as PDF\u{2026}"), "export", function() self:exportFolderPDF(tab.path) end)
     else
-        open = act(_("Open"), function() self._overview:close(); self:openDocument(tab.path) end)
-        export = act(_("Export\u{2026}"), function()
+        open = act(_("Open"), "open", function() self._overview:close(); self:openDocument(tab.path) end)
+        export = act(_("Export\u{2026}"), "export", function()
             self._overview:close()
             if tab.path == self.doc_path or self:openDocument(tab.path) then self:openExport() end
         end)
     end
-    local buttons = {
+    local rows = {
         { open, export },
-        { act(_("Rename\u{2026}"), function() self:overviewRenameTab(it) end),
-          act(_("Colour\u{2026}"), function() self:overviewTabColour(tab) end) },
-        { act(_("Move up"), function() self:overviewMoveTab(tab, -1) end),
-          act(_("Move down"), function() self:overviewMoveTab(tab, 1) end) },
-        { act(_("Delete\u{2026}"), function() self:overviewDeleteTab(it) end) },
+        { act(_("Rename\u{2026}"), "rename", function() self:overviewRenameTab(it) end),
+          act(_("Colour\u{2026}"), "palette", function() self:overviewTabColour(tab) end) },
+        { act(_("Move up"), "arrow_up", function() self:overviewMoveTab(tab, -1) end),
+          act(_("Move down"), "arrow_down", function() self:overviewMoveTab(tab, 1) end) },
+        { act(_("Delete\u{2026}"), "trash", function() self:overviewDeleteTab(it) end) },
     }
     -- a notebook's cover on a Bookshelf shelf, when Bookshelf is installed
     if not tab.folder and require("ink/bookshelf").registered and Library.isNotebookFile(tab.path) then
-        table.insert(buttons, #buttons, { act(_("Cover on the shelf\u{2026}"), function()
+        table.insert(rows, #rows, { act(_("Cover on the shelf\u{2026}"), "cover", function()
             require("ink/coverpicker").show{ path = tab.path, view = self }
         end) })
     end
-    dialog = ButtonDialog:new{ title = tab.label, buttons = buttons }
-    UIManager:show(dialog)
+    self:openActionSheet("_ov_menu", tab.label, nil, rows)
 end
 
 -- Move a tab up or down among the tabs of its kind (folders or notebooks).
@@ -670,13 +652,13 @@ function InkAwayView:overviewRenameTab(it)
                 if self.doc_path ~= new then return end
             else
                 if Storage.exists(new) and new:lower() ~= it.path:lower() then
-                    UIManager:show(InfoMessage:new{ text = string.format(
-                        _("There is already something called \u{201C}%s\u{201D} here."), name) })
+                    self:tell(string.format(
+                        _("There is already something called \u{201C}%s\u{201D} here."), name))
                     return
                 end
                 local ok, err = os.rename(it.path, new)
                 if not ok then
-                    UIManager:show(InfoMessage:new{ text = _("Could not rename.\n") .. tostring(err) })
+                    self:tell(_("Could not rename.\n") .. tostring(err))
                     return
                 end
             end
@@ -693,14 +675,13 @@ end
 -- document goes, a new drawing takes its place.
 function InkAwayView:overviewDeleteTab(it)
     local dir = self._ov.dir
-    UIManager:show(ConfirmBox:new{ text = self:deleteQuestion(it.label, it.folder), ok_text = _("Delete"),
-        ok_callback = function()
-            if not self:trashPath(it.path, it.folder, dir) then return end
-            local ov = self._ov
-            for p in pairs(ov.docs) do if Storage.within(p, it.path) then ov.docs[p] = nil end end
-            if ov.path and Storage.within(ov.path, it.path) then ov.path = self:overviewPickIn(dir) end
-            self:refreshOverview(true)
-        end })
+    self:askDelete(it.label, it.folder, function()
+        if not self:trashPath(it.path, it.folder, dir) then return end
+        local ov = self._ov
+        for p in pairs(ov.docs) do if Storage.within(p, it.path) then ov.docs[p] = nil end end
+        if ov.path and Storage.within(ov.path, it.path) then ov.path = self:overviewPickIn(dir) end
+        self:refreshOverview(true)
+    end)
 end
 
 return InkAwayView

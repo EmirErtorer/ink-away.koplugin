@@ -9,7 +9,6 @@ Part of InkAwayView (see ink/view.lua).
 local Device = require("device")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -165,8 +164,7 @@ function InkAwayView:saveDocument(force)
         logger.warn("InkAway: saving failed:", path, err)
         if not self._save_failed then   -- once, not on every retry
             self._save_failed = true
-            UIManager:show(InfoMessage:new{ icon = "notice-warning",
-                text = string.format(_("Could not save:\n%s\n\n%s"), path, tostring(err)) })
+            self:tell(string.format(_("Could not save:\n%s\n\n%s"), path, tostring(err)))
         end
         return false
     end
@@ -262,8 +260,8 @@ function InkAwayView:restoreBackground(path)
     if Storage.exists(path) then
         self:loadBackground(path)
     else
-        UIManager:show(InfoMessage:new{ text = string.format(
-            _("The background picture could not be found:\n%s"), path) })
+        self:tell(string.format(
+            _("The background picture could not be found:\n%s"), path))
     end
 end
 
@@ -273,8 +271,7 @@ function InkAwayView:openDocument(path)
     if path == self.doc_path and self.doc_written then return true end
     local data, err = Project.load(path)
     if not data then
-        UIManager:show(InfoMessage:new{
-            text = _("Could not open that file.\n") .. tostring(err) })
+        self:tell(_("Could not open that file.\n") .. tostring(err))
         return false
     end
     self:leaveDocument()
@@ -388,12 +385,7 @@ end
 
 -- Pick a picture and start a drawing over it, named after it and saved at once.
 function InkAwayView:newFromImage(dir)
-    self:pickFile(self:homeDir(), function(path)
-        local lower = path:lower()
-        if not (lower:match("%.png$") or lower:match("%.jpe?g$")) then
-            UIManager:show(InfoMessage:new{ text = _("Please choose a PNG or JPEG image.") })
-            return
-        end
+    self:pickImageFile(function(path)
         self:beginDocument("drawing", Storage.stem(path), function()
             self:exitNotebook()
             self:clearBackground()
@@ -418,13 +410,13 @@ end
 function InkAwayView:duplicateDocument()
     self:leaveDocument()
     if not self.doc_written then
-        UIManager:show(InfoMessage:new{ text = _("There is nothing to copy yet."), timeout = 2 })
+        self:showNotice(_("There is nothing to copy yet."), 2)
         return
     end
     local into, moved = self:writableDir(Storage.dirName(self.doc_path))
     local copy, err = Library.duplicate(self.doc_path, into)
     if not copy then
-        UIManager:show(InfoMessage:new{ text = _("Could not duplicate.\n") .. tostring(err) })
+        self:tell(_("Could not duplicate.\n") .. tostring(err))
         return
     end
     Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
@@ -451,14 +443,14 @@ function InkAwayView:renameDocument(name)
     if new == self.doc_path then return end
     -- a change of case only is the same file on a case-blind file system
     if Storage.exists(new) and new:lower() ~= self.doc_path:lower() then
-        UIManager:show(InfoMessage:new{ text = string.format(
-            _("There is already a file called \u{201C}%s\u{201D} here."), Storage.baseName(new)) })
+        self:tell(string.format(
+            _("There is already a file called \u{201C}%s\u{201D} here."), Storage.baseName(new)))
         return
     end
     if self.doc_written then
         local ok, err = os.rename(self.doc_path, new)
         if not ok then
-            UIManager:show(InfoMessage:new{ text = _("Could not rename.\n") .. tostring(err) })
+            self:tell(_("Could not rename.\n") .. tostring(err))
             return
         end
         self:rememberDoc(new)

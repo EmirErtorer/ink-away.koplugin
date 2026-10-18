@@ -5,13 +5,10 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local ButtonDialog = require("ui/widget/buttondialog")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -504,7 +501,7 @@ function InkAwayView:nbSaveTemplate()
                 if ok then
                     self:showNotice(string.format(_("Saved the template \u{201C}%s\u{201D}"), name))
                 else
-                    UIManager:show(InfoMessage:new{ text = _("Could not save the template.\n") .. tostring(err) })
+                    self:tell(_("Could not save the template.\n") .. tostring(err))
                 end
             end)
         end }
@@ -518,30 +515,22 @@ function InkAwayView:nbFromTemplate(deleting)
     local root = self:libraryDir()
     local names = Templates.list(root)
     if #names == 0 then
-        UIManager:show(InfoMessage:new{ timeout = 4, text =
-            _("No templates yet. Save a page as one from this menu: Save as template.") })
+        self:showNotice(_("No templates yet. Save a page as one from this menu: Save as template."), 4)
         return
     end
-    local dialog
-    local rows = {}
+    local items = {}
     for i = 1, #names do
         local name = names[i]
-        rows[#rows + 1] = { { text = name, callback = function()
-            UIManager:close(dialog)
+        items[#items + 1] = { label = name, icon = deleting and "trash" or "template", cb = function()
             if not deleting then return self:nbAddFromTemplate(name) end
-            UIManager:show(ConfirmBox:new{
-                text = string.format(_("Delete the template \u{201C}%s\u{201D}?"), name),
-                ok_text = _("Delete"),
-                ok_callback = function() Templates.remove(root, name) end })
-        end } }
+            self:ask{ title = string.format(_("Delete the template \u{201C}%s\u{201D}?"), name),
+                ok_text = _("Delete"), ok_icon = "trash", on_ok = function() Templates.remove(root, name) end }
+        end }
     end
-    rows[#rows + 1] = { { text = deleting and _("Back") or _("Delete a template\u{2026}"), callback = function()
-        UIManager:close(dialog)
-        self:nbFromTemplate(not deleting)
-    end } }
-    dialog = ButtonDialog:new{
-        title = deleting and _("Delete which template?") or _("New page from template"), buttons = rows }
-    UIManager:show(dialog)
+    self:chooseFromList{ title = deleting and _("Delete which template?") or _("New page from template"),
+        items = items, close_text = _("Cancel"),
+        footer = { { label = deleting and _("Back") or _("Delete a template\u{2026}"),
+            icon = not deleting and "trash" or nil, cb = function() self:nbFromTemplate(not deleting) end } } }
 end
 
 -- Add a page made from template `name` after the current one, and go to it.
@@ -549,7 +538,7 @@ function InkAwayView:nbAddFromTemplate(name)
     local nb = self.notebook
     local page, style = Templates.load(self:libraryDir(), name)
     if not (nb and page) then
-        UIManager:show(InfoMessage:new{ text = _("Could not open that template.") })
+        self:tell(_("Could not open that template."))
         return
     end
     self:nbSyncOut()
@@ -596,22 +585,18 @@ end
 function InkAwayView:nbDeletePage()
     if not self.notebook then return end
     if self.notebook:count() <= 1 then
-        UIManager:show(InfoMessage:new{ text = _("A notebook keeps at least one page."), timeout = 2 })
+        self:showNotice(_("A notebook keeps at least one page."), 2)
         return
     end
-    UIManager:show(ConfirmBox:new{
-        text = self:deleteQuestion(),
-        ok_text = _("Delete"),
-        ok_callback = function()
-            local nb = self.notebook
-            if not nb then return end
-            self:nbSyncOut()
-            if not self:trashPage(self.doc_path, nb, nb.index) then return end
-            nb:deletePage()
-            self:nbLoad()
-            self:markDirty()
-        end,
-    })
+    self:askDelete(nil, false, function()
+        local nb = self.notebook
+        if not nb then return end
+        self:nbSyncOut()
+        if not self:trashPage(self.doc_path, nb, nb.index) then return end
+        nb:deletePage()
+        self:nbLoad()
+        self:markDirty()
+    end)
 end
 
 -- Make `nb` the open notebook and show its current page.
@@ -643,9 +628,9 @@ function InkAwayView:openNotebookData(data)
     -- warn if the source PDF of a PDF-backed notebook is gone (the ink is safe;
     -- only the page images are missing until it is back)
     if self.notebook.template.pdf_path and not self._nb_pdf_doc then
-        UIManager:show(InfoMessage:new{ text = string.format(
+        self:tell(string.format(
             _("The source PDF could not be opened:\n%s\n\nYour notes are intact, but the page images will be blank until the PDF is back in that location."),
-            self.notebook.template.pdf_path) })
+            self.notebook.template.pdf_path))
     end
 end
 
@@ -665,7 +650,7 @@ end
 function InkAwayView:startPdfNotebook(path, dir)
     local ok, doc = pcall(function() return require("document/documentregistry"):openDocument(path) end)
     if not ok or not doc then
-        UIManager:show(InfoMessage:new{ text = _("Could not open that PDF.") })
+        self:tell(_("Could not open that PDF."))
         return
     end
     local pages = 1
@@ -685,13 +670,8 @@ end
 -- Pick a PDF (from KOReader's home folder) and open it as a new notebook in
 -- folder `dir`.
 function InkAwayView:openPdfAsNotebook(dir)
-    self:pickFile(self:homeDir(), function(path)
-        if not path:lower():match("%.pdf$") then
-            UIManager:show(InfoMessage:new{ text = _("Please choose a PDF file.") })
-            return
-        end
-        self:startPdfNotebook(path, dir)
-    end)
+    self:pickFile(self:homeDir(), function(path) self:startPdfNotebook(path, dir) end,
+        function(name) return name:lower():match("%.pdf$") ~= nil end, "pdfpen", _("No PDFs or folders here."))
 end
 
 -- A sheet of paper tiles, each a small page drawn with its ruling, six to a
@@ -786,19 +766,16 @@ end
 
 -- Pick a saved page template and start a notebook with it as the first page.
 function InkAwayView:chooseNotebookTemplate(dir, before)
-    local dialog
-    local rows = {}
+    local items = {}
     local names = Templates.list(self:libraryDir())
     for i = 1, #names do
         local name = names[i]
-        rows[#rows + 1] = { { text = name, callback = function()
-            UIManager:close(dialog)
+        items[#items + 1] = { label = name, icon = "template", cb = function()
             if before then before() end
             self:newNotebookFromTemplate(name, dir)
-        end } }
+        end }
     end
-    dialog = ButtonDialog:new{ title = _("New notebook from template"), buttons = rows }
-    UIManager:show(dialog)
+    self:chooseFromList{ title = _("New notebook from template"), items = items, close_text = _("Cancel") }
 end
 
 -- Start a notebook in folder `dir` whose first page is template `name`, on its
@@ -806,7 +783,7 @@ end
 function InkAwayView:newNotebookFromTemplate(name, dir)
     local page, style = Templates.load(self:libraryDir(), name)
     if not page then
-        UIManager:show(InfoMessage:new{ text = _("Could not open that template.") })
+        self:tell(_("Could not open that template."))
         return
     end
     self:beginDocument("notebook", name, function()

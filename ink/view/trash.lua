@@ -6,8 +6,6 @@ sheet opens from the library's menu.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local ConfirmBox = require("ui/widget/confirmbox")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -46,7 +44,7 @@ function InkAwayView:trashPath(path, is_folder, dir)
         err = "not there"
     end
     if err then
-        UIManager:show(InfoMessage:new{ text = _("Could not delete it.\n") .. tostring(err) })
+        self:tell(_("Could not delete it.\n") .. tostring(err))
         return false
     end
     if not is_folder then self:dropThumbs(path) end
@@ -60,7 +58,7 @@ end
 function InkAwayView:trashPage(path, nb, i)
     local item, err = Trash.putPage(self:libraryDir(), path, nb, i)
     if not item then
-        UIManager:show(InfoMessage:new{ text = _("Could not delete the page.\n") .. tostring(err) })
+        self:tell(_("Could not delete the page.\n") .. tostring(err))
         return false
     end
     self:showNotice(_("Moved to the trash"))
@@ -98,15 +96,15 @@ function InkAwayView:restoreTrashItem(it)
         return self:putPageBack(nb_path, saved, item)
     end)
     if not back then
-        UIManager:show(InfoMessage:new{ text = _("Could not put it back.\n") .. tostring(err) })
+        self:tell(_("Could not put it back.\n") .. tostring(err))
         return
     end
     if it.kind == "bookink" then
         self:bookInkBack(it)
         if it.book and not Storage.exists(it.book) then
-            UIManager:show(InfoMessage:new{ text = string.format(
+            self:tell(string.format(
                 _("The annotations of %s are back where the book was. They show again when the book is back in that place."),
-                it.name or "") })
+                it.name or ""))
         else
             self:showNotice(string.format(_("Put back on %s"), it.name or ""))
         end
@@ -202,15 +200,14 @@ function InkAwayView:openTrash()
         if #items > 0 then
             add(VerticalSpan:new{ width = S(14) })
             add(self:actionButton(_("Empty the trash"), content_w, function()
-                UIManager:show(ConfirmBox:new{
-                    text = _("Delete everything in the trash for good?"),
-                    ok_text = _("Empty"),
-                    ok_callback = function()
+                self:ask{ field = "_trash_ask", title = _("Empty the trash?"),
+                    text = _("Everything in it is deleted for good."),
+                    ok_text = _("Empty"), ok_icon = "trash",
+                    on_ok = function()
                         Trash.empty(root)
                         closeSelf()
                         self:openTrash()
-                    end,
-                })
+                    end }
             end, nil, nil, "trash"))
         end
         return content
@@ -220,15 +217,14 @@ function InkAwayView:openTrash()
 end
 
 function InkAwayView:confirmForget(it, title)
-    UIManager:show(ConfirmBox:new{
-        text = string.format(_("Delete \u{201C}%s\u{201D} for good?"), title),
-        ok_text = _("Delete"),
-        ok_callback = function()
+    self:ask{ title = string.format(_("Delete \u{201C}%s\u{201D} for good?"), title),
+        text = _("It can't be brought back."),
+        ok_text = _("Delete"), ok_icon = "trash",
+        on_ok = function()
             Trash.forget(self:libraryDir(), it.id)
             self:openTrash()
         end,
-        cancel_callback = function() self:openTrash() end,
-    })
+        on_cancel = function() self:openTrash() end }
 end
 
 return InkAwayView

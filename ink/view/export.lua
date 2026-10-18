@@ -6,9 +6,7 @@ bookshelf ornaments.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -162,7 +160,7 @@ function InkAwayView:openExport()
     self:resetLasso()   -- drop any selection first
     if self.notebook then self:nbSyncOut() end
     if not self:docHasContent() then
-        UIManager:show(InfoMessage:new{ text = _("There is nothing to export yet."), timeout = 2 })
+        self:showNotice(_("There is nothing to export yet."), 2)
         return
     end
     local o = self:exportOptions()
@@ -252,7 +250,7 @@ function InkAwayView:openExport()
         end
         add(self:actionButton(label, content_w, function()
             if o.fmt == "pdf" and nb and #self:selectedNotebookPages() == 0 then
-                UIManager:show(InfoMessage:new{ text = _("No pages match the chosen range."), timeout = 3 })
+                self:showNotice(_("No pages match the chosen range."), 3)
                 return
             end
             closeSelf(); self:promptExportName()
@@ -277,8 +275,7 @@ end
 function InkAwayView:beginCropSelect()
     self.selecting_crop = true
     self._crop_screen = nil
-    UIManager:show(InfoMessage:new{
-        text = _("Drag a box around the part to export. A single tap keeps the whole page."), timeout = 3 })
+    self:showNotice(_("Drag a box around the part to export. A single tap keeps the whole page."), 3)
     self:refreshArea()
 end
 
@@ -417,13 +414,10 @@ function InkAwayView:writePNG(path)
         self:markDirty()   -- keep the export settings with the document
         local ow = self.save_area and self.save_area.w or self.canvas.w
         local oh = self.save_area and self.save_area.h or self.canvas.h
-        UIManager:show(InfoMessage:new{ text = string.format(_("Saved %d × %d image:\n%s"), ow, oh, path) })
+        self:tell(string.format(_("Saved %d × %d image:\n%s"), ow, oh, path))
     else
         logger.warn("InkAway: export failed:", err)
-        UIManager:show(InfoMessage:new{
-            text = string.format(_("Could not save the image.\n%s"), tostring(err)),
-            icon = "notice-warning",
-        })
+        self:tell(string.format(_("Could not save the image.\n%s"), tostring(err)))
     end
 end
 
@@ -585,7 +579,7 @@ function InkAwayView:exportFolderPDF(dir)
     local acc = { pages = {}, templates = {}, sources = {}, places = {} }
     local outline = self:collectFolderPages(dir, acc)
     if #acc.pages == 0 then
-        UIManager:show(InfoMessage:new{ text = _("There is nothing to export in this folder."), timeout = 3 })
+        self:showNotice(_("There is nothing to export in this folder."), 3)
         return
     end
     local spec = self:pagesPdfSpec(acc, outline)
@@ -611,7 +605,7 @@ function InkAwayView:runPdfJob(path, spec)
           links = spec.links })
     if not job then
         if spec.done then spec.done() end
-        UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(jerr) })
+        self:tell(_("Could not export PDF.\n") .. tostring(jerr))
         return
     end
     self._export_job = job
@@ -633,11 +627,11 @@ function InkAwayView:runPdfJob(path, spec)
         end,
         on_cancel = function()
             stopped()
-            UIManager:show(InfoMessage:new{ text = _("Export stopped."), timeout = 2 })
+            self:showNotice(_("Export stopped."), 2)
         end,
         on_error = function(err)
             stopped()
-            UIManager:show(InfoMessage:new{ text = _("Could not export PDF.\n") .. tostring(err) })
+            self:tell(_("Could not export PDF.\n") .. tostring(err))
         end,
         on_done = function()
             self._export_job = nil
@@ -645,12 +639,8 @@ function InkAwayView:runPdfJob(path, spec)
             -- make the PDF open as a full page with no auto-crop the first time
             self:seedPdfView(path)
             self:markDirty()   -- keep the export settings with the document
-            local msg = string.format(_("PDF saved:\n%s"), path)
-            UIManager:show(ConfirmBox:new{
-                text = msg .. _("\n\nOpen the PDF now?"),
-                ok_text = _("Open"),
-                ok_callback = function() self:openExportedPDF(path) end,
-            })
+            self:ask{ title = _("PDF saved"), text = path .. "\n\n" .. _("Open the PDF now?"),
+                ok_text = _("Open"), ok_icon = "open", on_ok = function() self:openExportedPDF(path) end }
         end,
     }
 end
@@ -675,7 +665,7 @@ end
 function InkAwayView:openExportedPDF(path)
     local rok, ReaderUI = pcall(require, "apps/reader/readerui")
     if not (rok and ReaderUI) then
-        UIManager:show(InfoMessage:new{ text = _("Saved. Open it from your library."), timeout = 3 })
+        self:showNotice(_("Saved. Open it from your library."), 3)
         return
     end
     self:leaveDocument()
@@ -735,9 +725,7 @@ function InkAwayView:saveOrnament()
     if not dir then return end
     Storage.ensureDir(dir:match("^(.*)/"))   -- icons/
     if not Storage.ensureDir(dir) then
-        UIManager:show(InfoMessage:new{
-            text = _("Could not create the bookshelf ornaments folder."),
-            icon = "notice-warning" })
+        self:tell(_("Could not create the bookshelf ornaments folder."))
         return
     end
     self:promptOrnamentName(dir)
@@ -766,12 +754,10 @@ function InkAwayView:writeOrnament(dir, name)
     if not self.notebook then opts.template = nil end   -- and has no grid
     local ok, err = Export.savePNG(self:drawnCanvas(), path, opts)
     if ok then
-        UIManager:show(InfoMessage:new{ text = string.format(_("Saved bookshelf ornament:\n%s"), path) })
+        self:tell(string.format(_("Saved bookshelf ornament:\n%s"), path))
     else
         logger.warn("InkAway: ornament save failed:", err)
-        UIManager:show(InfoMessage:new{
-            text = string.format(_("Could not save the ornament.\n%s"), tostring(err)),
-            icon = "notice-warning" })
+        self:tell(string.format(_("Could not save the ornament.\n%s"), tostring(err)))
     end
 end
 

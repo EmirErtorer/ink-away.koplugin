@@ -17,7 +17,6 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Font = require("ui/font")
-local InfoMessage = require("ui/widget/infomessage")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -105,7 +104,7 @@ function InkAwayView:openSend(o)
     self:leaveDocument()   -- the open document's latest changes go out too
     local ok, err = self:startSend()
     if not ok then
-        UIManager:show(InfoMessage:new{ icon = "notice-warning", text = err })
+        self:tell(err)
         return
     end
     if o.adding then self._send.allow_upload = true end

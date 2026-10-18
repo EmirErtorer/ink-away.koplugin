@@ -7,7 +7,6 @@ Part of InkAwayView (see ink/view.lua).
 local Device = require("device")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -426,11 +425,11 @@ function InkAwayView:deviceTips(again)
     if not again and self:getSetting("inkaway_device_tip_shown") then return end
     local tip = self:deviceTipText(not again)
     if not tip then
-        if again then UIManager:show(InfoMessage:new{ text = _("This reader needs no special settings for Ink Away.") }) end
+        if again then self:tell(_("This reader needs no special settings for Ink Away.")) end
         return
     end
     self:setSetting("inkaway_device_tip_shown", true)
-    UIManager:show(InfoMessage:new{ text = _(tip) })
+    self:tell(_(tip))
 end
 
 -- The pen and touch test, full screen. The canvas stops drawing from fingers

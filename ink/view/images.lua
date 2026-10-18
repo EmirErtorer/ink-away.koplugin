@@ -6,7 +6,6 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
-local InfoMessage = require("ui/widget/infomessage")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -59,7 +58,7 @@ end
 function InkAwayView:loadBackground(path)
     local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
     if not ok or not img then
-        UIManager:show(InfoMessage:new{ text = _("Could not open that image.") })
+        self:tell(_("Could not open that image."))
         return
     end
     self:placeBackground(img, path)
@@ -75,14 +74,8 @@ end
 
 -- Let the reader pick a PNG or JPEG, starting in KOReader's home folder.
 function InkAwayView:pickImageFile(on_pick, start)
-    self:pickFile(start or self:homeDir(), function(path)
-        local lower = path:lower()
-        if lower:match("%.png$") or lower:match("%.jpe?g$") then
-            on_pick(path)
-        else
-            UIManager:show(InfoMessage:new{ text = _("Please choose a PNG or JPEG image.") })
-        end
-    end)
+    self:pickFile(start or self:homeDir(), on_pick, self.isPictureName, nil,
+        _("No pictures or folders here."))
 end
 
 function InkAwayView:chooseBackground()
@@ -281,27 +274,27 @@ function InkAwayView:removeImageBackground()
     local src_path = op.src_path or op.path
     local src = self:decodeCapped(src_path)
     if not src then
-        UIManager:show(InfoMessage:new{ text = _("Couldn't read that image."), icon = "notice-warning" })
+        self:tell(_("Couldn't read that image."))
         return
     end
     local w, h = src:getWidth(), src:getHeight()
     local rgba = bgRemovedRGBA(src)
     if src.free then pcall(function() src:free() end) end
     if not rgba then
-        UIManager:show(InfoMessage:new{ text = _("Couldn't process that image."), icon = "notice-warning" })
+        self:tell(_("Couldn't process that image."))
         return
     end
     -- the cut-out goes beside the online images, never over the original
     local dir = Storage.appDir("processed images")
     if not dir then
-        UIManager:show(InfoMessage:new{ text = _("Couldn't prepare a folder for the image."), icon = "notice-warning" })
+        self:tell(_("Couldn't prepare a folder for the image."))
         return
     end
     self._img_proc_seq = (self._img_proc_seq or 0) + 1
     local path = string.format("%s/nobg-%d-%d.png", dir, os.time(), self._img_proc_seq)
     local wok = pcall(function() require("ffi/png").encodeToFile(path, rgba, w, h, 4) end)
     if not wok then
-        UIManager:show(InfoMessage:new{ text = _("Couldn't save the processed image."), icon = "notice-warning" })
+        self:tell(_("Couldn't save the processed image."))
         return
     end
     -- copy-on-write: repoint at the cut-out, remember the original for a re-run
@@ -320,7 +313,7 @@ function InkAwayView:insertImage(path)
     local tmp = { kind = "image", path = path, x = 0, y = 0, w = 1, h = 1 }
     local src = self:imageSrc(tmp)
     if not src then
-        UIManager:show(InfoMessage:new{ text = _("Could not open that image.") })
+        self:tell(_("Could not open that image."))
         return
     end
     local natw, nath = src:getWidth(), src:getHeight()

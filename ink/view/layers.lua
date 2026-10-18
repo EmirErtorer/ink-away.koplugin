@@ -371,9 +371,9 @@ end
 function InkAwayView:confirmLayersOff()
     if not self:layered() then return end
     if #self.canvas.layers == 1 then return self:layersOff() end
-    self:confirmSheet("_layer_confirm", _("Turn layers off?"),
-        _("All the layers are merged into one drawing, hidden ones too. Undo brings the layers back."),
-        _("Merge"), function() self:layersOff() end)
+    self:ask{ field = "_layer_confirm", title = _("Turn layers off?"),
+        text = _("All the layers are merged into one drawing, hidden ones too. Undo brings the layers back."),
+        ok_text = _("Merge"), on_ok = function() self:layersOff() end }
 end
 
 function InkAwayView:layersOff()
@@ -460,9 +460,9 @@ function InkAwayView:layerDelete(id)
     end
     if (Layers.counts(c)[id] or 0) == 0 then return go() end
     local l = Layers.get(c, id)
-    self:confirmSheet("_layer_confirm", _("Delete this layer?"),
-        T(_("%1 and everything on it are deleted. Undo brings them back."), l and Layers.label(c, id) or ""),
-        _("Delete"), go)
+    self:ask{ field = "_layer_confirm", title = _("Delete this layer?"),
+        text = T(_("%1 and everything on it are deleted. Undo brings them back."), l and Layers.label(c, id) or ""),
+        ok_text = _("Delete"), ok_icon = "trash", on_ok = go }
 end
 
 function InkAwayView:layerRename(id)

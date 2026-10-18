@@ -8,7 +8,6 @@ Everything runs on the reader; nothing is sent anywhere.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
@@ -80,7 +79,7 @@ function InkAwayView:convertSelectionToText()
     local ok, err = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
     if not ok then
         logger.warn("InkAway: converting handwriting failed:", err)
-        UIManager:show(InfoMessage:new{ text = _("Something went wrong reading the writing.") })
+        self:tell(_("Something went wrong reading the writing."))
     end
 end
 
@@ -88,30 +87,29 @@ function InkAwayView:convertSelectionToTextNow()
     if not self.selection then return end
     local strokes, ops = self:writingOf(self.selection.idxs)
     if #strokes == 0 then
-        UIManager:show(InfoMessage:new{ text = _("There is no handwriting in the selection."), timeout = 2 })
+        self:showNotice(_("There is no handwriting in the selection."), 2)
         return
     end
     local net, words = self:hwrModels()
     if not net then
-        UIManager:show(InfoMessage:new{ text = words })
+        self:tell(words)
         return
     end
     -- a few lines take a second or two on a reader: say so first
-    local note
+    local closeNote
     if #strokes > 12 then
-        note = InfoMessage:new{ text = _("Reading the writing\u{2026}") }
-        UIManager:show(note)
+        closeNote = self:tell(_("Reading the writing\u{2026}"), { wait = true })
         if UIManager.forceRePaint then UIManager:forceRePaint() end
     end
     local ok, text = pcall(self.readWriting, self, strokes, net, words)
-    if note then UIManager:close(note) end
+    if closeNote then closeNote() end
     if not ok then
         logger.warn("InkAway: reading handwriting failed:", text)
-        UIManager:show(InfoMessage:new{ text = _("Something went wrong reading the writing.") })
+        self:tell(_("Something went wrong reading the writing."))
         return
     end
     if text:gsub("%s", "") == "" then
-        UIManager:show(InfoMessage:new{ text = _("No writing could be read there."), timeout = 2 })
+        self:showNotice(_("No writing could be read there."), 2)
         return
     end
     local x0, y0 = math.huge, math.huge

@@ -13,8 +13,6 @@ Part of InkAwayView (see ink/view.lua).
 
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -44,33 +42,15 @@ end
 -- that is a folder opens.
 function InkAwayView:openSearch(from)
     if self._search_job then return end
-    local dialog, check
-    dialog = InputDialog:new{
+    self:promptText{
         title = _("Search"),
         input = self._search_query or "",
-        input_hint = _("Folder, notebook or page name"),
-        buttons = { {
-            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
-            { text = _("Search"), is_enter_default = true, callback = function()
-                local query = dialog:getInputText() or ""
-                local inside = check and check.checked and true or false
-                UIManager:close(dialog)
-                self:runSearch(query, inside, from)
-            end },
-        } },
+        hint = _("Folder, notebook or page name"),
+        ok_text = _("Search"),
+        toggle = { label = _("Also look inside pages (slower)"),
+            is_on = self:getSetting("inkaway_search_inside") and true or false },
+        on_ok = function(query, inside) self:runSearch(query or "", inside, from) end,
     }
-    -- like KOReader's own file search: the choice is a check box under the field
-    local ok, CheckButton = pcall(require, "ui/widget/checkbutton")
-    if ok and CheckButton and dialog.addWidget then
-        check = CheckButton:new{
-            text = _("Also look inside pages (slower)"),
-            checked = self:getSetting("inkaway_search_inside") and true or false,
-            parent = dialog,
-        }
-        dialog:addWidget(check)
-    end
-    UIManager:show(dialog)
-    if dialog.onShowKeyboard then dialog:onShowKeyboard() end
 end
 
 -- Search the library for `query`, inside pages too with `inside`, then list
@@ -118,11 +98,11 @@ function InkAwayView:runSearch(query, inside, from)
         end,
         on_cancel = function()
             self._search_job = nil
-            UIManager:show(InfoMessage:new{ text = _("Search stopped."), timeout = 2 })
+            self:showNotice(_("Search stopped."), 2)
         end,
         on_error = function()
             self._search_job = nil
-            UIManager:show(InfoMessage:new{ text = _("The search could not finish."), timeout = 3 })
+            self:showNotice(_("The search could not finish."), 3)
         end,
     }
     self._search_job = self:runSteps(spec)
@@ -220,7 +200,7 @@ function InkAwayView:openSearchResult(hit, from)
         return self:openLibrary(hit.path)
     end
     if not Storage.exists(hit.path) then
-        UIManager:show(InfoMessage:new{ text = _("That document is no longer there."), timeout = 3 })
+        self:showNotice(_("That document is no longer there."), 3)
         return
     end
     if self._overview then self._overview:close() end

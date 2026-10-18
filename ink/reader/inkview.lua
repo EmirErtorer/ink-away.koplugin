@@ -20,7 +20,6 @@ timers and input hooks.
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -288,8 +287,8 @@ function ReaderInkView:highlightPromptAt(pos)
     if not (pos and self.book.highlightsAt) then return false end
     local items = self.book:highlightsAt({ pos.x, pos.y }, Screen:scaleBySize(3))
     if #items == 0 then return false end
-    local ConfirmBox = require("ui/widget/confirmbox")
-    local text
+    -- the highlighted words, cut short
+    local quote
     if #items == 1 then
         local words, n = {}, 0
         for ch in tostring(items[1].text or ""):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
@@ -297,12 +296,11 @@ function ReaderInkView:highlightPromptAt(pos)
             if n > 80 then words[#words + 1] = "\u{2026}"; break end
             words[#words + 1] = ch
         end
-        text = _("Remove this highlight?") .. "\n\n\u{201C}" .. table.concat(words) .. "\u{201D}"
-    else
-        text = _("Remove these highlights?")
+        quote = "\u{201C}" .. table.concat(words) .. "\u{201D}"
     end
-    UIManager:show(ConfirmBox:new{ text = text, ok_text = _("Remove"),
-        ok_callback = function() self:removeHighlights(items) end })
+    self:ask{ title = #items == 1 and _("Remove this highlight?") or _("Remove these highlights?"),
+        text = quote, ok_text = _("Remove"), ok_icon = "trash",
+        on_ok = function() self:removeHighlights(items) end }
     return true
 end
 
@@ -662,13 +660,13 @@ end
 -- Deleting every annotation on the book takes two confirmations; they then
 -- wait in Ink Away's trash for 30 days.
 function ReaderInkView:confirmDeleteBookInk()
-    self:confirmSheet("_delete_ink", _("Delete all annotations?"),
-        _("Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."),
-        _("Continue"), function()
-            self:confirmSheet("_delete_ink", _("Are you sure?"),
-                _("All of this book's annotations will be deleted now. They wait in Ink Away's trash for 30 days in case you want them back."),
-                _("Delete"), function() self:deleteBookInk() end)
-        end)
+    self:ask{ field = "_delete_ink", title = _("Delete all annotations?"),
+        text = _("Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."),
+        ok_text = _("Continue"), on_ok = function()
+            self:ask{ field = "_delete_ink", title = _("Are you sure?"),
+                text = _("All of this book's annotations will be deleted now. They wait in Ink Away's trash for 30 days in case you want them back."),
+                ok_text = _("Delete"), ok_icon = "trash", on_ok = function() self:deleteBookInk() end }
+        end }
 end
 
 -- Move the book's annotations to the trash and show the page without them; the
@@ -681,7 +679,7 @@ function ReaderInkView:deleteBookInk()
     self:saveDocument()
     local item, err = self.book:trashInk(self:libraryDir())
     if not item then
-        UIManager:show(InfoMessage:new{ text = _("Could not delete the annotations.\n") .. tostring(err) })
+        self:tell(_("Could not delete the annotations.\n") .. tostring(err))
         return
     end
     self:loadBookPage()
@@ -689,8 +687,8 @@ function ReaderInkView:deleteBookInk()
     self:composeCanvas()
     self:renderView()
     UIManager:setDirty(self, "ui")
-    self:noticeSheet("_delete_ink", _("Moved to the trash"),
-        _("This book's annotations wait in Ink Away's trash for 30 days. To put them back: Ink Away's library, its menu, Trash."))
+    self:tell(_("This book's annotations wait in Ink Away's trash for 30 days. To put them back: Ink Away's library, its menu, Trash."),
+        { title = _("Moved to the trash"), field = "_delete_ink" })
 end
 
 -- The gear in the canvas's sheets opens these over a book.

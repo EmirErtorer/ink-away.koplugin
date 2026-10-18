@@ -6,15 +6,12 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
@@ -66,8 +63,8 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     local st = self._image_browser
     -- a fresh browse starts empty; refining keeps the current query to tweak
     local cur = (not is_initial and st and st.query) or ""
-    -- An InputDialog over the full-screen browser sheet shows a keyboard that
-    -- cannot reach its field, so the sheet closes while the query is edited and
+    -- The search box over the full-screen browser sheet would sit under it and
+    -- its keyboard, so the browser sheet closes while the query is edited and
     -- comes straight back. UIManager:close (not the sheet's tap-close) keeps the
     -- query, results and thumbnails, so Cancel refetches nothing.
     local reopen = false
@@ -78,50 +75,26 @@ function InkAwayView:imageBrowserSearchPrompt(is_initial)
     local function backToBrowser()
         if reopen and self._image_browser then self:showImageBrowserSheet() end
     end
-    -- Where a physical keyboard is reported (the desktop emulator, or a reader
-    -- with the on-screen keyboard turned off), InputDialog hides its virtual
-    -- keyboard and the field cannot be typed into by touch. The global flag is
-    -- switched on just while the dialog is built, so it lays out with the keyboard
-    -- from the start, and restored right after.
-    local G = rawget(_G, "G_reader_settings")
-    local prev_vk = G and G:readSetting("virtual_keyboard_enabled")
-    if G then G:saveSetting("virtual_keyboard_enabled", true) end
-    local dialog
-    dialog = InputDialog:new{
+    self:promptText{
+        field = "_img_search_dialog",
         title = _("Search images"),
         input = cur,
-        input_hint = _("e.g. cat, tree, arrow"),
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function()
-                self:closeImageSearchPrompt(); backToBrowser() end },
-            {
-                text = _("Search"),
-                is_enter_default = true,
-                callback = function()
-                    local q = dialog:getInputText() or ""
-                    self:closeImageSearchPrompt()
-                    q = q:gsub("^%s+", ""):gsub("%s+$", "")
-                    if q == "" then backToBrowser(); return end   -- nothing typed: just go back
-                    if is_initial or not self._image_browser then
-                        self:openImageBrowser(q)
-                    else
-                        self._image_browser.query = q
-                        self._image_browser.page = 1
-                        self:showImageBrowserSheet()   -- bring the sheet back first...
-                        self:imageBrowserFetch()        -- ...then load the new query into it
-                    end
-                end,
-            },
-        }},
+        hint = _("e.g. cat, tree, arrow"),
+        ok_text = _("Search"),
+        on_cancel = backToBrowser,
+        on_ok = function(q)
+            q = (q or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if q == "" then backToBrowser(); return end   -- nothing typed: just go back
+            if is_initial or not self._image_browser then
+                self:openImageBrowser(q)
+            else
+                self._image_browser.query = q
+                self._image_browser.page = 1
+                self:showImageBrowserSheet()   -- bring the sheet back first...
+                self:imageBrowserFetch()        -- ...then load the new query into it
+            end
+        end,
     }
-    if G then G:saveSetting("virtual_keyboard_enabled", prev_vk) end   -- restore (nil clears it)
-    self._img_search_dialog = dialog
-    UIManager:show(dialog)
-    -- show the keyboard on the next tick, once the opening tap has resolved;
-    -- inline it can lose focus and the field will not type
-    UIManager:nextTick(function()
-        if self._img_search_dialog == dialog and dialog.onShowKeyboard then dialog:onShowKeyboard() end
-    end)
 end
 
 -- Close the search box and its keyboard if one is open.
@@ -314,9 +287,7 @@ function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h)
         local ok, err = xpcall(function() self:imageBrowserAdd(index) end, debug.traceback)
         if not ok then
             logger.warn("Ink Away: adding an online image failed: " .. tostring(err))
-            UIManager:show(InfoMessage:new{
-                text = _("Something went wrong adding that image. Please try another."),
-                icon = "notice-warning" })
+            self:tell(_("Something went wrong adding that image. Please try another."))
         end
     end
     local b = Button:new{ text = "", width = cell_w, height = cell_h, bordersize = 0,
@@ -402,11 +373,8 @@ function InkAwayView:imageBrowserAdd(index)
     if not st then return end
     local r = st.results[index]
     if not r or not r.full then return end
-    UIManager:show(ConfirmBox:new{
-        text = _("Add this image?"),
-        ok_text = _("Add"),
-        ok_callback = function() self:imageBrowserDownloadAndInsert(r) end,
-    })
+    self:ask{ title = _("Add this image?"), ok_text = _("Add"),
+        on_ok = function() self:imageBrowserDownloadAndInsert(r) end }
 end
 
 -- Download the chosen image, then place it like a local file. With full
@@ -419,8 +387,7 @@ function InkAwayView:imageBrowserDownloadAndInsert(r)
     -- kept for good (unlike the thumbnails): projects refer to images by path
     local dir = Storage.appDir("online images")
     if not dir then
-        UIManager:show(InfoMessage:new{ text = _("Couldn't prepare a folder for the image."),
-            icon = "notice-warning" })
+        self:tell(_("Couldn't prepare a folder for the image."))
         return
     end
     self._img_dl_seq = (self._img_dl_seq or 0) + 1
@@ -433,8 +400,7 @@ function InkAwayView:imageBrowserDownloadAndInsert(r)
             { ["User-Agent"] = ImageSearch.BROWSER_UA, ["Accept"] = "image/*,*/*" })
         Trapper:reset()
         if type(bytes) ~= "string" then
-            UIManager:show(InfoMessage:new{ text = _("Couldn't download that image."),
-                icon = "notice-warning" })
+            self:tell(_("Couldn't download that image."))
             return
         end
         local path
@@ -443,21 +409,21 @@ function InkAwayView:imageBrowserDownloadAndInsert(r)
             path = string.format("%s/%s.%s", dir, base, ext)
             local f = io.open(path, "wb")
             if not f then
-                UIManager:show(InfoMessage:new{ text = _("Couldn't save the image."), icon = "notice-warning" })
+                self:tell(_("Couldn't save the image."))
                 return
             end
             f:write(bytes); f:close()
         else
             local bb = ImageSearch.decode(bytes, ImageSearch.FULL_MAX)
             if not bb then
-                UIManager:show(InfoMessage:new{ text = _("Couldn't read that image."), icon = "notice-warning" })
+                self:tell(_("Couldn't read that image."))
                 return
             end
             path = string.format("%s/%s.png", dir, base)
             local ok = pcall(function() bb:writePNG(path) end)
             if bb.free then pcall(function() bb:free() end) end
             if not ok then
-                UIManager:show(InfoMessage:new{ text = _("Couldn't save the image."), icon = "notice-warning" })
+                self:tell(_("Couldn't save the image."))
                 return
             end
         end

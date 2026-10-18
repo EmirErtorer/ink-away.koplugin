@@ -37,6 +37,8 @@ local IconMenu = InputContainer:extend{
     build = nil,               -- function(menu) -> the sheet's content
     flash = true,              -- flash on show (grey panels; see onShow)
     on_close = nil,
+    on_closed = nil,           -- function() once the sheet is gone, however it closed
+    keep_open = nil,           -- taps beside it leave it open (a job's progress)
     top_y = nil,               -- if set, pin the sheet's top here (below the toolbar)
                                -- instead of centring it vertically
     bottom_y = nil,            -- if set, pin the sheet's bottom here (on the notebook
@@ -130,6 +132,7 @@ function IconMenu:onCloseWidget()
     UIManager:setDirty(nil, function() return "ui", region end)
     if self.on_uncover then self.on_uncover() end
     if self.movable and self.movable.free then self.movable:free() end
+    if self.on_closed then self.on_closed() end
 end
 
 -- Rebuild the sheet's content in place when a control inside it changes state
@@ -218,6 +221,7 @@ function IconMenu:paintTo(bb, _x, _y)
 end
 
 function IconMenu:onTapClose(_, ges)
+    if self.keep_open then return true end
     if ges and ges.pos and self.movable.dimen
             and ges.pos:notIntersectWith(self.movable.dimen) then
         self.tap_pos = { x = ges.pos.x, y = ges.pos.y }
@@ -231,5 +235,7 @@ function IconMenu:onCloseMenu()
     if self.on_close then self.on_close() end
     return true
 end
+-- (what a text field inside asks for on Back)
+IconMenu.onCloseDialog = IconMenu.onCloseMenu
 
 return IconMenu

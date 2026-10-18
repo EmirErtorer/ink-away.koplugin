@@ -33,7 +33,8 @@ local LABEL = Blitbuffer.Color8(0x66)   -- muted grey for names and notes
 
 local ThumbGrid = InputContainer:extend{
     title = "",
-    items = nil,        -- list of { label, sub, folder = bool, selected = bool, star = bool }
+    items = nil,        -- list of { label, sub, folder = bool, selected = bool, star = bool,
+                        -- icon = SVG path drawn on the card in place of a thumbnail }
     render = nil,       -- function(item, maxw, maxh) -> BlitBuffer or nil (the grid frees it)
     on_pick = nil,      -- function(item) after a tap; the grid stays open unless it closes itself
     on_hold = nil,      -- function(item) after a hold
@@ -165,7 +166,7 @@ function ThumbGrid:prepare()
     if not self.render then return end
     for slot = 0, self.per - 1 do
         local c = self:cellRect(slot)
-        if c.item and not c.item.folder and self.cache[c.item] == nil then
+        if c.item and not c.item.folder and not c.item.icon and self.cache[c.item] == nil then
             local ok, bb = pcall(self.render, c.item, c.w - 2 * self.pad, c.h - self.label_h - 2 * self.pad)
             self.cache[c.item] = ok and bb or false
         end
@@ -393,12 +394,13 @@ function ThumbGrid:paintTo(bb, x, y)
             local box = math.min(c.w, c.h - self.label_h)
             local own = it.folder and self.folder_tile
                 and self.folder_tile(it, math.floor(box * 0.62), Theme.invert() and 0x19 or 0xE6)
-            local img = own or (it.folder and self:folderTile(math.floor(box * 0.45))) or self.cache[it]
+            local img = own or (it.folder and self:folderTile(math.floor(box * 0.45)))
+                or (it.icon and self:iconTile(it.icon, math.floor(box * 0.45), "_icon " .. it.icon)) or self.cache[it]
             if img then
                 local iw, ih = img:getWidth(), img:getHeight()
                 local ix, iy = cx + math.floor((c.w - iw) / 2), cy + math.floor((c.h - self.label_h - ih) / 2)
                 bb:blitFrom(img, ix, iy, 0, 0, iw, ih)
-                if not kept and (own or not it.folder) then keep(ix, iy, iw, ih) end   -- a page as it is
+                if not kept and (own or not (it.folder or it.icon)) then keep(ix, iy, iw, ih) end   -- a page as it is
             end
             local name = it.star and ("\u{2605} " .. it.label) or it.label
             label(name, cx + c.w / 2, cy + c.h - self.label_h / 2 - S(4), nface,

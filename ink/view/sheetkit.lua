@@ -8,7 +8,6 @@ Part of InkAwayView (see ink/view.lua).
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local CenterContainer = require("ui/widget/container/centercontainer")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -17,10 +16,7 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
 local OverlapGroup = require("ui/widget/overlapgroup")
-local PathChooser = require("ui/widget/pathchooser")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
@@ -109,22 +105,27 @@ function InkAwayView:sheetWidth(cols)
 end
 
 -- Show a sheet (an IconMenu) and keep it in self[field] while it is open. It
--- hangs from the toolbar unless opts.bottom_y pins its bottom edge there;
--- opts.on_close runs when a tap outside it or Back closes it.
+-- hangs from the toolbar unless opts.bottom_y pins its bottom edge there, or
+-- from the top always with opts.top (clear of the keyboard); opts.on_close runs
+-- when a tap outside it or Back closes it, opts.on_closed however it closes;
+-- with opts.keep_open a tap outside leaves it open.
 function InkAwayView:showSheet(field, build, opts)
     opts = opts or {}
     -- every field a sheet was shown in, so closing the view closes them all
     self._sheet_fields = self._sheet_fields or {}
     self._sheet_fields[field] = true
-    local bottom_y = opts.bottom_y or self:sheetBottomY()
+    local bottom_y = not opts.top and (opts.bottom_y or self:sheetBottomY()) or nil
     self[field] = IconMenu:new{ build = build, flash = not self:colourPanel(),
-        top_y = not bottom_y and self:sheetTopY() or nil, bottom_y = bottom_y,
+        -- (at the top over a book whose toolbar is along the bottom: from the very top)
+        top_y = not bottom_y and ((opts.top and self:sheetBottomY()) and Screen:scaleBySize(6) or self:sheetTopY())
+            or nil, bottom_y = bottom_y,
         left_x = self:sheetLeftX(), right_x = self:sheetRightX(),
         on_uncover = function() self:uncovered() end,
         on_close = function()
             self[field] = nil
             if opts.on_close then opts.on_close() end
-        end }
+        end,
+        on_closed = opts.on_closed, keep_open = opts.keep_open }
     UIManager:show(self[field])
 end
 
@@ -470,41 +471,6 @@ function InkAwayView:openActionSheet(field, title, note, rows)
     self:showSheet(field, build)
 end
 
--- Ask before something that can't simply be undone: a title, the question in
--- full under it, and Cancel beside the action (`ok_label`), which runs `on_ok`.
--- Either closes the sheet first.
-function InkAwayView:confirmSheet(field, title, text, ok_label, on_ok)
-    self:closeSheet(field)
-    local content_w, gap = self:sheetWidth()
-    local closeSelf = function() self:closeSheet(field) end
-    local build = function()
-        local w = math.floor((content_w - gap) / 2)
-        return VerticalGroup:new{ align = "left",
-            self:sheetTitle(title, content_w, _("Cancel"), closeSelf),
-            VerticalSpan:new{ width = Screen:scaleBySize(10) },
-            TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) },
-            VerticalSpan:new{ width = Screen:scaleBySize(18) },
-            HorizontalGroup:new{ align = "center",
-                self:actionButton(_("Cancel"), w, closeSelf),
-                HorizontalSpan:new{ width = gap },
-                self:actionButton(ok_label, w, function() closeSelf(); on_ok() end, true) } }
-    end
-    self:showSheet(field, build)
-end
-
--- Say something that needs reading, in a sheet with an OK pill.
-function InkAwayView:noticeSheet(field, title, text)
-    self:closeSheet(field)
-    local content_w = self:sheetWidth()
-    local build = function()
-        return VerticalGroup:new{ align = "left",
-            self:sheetTitle(title, content_w, _("OK"), function() self:closeSheet(field) end),
-            VerticalSpan:new{ width = Screen:scaleBySize(10) },
-            TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) } }
-    end
-    self:showSheet(field, build)
-end
-
 -- A row of equal buttons across `width`, one per { value, label } option, with
 -- the current one filled black. A tap calls onpick(value).
 function InkAwayView:segmentedRow(options, current, width, onpick)
@@ -657,70 +623,14 @@ function InkAwayView:renderBrushWave(key, w, h, sel)
     return bb
 end
 
--- Ask for a line of text in a stock InputDialog with Cancel and an OK button.
--- `o` holds title, input, hint, description, input_type, ok_text and on_ok(text),
--- plus optional on_cancel() and `default`, the text on_ok gets when the field is
--- left empty. `o.extra` ({ text, callback(text) }) adds a middle button that
--- closes the dialog and gets what was typed so far.
-function InkAwayView:promptText(o)
-    local dialog
-    local row = {
-        { text = _("Cancel"), id = "close", callback = function()
-            UIManager:close(dialog)
-            if o.on_cancel then o.on_cancel() end
-        end },
-    }
-    if o.extra then
-        row[#row + 1] = { text = o.extra.text, callback = function()
-            local text = dialog:getInputText()
-            UIManager:close(dialog)
-            o.extra.callback(text)
-        end }
-    end
-    row[#row + 1] = { text = o.ok_text, is_enter_default = true, callback = function()
-        local text = dialog:getInputText()
-        UIManager:close(dialog)
-        if o.default and (not text or text == "") then text = o.default end
-        o.on_ok(text)
-    end }
-    dialog = InputDialog:new{
-        title = o.title, input = o.input, input_hint = o.hint, input_type = o.input_type,
-        description = o.description,
-        buttons = { row },
-    }
-    UIManager:show(dialog)
-    dialog:onShowKeyboard()
-end
-
--- Let the reader pick a file, starting in folder `path`.
-function InkAwayView:pickFile(path, on_pick)
-    UIManager:show(PathChooser:new{ select_directory = false, select_file = true, show_files = true,
-        path = path, onConfirm = on_pick })
-end
-
--- Let the reader pick a folder, starting in `path`.
-function InkAwayView:pickFolder(path, on_pick)
-    UIManager:show(PathChooser:new{ select_directory = true, select_file = false, show_files = true,
-        path = path, onConfirm = on_pick })
-end
-
--- Run fn(), asking first when a file at `path` would be replaced.
-function InkAwayView:confirmReplace(path, fn)
-    if not Storage.exists(path) then fn(); return end
-    UIManager:show(ConfirmBox:new{
-        text = string.format(_("\u{201C}%s\u{201D} already exists. Replace it?"), Storage.baseName(path)),
-        ok_text = _("Replace"),
-        ok_callback = fn,
-    })
-end
-
--- A short, non-blocking message.
-function InkAwayView:showNotice(text)
+-- A short, non-blocking message at the top of the screen, gone after
+-- `timeout` seconds (KOReader's own length by default).
+function InkAwayView:showNotice(text, timeout)
     local ok, Notification = pcall(require, "ui/widget/notification")
     if ok and Notification then
-        UIManager:show(Notification:new{ text = text })
+        UIManager:show(Notification:new{ text = text, timeout = timeout })
     else
-        UIManager:show(InfoMessage:new{ text = text, timeout = 2 })
+        self:tell(text, { timeout = timeout or 2 })
     end
 end
 

@@ -86,8 +86,7 @@ function InkAwayView:autoCheckUpdates()
         if self.closing then return end   -- the dot shows next time
         self._update_dot = true
         self:refreshToolbarStrip()
-        local Notification = require("ui/widget/notification")
-        UIManager:show(Notification:new{ text = T(_("Ink Away %1 is available: Settings, Updates."), v), timeout = 6 })
+        self:showNotice(T(_("Ink Away %1 is available: Settings, Updates."), v), 6)
     end)
 end
 
@@ -312,9 +311,8 @@ function InkAwayView:confirmUpdate(rel, action)
     if action == "try" then
         text = text .. "\n\n" .. _("A prerelease is a test build. You can go back to the latest release from Settings, Updates.")
     end
-    self:confirmSheet("_update_confirm", title, text, (action == "back" and _("Go back")) or _("Install"), function()
-        self:installUpdate(rel)
-    end)
+    self:ask{ field = "_update_confirm", title = title, text = text,
+        ok_text = (action == "back" and _("Go back")) or _("Install"), on_ok = function() self:installUpdate(rel) end }
 end
 
 function InkAwayView:installUpdate(rel)
@@ -326,8 +324,8 @@ function InkAwayView:installUpdate(rel)
             show()
             UIManager:askForRestart(T(_("Ink Away %1 is installed. Restart KOReader to use it."), rel.version))
         else
-            self:noticeSheet("_update_failed", _("Not installed"),
-                T(_("The update was not installed: %1.\n\nNothing was changed."), tostring(why)))
+            self:tell(T(_("The update was not installed: %1.\n\nNothing was changed."), tostring(why)),
+                { title = _("Not installed"), field = "_update_failed" })
         end
     end)
     show()

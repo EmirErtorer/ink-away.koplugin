@@ -12,7 +12,6 @@ local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
@@ -113,9 +112,8 @@ function InkAwayView:buildToolbar()
             local ok, err = xpcall(raw_cb, debug.traceback)
             if not ok then
                 logger.warn("Ink Away toolbar '" .. s.id .. "' failed: " .. tostring(err))
-                UIManager:show(InfoMessage:new{
-                    text = _("Something went wrong opening that tool. Please report this.") ..
-                        "\n\n" .. tostring(err):match("[^\n]*") })
+                self:tell(_("Something went wrong opening that tool. Please report this.") ..
+                        "\n\n" .. tostring(err):match("[^\n]*"))
             end
         end
         local b = Button:new{

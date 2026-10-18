@@ -51,6 +51,45 @@ local function findButton(w, text)
     return find(w, {})
 end
 
+-- Press the button labelled `text` in sheet `w`: true when there was one.
+local function pressIn(w, text)
+    local b = w and findButton(w, text)
+    if b then b.callback(); return true end
+    return false
+end
+
+-- Every text in widget tree `w`, joined by newlines.
+local function textIn(w)
+    local out, seen = {}, {}
+    local function walk(t)
+        if type(t) ~= "table" or seen[t] then return end
+        seen[t] = true
+        if type(t.text) == "string" then out[#out + 1] = t.text end
+        for k, v in pairs(t) do if k ~= "show_parent" and k ~= "parent" then walk(v) end end
+    end
+    walk(w)
+    return table.concat(out, "\n")
+end
+
+-- Type `text` into the text sheet open now, then press Enter, as on the keyboard.
+local function answer(text)
+    local field = require("ui/widget/inputtext").last
+    field.text = text
+    field.enter_callback()
+end
+
+-- In the file or folder grid open now (ink/view/dialogs.lua's browseFiles):
+-- pick the file at `path`, or with `folder` go into that folder and use it.
+local function pickPath(path, folder)
+    local grid = UIManager.shown
+    if folder then
+        grid.on_pick({ folder = true, path = path })
+        grid.actions[1][2]()
+    else
+        grid.on_pick({ path = path })
+    end
+end
+
 local SIZES = { { 1072, 1448 }, { 758, 1024 }, { 600, 800 } }
 
 for _, wh in ipairs(SIZES) do
@@ -519,8 +558,7 @@ for _, wh in ipairs(SIZES) do
     end
 
     -- export sheet wiring (no native encoders are called)
-    local PathChooser = require("ui/widget/pathchooser")
-    local InputDialog = require("ui/widget/inputdialog")
+    local InputText = require("ui/widget/inputtext")
     view:setTool("pen")
     view:openExport()
     ok(view._save_dialog ~= nil, tag .. ": Export opens the export sheet")
@@ -528,13 +566,12 @@ for _, wh in ipairs(SIZES) do
     ok(view:exportOptions().fmt == "png", tag .. ": a drawing exports a PNG by default")
     -- the sheet's Export button asks for a name, with a button to pick a folder
     view:promptExportName()
-    ok(InputDialog.last ~= nil and InputDialog.last.input == view:docName(), tag .. ": the name starts as the document's")
-    local folderBtn = InputDialog.last.buttons[1][2]
-    ok(folderBtn and folderBtn.callback and not folderBtn.is_enter_default, tag .. ": the prompt has a Folder button")
-    folderBtn.callback()
-    ok(PathChooser.last ~= nil and PathChooser.last.select_directory, tag .. ": Folder opens a folder chooser")
-    PathChooser.last.onConfirm("/tmp")
-    ok(view:exportOptions().dir == "/tmp" and InputDialog.last.description:find("/tmp", 1, true),
+    ok(view._prompt ~= nil and InputText.last.text == view:docName(), tag .. ": the name starts as the document's")
+    ok(pressIn(view._prompt, "Folder\u{2026}"), tag .. ": the prompt has a Folder button")
+    ok(UIManager.shown and UIManager.shown.actions and UIManager.shown.actions[1][1] == "Use this folder",
+        tag .. ": Folder opens a folder chooser")
+    pickPath("/tmp", true)
+    ok(view:exportOptions().dir == "/tmp" and textIn(view._prompt):find("/tmp", 1, true),
         tag .. ": the picked folder is kept for this document and the prompt comes back")
     view:exportOptions().dir = nil
 
@@ -559,7 +596,7 @@ for _, wh in ipairs(SIZES) do
     ok(BB.out_of_bounds == 0, tag .. ": nothing paints out of bounds")
 
     -- reset dialog singletons between sizes
-    ButtonDialog.last, PathChooser.last, InputDialog.last = nil, nil, nil
+    ButtonDialog.last = nil
     require("ui/widget/doublespinwidget").last = nil
     require("ui/widget/spinwidget").last = nil
 end
@@ -2146,13 +2183,22 @@ do
     view:closeSheet("_guide")
     view:openSettings(); check("_settings_dialog"); view:closeSheet("_settings_dialog")
     view:showWelcome(); check("_welcome_sheet"); view:closeSheet("_welcome_sheet")
-    view:confirmSheet("_c", "T", "text", "Delete", function() end); check("_c"); view:closeSheet("_c")
-    view:noticeSheet("_c", "T", "text"); check("_c"); view:closeSheet("_c")
+    view:ask{ field = "_c", title = "T", text = "text", ok_text = "Delete", ok_icon = "trash", on_ok = function() end }
+    check("_c"); view:closeSheet("_c")
+    view:tell("text", { field = "_c", title = "T" }); check("_c"); view:closeSheet("_c")
+    view:tell("text", { field = "_c" }); check("_c"); view:closeSheet("_c")
+    view:chooseFromList{ field = "_c", title = "T", items = { { label = "A", cb = function() end, icon = "folder" } } }
+    check("_c"); view:closeSheet("_c")
+    view:askNumber{ field = "_c", title = "T", value = 5, min = 0, max = 10, step = 1, on_done = function() end }
+    check("_c"); view:closeSheet("_c")
+    view:promptText{ field = "_c", title = "T", ok_text = "OK", extra = { text = "More", callback = function() end },
+        on_ok = function() end }
+    check("_c"); view:closeSheet("_c")
     ok(n > 40 and bad == 0, ("guide: every button can be tapped (%d of %d not)"):format(bad, n))
     view:closeSheet("_guide")
     -- closing the view closes every sheet it opened, the new ones too: one left
     -- over the reader would take the gestures meant for it
-    view:openGuide(); view:noticeSheet("_delete_ink", "T", "text")
+    view:openGuide(); view:tell("text", { field = "_delete_ink", title = "T" })
     local left = { view._guide, view._delete_ink }
     UIManager:close(view)
     local stray = 0
@@ -2488,7 +2534,7 @@ do
     UIManager.shown = nil
     if undo_btn then undo_btn.callback() end
     local box = UIManager.shown
-    ok(box and box.ok_text == "Only this one" and box.cancel_text == "Both",
+    ok(box and findButton(box, "Only this one") and findButton(box, "Both"),
         "gestures: an overlap asks: only this one, or both")
     if box and box.ok_callback then box.ok_callback() end
     ok(b.two_swipe_down == "undo" and b.two_tap == "nothing", "gestures: only this one moves it")
@@ -3046,7 +3092,6 @@ do
     local TestEnv = require("testenv")
     local Storage = require("ink/storage")
     local Project = require("ink/project")
-    local InputDialog = require("ui/widget/inputdialog")
     local LIB = TestEnv.libraryDir() .. "/keepouttest"
     local IMPORTED = LIB .. "/Imported"
     os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. IMPORTED .. "/PDFs' '" .. IMPORTED .. "/Pictures' '" .. LIB .. "/Maths'")
@@ -3089,9 +3134,7 @@ do
     -- a new folder asked for in Imported
     local made
     view:promptNewFolder(IMPORTED .. "/PDFs", function(path) made = path end)
-    local d = InputDialog.last
-    d.input = "Homework"
-    for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    answer("Homework")
     ok(made == LIB .. "/Homework" and Storage.isDir(LIB .. "/Homework") and not Storage.exists(IMPORTED .. "/PDFs/Homework"),
         "keep out: a new folder asked for in Imported is made in Library")
     -- Move to never offers Imported
@@ -3114,13 +3157,124 @@ do
     view:onCloseWidget()
 end
 
+-- ---- the shared dialogs (ink/view/dialogs.lua) ------------------------------
+do
+    local TestEnv = require("testenv")
+    local Storage = require("ink/storage")
+    local InputText = require("ui/widget/inputtext")
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    -- a message: OK closes it; one with a timeout closes by itself, and lets touches by
+    view:tell("Hello")
+    ok(view._message and view._message.text == "Hello" and pressIn(view._message, "OK") and view._message == nil,
+        "dialogs: a message closes on OK")
+    view:tell("Soon gone", { timeout = 2 })
+    ok(view._message and view:touchTarget() == view, "dialogs: a message that closes by itself takes no touch")
+    UIManager.fireScheduled()
+    ok(view._message == nil, "dialogs: and it closes by itself")
+    local close = view:tell("Working", { wait = true })
+    ok(view._message and not findButton(view._message, "OK"), "dialogs: a working note has no OK")
+    close()
+    ok(view._message == nil, "dialogs: its caller closes it")
+    -- a question: the action, Cancel, or a tap beside it
+    local said = {}
+    local function asking(extra)
+        local o = { title = "Go?", text = "Really", ok_text = "Go",
+            on_ok = function() said[#said + 1] = "ok" end, on_cancel = function() said[#said + 1] = "cancel" end }
+        for k, v in pairs(extra or {}) do o[k] = v end
+        view:ask(o)
+        return view._ask
+    end
+    pressIn(asking(), "Go")
+    pressIn(asking(), "Cancel")
+    asking():onCloseMenu()
+    asking({ on_dismiss = function() said[#said + 1] = "dismiss" end }):onCloseMenu()
+    ok(table.concat(said, ",") == "ok,cancel,cancel,dismiss" and view._ask == nil,
+        "dialogs: a question's answers, and a tap beside it (" .. table.concat(said, ",") .. ")")
+    -- text: Enter, the second button and the switch
+    local got
+    view:promptText{ title = "Name", input = "Old", ok_text = "Save", default = "Untitled",
+        toggle = { label = "Inside", is_on = true },
+        on_ok = function(t, on) got = { t, on } end }
+    ok(view._prompt and InputText.last.text == "Old" and InputText.last.parent == view._prompt,
+        "dialogs: a text sheet starts with its text")
+    ok(view._prompt.is_always_active, "dialogs: and takes what the keyboard on top leaves (typed text, keys)")
+    UIManager.fireScheduled()
+    ok(InputText.last.keyboard_shown, "dialogs: and brings up the keyboard")
+    local field = InputText.last
+    answer("")
+    ok(got and got[1] == "Untitled" and got[2] == true and view._prompt == nil and field.closed,
+        "dialogs: Enter gives the text (the default when empty) and the switch, and the keyboard goes")
+    local extra
+    view:promptText{ title = "Name", ok_text = "Save", on_ok = function() end,
+        extra = { text = "More", callback = function(t) extra = t end } }
+    InputText.last.text = "typed"
+    pressIn(view._prompt, "More")
+    ok(extra == "typed" and view._prompt == nil, "dialogs: the second button gets what was typed")
+    -- a list, a page at a time
+    local items, picked = {}, nil
+    for i = 1, 9 do items[i] = { label = "Item " .. i, cb = function() picked = i end } end
+    view:chooseFromList{ title = "Pick", items = items }
+    ok(findButton(view._list, "Item 7") and not findButton(view._list, "Item 8"), "dialogs: a list shows a page at a time")
+    pressIn(view._list, "\u{203A}")
+    ok(findButton(view._list, "Item 9") and not findButton(view._list, "Item 1"), "dialogs: and turns to the next")
+    pressIn(view._list, "Item 9")
+    ok(picked == 9 and view._list == nil, "dialogs: a tap picks and closes")
+    -- a number
+    local num
+    view:askNumber{ title = "Size", value = 10, min = 0, max = 20, step = 2, on_done = function(v) num = v end }
+    pressIn(view._number, "Done")
+    ok(num == 10 and view._number == nil, "dialogs: a number sheet gives its value on Done")
+    -- files and folders, browsed as a grid
+    local D = TestEnv.libraryDir() .. "/browsetest"
+    os.execute("rm -rf '" .. D .. "'; mkdir -p '" .. D .. "/Sub/Deeper' '" .. D .. "/.hidden'")
+    for _, n in ipairs({ "b.png", "a.PDF", "notes.txt" }) do local f = io.open(D .. "/" .. n, "w"); f:write("x"); f:close() end
+    local file
+    view:pickFile(D, function(p) file = p end, function(n) return n:lower():match("%.pdf$") ~= nil end, "pdfpen")
+    local grid = UIManager.shown
+    local names = {}
+    for _, it in ipairs(grid.items) do names[#names + 1] = (it.folder and "/" or "") .. it.label end
+    ok(table.concat(names, ",") == "/Sub,a.PDF" and grid.items[2].icon ~= nil,
+        "dialogs: a file picker shows folders, then the files it takes (" .. table.concat(names, ",") .. ")")
+    grid.on_pick(grid.items[1])
+    ok(grid.title == "Sub" and #grid.items == 1 and grid.on_back ~= nil, "dialogs: a tap goes into a folder")
+    grid.on_back()
+    ok(grid.title == "browsetest", "dialogs: the arrow goes back up")
+    pickPath(D .. "/a.PDF")
+    ok(file == D .. "/a.PDF", "dialogs: a tap on a file picks it")
+    local folder
+    view:pickFolder(D, function(p) folder = p end)
+    grid = UIManager.shown
+    ok(#grid.items == 1 and grid.items[1].label == "Sub", "dialogs: a folder picker shows only folders")
+    pickPath(D .. "/Sub", true)
+    ok(folder == D .. "/Sub", "dialogs: Use this folder picks the folder shown")
+    view:pickFolder("/", function() end)
+    ok(UIManager.shown.on_back == nil and UIManager.shown.title == "/", "dialogs: nothing above the top folder")
+    UIManager.shown:close()
+    -- a job's progress, and Stop after asking
+    local stopped = false
+    local prog = view:showProgress{ title = "Exporting", max = 10, stop_ask = "Lose it?",
+        on_stop = function() stopped = true end }
+    prog.report(5)
+    ok(view._progress and view._progress.keep_open, "dialogs: a progress sheet stays through taps beside it")
+    pressIn(view._progress, "Stop")
+    ok(view._progress_ask and not stopped, "dialogs: Stop asks first")
+    pressIn(view._progress_ask, "Keep going")
+    ok(not stopped and view._progress, "dialogs: Keep going goes on")
+    pressIn(view._progress, "Stop"); pressIn(view._progress_ask, "Stop")
+    ok(stopped and view._progress == nil, "dialogs: Stop stops")
+    view:onCloseWidget()
+end
+
 -- ---- a library folder's colour and icon -----------------------------------
 do
     local TestEnv = require("testenv")
     local Storage = require("ink/storage")
     local Folder = require("ink/folder")
     local FolderLook = require("ink/folderlook")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/looktest"
     os.execute("rm -rf '" .. LIB .. "'; mkdir -p '" .. LIB .. "/School' '" .. LIB .. "/Art'")
@@ -3167,9 +3321,7 @@ do
     ok(view._folder_look ~= nil, "look: and the sheet comes back")
     -- a renamed folder keeps its look
     view:promptRenameItem(item("School"))
-    local d = InputDialog.last
-    d.input = "Maths"
-    for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    answer("Maths")
     local after = Folder.load(LIB).folders
     ok(after.Maths and after.Maths.color == "green" and after.School == nil, "look: a renamed folder keeps it")
     -- a moved folder takes it along
@@ -3488,7 +3640,6 @@ do
     local TestEnv = require("testenv")
     local Project = require("ink/project")
     local Storage = require("ink/storage")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/libtest"
     os.execute("mkdir -p '" .. LIB .. "/drawings'")
@@ -3504,12 +3655,6 @@ do
         view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
         view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
         UIManager.fireScheduled()
-    end
-    -- answer the text prompt on screen, as the OK button does
-    local function answer(text)
-        local d = InputDialog.last
-        d.input = text
-        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
     end
     local function labels(grid)
         local t = {}
@@ -3704,7 +3849,6 @@ do
     local Export = require("ink/export")
     local Project = require("ink/project")
     local Storage = require("ink/storage")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/exporttest"
     os.execute("mkdir -p '" .. LIB .. "/out'")
@@ -3751,13 +3895,12 @@ do
 
     -- a PNG: transparent by default, white when asked, and named after the document
     view:promptExportName()
-    ok(InputDialog.last.input == "Cover", "export: the name starts as the document's")
-    InputDialog.last.buttons[1][3].callback()
+    ok(require("ui/widget/inputtext").last.text == "Cover", "export: the name starts as the document's")
+    answer("Cover")
     ok(png and png.path == LIB .. "/out/Cover.png" and png.opts.white == nil, "export: a transparent PNG is written")
     view:exportOptions().transparent = false
     view:promptExportName()
-    InputDialog.last.input = "Cover"
-    InputDialog.last.buttons[1][3].callback()
+    answer("Cover")
     ok(UIManager.shown and UIManager.shown.ok_callback ~= nil, "export: writing over the last export asks first")
     png = nil
     UIManager.shown.ok_callback()
@@ -3881,7 +4024,6 @@ do
     local TestEnv = require("testenv")
     local Export = require("ink/export")
     local Project = require("ink/project")
-    local InputDialog = require("ui/widget/inputdialog")
     TestEnv.remember_last_doc = false
     G_reader_settings.data.inkaway_last_doc = nil
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
@@ -3893,11 +4035,6 @@ do
         view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
         view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
         UIManager.fireScheduled()
-    end
-    local function answer(text)
-        local d = InputDialog.last
-        d.input = text
-        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
     end
     local function centre(r) return { x = r.x + r.w / 2, y = r.y + r.h / 2 } end
 
@@ -4091,7 +4228,6 @@ do
     local Folder = require("ink/folder")
     local Project = require("ink/project")
     local Storage = require("ink/storage")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/binder"
     local DIR = LIB .. "/Physics"
@@ -4108,21 +4244,12 @@ do
         view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
         UIManager.fireScheduled()
     end
-    local function answer(text)
-        local d = InputDialog.last
-        d.input = text
-        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
-    end
     local function tabNames(grid)
         local t = {}
         for _, tab in ipairs(grid.tabs) do t[#t + 1] = (tab.selected and "*" or "") .. tab.label end
         return table.concat(t, ",")
     end
-    local function press(dialog, text)
-        for _, row in ipairs(dialog.buttons) do
-            for _, b in ipairs(row) do if b.text == text then b.callback(); return true end end
-        end
-    end
+    local function press(sheet, text) return pressIn(sheet, text) end
 
     -- three documents in one folder: two notebooks and a drawing
     local view = InkAwayView:new{}
@@ -4164,7 +4291,7 @@ do
     view:openOverview()
     ov = view._overview
     view:overviewTabMenu(ov.tabs[1])
-    press(ButtonDialog.last, "Move down")
+    press(UIManager.shown, "Move down")
     ok(tabNames(ov) == "Waves,*Mechanics", "overview: Move down reorders the tabs")
     ok(Folder.load(DIR).order[1] == "Waves.inkaway", "overview: and the order is saved in the folder")
     -- the choice is swatches of the colours themselves, and No colour
@@ -4194,7 +4321,7 @@ do
 
     -- renaming a tab keeps its place and colour
     view:overviewTabMenu(ov.tabs[1])
-    press(ButtonDialog.last, "Rename\u{2026}")
+    press(UIManager.shown, "Rename\u{2026}")
     answer("Optics")
     ok(Storage.exists(DIR .. "/Optics.inkaway") and not Storage.exists(DIR .. "/Waves.inkaway"),
         "overview: renaming a tab renames its file")
@@ -4204,31 +4331,31 @@ do
     -- pages: star, rename, move and copy to another notebook
     view:overviewShowTab(DIR .. "/Optics.inkaway")
     view:overviewPageMenu(ov.items[1])
-    press(ButtonDialog.last, "Star")
+    press(UIManager.shown, "Star")
     ok(Project.load(DIR .. "/Optics.inkaway").pages[1].star == true, "overview: starring a page of another notebook saves it")
     view:overviewShowTab(DIR .. "/Mechanics.inkaway")
     view:overviewPageMenu(ov.items[1])
-    press(ButtonDialog.last, "Rename\u{2026}")
+    press(UIManager.shown, "Rename\u{2026}")
     answer("Forces")
     ok(view.notebook.pages[1].title == "Forces", "overview: renaming a page of the open notebook changes it there")
     view:overviewPageMenu(ov.items[1])
-    press(ButtonDialog.last, "Move to\u{2026}")
-    local targets = ButtonDialog.last
-    ok(#targets.buttons == 2 and targets.buttons[1][1].text == "\u{2039} Notebooks"
-        and targets.buttons[2][1].text == "Optics", "overview: Move offers the other notebooks, and a way up")
-    targets.buttons[2][1].callback()
+    press(UIManager.shown, "Move to\u{2026}")
+    local targets = view._list
+    ok(targets and findButton(targets, "\u{2039} Notebooks") and findButton(targets, "Optics")
+        and not findButton(targets, "Mechanics"), "overview: Move offers the other notebooks, and a way up")
+    pressIn(targets, "Optics")
     ok(view.notebook:count() == 1 and view.notebook.pages[1].title == nil, "overview: the page leaves its notebook")
     local optics = Project.load(DIR .. "/Optics.inkaway")
     ok(#optics.pages == 2 and optics.pages[2].title == "Forces", "overview: and is added to the end of the other")
     ok(optics.pages[2].paper == "lines", "overview: keeping the lined paper it was on")
     ok(view:docHasContent() and Project.load(DIR .. "/Mechanics.inkaway") ~= nil, "overview: both notebooks are intact")
     view:overviewPageMenu(ov.items[1])
-    press(ButtonDialog.last, "Copy to\u{2026}")
-    press(ButtonDialog.last, "Optics")
+    press(UIManager.shown, "Copy to\u{2026}")
+    press(UIManager.shown, "Optics")
     ok(view.notebook:count() == 1 and #Project.load(DIR .. "/Optics.inkaway").pages == 3,
         "overview: Copy leaves the page where it was")
     view:overviewPageMenu(ov.items[1])
-    press(ButtonDialog.last, "Move to\u{2026}")
+    press(UIManager.shown, "Move to\u{2026}")
     ok(view.notebook:count() == 1, "overview: the last page of a notebook stays")
 
     -- the starred filter
@@ -4282,7 +4409,7 @@ do
     local mech
     for _, tab in ipairs(ov.tabs) do if tab.label == "Mechanics" then mech = tab end end
     view:overviewTabMenu(mech)
-    press(ButtonDialog.last, "Delete\u{2026}")
+    press(UIManager.shown, "Delete\u{2026}")
     UIManager.shown.ok_callback()
     ok(not Storage.exists(DIR .. "/Mechanics.inkaway") and view.doc_path ~= DIR .. "/Mechanics.inkaway",
         "overview: deleting the open tab removes it and starts a new drawing")
@@ -4308,7 +4435,7 @@ do
     view:openOverview()
     ov = view._overview
     view:overviewTabMenu(ov.tabs[1])
-    press(ButtonDialog.last, "Delete\u{2026}")
+    press(UIManager.shown, "Delete\u{2026}")
     UIManager.shown.ok_callback()
     ok(view._overview == ov and #ov.items == 0 and #ov.tabs == 0 and ov.empty_text == "No notebooks here yet.",
         "overview: with no notebook left it shows the empty folder")
@@ -4325,7 +4452,6 @@ do
     local Folder = require("ink/folder")
     local Project = require("ink/project")
     local Storage = require("ink/storage")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/sections"
     local SCHOOL = LIB .. "/School"
@@ -4342,11 +4468,6 @@ do
         view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
         UIManager.fireScheduled()
     end
-    local function answer(text)
-        local d = InputDialog.last
-        d.input = text
-        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
-    end
     local function tabNames(grid)
         local t = {}
         for _, tab in ipairs(grid.tabs) do
@@ -4354,11 +4475,7 @@ do
         end
         return table.concat(t, ",")
     end
-    local function press(dialog, text)
-        for _, row in ipairs(dialog.buttons) do
-            for _, b in ipairs(row) do if b.text == text then b.callback(); return true end end
-        end
-    end
+    local function press(sheet, text) return pressIn(sheet, text) end
     local function notebook(view, dir, name, style)
         view:newNotebook(style or "lines", dir)
         stroke(view, 100, 100)
@@ -4397,12 +4514,12 @@ do
     -- copy a page from Physics to Math, browsing there in the picker
     ov.on_back(); ov.on_tab(ov.tabs[2])
     view:overviewPageMenu(ov.items[1])
-    press(ButtonDialog.last, "Copy to\u{2026}")
-    ok(ButtonDialog.last.buttons[1][1].text == "\u{2039} School" and #ButtonDialog.last.buttons == 1,
+    press(UIManager.shown, "Copy to\u{2026}")
+    ok(findButton(view._list, "\u{2039} School") and not textIn(view._list):find("Linear", 1, true),
         "sections: the picker starts here, with a way up")
-    press(ButtonDialog.last, "\u{2039} School")
-    ok(press(ButtonDialog.last, "Math  \u{203A}"), "sections: up a folder it offers the folders to go into")
-    ok(press(ButtonDialog.last, "Linear algebra"), "sections: and inside, their notebooks")
+    press(UIManager.shown, "\u{2039} School")
+    ok(press(UIManager.shown, "Math  \u{203A}"), "sections: up a folder it offers the folders to go into")
+    ok(press(UIManager.shown, "Linear algebra"), "sections: and inside, their notebooks")
     ok(#Project.load(SCHOOL .. "/Math/Linear algebra.inkaway").pages == 3,
         "sections: the page is copied to a notebook in another folder")
     ok(#view.notebook.pages == 3, "sections: the open notebook has it too")
@@ -4410,13 +4527,13 @@ do
     -- folder tabs: move, colour and rename, keeping the open notebook
     ov.on_back()
     view:overviewTabMenu(ov.tabs[1])
-    ok(ButtonDialog.last.title == "Math" and press(ButtonDialog.last, "Move down"), "sections: a folder tab has a menu")
+    ok(textIn(view._ov_menu):find("Math", 1, true) and press(UIManager.shown, "Move down"), "sections: a folder tab has a menu")
     ok(tabNames(ov) == "Physics/,Math/,*Timetable", "sections: Move down swaps the folders")
     view:overviewTabMenu(ov.tabs[2])
-    press(ButtonDialog.last, "Move down")
+    press(UIManager.shown, "Move down")
     ok(tabNames(ov) == "Physics/,Math/,*Timetable", "sections: but a folder does not move among the notebooks")
     view:overviewTabMenu(ov.tabs[2])
-    press(ButtonDialog.last, "Rename\u{2026}")
+    press(UIManager.shown, "Rename\u{2026}")
     answer("Maths")
     ok(Storage.isDir(SCHOOL .. "/Maths") and not Storage.exists(SCHOOL .. "/Math"), "sections: renaming a folder tab renames it")
     ok(tabNames(ov) == "Physics/,Maths/,*Timetable", "sections: in its place")
@@ -4439,7 +4556,7 @@ do
 
     -- deleting a folder with the open notebook in it
     view:overviewTabMenu(ov.tabs[2])
-    press(ButtonDialog.last, "Delete\u{2026}")
+    press(UIManager.shown, "Delete\u{2026}")
     ok(UIManager.shown.text:find("everything in it", 1, true) ~= nil, "sections: deleting a folder warns it takes everything")
     UIManager.shown.ok_callback()
     ok(not Storage.exists(SCHOOL .. "/Maths") and tabNames(ov) == "Physics/,*Timetable",
@@ -4807,7 +4924,6 @@ end
 do
     local TestEnv = require("testenv")
     local Export = require("ink/export")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/folderpdf"
     local DIR = LIB .. "/Physics"
@@ -4861,8 +4977,8 @@ do
     local found = findButton(view._item_menu, "Export as PDF\u{2026}")
     ok(found ~= nil, "folder: a folder's menu offers Export as PDF")
     found.callback()
-    ok(InputDialog.last and InputDialog.last.input == "Physics", "folder: the PDF is named after the folder")
-    InputDialog.last.buttons[1][3].callback()
+    ok(view._prompt and require("ui/widget/inputtext").last.text == "Physics", "folder: the PDF is named after the folder")
+    answer("Physics")
     UIManager.fireScheduled(); UIManager.fireScheduled()
     ok(job and #job.pages == 5, "folder: every page of every document is in it (3 + 1 + 1)")
     local o = job.opts.outline
@@ -4886,7 +5002,6 @@ end
 do
     local TestEnv = require("testenv")
     local Templates = require("ink/templates")
-    local InputDialog = require("ui/widget/inputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
     local LIB = TestEnv.libraryDir() .. "/templates"
     os.execute("mkdir -p '" .. LIB .. "'")
@@ -4901,11 +5016,6 @@ do
         view:onIaPan(nil, pos(x + 30, v.area_y + y + 20))
         view:onIaPanRelease(nil, pos(x + 30, v.area_y + y + 20))
         UIManager.fireScheduled()
-    end
-    local function answer(text)
-        local d = InputDialog.last
-        d.input = text
-        for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
     end
 
     local view = InkAwayView:new{}
@@ -4923,17 +5033,17 @@ do
     stroke(view, 400, 400)
     view:nbGoTo(1)
     view:nbFromTemplate()
-    local d = ButtonDialog.last
-    ok(d and #d.buttons == 2 and d.buttons[1][1].text == "Meeting", "templates: From template lists them")
-    d.buttons[1][1].callback()
+    ok(view._list and findButton(view._list, "Meeting") and findButton(view._list, "Delete a template\u{2026}"),
+        "templates: From template lists them")
+    pressIn(view._list, "Meeting")
     local nb = view.notebook
     ok(nb:count() == 3 and nb.index == 2 and view.canvas:opCount() == 2, "templates: the new page comes after this one")
     ok(nb.pages[2].paper == "cornell" and nb:pageTemplate().style == "cornell", "templates: on the template's paper")
     ok(nb.pages[2].id ~= nb.pages[1].id, "templates: as a new page")
     view:nbFromTemplate()
-    ButtonDialog.last.buttons[2][1].callback()
-    ok(ButtonDialog.last.title == "Delete which template?", "templates: the last row switches to deleting")
-    ButtonDialog.last.buttons[1][1].callback()
+    pressIn(view._list, "Delete a template\u{2026}")
+    ok(textIn(view._list):find("Delete which template?", 1, true), "templates: the last row switches to deleting")
+    pressIn(view._list, "Meeting")
     UIManager.shown.ok_callback()
     ok(#Templates.list(LIB) == 0, "templates: and a tap deletes one, after asking")
     UIManager:close(view)
@@ -4986,8 +5096,8 @@ do
     view:openNotebookPaper(LIB)
     view:closeSheet("_new_dialog")
     view:chooseNotebookTemplate(LIB)
-    ok(ButtonDialog.last and ButtonDialog.last.buttons[1][1].text == "Week plan", "new: the templates are offered")
-    ButtonDialog.last.buttons[1][1].callback()
+    ok(view._list and findButton(view._list, "Week plan"), "new: the templates are offered")
+    pressIn(view._list, "Week plan")
     ok(view.notebook and view.doc_path == LIB .. "/Week plan.inkaway" and view.doc_written,
         "new: a notebook from a template is named after it and saved")
     local data = Project.load(view.doc_path)
@@ -5004,12 +5114,12 @@ do
         "new: + New, Drawing makes a drawing in that folder at once")
 
     -- holding New drawing starts one over a picture, named after it and saved
-    local PathChooser = require("ui/widget/pathchooser")
     local pic = LIB .. "/School/beach.png"
     local f = io.open(pic, "wb"); f:write("png"); f:close()
     view:newFromImage(LIB)
-    ok(PathChooser.last and PathChooser.last.select_file, "new: a drawing from a picture asks for the picture")
-    PathChooser.last.onConfirm(pic)
+    ok(UIManager.shown and UIManager.shown.on_pick and not UIManager.shown.actions,
+        "new: a drawing from a picture asks for the picture")
+    pickPath(pic)
     ok(view.doc_path == LIB .. "/beach.inkaway" and view.doc_written and view.bg_path == pic,
         "new: and starts a drawing over it, named after it")
 
@@ -5634,7 +5744,6 @@ end
 -- search that is stopped or fails without harm.
 do
     local TestEnv = require("testenv")
-    local InputDialog = require("ui/widget/inputdialog")
     local Search = require("ink/search")
     local Text = require("ink/text")
     local LIB = TestEnv.libraryDir() .. "/searchview"
@@ -5686,10 +5795,8 @@ do
     for _, a in ipairs(view._library.actions) do if a.icon and a.icon:find("search", 1, true) then pill = a end end
     ok(pill ~= nil, "search: the library header has a magnifier")
     pill[2]()
-    local d = InputDialog.last
-    ok(d and d.title == "Search", "search: it asks what to look for")
-    d.input = "forces"
-    for _, b in ipairs(d.buttons[1]) do if b.is_enter_default then b.callback() end end
+    ok(view._prompt and textIn(view._prompt):find("Search", 1, true), "search: it asks what to look for")
+    answer("forces")
     drain()
     ok(got and #got == 1 and got[1].kind == "page" and got[1].page == 2, "search: a page is found by its title, "
         .. "with the open notebook's latest changes")

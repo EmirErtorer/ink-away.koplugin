@@ -6,13 +6,11 @@ Part of InkAwayView (see ink/view.lua).
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local OverlapGroup = require("ui/widget/overlapgroup")
-local SpinWidget = require("ui/widget/spinwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -84,6 +82,7 @@ function InkAwayView:openBrushMaker()
     if not ok then return end
     local maker = BrushMaker:new{
         params = Brushes.defaults(),
+        prompt = function(o) self:promptText(o) end,   -- (the name, asked in Ink Away's own sheet)
         on_save = function(name, params)
             local key = Brushes.save(
                 function(k) return self:getSetting(k) end,
@@ -97,10 +96,10 @@ function InkAwayView:openBrushMaker()
 end
 
 function InkAwayView:confirmDeleteBrush(key, label)
-    UIManager:show(ConfirmBox:new{
-        text = string.format(_("Delete the brush \"%s\"?"), label),
-        ok_text = _("Delete"),
-        ok_callback = function()
+    self:ask{
+        title = string.format(_("Delete the brush \u{201C}%s\u{201D}?"), label),
+        ok_text = _("Delete"), ok_icon = "trash",
+        on_ok = function()
             local name = key:gsub("^user:", "")
             Brushes.remove(function(k) return self:getSetting(k) end,
                            function(k, v) self:setSetting(k, v) end, name)
@@ -113,7 +112,7 @@ function InkAwayView:confirmDeleteBrush(key, label)
             self:savePens()
             self:openPenSettings()
         end,
-    })
+    }
 end
 
 -- The eraser sheet: a size slider, the Erase pictures and Erase whole strokes
@@ -155,17 +154,17 @@ end
 
 -- Arrowhead size, in canvas pixels (used by the arrow shapes).
 function InkAwayView:openArrowSize()
-    UIManager:show(SpinWidget:new{
-        title_text = _("Arrowhead size"),
-        info_text = _("How big the arrowheads are, in canvas pixels."),
-        value = self.arrow_head, value_min = 6, value_max = 120, value_step = 2, value_hold_step = 10,
-        unit = _("px"),
-        callback = function(spin)
-            self.arrow_head = math.max(4, math.floor(spin.value))
+    self:askNumber{
+        title = _("Arrowhead size"),
+        note = _("How big the arrowheads are, in canvas pixels."),
+        label = _("Size"), value = self.arrow_head, min = 6, max = 120, step = 2,
+        format = function(v) return string.format("%d %s", v, _("px")) end,
+        on_done = function(v)
+            self.arrow_head = math.max(4, math.floor(v))
             self:setSetting("inkaway_arrow_head", self.arrow_head)
             self:openShapeLineMenu()
         end,
-    })
+    }
 end
 
 -- The Shapes sheet: large shape tiles (a caret in the Line tile's corner opens

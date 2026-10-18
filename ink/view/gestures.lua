@@ -5,7 +5,6 @@ and the settings sheet where each gesture and button is given its action.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
 local GeomUI = require("ui/geometry")
@@ -336,13 +335,13 @@ function InkAwayView:chooseGestureAction(t)
         if #info.also == 0 then return apply(id, false) end
         local names = {}
         for _i, other in ipairs(info.also) do names[#names + 1] = _(Actions.trigger(other).label) end
-        UIManager:show(ConfirmBox:new{
+        self:ask{ title = _("Already in use"),
             text = string.format(_("%s already does \"%s\". Use it only for %s, or for both?"),
                 table.concat(names, ", "), self:actionLabel(id), _(t.label)),
             ok_text = _("Only this one"), cancel_text = _("Both"),
-            ok_callback = function() apply(id, true) end,
-            cancel_callback = function() apply(id, false) end,
-        })
+            on_ok = function() apply(id, true) end,
+            on_cancel = function() apply(id, false) end,
+            on_dismiss = function() end }
     end
     local build = function()
         local content = VerticalGroup:new{ align = "left" }

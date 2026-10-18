@@ -6,7 +6,6 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
-local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
@@ -389,7 +388,7 @@ function InkAwayView:fingerNote(mode, len)
     local text = mode == "nothing"
         and _("Palm rejection is on, so the pen draws and a finger does nothing on the page.\n\nTo draw with a finger, turn off Palm rejection in the pen menu, Pen and input.")
         or _("Palm rejection is on, so the pen draws and a finger moves the page.\n\nTo draw with a finger, turn off Palm rejection in the pen menu, Pen and input.")
-    UIManager:show(InfoMessage:new{ text = text })
+    self:tell(text)
 end
 
 -- A finger dragged the page `len` px while palm rejection waited for a pen that
@@ -400,7 +399,7 @@ function InkAwayView:noPenDrag(len)
     self._no_pen_drags = (self._no_pen_drags or 0) + 1
     if self._no_pen_drags < PenTest.NO_PEN_DRAGS then return end
     InkAwayView._no_pen_hinted = true
-    UIManager:show(InfoMessage:new{ text = _(PenTest.NO_PEN_HINT) })
+    self:tell(_(PenTest.NO_PEN_HINT))
 end
 
 -- A hold at `pos` by a navigating finger: open the picture's, shape's or text
