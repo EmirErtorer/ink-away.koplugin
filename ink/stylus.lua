@@ -34,6 +34,38 @@ function Stylus.rotate(x, y, mode, w, h)
     return x, y                -- upright: unchanged
 end
 
+-- Kobo models made for a pen: Elipsa, Sage, Elipsa 2E, and the Libra Colour
+-- with its Tolino twin. KOReader has no flag for a Kobo stylus.
+Stylus.PEN_KOBOS = { Kobo_europa = true, Kobo_cadmus = true, Kobo_condor = true, Kobo_monza = true }
+
+-- A pen slot's point on the screen, from the touch panel's coordinates, as the
+-- screen `S` (KOReader's) is turned now.
+function Stylus.screenXY(slot, S)
+    local mode = 0
+    if S.getTouchRotation then
+        local rot = S:getTouchRotation()
+        if rot == S.DEVICE_ROTATED_CLOCKWISE then mode = 1
+        elseif rot == S.DEVICE_ROTATED_UPSIDE_DOWN then mode = 2
+        elseif rot == S.DEVICE_ROTATED_COUNTER_CLOCKWISE then mode = 3 end
+    end
+    return Stylus.rotate(slot.x, slot.y, mode, S:getWidth(), S:getHeight())
+end
+
+-- The live Input facts Stylus.classify and Stylus.penAction need (see there),
+-- from KOReader's Input `input`, the pen slot learned so far, and whether this
+-- is Android.
+function Stylus.facts(input, learned_slot, android)
+    return {
+        pen_slot          = input and input.pen_slot,
+        learned_slot      = learned_slot,   -- slot a real TOOL_PEN was seen on
+        wacom             = input and input.wacom_protocol == true,
+        -- (pencil.koplugin's input.lua names them kobo_*_active)
+        eraser_latch      = input and (input.stylus_eraser_active == true or input.kobo_eraser_active == true),
+        highlighter_latch = input and (input.stylus_highlighter_active == true or input.kobo_highlighter_active == true),
+        android           = android and true or false,
+    }
+end
+
 -- Is a tool type one of the pen-like tools we take over?
 function Stylus.isPen(tool)
     return tool == Stylus.TOOL_PEN

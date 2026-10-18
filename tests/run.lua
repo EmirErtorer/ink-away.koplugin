@@ -15,6 +15,7 @@ if exists(KO_SRC .. "/frontend/device/input.lua") then
     suites[#suites + 1] = "tests/scribe/views.lua"
     suites[#suites + 1] = "tests/gestures.lua"
     suites[#suites + 1] = "tests/kobopen.lua"
+    suites[#suites + 1] = "tests/penhighlight.lua"
 end
 -- Pixel-level checks on KOReader's real C blitter, run with the emulator's luajit.
 -- The emulator's koreader folder is found in the checkout, or set with KO_EMU.

@@ -61,6 +61,12 @@ function InkAway:init()
             self.book = Book.new(self.ui)
             self.book.plugin = self
             self.ui.view:registerViewModule("inkaway", self.book:overlay())
+            -- highlighting with the pen's button while reading (see there)
+            local hok, PenHighlight = pcall(require, "ink/reader/penhighlight")
+            if hok then
+                self.pen_highlight = PenHighlight.new(self.book)
+                self.pen_highlight:attach()
+            end
         end
     end
     -- the book gestures, once, after every plugin (the gesture manager too) is up
@@ -100,6 +106,19 @@ function InkAway:addToMainMenu(menu_items)
                   callback = function() self:openCanvas() end },
             },
         }
+        local PenHighlight = self.pen_highlight and require("ink/reader/penhighlight")
+        if PenHighlight and PenHighlight.penReader() then
+            table.insert(menu_items.inkaway.sub_item_table, {
+                text = _("Highlight with the pen's button"),
+                help_text = _("Hold the pen's side button and run the pen over a line of text: it becomes a highlight, without opening the annotation mode. The button is the one set to Highlighter in Gestures and pen buttons."),
+                checked_func = function() return PenHighlight.enabled() end,
+                callback = function()
+                    local on = not PenHighlight.enabled()
+                    PenHighlight.setEnabled(on)
+                    if on then self.pen_highlight:attach() else self.pen_highlight:detach() end
+                end,
+            })
+        end
         return
     end
     menu_items.inkaway = {
@@ -162,6 +181,8 @@ end
 -- The book is closing: leave nothing of ours open over it.
 function InkAway:onCloseDocument()
     if self.book then self.book:close() end
+    -- (after the views over the book, which give the pen back as they close)
+    if self.pen_highlight then self.pen_highlight:detach() end
 end
 
 -- The gesture actions, when a gesture is mapped to Ink Away or its library.

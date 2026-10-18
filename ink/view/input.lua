@@ -21,9 +21,7 @@ local Screen = Device.screen
 -- usually lifts a fraction of a second after the pen, so this stops it landing a
 -- stray mark or tap in the gap.
 local PEN_LIFT_DEBOUNCE = 0.35
--- Kobo models made for a pen: Elipsa, Sage, Elipsa 2E, and the Libra Colour
--- with its Tolino twin. KOReader has no flag for a Kobo stylus.
-local PEN_KOBOS = { Kobo_europa = true, Kobo_cadmus = true, Kobo_condor = true, Kobo_monza = true }
+local PEN_KOBOS = Stylus.PEN_KOBOS
 
 -- Raw finger tracking (see installRawFinger): the tools drawn straight from touch
 -- frames, and how young or short a raw stroke may be for a second finger landing
@@ -479,31 +477,14 @@ end
 -- Translate a raw slot position into the screen coordinates a finger gesture
 -- would carry (raw position, then the screen rotation).
 function InkAwayView:penScreenXY(slot)
-    local S = Screen
-    local mode = 0
-    if S.getTouchRotation then
-        local rot = S:getTouchRotation()
-        if rot == S.DEVICE_ROTATED_CLOCKWISE then mode = 1
-        elseif rot == S.DEVICE_ROTATED_UPSIDE_DOWN then mode = 2
-        elseif rot == S.DEVICE_ROTATED_COUNTER_CLOCKWISE then mode = 3 end
-    end
-    return Stylus.rotate(slot.x, slot.y, mode, S:getWidth(), S:getHeight())
+    return Stylus.screenXY(slot, Screen)
 end
 
 -- The live Input facts Stylus.classify needs to tell a real pen from a promoted
 -- palm: the dedicated pen slot, whether this is a Wacom-protocol device, and the
 -- barrel-button latches KOReader keeps.
 function InkAwayView:stylusFacts(input)
-    input = input or Device.input
-    return {
-        pen_slot          = input and input.pen_slot,
-        learned_slot      = self._learned_pen_slot,   -- slot a real TOOL_PEN was seen on
-        wacom             = input and input.wacom_protocol == true,
-        -- (pencil.koplugin's input.lua names them kobo_*_active)
-        eraser_latch      = input and (input.stylus_eraser_active == true or input.kobo_eraser_active == true),
-        highlighter_latch = input and (input.stylus_highlighter_active == true or input.kobo_highlighter_active == true),
-        android           = self:onAndroid(),
-    }
+    return Stylus.facts(input or Device.input, self._learned_pen_slot, self:onAndroid())
 end
 
 -- Milliseconds since the previous stylus frame, from the slot's own timestamp,
