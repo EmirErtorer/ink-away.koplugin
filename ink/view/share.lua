@@ -298,7 +298,7 @@ function InkAwayView:showSendSheet()
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Phone or computer (Wi-Fi)"), content_w, _("Stop"), closeSelf))
         add(VerticalSpan:new{ width = S(10) })
-        add(para(_("On a phone or computer on the same Wi-Fi, scan the code or open this address in a browser:")))
+        add(para(_("Scan with a phone or computer on the same Wi-Fi, or open:")))
         add(VerticalSpan:new{ width = S(12) })
         local side = math.floor(math.min(content_w * 0.62, math.min(Screen:getWidth(), Screen:getHeight()) * 0.5))
         local okq, QRWidget = pcall(require, "ui/widget/qrwidget")
@@ -338,13 +338,13 @@ function InkAwayView:showSendSheet()
                 width = content_w, parent = self._send_dialog,
                 callback = function(on) self:setSetting("inkaway_send_ask_open", on) end })
             add(VerticalSpan:new{ width = S(6) })
-            add(para(_("Files sent from the page arrive in Library › Imported, each kind in its own folder: PDFs (as notebooks you can write on), Pictures, and Notebooks and drawings. If the page was already open, reload it."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+            add(para(_("Files arrive in Library › Imported. Reload the page if it was open."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         else
             add(VerticalSpan:new{ width = S(6) })
-            add(para(_("Turn on to send PDFs and pictures to this reader from the page."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+            add(para(_("Turn on to send PDFs and pictures here."), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         end
         add(VerticalSpan:new{ width = S(10) })
-        add(para(string.format(_("Sharing stops when you close this, or after %d minutes of nothing happening. Use a Wi-Fi you trust: anyone on it with this address can open the page."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
+        add(para(string.format(_("Stops when closed or after %d idle minutes. Use a Wi-Fi you trust."), IDLE_MINUTES), 14, false, Blitbuffer.COLOR_DARK_GRAY))
         return content
     end
     self:showSheet("_send_dialog", build)
