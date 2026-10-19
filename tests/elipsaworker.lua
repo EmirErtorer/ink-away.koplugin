@@ -27,19 +27,33 @@ local data = C.mmap(nil, 4096, 3, 0x21, -1, 0) -- PROT_READ|WRITE, MAP_SHARED|AN
 assert(data ~= ffi.cast("void *", -1))
 local shared = ffi.cast("int32_t *", data)
 local fail_toggle = false
-local sys = setmetatable({ AF_UNIX = 1, SOCK_SEQPACKET = 5, POLLIN = 1, PRIO_PROCESS = 0, EINTR = 4 }, {
+-- KOReader's sunxi display command block (ffi/sunxi_kobo_h), as far as the
+-- handwriting switch goes: a union seven words long, zeroed by ffi.new.
+ffi.cdef[[
+    typedef union {
+        unsigned long raw[7];
+        struct { bool enable; } toggle_handw;
+    } sunxi_disp_eink_ioctl;
+]]
+local sys = setmetatable({ AF_UNIX = 1, SOCK_SEQPACKET = 5, SOCK_CLOEXEC = 0x80000, POLLIN = 1, PRIO_PROCESS = 0,
+    EINTR = 4, DISP_EINK_SET_NTX_HANDWRITE_ONOFF = 0x4015 }, {
     __index = function(_, name) return C[name] end,
 })
 function sys.ioctl(fd, request, arg)
     assert(fd == 123 and request == 0x4015, "the exact Elipsa handwriting ABI")
+    -- the driver reads a whole word: on and off must be the whole word, not one byte
+    local word = ffi.cast("unsigned long *", arg)[0]
+    assert(word == 0 or word == 1, "the handwriting switch is a clean 0 or 1 word")
     if fail_toggle then return -1 end
-    shared[0] = arg[0] and 1 or 0
-    if arg[0] then shared[1] = shared[1] + 1 else shared[2] = shared[2] + 1 end
+    local on = arg.toggle_handw.enable
+    shared[0] = on and 1 or 0
+    if on then shared[1] = shared[1] + 1 else shared[2] = shared[2] + 1 end
     return 0
 end
 -- Use the real FFI functions and kernel IPC; only hardware ioctl is substituted.
 package.loaded["ffi"] = setmetatable({ C = sys }, { __index = ffi })
 package.loaded["ffi/posix_h"] = true
+package.loaded["ffi/sunxi_kobo_h"] = true
 local pids = {}
 package.loaded["ffi/util"] = {
     runInSubProcess = function(fn)
@@ -58,7 +72,7 @@ package.loaded["ffi/util"] = {
     end,
     terminateSubProcess = function(pid) C.kill(pid, 9) end,
 }
-local Worker = require("ink/elipsaworker")
+local ElipsaWorker = require("ink/elipsaworker")
 local checks, failures = 0, 0
 local function ok(cond, what)
     checks = checks + 1
@@ -66,7 +80,7 @@ local function ok(cond, what)
 end
 local fb = { fd = 123, waveform_fast = 2, marker_data = ffi.new("uint32_t[1]") }
 do
-    local worker = assert(Worker.start(fb, function(screen, no_merge, flash, mode, x, y, w, h)
+    local worker = assert(ElipsaWorker.start(fb, function(screen, no_merge, flash, mode, x, y, w, h)
         assert(not no_merge and not flash and mode == 2)
         C.usleep(100000) -- emulate a blocking sunxi update ioctl
         shared[3], shared[4], shared[5], shared[6] = x, y, w, h
@@ -85,7 +99,7 @@ do
     ok(C.waitpid(pids[#pids], nil, 1) == -1, "worker reaped, no zombie")
 end
 do
-    local worker = assert(Worker.start(fb, function() error("driver failure") end))
+    local worker = assert(ElipsaWorker.start(fb, function() error("driver failure") end))
     worker:send({ x = 1, y = 2, w = 3, h = 4 })
     ok(worker:poll(true) == false, "Lua driver failure reported through IPC")
     worker:close(true)
@@ -95,7 +109,7 @@ end
 do
     fail_toggle = true
     local count = #pids
-    local worker = Worker.start(fb, function() end)
+    local worker = ElipsaWorker.start(fb, function() end)
     ok(not worker and #pids == count, "unsupported handwriting ioctl never forks")
 end
 C.munmap(data, 4096)

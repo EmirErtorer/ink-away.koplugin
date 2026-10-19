@@ -420,6 +420,18 @@ function InkAwayView:onSetDimensions()
     UIManager:setDirty(self, "full")
 end
 
+-- KOReader puts the reader to sleep: the Elipsa's display helper stops (see
+-- startElipsaDrive) and so does sharing.
+function InkAwayView:onSuspend()
+    self:stopElipsaDrive()
+    self:stopSendForSleep()
+end
+
+-- The reader wakes with Ink Away open: the display helper comes back.
+function InkAwayView:onResume()
+    self:startElipsaDrive()
+end
+
 function InkAwayView:onCloseWidget()
     self.closing = true
     self:updatesOnClose()

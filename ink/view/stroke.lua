@@ -322,10 +322,9 @@ function InkAwayView:beginStroke(sx, sy)
         self._live_mode = (reveal and not self:einkDriven()) and "ui" or "fast"
     else
         -- on a colour panel every pen draws with "fast", and on a grey Boox Ink
-        -- Away drives every opaque one, as on the original Elipsa (see fastLive
-        -- and setupLiveWriters), settled
-        -- once the pen rests; a see-through pen there would show as a black bar
-        -- over the text until then
+        -- Away drives, or the original Elipsa, every opaque one (see fastLive and
+        -- setupLiveWriters), settled once the pen rests; a see-through pen there
+        -- would show as a black bar over the text until then
         local opaque = (self.pen_alpha or 255) >= 255
         self._live_mode = (self:pureBlackPen() or self:colourPanel()
             or (opaque and (self:einkDriven() or self:elipsaDriven()))) and "fast" or "ui"

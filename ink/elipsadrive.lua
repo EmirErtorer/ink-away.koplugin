@@ -1,15 +1,27 @@
 --[[
-Elipsa-only live refreshes, using the handwriting ioctl and a display worker.
-One refresh is in flight; everything drawn meanwhile becomes one pending union,
-never a queue of old pen positions. Non-live refreshes and layout changes drain
-and stop the worker first, preserving KOReader's ordering and marker tracking.
+Fast ink on the original Kobo Elipsa. Each update of its screen holds KOReader
+until the panel has taken it, and meanwhile no pen or finger frame is read, so
+the ink trailed well behind the nib (#45). While Ink Away is open there, its
+fast updates go to a helper process instead (ink/elipsaworker.lua), which waits
+on the panel while KOReader goes on reading the pen.
+
+One update is with the helper at a time. Everything drawn meanwhile becomes one
+rectangle, sent next, so the screen catches up with the pen rather than
+replaying where it was. Any other refresh (a menu, a full refresh), a turn of
+the screen or KOReader closing the screen first waits for the helper, stops it
+and shows what was left, so updates keep KOReader's order. The helper starts
+again with the next fast update. If it fails, the updates are made as before.
+
+Only on the Elipsa of 2021 (KOReader's Kobo_europa), not the Sage or the Elipsa
+2E. Plain Lua: the screen and the helper are passed in, so the headless tests
+drive it.
 ]]
-local Drive = {}
+local ElipsaDrive = {}
 local state
 local POLL_SEC = 0.01
 
--- Restrict this experiment to the original Elipsa and its ION/sunxi backend.
-function Drive.supported(device, screen)
+-- Is this the original Elipsa, with the screen its helper needs?
+function ElipsaDrive.supported(device, screen)
     return device.model == "Kobo_europa" and type(device.isSunxi) == "function" and device:isSunxi()
         and screen and screen.fd and screen.fd >= 0 and screen.data ~= nil
         and screen.layer ~= nil and screen.marker_data ~= nil and screen.waveform_fast ~= nil
@@ -26,23 +38,24 @@ local function union(a, b)
     return a
 end
 
--- Start sharing the screen hook between open drawing views. Factory injection
--- lets tests model a blocking driver without forking or needing the device.
-function Drive.acquire(device, screen, ui, log, factory)
+-- Take over the fast updates for an open view (the views open at once share
+-- it). `uim` is KOReader's UIManager; `factory` starts the helper (the tests
+-- give one that blocks like the panel, without forking).
+function ElipsaDrive.acquire(device, screen, uim, log, factory)
     if state then
         if state.screen ~= screen or state.broken then return false end
         state.users = state.users + 1
         return true
     end
-    if not Drive.supported(device, screen) then return false end
-    local s = { screen = screen, users = 1, ui = ui, log = log, hooks = {} }
+    if not ElipsaDrive.supported(device, screen) then return false end
+    local s = { screen = screen, users = 1, uim = uim, log = log, hooks = {} }
     local refresh = screen.mech_refresh
     factory = factory or function() return require("ink/elipsaworker").start(screen, refresh) end
 
     -- A failed transport returns its outstanding rectangle to the caller for a
     -- synchronous repaint. Nothing is silently lost on startup or worker failure.
     local function stop(failed)
-        ui:unschedule(s.tick)
+        uim:unschedule(s.tick)
         if s.worker then
             if not s.worker:close(failed) and log then log("Ink Away: Elipsa handwriting mode could not be disabled") end
             s.worker = nil
@@ -82,7 +95,7 @@ function Drive.acquire(device, screen, ui, log, factory)
 
     -- Fence the worker before UI waveforms, rotation, waiting, or closing ION.
     function s.barrier()
-        ui:unschedule(s.tick)
+        uim:unschedule(s.tick)
         if s.busy then complete(true) end
         if not s.broken then
             send()
@@ -97,7 +110,7 @@ function Drive.acquire(device, screen, ui, log, factory)
         complete(false)
         send()
         if s.broken then repaint() end
-        if s.busy then ui:scheduleIn(POLL_SEC, s.tick) end
+        if s.busy then uim:scheduleIn(POLL_SEC, s.tick) end
     end
 
     -- Preserve other plugins' wrappers, including ones installed after this one.
@@ -115,7 +128,7 @@ function Drive.acquire(device, screen, ui, log, factory)
         if not s.broken and not no_merge and not flashing and mode == fb.waveform_fast
             and not fb._just_rotated and x and y and w and h and w > 1 and h > 1 then
             s.pending = union(s.pending, { x = x, y = y, w = w, h = h })
-            ui:unschedule(s.tick)
+            uim:unschedule(s.tick)
             s.tick()
             return
         end
@@ -132,11 +145,11 @@ function Drive.acquire(device, screen, ui, log, factory)
     return true
 end
 
--- Is the Elipsa experiment available for the open drawing views?
-function Drive.active() return state ~= nil and not state.broken end
+-- Are the fast updates going to the helper?
+function ElipsaDrive.active() return state ~= nil and not state.broken end
 
 -- The last view out drains work and restores the screen before freeing buffers.
-function Drive.release()
+function ElipsaDrive.release()
     local s = state
     if not s then return end
     s.users = s.users - 1
@@ -148,4 +161,4 @@ function Drive.release()
     end
 end
 
-return Drive
+return ElipsaDrive

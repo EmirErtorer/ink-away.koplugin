@@ -1,6 +1,6 @@
 -- Elipsa worker ordering and failure recovery with a deliberately slow transport.
 package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
-local Drive = require("ink/elipsadrive")
+local ElipsaDrive = require("ink/elipsadrive")
 local ui = require("ui/uimanager")
 local checks, failures = 0, 0
 local function ok(cond, what)
@@ -48,15 +48,15 @@ local function fast(fb, x, y, w, h) fb:mech_refresh(false, false, 2, x or 10, y 
 do
     local fb = world()
     for _, name in ipairs({ "Kobo_cadmus", "Kobo_condor", "KindleScribe", "SDL" }) do
-        ok(not Drive.acquire({ model = name, isSunxi = device.isSunxi }, fb, ui), "excluded: " .. name)
+        ok(not ElipsaDrive.acquire({ model = name, isSunxi = device.isSunxi }, fb, ui), "excluded: " .. name)
     end
     fb.data = nil
-    ok(not Drive.acquire(device, fb, ui), "missing ION buffer: no hook")
+    ok(not ElipsaDrive.acquire(device, fb, ui), "missing ION buffer: no hook")
 end
 do
     local fb, calls, workers, factory = world()
     local original = fb.mech_refresh
-    ok(Drive.acquire(device, fb, ui, nil, factory), "Elipsa acquired")
+    ok(ElipsaDrive.acquire(device, fb, ui, nil, factory), "Elipsa acquired")
     fast(fb)
     ok(#calls == 0 and #workers == 1 and #workers[1].sent == 1, "first update goes to worker without synchronous refresh")
     for i = 1, 100 do fast(fb, 100 + i, 50, 5, 6) end
@@ -77,21 +77,21 @@ do
     fb:refreshWaitForLastImp()
     ok(workers[3].closed and calls[3].mode == "wait" and calls[3].marker == 1, "panel wait fences worker")
     fast(fb)
-    Drive.release()
-    ok(workers[4].closed and not Drive.active(), "suspend releases worker and screen hooks")
-    Drive.acquire(device, fb, ui, nil, factory)
-    Drive.acquire(device, fb, ui, nil, factory)
-    Drive.release()
-    ok(Drive.active(), "nested view holds driver")
+    ElipsaDrive.release()
+    ok(workers[4].closed and not ElipsaDrive.active(), "suspend releases worker and screen hooks")
+    ElipsaDrive.acquire(device, fb, ui, nil, factory)
+    ElipsaDrive.acquire(device, fb, ui, nil, factory)
+    ElipsaDrive.release()
+    ok(ElipsaDrive.active(), "nested view holds driver")
     fast(fb)
-    Drive.release()
-    ok(not Drive.active() and workers[5].closed and fb.mech_refresh == original and not rawget(fb, "mech_refresh"),
+    ElipsaDrive.release()
+    ok(not ElipsaDrive.active() and workers[5].closed and fb.mech_refresh == original and not rawget(fb, "mech_refresh"),
         "last view drains and restores inherited methods")
     ok(ui.pendingCount() == 0, "no timers left on close")
 end
 do
     local fb, calls, workers, factory = world()
-    Drive.acquire(device, fb, ui, nil, factory)
+    ElipsaDrive.acquire(device, fb, ui, nil, factory)
     fb._just_rotated = true
     fast(fb)
     ok(#workers == 0 and #calls == 1, "first refresh after rotation stays synchronous")
@@ -100,30 +100,30 @@ do
     fast(fb, 100, 100)
     workers[1].dead = true
     ui.fireScheduled()
-    ok(not Drive.active() and workers[1].failed and #calls == 2, "dead worker killed and pending pixels repainted")
+    ok(not ElipsaDrive.active() and workers[1].failed and #calls == 2, "dead worker killed and pending pixels repainted")
     ok(calls[2].x == 10 and calls[2].y == 20 and calls[2].w == 95 and calls[2].h == 86,
         "repaint includes both in-flight and pending rectangles")
-    ok(not Drive.acquire(device, fb, ui, nil, factory), "failed acquire does not leak a reference")
+    ok(not ElipsaDrive.acquire(device, fb, ui, nil, factory), "failed acquire does not leak a reference")
     fast(fb)
     ok(#calls == 3, "failure latches synchronous fallback")
-    Drive.release()
+    ElipsaDrive.release()
     ok(ui.pendingCount() == 0 and not rawget(fb, "mech_refresh"), "failed session cleans up")
 end
 do
     local fb, calls, _, factory, fail_start = world()
-    Drive.acquire(device, fb, ui, nil, factory)
+    ElipsaDrive.acquire(device, fb, ui, nil, factory)
     fail_start()
     fast(fb)
-    ok(#calls == 1 and not Drive.active(), "fork/ioctl failure falls back with the original rectangle")
-    Drive.release()
+    ok(#calls == 1 and not ElipsaDrive.active(), "fork/ioctl failure falls back with the original rectangle")
+    ElipsaDrive.release()
 end
 do
     local fb, calls, _, factory = world()
-    Drive.acquire(device, fb, ui, nil, factory)
+    ElipsaDrive.acquire(device, fb, ui, nil, factory)
     local ours = fb.mech_refresh
     local theirs = function(self, ...) return ours(self, ...) end
     fb.mech_refresh = theirs
-    Drive.release()
+    ElipsaDrive.release()
     fast(fb)
     ok(fb.mech_refresh == theirs and #calls == 1, "a later plugin wrapper survives release")
 end

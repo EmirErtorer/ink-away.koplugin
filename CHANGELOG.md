@@ -50,8 +50,10 @@ versions marked *Prerelease* were test builds.
   than in Settings.
 
 ### Fixed
-- First-generation Kobo Elipsa: enable handwriting mode with the device ioctl
-  and use a separate display worker so updates do not hold up input.
+- Kobo Elipsa (the 2021 model): drawing keeps up with the pen and a finger. It
+  trailed well behind, as each screen update held up the reader until the
+  screen had taken it; now a helper makes the updates, with the screen's own
+  handwriting mode on, as in Kobo's notebooks. Thanks to maks (#45, #48).
 
 ## [4.2.0] - 2026-10-17
 

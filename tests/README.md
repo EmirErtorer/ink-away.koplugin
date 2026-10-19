@@ -43,3 +43,22 @@ skipped.
   See `performance/README.md`.
 - `rotverify.lua` checks the landscape rendering byte for byte. Run it from the
   emulator's `koreader` folder: `./luajit /path/to/ink-away.koplugin/tests/rotverify.lua`
+
+## On a device
+
+Some of the screen handling can only be checked on the reader itself.
+
+- **Kobo Elipsa (2021):** the fast updates go to a helper process
+  (`ink/elipsadrive.lua`, `ink/elipsaworker.lua`). `elipsadrive.lua` and
+  `elipsaworker.lua` here check the ordering and the helper's channel (the
+  second only on Linux), not the panel. On the reader:
+  1. On a blank page, write quickly with the Fineliner, with the pen and then a
+     finger: the line follows, and quick strokes stay apart.
+  2. Write with the Ballpoint and the Pencil: the Pencil's black while drawing
+     turns grey once the pen rests, and the end of every stroke shows.
+  3. Turn the screen, undo, open and close a menu, turn a notebook page, close
+     and open Ink Away: nothing is missing, stale or frozen.
+  4. Put the reader to sleep with a drawing open, wake it, write, and go back to
+     a book: page turns and full refreshes still work.
+
+  If the helper fails, crash.log says "Elipsa refresh worker failed" and why.
