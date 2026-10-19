@@ -49,6 +49,12 @@ versions marked *Prerelease* were test builds.
   long press sheet ("Use for new notebooks", which was "Use for all") rather
   than in Settings.
 
+### Fixed
+- Kobo Elipsa (the 2021 model): drawing keeps up with the pen and a finger. It
+  trailed well behind, as each screen update held up the reader until the
+  screen had taken it; now a helper makes the updates, with the screen's own
+  handwriting mode on, as in Kobo's notebooks. Thanks to maks (#45, #48).
+
 ## [4.2.0] - 2026-10-17
 
 Everything from the 4.1.0 and 4.1.1 prereleases, now tested on readers, plus

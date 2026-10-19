@@ -11,6 +11,7 @@ local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local EinkDrive = require("ink/einkdrive")
+local ElipsaDrive = require("ink/elipsadrive")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Symmetry = require("ink/symmetry")
@@ -353,6 +354,29 @@ function InkAwayView:stopEinkDrive()
     EinkDrive.release()
 end
 
+-- On the original Elipsa the fast updates go to a helper process, so waiting on
+-- the panel never holds up the pen or a finger (see ink/elipsadrive.lua).
+function InkAwayView:startElipsaDrive()
+    if self._elipsa_drive or self.closing then return end
+    self._elipsa_drive = ElipsaDrive.acquire(Device, Screen, UIManager,
+        function(...) logger.warn(...) end) or nil
+end
+
+-- Give the updates back to KOReader, after the helper has shown what it still
+-- had (before the view's buffers and the screen's orientation are put back).
+function InkAwayView:stopElipsaDrive()
+    if not self._elipsa_drive then return end
+    self._elipsa_drive = nil
+    ElipsaDrive.release()
+end
+
+-- Is this the original Elipsa with its helper taken? (Still true once the helper
+-- has failed: the updates made as before are fast black and white too, so ink
+-- drawn black while the pen moves still needs its true colour once it rests.)
+function InkAwayView:elipsaDriven()
+    return self._elipsa_drive == true
+end
+
 -- Is Ink Away asking the panel for its waveforms itself?
 function InkAwayView:einkDriven()
     return self._eink_drive == true and EinkDrive.active()
@@ -360,9 +384,9 @@ end
 
 -- Is live ink shown with the fast black-and-white waveform whatever the pen,
 -- with one refresh settling grey and colour once the pen rests? On a colour panel,
--- where the colour waveform blocks on each sample, and on a Boox Ink Away drives.
+-- a Boox Ink Away drives, or the original Elipsa's handwriting worker.
 function InkAwayView:fastLive()
-    return self:colourPanel() or self:einkDriven()
+    return self:colourPanel() or self:einkDriven() or self:elipsaDriven()
 end
 
 

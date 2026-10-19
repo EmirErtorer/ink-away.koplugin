@@ -392,6 +392,7 @@ end
 function InkAwayView:onShow()
     self:installRawFinger()
     self:startEinkDrive()
+    self:startElipsaDrive()
     UIManager:setDirty(self, "full")
     -- opened here rather than a tick later, so its refresh joins the canvas's and
     -- the screen flashes once, not twice
@@ -419,11 +420,24 @@ function InkAwayView:onSetDimensions()
     UIManager:setDirty(self, "full")
 end
 
+-- KOReader puts the reader to sleep: the Elipsa's display helper stops (see
+-- startElipsaDrive) and so does sharing.
+function InkAwayView:onSuspend()
+    self:stopElipsaDrive()
+    self:stopSendForSleep()
+end
+
+-- The reader wakes with Ink Away open: the display helper comes back.
+function InkAwayView:onResume()
+    self:startElipsaDrive()
+end
+
 function InkAwayView:onCloseWidget()
     self.closing = true
     self:updatesOnClose()
     self:uninstallRawFinger()
     self:stopEinkDrive()
+    self:stopElipsaDrive()
     self:removePenBridge()
     self:releaseStylus()   -- the pen goes back to the view under this one, if any
     UIManager:unschedule(self._pen_clear)
