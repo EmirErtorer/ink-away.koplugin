@@ -50,6 +50,9 @@ versions marked *Prerelease* were test builds.
   than in Settings.
 
 ### Fixed
+- Erasing was slow and left trails of circles on e-ink (#47): the eraser's outline
+  under the pen is now off unless turned on in the Eraser sheet (Show the eraser
+  while erasing).
 - Kobo Elipsa (the 2021 model): drawing keeps up with the pen and a finger. It
   trailed well behind, as each screen update held up the reader until the
   screen had taken it; now a helper makes the updates, with the screen's own

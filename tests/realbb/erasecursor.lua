@@ -48,6 +48,8 @@ local function run(typ, case, outline)
     for x = cx0, cx1, 4 do local px, py = scr(x, cy); view:onIaPan(nil, { pos = { x = px, y = py } }) end
     local ex, ey = scr(cx1, cy)
     view:onIaPanRelease(nil, { pos = { x = ex, y = ey } }); view:flushPending()
+    ok(view.eraser_outline == false, "the outline is off unless turned on")
+    view.eraser_outline = true
     view:setTool("erase"); view.eraser_width = 40
     local mx = (cx0 + cx1) / 2
     local fx, fy = scr(mx, cy - 60)

@@ -264,6 +264,9 @@ function InkAwayView:addScreenPoint(sx, sy, fresh, lift)
         self:stampLive(cx, cy, fresh, p)
     end
     if not erasing then return end
+    -- (the outline is off unless turned on in the Eraser sheet: on e-ink each
+    -- refresh of it costs time while erasing)
+    if not self.eraser_outline then return end
     -- (at the lift the outline stays off: the eraser has left the page)
     if lift then
         self:eraserCursorGone(was)

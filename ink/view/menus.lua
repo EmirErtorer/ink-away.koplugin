@@ -171,6 +171,13 @@ function InkAwayView:openEraserSettings()
             HorizontalSpan:new{ width = math.max(Screen:scaleBySize(16), content_w - pictures.width - whole.width) },
             whole })
         add(vspan(10))
+        add(ToggleRow:new{ label = _("Show the eraser while erasing"), is_on = self.eraser_outline,
+            width = content_w, parent = menu,
+            callback = function(on)
+                self.eraser_outline = on; self:setSetting("inkaway_eraser_outline", on)
+                if not on then self:eraserCursorOff() end
+            end })
+        add(vspan(10))
         -- the same setting as in the Text sheet, here too since it is the eraser's
         add(ToggleRow:new{ label = _("Protect text from eraser"), is_on = self.text_erase_protect,
             width = content_w, parent = menu,

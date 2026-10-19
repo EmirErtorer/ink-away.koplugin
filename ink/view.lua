@@ -211,6 +211,7 @@ function InkAwayView:init()
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
     self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes
+    self.eraser_outline = self:getSetting("inkaway_eraser_outline", false)   -- a ring under the pen while erasing
     -- the colour of what is black by default: Ink Away green or a chosen one on a
     -- colour screen
     Accent.apply(self:getSetting("inkaway_accent"), self:colorScreen())
