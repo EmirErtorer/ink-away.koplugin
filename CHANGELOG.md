@@ -49,6 +49,10 @@ versions marked *Prerelease* were test builds.
   long press sheet ("Use for new notebooks", which was "Use for all") rather
   than in Settings.
 
+### Fixed
+- First-generation Kobo Elipsa: enable handwriting mode with the device ioctl
+  and use a separate display worker so updates do not hold up input.
+
 ## [4.2.0] - 2026-10-17
 
 Everything from the 4.1.0 and 4.1.1 prereleases, now tested on readers, plus

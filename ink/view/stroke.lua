@@ -86,12 +86,12 @@ function InkAwayView:setupLiveWriters()
     -- back on lift. The master always keeps it. A grey pen (or black at a lowered
     -- opacity) draws that copy on e-ink even with the setting on, as a grey has
     -- no colour to show and the fast waveform would show a light one as white;
-    -- so does a grey Boox that Ink Away drives (see fastLive).
+    -- so does a grey Boox or Elipsa that Ink Away drives (see fastLive).
     local area_color = color
     self._live_preview = false
     local grey = not Paint.isChromatic(color) and not self:instantColour()
     local preview = self:colourPanel() and (not self.live_colour or grey)
-        or (not self:colourPanel() and self:einkDriven())
+        or (not self:colourPanel() and (self:einkDriven() or self:elipsaDriven()))
     if preview and self.tool ~= "erase" and self._live_mode == "fast" and not self:pureBlackPen() then
         area_color, self._live_preview = Paint.inkOn(self:paperRGB()), true
     end
@@ -322,12 +322,13 @@ function InkAwayView:beginStroke(sx, sy)
         self._live_mode = (reveal and not self:einkDriven()) and "ui" or "fast"
     else
         -- on a colour panel every pen draws with "fast", and on a grey Boox Ink
-        -- Away drives every opaque one (see fastLive and setupLiveWriters), settled
+        -- Away drives every opaque one, as on the original Elipsa (see fastLive
+        -- and setupLiveWriters), settled
         -- once the pen rests; a see-through pen there would show as a black bar
         -- over the text until then
         local opaque = (self.pen_alpha or 255) >= 255
         self._live_mode = (self:pureBlackPen() or self:colourPanel()
-            or (opaque and self:einkDriven())) and "fast" or "ui"
+            or (opaque and (self:einkDriven() or self:elipsaDriven()))) and "fast" or "ui"
     end
     -- a new stroke pushes back the pending colour settle (see queueReconcile);
     -- on a Kobo Sage or Elipsa it waits on its own while the pen is down (see
