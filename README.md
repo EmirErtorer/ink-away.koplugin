@@ -101,8 +101,32 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | | |
 |---|---|
 | **Lasso** | Loop writing, shapes, pictures and text, then move, resize, turn, flip, recolour, change opacity or size, duplicate or delete them, or cut, copy and paste to any page of any notebook or drawing. With Pan, a touch picks a shape or picture. |
-| **Convert to text** | Lassoed printed handwriting becomes a text box, read on the device (English letters and digits). One undo brings the writing back. |
+| **Convert to text** | Lassoed handwriting opens an editable preview. Apply replaces the writing with a text box; Cancel preserves it. One undo brings the writing back. Local recognition supports English letters and digits; optional external OCR is described below. |
 | **Undo and redo** | From the toolbar, or with two fingers (see Gestures). |
+
+### Experimental OCR API (test build)
+
+In Ink Away's gear settings, check **experimental OCR api** to reveal **API URL**,
+**API key**, and **Model name**. Enter your own image-capable OpenAI-compatible
+Chat Completions provider. For example, use `https://your-provider.example/v1`
+and model `paddleocr-vl`. The URL may also be the full `/chat/completions` endpoint.
+The key field is masked. These values are saved in KOReader settings, without
+encryption, and are not saved in notebooks or exports. Unchecking the option
+hides the fields, retains their values, and returns Convert to text to local OCR.
+
+Turn on Wi-Fi, lasso handwriting, then choose **Convert to text**. The provider
+receives only the selected handwriting as a cropped PNG on white, with erasures
+preserved and pen colours normalized to black for contrast. Book text, pictures,
+guides and unselected writing are excluded. Review and edit the result before
+**Apply**. Errors never replace ink or silently switch to local OCR.
+
+HTTPS certificate and hostname validation is required; HTTP and redirects are
+rejected. One job may run at a time, with no automatic retries, a 90-second
+deadline, and limits of 4 megapixels / 4 MiB PNG. Stop discards the result; the
+provider may still finish the request, so another job waits until that request
+has ended or timed out. The API must support an image data URL, the `OCR:` prompt,
+`max_tokens`, and a non-streaming text response. This does not support every
+OpenAI model or Responses-only endpoint. Kobo hardware acceptance is pending.
 
 ### Notebooks and PDFs
 
