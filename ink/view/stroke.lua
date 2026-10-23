@@ -308,6 +308,7 @@ function InkAwayView:pureBlackPen()
 end
 
 function InkAwayView:beginStroke(sx, sy)
+    self:elipsaStroke(true)
     -- in a layered drawing: the active layer shown, what lies above it at hand
     self:layerStrokeBegin(self.tool == "erase")
     if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
@@ -622,6 +623,7 @@ function InkAwayView:finalizeStroke()
     self._straight_at = nil
     self.pending_lift = nil
     self.capturing = false
+    self:elipsaStroke(false)
     self:eraserCursorOff()
     if self._wipe then return self:wipeEnd() end
     -- the live stroke wrote canvas_bb directly; resync the mirror over it

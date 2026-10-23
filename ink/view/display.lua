@@ -367,6 +367,7 @@ end
 -- had (before the view's buffers and the screen's orientation are put back).
 function InkAwayView:stopElipsaDrive()
     if not self._elipsa_drive then return end
+    if self._elipsa_stroke_end then UIManager:unschedule(self._elipsa_stroke_end) end
     self._elipsa_drive = nil
     ElipsaDrive.release()
 end
@@ -381,6 +382,21 @@ function InkAwayView:fastEraser()
         self._fast_eraser = Stylus.PEN_KOBOS[Device.model] == true and not self:colourPanel()
     end
     return self._fast_eraser
+end
+
+-- A stroke starts (on) or has ended: on the original Elipsa the helper also
+-- makes the grey updates inside the drawing area while it lasts (#50). The end
+-- waits a tick, so the lift's own updates still go to the helper.
+function InkAwayView:elipsaStroke(on)
+    if not self._elipsa_drive then return end
+    if self._elipsa_stroke_end then UIManager:unschedule(self._elipsa_stroke_end) end
+    if on then
+        local v = self.view
+        ElipsaDrive.stroke({ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h })
+    else
+        self._elipsa_stroke_end = self._elipsa_stroke_end or function() ElipsaDrive.stroke(nil) end
+        UIManager:nextTick(self._elipsa_stroke_end)
+    end
 end
 
 -- Is this the original Elipsa with its helper taken? (Still true once the helper

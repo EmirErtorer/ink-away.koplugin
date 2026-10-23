@@ -4,7 +4,8 @@ On that Kobo each screen update holds KOReader until the panel has taken it,
 and while it waits no pen or finger frame is read, so the ink falls behind the
 nib. Here the updates are made by a second process, forked from KOReader, which
 waits on the panel instead: KOReader goes on reading the pen and only sends the
-helper the rectangle to show next.
+helper the rectangle to show next, with the waveform to show it in (the fast
+one, or the grey one for a stroke that needs it, see ink/elipsadrive.lua).
 
 The screen's pixels are shared memory (ION), so the helper sees every stroke
 drawn after it started without a copy; what the driver is told about the screen
@@ -58,7 +59,7 @@ function ElipsaWorker.start(screen, refresh)
         local param = ffi.new("struct sched_param")
         C.sched_setscheduler(0, 0, param) -- SCHED_OTHER (not declared by KOReader)
         C.setpriority(C.PRIO_PROCESS, 0, 0)
-        local rect, reply = ffi.new("int32_t[4]"), ffi.new("uint32_t[2]")
+        local rect, reply = ffi.new("int32_t[5]"), ffi.new("uint32_t[2]")
         local incoming = ffi.new("struct pollfd[1]")
         incoming[0].fd, incoming[0].events = child, C.POLLIN
         pcall(function()
@@ -73,7 +74,7 @@ function ElipsaWorker.start(screen, refresh)
                     -- A signal consumes no command; return to the parent check.
                     if n >= 0 or ffi.errno() ~= C.EINTR then
                         if n ~= ffi.sizeof(rect) or rect[2] == 0 then break end
-                        local ok = pcall(refresh, screen, false, false, screen.waveform_fast,
+                        local ok = pcall(refresh, screen, false, false, tonumber(rect[4]),
                             tonumber(rect[0]), tonumber(rect[1]), tonumber(rect[2]), tonumber(rect[3]))
                         reply[0], reply[1] = ok and 1 or 0, screen.marker_data[0]
                         if C.send(child, reply, ffi.sizeof(reply), MSG_NOSIGNAL) ~= ffi.sizeof(reply) or not ok then break end
@@ -91,22 +92,29 @@ function ElipsaWorker.start(screen, refresh)
         return nil, started and err or pid
     end
 
-    local rect, reply = ffi.new("int32_t[4]"), ffi.new("uint32_t[2]")
+    local rect, reply = ffi.new("int32_t[5]"), ffi.new("uint32_t[2]")
     local pollfd = ffi.new("struct pollfd[1]")
     pollfd[0].fd, pollfd[0].events = parent, C.POLLIN
     local transport = {}
 
     -- Only one command may be outstanding; sends therefore cannot fill the socket.
+    -- `r.mode` is the waveform, the fast one when not given.
     function transport:send(r)
         rect[0], rect[1], rect[2], rect[3] = r.x, r.y, r.w, r.h
+        rect[4] = r.mode or screen.waveform_fast
         return C.send(parent, rect, ffi.sizeof(rect), MSG_NOSIGNAL + MSG_DONTWAIT) == ffi.sizeof(rect)
     end
 
     -- nil: busy; false: worker failed; number: completed marker (including zero).
+    -- A wait that runs out is still busy (a grey update can take a while): a
+    -- helper that has gone shows as its socket closing, not as silence.
     function transport:poll(wait)
         local n = C.poll(pollfd, 1, wait and timeout or 0)
-        if n == 0 and not wait then return nil end
-        if n <= 0 then return false end
+        if n == 0 then return nil end
+        if n < 0 then
+            if ffi.errno() == C.EINTR then return nil end
+            return false
+        end
         if C.recv(parent, reply, ffi.sizeof(reply), MSG_DONTWAIT) ~= ffi.sizeof(reply) or reply[0] ~= 1 then
             return false
         end

@@ -69,6 +69,12 @@ versions marked *Prerelease* were test builds.
   a book or a picture (#47, #50). Each point asked the screen for its slower grey
   update, which held the eraser up; it now erases with the fast one, and the
   lines or picture under it show again as it lifts.
+- Kobo Elipsa (the 2021 model): the highlighter and other see-through pens keep
+  up with the pen too (#50). The helper that makes the screen updates now also
+  makes the grey ones a stroke needs, so they no longer hold up the reader. A
+  helper busy with a slow update is waited for instead of being given up, and
+  after a failure the next stroke tries it again, so drawing no longer stays slow
+  until Ink Away is reopened.
 
 ## [4.2.0] - 2026-10-17
 

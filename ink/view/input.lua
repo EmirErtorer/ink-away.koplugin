@@ -661,6 +661,7 @@ function InkAwayView:penDropFingerOps()
         UIManager:unschedule(self._finalize)
         self.pending_lift = nil
         self.capturing = false
+        self:elipsaStroke(false)
         self:eraserCursorHide()   -- (the page is drawn again just below)
         if self._wipe then self:wipeCancel() end
         if self._wl then self:washEnd() end

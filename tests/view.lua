@@ -1387,6 +1387,47 @@ do
     _G.G_reader_settings.data.inkaway_gestures = nil
 end
 
+-- ---- the Elipsa's helper knows when a stroke is drawn (#50) ------------------
+do
+    local ElipsaDrive = require("ink/elipsadrive")
+    local real = ElipsaDrive.stroke
+    local seen = {}
+    ElipsaDrive.stroke = function(area) seen[#seen + 1] = area or false end
+    local view = dofile("ink/view.lua"):new{}
+    local v = view.view
+    view._elipsa_drive = true          -- (the helper taken, as on an Elipsa)
+    local pen_before = view.pen_style
+    view:choosePenType("highlighter"); view:setTool("pen")
+    local x, y = v.area_x + 100, v.area_y + 200
+    view:onIaTouch(nil, { pos = { x = x, y = y } })
+    for i = 1, 5 do view:onIaPan(nil, { pos = { x = x + i * 20, y = y } }) end
+    local a = seen[1]
+    ok(a and a.x == v.area_x and a.y == v.area_y and a.w == v.area_w and a.h == v.area_h,
+        "elipsa: a stroke tells the helper its drawing area")
+    view:onIaPanRelease(nil, { pos = { x = x + 120, y = y } })
+    view:flushPending()
+    ok(#seen == 1, "elipsa: the stroke's end waits a tick, for the lift's own updates")
+    UIManager.fireScheduled()
+    ok(seen[#seen] == false, "elipsa: then the helper is told it ended")
+    -- a stroke dropped for a palm ends too
+    view:onIaTouch(nil, { pos = { x = x, y = y + 100 } })
+    view:onIaPan(nil, { pos = { x = x + 20, y = y + 100 } })
+    view:penDropFingerOps()
+    UIManager.fireScheduled()
+    ok(seen[#seen] == false, "elipsa: a dropped stroke ends it as well")
+    -- without the helper nothing is said
+    local n = #seen
+    view._elipsa_drive = nil
+    view:onIaTouch(nil, { pos = { x = x, y = y + 200 } })
+    view:onIaPanRelease(nil, { pos = { x = x + 10, y = y + 200 } })
+    view:flushPending()
+    UIManager.fireScheduled()
+    ok(#seen == n, "elipsa: other readers never call the helper")
+    view:choosePenType(pen_before or "solid")   -- (the pen picked is kept for the next view)
+    view:onCloseWidget()
+    ElipsaDrive.stroke = real
+end
+
 -- ---- page turn buttons in grids and paged sheets (#53) -----------------------
 do
     local hasKeys, group = Device.hasKeys, Device.input.group

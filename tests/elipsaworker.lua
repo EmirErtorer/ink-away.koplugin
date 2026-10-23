@@ -78,10 +78,11 @@ local function ok(cond, what)
     checks = checks + 1
     if not cond then failures = failures + 1; print("FAIL: " .. what) end
 end
-local fb = { fd = 123, waveform_fast = 2, marker_data = ffi.new("uint32_t[1]") }
+local fb = { fd = 123, waveform_fast = 2, waveform_ui = 4, marker_data = ffi.new("uint32_t[1]") }
 do
     local worker = assert(ElipsaWorker.start(fb, function(screen, no_merge, flash, mode, x, y, w, h)
-        assert(not no_merge and not flash and mode == 2)
+        assert(not no_merge and not flash and (mode == 2 or mode == 4))
+        shared[9] = mode
         C.usleep(100000) -- emulate a blocking sunxi update ioctl
         shared[3], shared[4], shared[5], shared[6] = x, y, w, h
         shared[7] = shared[8]
@@ -95,6 +96,9 @@ do
     ok(shared[3] == 10 and shared[4] == 20 and shared[5] == 30 and shared[6] == 40, "rectangle survives IPC")
     ok(shared[7] == 91, "worker sees pixels written to shared framebuffer after fork")
     ok(fb.marker_data[0] == 0, "driver structs are private; marker must be copied back explicitly")
+    ok(shared[9] == 2, "an update without a waveform is made fast")
+    ok(worker:send({ x = 1, y = 2, w = 3, h = 4, mode = 4 }) and worker:poll(true) == 42 and shared[9] == 4,
+        "a grey update reaches the driver in grey (#50)")
     ok(worker:close(false) and shared[0] == 0, "clean close disables handwriting mode")
     ok(C.waitpid(pids[#pids], nil, 1) == -1, "worker reaped, no zombie")
 end
