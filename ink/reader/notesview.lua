@@ -25,7 +25,9 @@ local BookNotes = require("ink/reader/booknotes")
 local InkAwayView = require("ink/view")
 local Theme = require("ink/ui/theme")
 local InkGeom = require("ink/geom")
+local Library = require("ink/library")
 local Project = require("ink/project")
+local Search = require("ink/search")
 local Storage = require("ink/storage")
 local VBar = require("ink/reader/vbar")
 
@@ -273,13 +275,21 @@ end
 -- The book's notebook
 ------------------------------------------------------------------------------
 
--- The notebook the book's notes are in: the one it was last saved as, else one
--- named after the book in the "Book notes" folder (with the author when
--- another book of that name has it).
+-- The notebook the book's notes are in: the one it was last saved as (found
+-- again when it was renamed or moved in the library since), else one named
+-- after the book in the Book notes folder (with the author when another book
+-- of that name has it).
 function NotesView:notesPathFor(info)
     local linked = self.book:notesPath()
     if linked and Storage.exists(linked) then return linked end
-    local dir = Storage.join(self:libraryDir(), BookNotes.FOLDER)
+    if linked then
+        local found = self:findMovedNotes(linked, info.md5)
+        if found then
+            self.book:setNotesPath(found)
+            return found
+        end
+    end
+    local dir = self:bookNotesDir()
     local path = Storage.join(dir, BookNotes.fileName(info.title) .. "." .. Project.EXT)
     if Storage.exists(path) then
         local data = Project.load(path)
@@ -295,6 +305,53 @@ function NotesView:notesPathFor(info)
         end
     end
     return path
+end
+
+-- Does the file at `path` hold `needle`? Read a piece at a time, so a big
+-- notebook is not held whole just to look.
+local function fileHas(path, needle)
+    local f = io.open(path, "rb")
+    if not f then return false end
+    local tail = ""
+    while true do
+        local chunk = f:read(256 * 1024)
+        if not chunk then break end
+        local s = tail .. chunk
+        if s:find(needle, 1, true) then f:close(); return true end
+        tail = s:sub(-(#needle - 1))
+    end
+    f:close()
+    return false
+end
+
+-- The book's notes, saved at `lost` before and not there now: their folder or
+-- the notebook itself was renamed or moved in the library (#54). Looks through
+-- the library's notebooks (not the trash) for the one whose chapter pages are
+-- this book's (`md5`); for a book without a checksum, only a notebook of the
+-- same name that is the only one and says it is for no book. Only reads.
+function NotesView:findMovedNotes(lost, md5)
+    local docs = {}
+    for _i, e in ipairs(Search.walk(self:libraryDir(), Library.INTERNAL)) do
+        if e.kind == "doc" then docs[#docs + 1] = e end
+    end
+    local order, name = BookNotes.searchOrder(docs, lost)
+    if md5 then
+        for _i, d in ipairs(order) do
+            if fileHas(d.path, md5) then
+                local data = Project.load(d.path)
+                if data and BookNotes.ofBook(data.pages, md5) then return d.path end
+            end
+        end
+        return nil
+    end
+    local same = {}
+    for _i, d in ipairs(order) do
+        if (d.path:match("([^/]+)$") or "") == name then same[#same + 1] = d end
+    end
+    if #same ~= 1 then return nil end
+    local data = Project.load(same[1].path)
+    if data and data.pages and not BookNotes.tagged(data.pages) then return same[1].path end
+    return nil
 end
 
 function NotesView:openStartDocument()

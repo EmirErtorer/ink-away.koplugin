@@ -20,6 +20,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local ImageProc = require("ink/imageproc")
 local Layers = require("ink/layers")
+local BookNotes = require("ink/reader/booknotes")
 local Folder = require("ink/folder")
 local FolderLook = require("ink/folderlook")
 local Library = require("ink/library")
@@ -280,6 +281,32 @@ function InkAwayView:pathMoved(old, new)
         self.doc_path = new .. self.doc_path:sub(#old + 1)
         if self.doc_written then self:rememberDoc(self.doc_path) end
     end
+    -- the Book notes folder (or a folder it is in) renamed or moved: new book
+    -- notes go where it went, not into a new Book notes folder (#54)
+    local notes = self:bookNotesFolder()
+    if Storage.within(notes, old) then
+        local root = self:libraryDir():gsub("/+$", "")
+        local moved = new .. notes:sub(#old + 1)
+        if Storage.within(moved, root) and moved ~= root then
+            self:setSetting(BookNotes.SETTING, moved:sub(#root + 2))
+        end
+    end
+end
+
+-- The library folder book notes go in: Book notes, or where it was renamed or
+-- moved to in the library since. bookNotesDir is that folder when it is there,
+-- else a Book notes folder (made again with the first new notes).
+function InkAwayView:bookNotesFolder()
+    local root = self:libraryDir()
+    local rel = self:getSetting(BookNotes.SETTING)
+    if type(rel) == "string" and rel ~= "" and not rel:find("%.%.") then return Storage.join(root, rel) end
+    return Storage.join(root, BookNotes.FOLDER)
+end
+
+function InkAwayView:bookNotesDir()
+    local dir = self:bookNotesFolder()
+    if Storage.isDir(dir) then return dir end
+    return Storage.join(self:libraryDir(), BookNotes.FOLDER)
 end
 
 -- Drop the open document without saving it (its file was deleted), and start a

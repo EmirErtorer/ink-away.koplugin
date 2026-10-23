@@ -60,6 +60,11 @@ versions marked *Prerelease* were test builds.
 - The page turn buttons turn the pages of grids and sheets as well as the
   page: the library, folder icons, sent pictures, the guide, search, the trash
   and lists (#53). They did nothing there.
+- Book notes after the Book notes folder (or a notes notebook) was renamed or
+  moved in the library (#54): each book opens its own notes where they are now,
+  instead of starting new ones in a new Book notes folder, and new books' notes
+  go into the renamed folder. Notes left behind this way before are found again
+  the next time their book opens them. Nothing in the notes themselves changes.
 
 ## [4.2.0] - 2026-10-17
 

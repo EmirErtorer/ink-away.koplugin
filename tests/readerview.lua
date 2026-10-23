@@ -504,6 +504,115 @@ do
     ok(saved() == "3:1 -:1 7:0 -:1", "notes: an empty chapter page goes with the empty page added after it (" .. saved() .. ")")
 end
 
+-- Book notes after their folder or notebook was renamed or moved in the library
+-- (#54): each book finds its own notes where they went, new books' notes go into
+-- the renamed folder, and nothing about the notes already there changes.
+do
+    local W, H = 1072, 1448
+    Screen:setSize(W, H)
+    local Storage = require("ink/storage")
+    local function readAll(path)
+        local f = io.open(path, "rb")
+        if not f then return nil end
+        local s = f:read("*a"); f:close(); return s
+    end
+    local function newBook(title, md5)
+        local book = { info = { title = title, md5 = md5, key = 2, chapter = "Chapter Two" } }
+        function book:notesInfo() return self.info end
+        function book:notesPath() return self.linked end
+        function book:setNotesPath(path) self.linked = path end
+        return book
+    end
+    local function open(book)
+        UIManager.reset()
+        package.loaded["ink/view"] = nil
+        package.loaded["ink/reader/notesview"] = nil
+        local view = require("ink/reader/notesview"):new{ book = book }
+        UIManager:show(view)
+        return view
+    end
+    local function write(view)
+        local v = view.view
+        local x, y = v.area_x + 40, v.area_y + 60
+        view:onIaTouch(nil, pos(x, y))
+        for i = 1, 5 do view:onIaPan(nil, pos(x + i * 20, y + i)) end
+        view:onIaPanRelease(nil, pos(x + 100, y + 5))
+        view:flushPending()
+    end
+    local root = require("testenv").libraryDir()
+    G_reader_settings.data.inkaway_booknotes_folder = nil
+    os.execute("rm -rf '" .. root .. "/Book notes' '" .. root .. "/Reading notes' '" .. root .. "/Archive'")
+
+    -- a book's notes, written and saved in Book notes
+    local one = newBook("Moved Notes Book", "md5-one")
+    local view = open(one)
+    write(view)
+    view:closeCanvas()
+    local first = one.linked
+    ok(first == root .. "/Book notes/Moved Notes Book.inkaway", "moved notes: saved in Book notes (" .. tostring(first) .. ")")
+    local bytes = readAll(first)
+
+    -- the folder renamed in the library, as its Rename does
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    local lib = require("ink/view"):new{}
+    lib:promptRenameItem({ path = root .. "/Book notes", label = "Book notes", folder = true })
+    local field = require("ui/widget/inputtext").last
+    field.text = "Reading notes"
+    field.enter_callback()
+    lib:closeCanvas()
+    local renamed = root .. "/Reading notes/Moved Notes Book.inkaway"
+    ok(readAll(renamed) == bytes, "moved notes: the rename moved the notebook as it was")
+    ok(G_reader_settings.data.inkaway_booknotes_folder == "Reading notes", "moved notes: the renamed folder is remembered")
+
+    -- the book's notes open from where they went, unchanged, and stay linked there
+    view = open(one)
+    ok(view.doc_path == renamed and view.notebook and #view.notebook.pages[1].ops == 1,
+        "moved notes: the book opens its own notes in the renamed folder")
+    view:closeCanvas()
+    ok(one.linked == renamed, "moved notes: and remembers where they are now")
+    ok(readAll(renamed) == bytes, "moved notes: opening and closing them changed nothing in them")
+    ok(not Storage.exists(root .. "/Book notes"), "moved notes: no new Book notes folder")
+
+    -- a new book's notes go into the renamed folder
+    local two = newBook("Second Book", "md5-two")
+    view = open(two)
+    write(view)
+    view:closeCanvas()
+    ok(two.linked == root .. "/Reading notes/Second Book.inkaway", "moved notes: a new book's notes go in the renamed folder (" .. tostring(two.linked) .. ")")
+    ok(not Storage.exists(root .. "/Book notes"), "moved notes: still no new Book notes folder")
+
+    -- the notebook moved somewhere else, by any means: found by its book
+    os.execute("mkdir -p '" .. root .. "/Archive/2026'")
+    local archived = root .. "/Archive/2026/Old notes.inkaway"
+    os.rename(renamed, archived)
+    view = open(one)
+    ok(view.doc_path == archived, "moved notes: a notebook moved and renamed elsewhere is found by its book")
+    view:closeCanvas()
+    ok(readAll(archived) == bytes, "moved notes: and left as it was")
+
+    -- another book of the same title whose notes are gone: it is not given this book's
+    local other = newBook("Moved Notes Book", "md5-other")
+    other.linked = root .. "/Reading notes/Gone.inkaway"
+    view = open(other)
+    ok(view.doc_path ~= archived, "moved notes: another book never takes this book's notes (" .. tostring(view.doc_path) .. ")")
+    view:closeCanvas()
+    ok(readAll(archived) == bytes, "moved notes: which stay as they were")
+
+    -- notes put in the trash are not brought back from it
+    os.execute("mkdir -p '" .. root .. "/.trash'")
+    local trashed = root .. "/.trash/Second Book.inkaway"
+    local two_bytes = readAll(two.linked)
+    os.rename(two.linked, trashed)
+    view = open(two)
+    ok(view.doc_path ~= trashed, "moved notes: notes in the trash stay there")
+    view:closeCanvas()
+    ok(readAll(trashed) == two_bytes, "moved notes: untouched")
+
+    G_reader_settings.data.inkaway_booknotes_folder = nil
+    os.execute("rm -rf '" .. root .. "/Book notes' '" .. root .. "/Reading notes' '" .. root .. "/Archive' '" .. root .. "/.trash'")
+end
+
 -- the reader's highlights: the eraser takes away those it crosses, in the same
 -- undo step as the ink it cuts, and a hold on one offers to remove it (#21, #32)
 do

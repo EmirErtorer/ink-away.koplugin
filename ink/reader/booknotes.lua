@@ -14,6 +14,9 @@ drive it.
 local BookNotes = {}
 
 BookNotes.FOLDER = "Book notes"
+-- Where that folder is now, relative to the library, once it was renamed or
+-- moved in the library (see InkAwayView:pathMoved); unset, it is FOLDER.
+BookNotes.SETTING = "inkaway_booknotes_folder"
 
 -- A file name for a book title: no path separators or characters some file
 -- systems refuse, no leading dot, not too long.
@@ -37,6 +40,41 @@ function BookNotes.otherBook(pages, md5)
         if type(p.book) == "table" and p.book.md5 then return p.book.md5 ~= md5 end
     end
     return false
+end
+
+-- Are these pages (a notebook's) the notes of the book with checksum `md5`?
+-- One of its chapter pages must say so, and the first that says anything.
+function BookNotes.ofBook(pages, md5)
+    if not md5 or BookNotes.otherBook(pages, md5) then return false end
+    for _i, p in ipairs(pages or {}) do
+        if type(p.book) == "table" and p.book.md5 == md5 then return true end
+    end
+    return false
+end
+
+-- Does any page say which book it is for?
+function BookNotes.tagged(pages)
+    for _i, p in ipairs(pages or {}) do
+        if type(p.book) == "table" and p.book.md5 then return true end
+    end
+    return false
+end
+
+-- The order to look through the library's notebooks (`docs`, { path, mtime })
+-- for a book's notes that are no longer at `lost`: those with its file name
+-- first (a renamed or moved folder keeps the names in it), newest first.
+function BookNotes.searchOrder(docs, lost)
+    local name = (lost or ""):match("([^/]+)$") or ""
+    local same, rest = {}, {}
+    for _i, d in ipairs(docs) do
+        local list = ((d.path:match("([^/]+)$") or "") == name) and same or rest
+        list[#list + 1] = d
+    end
+    local function newest(a, b) return (a.mtime or 0) > (b.mtime or 0) end
+    table.sort(same, newest)
+    table.sort(rest, newest)
+    for _i, d in ipairs(rest) do same[#same + 1] = d end
+    return same, name
 end
 
 -- Where to write for chapter `key` (its place in the contents; nil when the
