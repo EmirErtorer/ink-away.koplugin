@@ -65,6 +65,10 @@ versions marked *Prerelease* were test builds.
   instead of starting new ones in a new Book notes folder, and new books' notes
   go into the renamed folder. Notes left behind this way before are found again
   the next time their book opens them. Nothing in the notes themselves changes.
+- Kobo Elipsa, Elipsa 2E and Sage: the eraser keeps up over a notebook's lines,
+  a book or a picture (#47, #50). Each point asked the screen for its slower grey
+  update, which held the eraser up; it now erases with the fast one, and the
+  lines or picture under it show again as it lifts.
 
 ## [4.2.0] - 2026-10-17
 

@@ -320,9 +320,11 @@ function InkAwayView:beginStroke(sx, sy)
     -- render grey, colour or partial opacity, which would only appear at the lift.
     if is_erase then
         -- fast can only show white, so it suits erasing to a blank page; over a
-        -- notebook ruling or a picture the erased path needs the grey-capable "ui"
+        -- notebook ruling or a picture the erased path needs the grey-capable "ui",
+        -- except where that holds the eraser up (see fastEraser): there the lift
+        -- shows the ruling or picture again
         local reveal = (self.erase_bg and self:barePaperBB()) or self:eraseRevealBB()
-        self._live_mode = (reveal and not self:einkDriven()) and "ui" or "fast"
+        self._live_mode = (reveal and not self:einkDriven() and not self:fastEraser()) and "ui" or "fast"
     else
         -- on a colour panel every pen draws with "fast", and on a grey Boox Ink
         -- Away drives, or the original Elipsa, every opaque one (see fastLive and

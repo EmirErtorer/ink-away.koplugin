@@ -14,6 +14,7 @@ local EinkDrive = require("ink/einkdrive")
 local ElipsaDrive = require("ink/elipsadrive")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
+local Stylus = require("ink/stylus")
 local Symmetry = require("ink/symmetry")
 local Template = require("ink/template")
 
@@ -368,6 +369,18 @@ function InkAwayView:stopElipsaDrive()
     if not self._elipsa_drive then return end
     self._elipsa_drive = nil
     ElipsaDrive.release()
+end
+
+-- A Kobo with a pen and a grey screen (Elipsa, Elipsa 2E, Sage). There the
+-- grey update each eraser point asked for over paper, a book or a picture held
+-- the eraser up (#47, and the Elipsa's helper only takes fast updates, #50), so
+-- the eraser shows with the fast one and its lift shows what is under it as it
+-- is (see finalizeStroke).
+function InkAwayView:fastEraser()
+    if self._fast_eraser == nil then
+        self._fast_eraser = Stylus.PEN_KOBOS[Device.model] == true and not self:colourPanel()
+    end
+    return self._fast_eraser
 end
 
 -- Is this the original Elipsa with its helper taken? (Still true once the helper

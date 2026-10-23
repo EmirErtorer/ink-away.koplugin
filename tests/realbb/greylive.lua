@@ -300,5 +300,69 @@ do
     done()
 end
 
+-- The eraser over a notebook's ruling (#47, #50): on a grey Kobo with a pen it
+-- erases with the fast waveform, a refresh per sample as before, and its lift
+-- shows the erased path again as it is (the ruling back in its grey); the Libra
+-- Colour and readers without a pen keep the grey waveform while erasing.
+for _i, case in ipairs({ { "Kobo_condor", false, false, "fast" }, { "Kobo_europa", true, false, "fast" },
+        { "Kobo_cadmus", true, false, "fast" }, { "Kobo_monza", false, true, "ui" }, { "Kobo_nova", false, false, "ui" } }) do
+    local model, sunxi, colour, want = case[1], case[2], case[3], case[4]
+    local saved_model = Device.model
+    Device.model = model
+    local view, rs, tick, done = world(colour)
+    if sunxi then Device.isSunxi = function() return true end end
+    view:newNotebook("lines", require("testenv").libraryDir() .. "/eraser " .. model)
+    local v = view.view
+    view:choosePenType("solid"); view:setTool("pen")
+    view.pen_color, view.pen_width, view.pen_alpha = { 0, 0, 0 }, 10, 255
+    local y = v.area_y + 600
+    drag(view, tick, 300, 700, y)
+    view:onIaPanRelease(nil, { pos = { x = 700, y = y } })
+    view:flushPending()
+    tick(1000); UIManager.fireScheduled()
+    -- the paper as it is under the stroke's row, before any ink
+    local paper = view:eraseRevealBB()
+    local ruled = 0
+    for yy = y - v.area_y - 40, y - v.area_y + 40 do
+        local c = paper:getPixel(500 - v.area_x, yy):getColorRGB32().r
+        if c < 247 then ruled = ruled + 1 end
+    end
+    view:setTool("erase"); view.eraser_width = 60
+    for k = #rs, 1, -1 do rs[k] = nil end
+    local n = 1
+    view:onIaTouch(nil, { pos = { x = 500, y = y - 40 } })
+    for yy = y - 34, y + 40, 6 do tick(8); view:onIaPan(nil, { pos = { x = 500, y = yy } }); n = n + 1 end
+    ok(view._live_mode == want, ("eraser (%s): erases live with %s (%s)"):format(model, want, tostring(view._live_mode)))
+    local live_other = 0
+    for _k, r in ipairs(rs) do if r.mode ~= want then live_other = live_other + 1 end end
+    -- (a colour panel paces them, see liveDirty)
+    ok(count(rs, want) >= (colour and 1 or 3) and live_other == 0,
+        ("eraser (%s): its live refreshes are all %s (%d, %d other)"):format(model, want, count(rs, want), live_other))
+    for k = #rs, 1, -1 do rs[k] = nil end
+    view:onIaPanRelease(nil, { pos = { x = 500, y = y + 40 } })
+    view:flushPending()
+    tick(1000); UIManager.fireScheduled()
+    if want == "fast" then
+        local shown = false
+        for _k, r in ipairs(rs) do
+            if r.mode ~= "fast" and covers(r, 490, 510, y) then shown = true end
+        end
+        ok(shown, ("eraser (%s): the lift shows the erased path again with a grey-capable refresh"):format(model))
+    end
+    -- the ink is gone there and the ruling is back, as the page has it
+    local inked, same = 0, 0
+    for yy = y - v.area_y - 40, y - v.area_y + 40 do
+        local c = view.area_bb:getPixel(500 - v.area_x, yy):getColorRGB32().r
+        if c <= 8 then inked = inked + 1 end
+        if c == paper:getPixel(500 - v.area_x, yy):getColorRGB32().r then same = same + 1 end
+    end
+    ok(ruled > 0 and inked == 0 and same == 81,
+        ("eraser (%s): the ink is gone and the ruling shows as before (%d ruled, %d inked, %d of 81 the same)")
+        :format(model, ruled, inked, same))
+    Device.isSunxi = nil
+    Device.model = saved_model
+    done()
+end
+
 print(("realbb greylive: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
