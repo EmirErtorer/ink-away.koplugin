@@ -1387,6 +1387,57 @@ do
     _G.G_reader_settings.data.inkaway_gestures = nil
 end
 
+-- ---- page turn buttons in grids and paged sheets (#53) -----------------------
+do
+    local hasKeys, group = Device.hasKeys, Device.input.group
+    Device.hasKeys = function() return true end
+    Device.input.group = { Back = { "Back" }, PgFwd = { "RPgFwd", "LPgFwd" }, PgBack = { "RPgBack", "LPgBack" } }
+    local function shows(w, text)
+        local seen = {}
+        local function walk(t)
+            if type(t) ~= "table" or seen[t] then return false end
+            seen[t] = true
+            if t.text == text then return true end
+            for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" and walk(c) then return true end end
+            return false
+        end
+        return walk(w)
+    end
+    -- a grid of cards (the folder icon chooser, the library...)
+    local ThumbGrid = require("ink/ui/thumbgrid")
+    local items = {}
+    for i = 1, 20 do items[i] = { label = "Icon " .. i } end
+    local grid = ThumbGrid:new{ title = "Folder icon", items = items, cols = 4, rows = 2,
+        render = function() return nil end }
+    ok(grid.key_events.TgKeyFwd and grid.key_events.TgKeyBack and grid.key_events.TgClose,
+        "grid keys: a grid listens for the page turn buttons, and Back")
+    ok(grid:onTgKeyFwd() and grid.gpage == 1, "grid keys: forward shows the next page of cards")
+    grid:onTgKeyFwd()
+    grid:onTgKeyFwd()
+    ok(grid.gpage == 2, "grid keys: and stops at the last page")
+    grid:onTgKeyBack()
+    ok(grid.gpage == 1, "grid keys: back shows the page before")
+    grid:onCloseWidget()
+    -- a sheet with pages (a list a page at a time, the guide, search, trash...)
+    local view = dofile("ink/view.lua"):new{}
+    local list = {}
+    for i = 1, 20 do list[i] = { label = "Choice " .. i, cb = function() end } end
+    view:chooseFromList{ title = "Pick", items = list }
+    local sheet = view._list
+    ok(sheet.key_events.MenuPageFwd and sheet.key_events.MenuPageBack, "sheet keys: a sheet listens for the page turn buttons")
+    ok(shows(sheet, "1 / 3") and sheet.on_page ~= nil, "sheet keys: a sheet with pages takes their turn")
+    ok(sheet:onMenuPageFwd() and shows(view._list, "2 / 3") and shows(view._list, "Choice 8"),
+        "sheet keys: forward shows its next page")
+    ok(view._list:onMenuPageBack() and shows(view._list, "1 / 3"), "sheet keys: back shows the page before")
+    view:closeSheet("_list")
+    view:chooseFromList{ title = "Pick", items = { list[1], list[2] } }
+    ok(view._list.on_page == nil and view._list:onMenuPageFwd() == false,
+        "sheet keys: a sheet without pages leaves the buttons alone")
+    view:closeSheet("_list")
+    view:onCloseWidget()
+    Device.hasKeys, Device.input.group = hasKeys, group
+end
+
 -- ---- the first finger drag with palm rejection on: a note, once (#41) --------
 do
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)

@@ -57,6 +57,9 @@ versions marked *Prerelease* were test builds.
   trailed well behind, as each screen update held up the reader until the
   screen had taken it; now a helper makes the updates, with the screen's own
   handwriting mode on, as in Kobo's notebooks. Thanks to maks (#45, #48).
+- The page turn buttons turn the pages of grids and sheets as well as the
+  page: the library, folder icons, sent pictures, the guide, search, the trash
+  and lists (#53). They did nothing there.
 
 ## [4.2.0] - 2026-10-17
 

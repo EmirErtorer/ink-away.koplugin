@@ -89,7 +89,11 @@ function ThumbGrid:init()
         }
     end
     if Device:hasKeys() then
-        self.key_events = { TgClose = { { Device.input.group.Back } } }
+        local g = Device.input.group
+        self.key_events = { TgClose = { { g.Back } } }
+        -- the page turn buttons turn the grid's pages, as a swipe does (#53)
+        if g.PgFwd then self.key_events.TgKeyFwd = { { g.PgFwd } } end
+        if g.PgBack then self.key_events.TgKeyBack = { { g.PgBack } } end
     end
 end
 
@@ -513,6 +517,9 @@ function ThumbGrid:onTgSwipe(_, ges)
     if dir == "west" then self:gridGo(1) elseif dir == "east" then self:gridGo(-1) end
     return true
 end
+
+function ThumbGrid:onTgKeyFwd() self:gridGo(1); return true end
+function ThumbGrid:onTgKeyBack() self:gridGo(-1); return true end
 
 function ThumbGrid:onTgClose()
     self:close()

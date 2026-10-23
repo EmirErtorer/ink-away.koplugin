@@ -22,7 +22,6 @@ local function panel(content)
     return FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.window,
         radius = Screen:scaleBySize(28), padding = Screen:scaleBySize(18), content }
 end
-
 -- A modal sheet with ButtonDialog's structure (a MovableContainer around a
 -- FrameContainer). `build(menu)` returns the content, built with the menu at hand
 -- so its controls can use it as their repaint parent. A tap outside the panel, or
@@ -53,7 +52,23 @@ local IconMenu = InputContainer:extend{
     on_uncover = nil,          -- function(): the sheet left part of the screen to be
                                -- painted again under it (it closed, or a rebuild
                                -- shrank or moved it)
+    on_page = nil,             -- function(delta): turn the sheet's pages (set by IconMenu.pager)
 }
+
+-- The menu's content in its panel. A pager row built inside it (IconMenu.pager)
+-- gives the menu its page turn, for the reader's page turn buttons.
+local function framed(menu)
+    menu.on_page = nil
+    IconMenu.building = menu
+    local content = menu:build()
+    IconMenu.building = nil
+    return panel(content)
+end
+
+-- Called while a menu's content is built: `on_turn(delta)` turns its pages.
+function IconMenu.pager(on_turn)
+    if IconMenu.building then IconMenu.building.on_page = on_turn end
+end
 
 -- If the sheet is taller than the space it has (a long sheet, or any sheet in a
 -- short landscape screen), wrap its content in a ScrollableContainer capped to that
@@ -84,13 +99,17 @@ function IconMenu:fitFrame()
 end
 
 function IconMenu:init()
-    if self.build then self.frame = panel(self:build()); self:fitFrame() end
+    if self.build then self.frame = framed(self); self:fitFrame() end
     if Device:isTouchDevice() then
         self.ges_events = { TapClose = { GestureRange:new{ ges = "tap",
             range = GeomUI:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() } } } }
     end
     if Device:hasKeys() then
-        self.key_events = { CloseMenu = { { Device.input.group.Back } } }
+        local g = Device.input.group
+        self.key_events = { CloseMenu = { { g.Back } } }
+        -- the page turn buttons turn a sheet's pages, when it has them (#53)
+        if g.PgFwd then self.key_events.MenuPageFwd = { { g.PgFwd } } end
+        if g.PgBack then self.key_events.MenuPageBack = { { g.PgBack } } end
     end
     -- MovableContainer gives the content a reliable .dimen (set at paint time) and
     -- swallows drags that start on the frame; paintTo positions it
@@ -146,7 +165,7 @@ function IconMenu:rebuild()
     local old = self.movable.dimen and self.movable.dimen:copy()
     local moved = self.movable.getMovedOffset and self.movable:getMovedOffset()
     if self.movable.free then self.movable:free() end
-    self.frame = panel(self:build())
+    self.frame = framed(self)
     self:fitFrame()
     self.movable = MovableContainer:new{ self.frame }
     if moved and self.movable.setMovedOffset then self.movable:setMovedOffset(moved) end
@@ -237,5 +256,17 @@ function IconMenu:onCloseMenu()
 end
 -- (what a text field inside asks for on Back)
 IconMenu.onCloseDialog = IconMenu.onCloseMenu
+
+function IconMenu:onMenuPageFwd()
+    if not self.on_page then return false end
+    self.on_page(1)
+    return true
+end
+
+function IconMenu:onMenuPageBack()
+    if not self.on_page then return false end
+    self.on_page(-1)
+    return true
+end
 
 return IconMenu

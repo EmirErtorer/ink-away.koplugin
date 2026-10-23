@@ -428,6 +428,7 @@ end
 -- pages (0-based `page` of `pages`); a tap on an arrow calls on_turn(-1) or
 -- on_turn(1).
 function InkAwayView:pagerRow(page, pages, w, gap, on_turn)
+    IconMenu.pager(on_turn)   -- (the page turn buttons turn it too)
     local aw = math.floor(w / 4)
     local label = TextWidget:new{ text = string.format("%d / %d", page + 1, pages),
         face = Font:getFace("cfont", 17), bold = true }
