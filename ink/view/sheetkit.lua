@@ -97,6 +97,8 @@ function InkAwayView:sheetWidth(cols)
     local left, right = self:sheetLeftX(), self:sheetRightX()
     if left or right then
         local frame = 2 * (Screen:scaleBySize(18) + Size.border.window) + 2 * Screen:scaleBySize(4)
+        -- (and the arrow column a long sheet scrolls with, see ink/ui/arrowscroll.lua)
+        frame = frame + require("ink/ui/arrowscroll").extraWidth()
         target = math.min(target, (right or Screen:getWidth()) - (left or 0) - frame - 2)
     end
     local col = math.floor((target - (cols - 1) * gap) / cols)

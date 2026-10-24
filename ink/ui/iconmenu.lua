@@ -88,13 +88,10 @@ function IconMenu:fitFrame()
     -- measuring can fail with the headless test mocks; then no scroll wrapper
     local ok, csz = pcall(function() return content:getSize() end)
     if not ok or not csz or csz.h + chrome <= avail then return end   -- fails or fits
-    local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
-    local sbw = ScrollableContainer:getScrollbarWidth()
-    self.frame[1] = ScrollableContainer:new{
-        dimen = GeomUI:new{ w = csz.w + sbw, h = math.max(1, avail - chrome) },
-        show_parent = self,
-        content,
-    }
+    -- (with arrows beside the scrollbar, as a drag on e-ink often moves a
+    -- toggle or slider instead of the sheet)
+    self.frame[1], self.scroller = require("ink/ui/arrowscroll").new(content, csz.w,
+        math.max(1, avail - chrome), self)
     self.frame._size = nil   -- drop any cached size so the frame remeasures
 end
 

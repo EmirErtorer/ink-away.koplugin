@@ -52,6 +52,9 @@ versions marked *Prerelease* were test builds.
   (the QR code, ready to receive), Search online and Background.
 
 ### Changed
+- A sheet too tall for the screen, such as Settings, has arrow buttons above
+  and below its scrollbar: a tap scrolls most of a screenful, where a drag on
+  e-ink often moved a toggle or slider instead.
 - The library's ⋯ menu is a sheet like the others, each option with a line
   saying what it does: Phone or computer (Wi-Fi), Write on a PDF from this
   reader, the order, and Trash.
