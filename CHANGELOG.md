@@ -8,7 +8,20 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-24
+
+Everything from the 4.2.1 and 4.2.2 prereleases, plus the pen's eraser end and
+side button while reading, Convert to text online, zoom and Pan buttons at the
+left, arrows for long sheets, and fixes for the Kobo Elipsa, Elipsa 2E and Sage,
+the page turn buttons and Book notes.
+
 ### Added
+- Highlight while reading with the pen's side button (part of #39): hold it
+  and run the pen over a line of text, and it becomes the reader's own
+  highlight, made by the same smart highlighter, without opening the
+  annotation mode. It uses the part of the pen set to Highlighter in Gestures
+  and pen buttons; without it the pen turns pages and selects text as before.
+  It can be turned off in the reader's menu, Tools, Ink Away.
 - The pen's eraser end erases while reading, without opening the annotation
   mode: highlights and Ink Away's ink it runs over go. It can be switched off
   in the book's Ink Away menu (#59).
@@ -17,8 +30,12 @@ versions marked *Prerelease* were test builds.
 - Convert to text online (experimental): Convert to text can use your own
   online service instead of reading on the reader. Switch it on in the Text
   tool's sheet and set the address, key and model; it is off by default.
+  Thanks to acidkill (#61, #62).
 - Convert to text shows what was read to check and fix before it replaces the
   writing; erased writing and hidden layers are no longer read.
+- The eraser shows its size and shape (#43): the Eraser sheet shows it at its
+  real size on screen, and Show the eraser while erasing (off by default, as
+  e-ink leaves a trail of rings, #47) puts a ring under the pen.
 - Phone or computer (Wi-Fi): get your notebooks and drawings onto a phone or
   computer, or add PDFs and pictures from one, with nothing to install. Open
   it from the library's menu, Export, or Add image; the reader shows a QR code
@@ -52,6 +69,16 @@ versions marked *Prerelease* were test builds.
   (the QR code, ready to receive), Search online and Background.
 
 ### Changed
+- Every menu and dialog is in Ink Away's style: messages, questions, typing a
+  name, the lists of templates and notebooks, the arrowhead size and an
+  export's progress. Picking a picture, a PDF or a folder is a grid with
+  thumbnails, and short notes like "Nothing to undo" show at the top of the
+  screen, out of the pen's way.
+- Holding a card in the library or a tab in the overview opens a sheet with
+  icons, and the main buttons of Add image, Settings, File, the page menu,
+  Layers, the pen menu and Export have icons.
+- The library bar has one + New button (drawing, notebook or folder) instead
+  of three, so a folder's full name fits beside it.
 - A sheet too tall for the screen, such as Settings, has arrow buttons above
   and below its scrollbar: a tap scrolls most of a screenful, where a drag on
   e-ink often moved a toggle or slider instead.
@@ -63,9 +90,11 @@ versions marked *Prerelease* were test builds.
   than in Settings.
 
 ### Fixed
-- Erasing was slow and left trails of circles on e-ink (#47): the eraser's outline
-  under the pen is now off unless turned on in the Eraser sheet (Show the eraser
-  while erasing).
+- Kobo pen buttons did nothing with palm rejection off, the default on a Kobo
+  (#13): the eraser end and the side button drew like the tip. They now do
+  what Gestures and pen buttons says, with palm rejection on or off, and the
+  side button's choices no longer mention a second side button Kobo pens
+  don't have.
 - Kobo Elipsa (the 2021 model): drawing keeps up with the pen and a finger. It
   trailed well behind, as each screen update held up the reader until the
   screen had taken it; now a helper makes the updates, with the screen's own
@@ -88,6 +117,10 @@ versions marked *Prerelease* were test builds.
   helper busy with a slow update is waited for instead of being given up, and
   after a failure the next stroke tries it again, so drawing no longer stays slow
   until Ink Away is reopened.
+- A new drawing, notebook, copy or folder made while in Imported went into
+  Imported; it goes in the library now, as Imported only holds what was sent.
+- After picking a picture from Sent from your phone, the top of that grid
+  stayed over the toolbar.
 
 ## [4.2.0] - 2026-10-17
 
