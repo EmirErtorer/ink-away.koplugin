@@ -28,26 +28,42 @@ function InkAwayView:addOcrApiRows(add, menu, width)
             self:setSetting(SETTING, config)
             self:openTextSettings()
         end })
-    if not config.enabled then return end
-    add(self:sheetHint(_("Experimental. Convert to text sends the selected writing to your service instead of reading it on the reader. The key is kept unencrypted in KOReader's settings."), width))
-    for _i, field in ipairs({ { "url", _("Address"), "https://example.com/v1" },
-            { "key", _("Key"), "" }, { "model", _("Model"), "paddleocr-vl" } }) do
-        local key, label, hint = field[1], field[2], field[3]
+    if not config.enabled then
+        add(self:sheetHint(_("Read handwriting with an AI service you have an account with, instead of on the reader."), width))
+        return
+    end
+    local missing = config.url == "" or config.key == "" or config.model == ""
+    add(self:sheetHint(missing
+        and _("Experimental. Convert to text sends a picture of the lassoed writing to your AI service and puts back the text it reads. Set the three below from your service's account and documentation, then lasso some writing and choose Convert to text, with Wi-Fi on.")
+        or _("Experimental. Convert to text sends a picture of the lassoed writing to the service below and puts back the text it reads. Wi-Fi has to be on."), width))
+    add(vspan(4))
+    add(self:sheetHint(_("Only the lassoed writing is sent. The key is kept unencrypted in KOReader's settings."), width))
+    for _i, field in ipairs({
+            { "url", _("Address"), _("Set the address"), "https://api.openai.com/v1",
+                _("Your service's API address, from its documentation. It has to start with https://, for example https://api.openai.com/v1 or https://openrouter.ai/api/v1.") },
+            { "key", _("Key"), _("Set the key"), "",
+                _("The API key from your account on the service, usually under API keys. It is only sent to the address above.") },
+            { "model", _("Model"), _("Set the model"), "gpt-4o-mini",
+                _("The name of one of the service's models that can read pictures, as its model list writes it, for example gpt-4o-mini or paddleocr-vl.") } }) do
+        local key, label, unset, hint, about = field[1], field[2], field[3], field[4], field[5]
         local value = config[key]
-        if value == "" then value = _("not set")
-        elseif key == "key" then value = "********" end
+        local text
+        if value == "" then text = unset
+        elseif key == "key" then text = label .. ": ********"
+        else text = label .. ": " .. value end
         add(vspan(8))
-        add(self:actionButton(label .. ": " .. value, width, function()
+        add(self:actionButton(text, width, function()
             self:closeSheet("_text_settings")
             self:promptText{ field = "_ocr_config", title = label, input = config[key], hint = hint,
+                description = about,
                 text_type = key == "key" and "password" or nil, ok_text = _("Save"),
                 on_cancel = function() self:openTextSettings() end,
-                on_ok = function(text)
-                    config[key] = text or ""
+                on_ok = function(typed)
+                    config[key] = typed and typed:match("^%s*(.-)%s*$") or ""
                     self:setSetting(SETTING, config)
                     self:openTextSettings()
                 end }
-        end))
+        end, value == "" and missing))
     end
 end
 
@@ -81,18 +97,21 @@ end
 
 function InkAwayView:convertSelectionWithApi(strokes, ops)
     local Api = require("ink/ocr/api")
-    local config, err = Api.validate(self:ocrApiConfig())
+    local saved = self:ocrApiConfig()
+    local config = Api.validate(saved)
     if not config then
-        self:tell(err)
+        -- the Text sheet, with this on top saying what to set there
         self:openTextSettings()
+        self:tell((saved.url == "" or saved.key == "" or saved.model == "")
+            and _("Convert to text online needs your service's address, key and model. Set them in the Text sheet, or switch it off there to read on the reader.")
+            or _("Check the address in the Text sheet: it has to be a full address starting with https://."))
         return
     end
     local NetworkMgr = require("ui/network/manager")
-    if not NetworkMgr:isOnline() then self:tell(_("Turn on Wi-Fi before using external OCR.")); return end
+    if not NetworkMgr:isOnline() then self:tell(_("Turn on Wi-Fi to convert online.")); return end
     local context = self:hwrContext()
     local Image = require("ink/ocr/image")
-    local snapshot
-    snapshot, err = Image.snapshot(self.canvas, ops)
+    local snapshot, err = Image.snapshot(self.canvas, ops)
     if not snapshot then self:tell(err); return end
     local Job = require("ink/ocr/job")
     local cancel

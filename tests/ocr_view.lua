@@ -20,20 +20,21 @@ package.loaded["ink/ui/controls"] = { ToggleRow = { new = function(_, o)
 end } }
 function V:openTextSettings()
     self.fields = {}
-    self:addOcrApiRows(function(w) if w.is_on ~= nil or w.text then self.fields[#self.fields + 1] = w end end, {}, 600)
+    self:addOcrApiRows(function(w) if w.is_on ~= nil or w.callback then self.fields[#self.fields + 1] = w end end, {}, 600)
 end
 local view = setmetatable({}, { __index = V })
 view:openTextSettings()
 assert(#view.fields == 1 and not view.fields[1].is_on, "default off; all configuration hidden")
 view.fields[1]:onTap()
-assert(#view.fields == 5 and view.fields[1].is_on, "the switch immediately reveals three fields")
-assert(view.fields[3].text == "Address: not set", "an empty field says so")
+assert(#view.fields == 4 and view.fields[1].is_on, "the switch immediately reveals three fields")
+assert(view.fields[2].text == "Set the address", "an empty field says what to do")
 for i, text in ipairs({ "https://example.test/v1", "private-test-key", "paddleocr-vl" }) do
-    view.fields[i + 2].callback()
+    view.fields[i + 1].callback()
+    assert(view.prompt.description and view.prompt.description ~= "", "each field explains where its value comes from")
     assert((view.prompt.text_type == "password") == (i == 2), "key editor is masked")
-    view.prompt.on_ok(text)
+    view.prompt.on_ok(" " .. text .. " ")
 end
-assert(view.fields[4].text == "Key: ********", "key never shown on the sheet")
+assert(view.fields[3].text == "Key: ********" and view:ocrApiConfig().key == "private-test-key", "key never shown on the sheet")
 view.fields[1]:onTap()
 assert(#view.fields == 1 and view:ocrApiConfig().key == "private-test-key", "switching off hides and retains values")
 local reopened = setmetatable({}, { __index = V })
