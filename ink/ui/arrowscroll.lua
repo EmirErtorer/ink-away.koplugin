@@ -12,12 +12,9 @@ local GeomUI = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconWidget = require("ui/widget/iconwidget")
-local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalScrollBar = require("ui/widget/verticalscrollbar")
 local VerticalSpan = require("ui/widget/verticalspan")
-local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local Paint = require("ink/paint")
 
 local Screen = Device.screen
@@ -28,24 +25,32 @@ local ArrowScroll = {}
 -- How much an arrow scrolls: most of what shows, so a line stays in view.
 ArrowScroll.STEP = 0.8
 
--- ScrollableContainer without a scrollbar of its own (the column has it), so
--- the content keeps its whole width.
-local Scroller = ScrollableContainer:extend{ scroll_bar_width = 0 }
-function Scroller:initState()
-    ScrollableContainer.initState(self)
-    self._v_scroll_bar, self._h_scroll_bar = nil, nil
-end
-
--- The scrollbar, set from the scroller each time it is painted. A tap or drag
--- on it scrolls there, as on KOReader's own.
-local Bar = WidgetContainer:extend{}
-function Bar:getSize() return { w = self.w, h = self.h } end
-function Bar:paintTo(bb, x, y)
-    local s = self.scroller
-    if not s._is_scrollable then return end
-    local total = s._max_scroll_offset_y + s._crop_h
-    self[1]:set(s._scroll_offset_y / total, (s._scroll_offset_y + s._crop_h) / total)
-    self[1]:paintTo(bb, x + math.floor((self.w - self[1].width) / 2), y)
+-- The two widget classes, made the first time a sheet scrolls (so asking only
+-- for extraWidth needs none of KOReader's scroll widgets):
+--   Scroller: ScrollableContainer without a scrollbar of its own (the column
+--     has it), so the content keeps its whole width.
+--   Bar: the scrollbar, set from the scroller each time it is painted. A tap or
+--     drag on it scrolls there, as on KOReader's own.
+local Scroller, Bar
+local function classes()
+    if Scroller then return Scroller, Bar end
+    local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
+    local WidgetContainer = require("ui/widget/container/widgetcontainer")
+    Scroller = ScrollableContainer:extend{ scroll_bar_width = 0 }
+    function Scroller:initState()
+        ScrollableContainer.initState(self)
+        self._v_scroll_bar, self._h_scroll_bar = nil, nil
+    end
+    Bar = WidgetContainer:extend{}
+    function Bar:getSize() return { w = self.w, h = self.h } end
+    function Bar:paintTo(bb, x, y)
+        local s = self.scroller
+        if not s._is_scrollable then return end
+        local total = s._max_scroll_offset_y + s._crop_h
+        self[1]:set(s._scroll_offset_y / total, (s._scroll_offset_y + s._crop_h) / total)
+        self[1]:paintTo(bb, x + math.floor((self.w - self[1].width) / 2), y)
+    end
+    return Scroller, Bar
 end
 
 -- A square grey rounded button with an arrow, as the sheets' other buttons.
@@ -78,6 +83,8 @@ end
 function ArrowScroll.new(content, w, h, parent)
     local S = function(px) return Screen:scaleBySize(px) end
     local bw, gap = S(40), S(8)
+    classes()
+    local VerticalScrollBar = require("ui/widget/verticalscrollbar")
     local scroller = Scroller:new{ dimen = GeomUI:new{ w = w, h = h }, show_parent = parent, content }
     local function by(dir)
         if not scroller._is_scrollable then return end
