@@ -326,18 +326,27 @@ function InkAwayView:fabRect(which)
     if which == "back" then   -- after following a link: back to where it was followed from
         if not self._link_back then return nil end
         return { x = v.area_x + m, y = v.area_y + m, w = Screen:scaleBySize(96), h = Screen:scaleBySize(38) }
-    elseif which == "zoom" then
+    elseif which == "zoom" then   -- at the bottom right, or left (clear of a resting right palm)
+        if self.fab_side == "hidden" then return nil end
         local h = Screen:scaleBySize(92)
+        if self.fab_side == "left" then
+            -- (above the notebook bar's chevron in that corner)
+            local up = self.notebook and Screen:scaleBySize(14) or 0
+            return { x = v.area_x + m, y = v.area_y + v.area_h - m - h - up, w = w, h = h }
+        end
         return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
     elseif which == "pan" then   -- a round button a little above the zoom pill
         local z = self:fabRect("zoom")
+        if not z then return nil end
         return { x = z.x, y = z.y - Screen:scaleBySize(12) - w, w = w, h = w }
     elseif which == "pens" then  -- your first saved pens, at the bottom left
         local n = self:penStripCount()
         if n == 0 then return nil end
         local sw, sh, pad = Screen:scaleBySize(44), Screen:scaleBySize(36), Screen:scaleBySize(5)
         local pw, ph = n * sw + (n + 1) * pad, sh + 2 * pad
-        return { x = v.area_x + Screen:scaleBySize(56), y = v.area_y + v.area_h - m - ph, w = pw, h = ph,
+        -- (to the right of the zoom pill when that is at the left)
+        local x = self.fab_side == "left" and v.area_x + m + w + Screen:scaleBySize(12) or v.area_x + Screen:scaleBySize(56)
+        return { x = x, y = v.area_y + v.area_h - m - ph, w = pw, h = ph,
                  slot = sw, sh = sh, pad = pad, n = n }
     elseif which == "layers" then   -- a layered drawing's layers, at the right (view/layers.lua)
         return self:layerStripRect()

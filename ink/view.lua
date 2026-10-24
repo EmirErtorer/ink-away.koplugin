@@ -208,6 +208,7 @@ function InkAwayView:init()
     -- Ends the pass-through of a pen UI contact's gestures (see penUiFrame).
     self._pen_ui_end = function() self._pen_ui = nil end
     self.symmetry    = self:getSetting("inkaway_symmetry", "off")      -- off | vert | horiz | quad
+    self.fab_side    = self:getSetting("inkaway_fab_side", "right")   -- zoom and Pan buttons: right | left | hidden
     self.ghost_clean = self:getSetting("inkaway_ghost", 0)             -- full refresh every this many strokes (0 = off)
     self.erase_bg    = self:getSetting("inkaway_erase_bg", false)      -- the eraser also removes pictures
     self.erase_whole = self:getSetting("inkaway_erase_whole", false)   -- the eraser removes whole strokes

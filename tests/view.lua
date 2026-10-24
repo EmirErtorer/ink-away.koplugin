@@ -6448,6 +6448,23 @@ for _, wh in ipairs(SIZES) do
     ok(pr.x == zr.x and pr.w == zr.w and pr.h == pr.w and pr.y + pr.h < zr.y and zr.y - (pr.y + pr.h) < pr.h,
         "pan button: round, a little above the zoom pill and apart from it" .. tag)
     ok(pr.y >= v.area_y and pr.x + pr.w <= v.area_x + v.area_w, "pan button: inside the drawing area" .. tag)
+    -- (#63) the zoom and Pan buttons at the left, clear of the saved pens, or hidden
+    local function overlaps(a, b) return a and b and a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h end
+    view.fab_side = "left"
+    local lz, lp = view:fabRect("zoom"), view:fabRect("pan")
+    ok(lz.x < v.area_x + v.area_w / 2 and lz.x >= v.area_x and lp.x == lz.x and lz.y == zr.y,
+        "fab side: left puts the zoom pill and Pan at the bottom left" .. tag)
+    ok(view:fabHit(lz.x + 5, lz.y + 5) == "zoomin" and view:fabHit(zr.x + 5, zr.y + 5) == nil,
+        "fab side: a tap reaches them at the left, and the right is the page" .. tag)
+    ok(not overlaps(view:fabRect("pens"), lz), "fab side: the saved pens stay clear of the zoom pill" .. tag)
+    view.fab_side = "hidden"
+    view:paintTo(Screen.bb, 0, 0)
+    ok(view:fabRect("zoom") == nil and view:fabRect("pan") == nil and view:fabHit(zr.x + 5, zr.y + 5) == nil
+        and view:fabHit(pr.x + 5, pr.y + 5) == nil, "fab side: hidden leaves no zoom or Pan button to hit" .. tag)
+    view:setFabSide("left")
+    ok(view:getSetting("inkaway_fab_side") == "left", "fab side: the choice is saved" .. tag)
+    view:closeSheet("_settings_dialog")
+    view:setFabSide("right")
     -- the Lasso button picks the lasso and is lit
     view:setTool("pen")
     ids.lasso.button.callback()

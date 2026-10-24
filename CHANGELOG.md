@@ -9,6 +9,8 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- The zoom and Pan buttons can sit at the left, out from under a resting
+  right palm, or be hidden: Settings, Zoom and Pan buttons (#63).
 - Convert to text online (experimental): Convert to text can use your own
   online service instead of reading on the reader. Switch it on in the Text
   tool's sheet and set the address, key and model; it is off by default.

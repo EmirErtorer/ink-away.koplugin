@@ -527,7 +527,7 @@ function InkAwayView:layerStripRect()
     local x = v.area_x + v.area_w - m - w
     local y = v.area_y + math.floor((v.area_h - h) / 2)
     -- clear of the Pan button and the zoom under it at the bottom right
-    local pan = self:fabRect("pan")
+    local pan = self.fab_side == "right" and self:fabRect("pan")
     if pan and y + h > pan.y - Screen:scaleBySize(10) then y = pan.y - Screen:scaleBySize(10) - h end
     y = math.max(v.area_y + m, y)
     return { x = x, y = y, w = w, h = h, rh = rh, pad = pad, plus = plus, n = #c.layers }

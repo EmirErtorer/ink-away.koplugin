@@ -231,6 +231,15 @@ function InkAwayView:openGridSettings()
     self:showSheet("_grid_dialog", build)
 end
 
+-- Put the zoom and Pan buttons at the "right" or "left", or hide them.
+function InkAwayView:setFabSide(side)
+    self.fab_side = side
+    self:setSetting("inkaway_fab_side", side)
+    self._blit_rect = nil
+    UIManager:setDirty(self, "ui")
+    self:openSettings()
+end
+
 -- The settings sheet (gear): orientation, the grid or notebook paper, the
 -- symmetry and ghosting options, and where files are kept.
 function InkAwayView:openSettings()
@@ -267,6 +276,18 @@ function InkAwayView:openSettings()
                 function(v) closeSelf(); self:setOrientation(v) end))
             add(vspan(16))
         end
+
+        -- the zoom and Pan buttons: at either side, or none (pinch and two
+        -- fingers do the same)
+        add(self:sheetLabel(_("Zoom and Pan buttons"), true))
+        add(vspan(6))
+        add(self:segmentedRow({ { "right", _("Right") }, { "left", _("Left") }, { "hidden", _("Hidden") } },
+            self.fab_side, content_w, function(side) self:setFabSide(side) end))
+        if self.fab_side == "hidden" then
+            add(vspan(4))
+            add(self:sheetHint(_("Pinch to zoom, and drag with two fingers to move around the page."), content_w))
+        end
+        add(vspan(16))
 
         -- the theme colour, on a colour screen
         if self:colorScreen() then
