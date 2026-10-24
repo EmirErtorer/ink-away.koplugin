@@ -104,7 +104,7 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | **Convert to text** | Lassoed handwriting opens an editable preview. Apply replaces the writing with a text box; Cancel preserves it. One undo brings the writing back. Local recognition supports English letters and digits; optional external OCR is described below. |
 | **Undo and redo** | From the toolbar, or with two fingers (see Gestures). |
 
-### Experimental OCR API (test build)
+### Experimental OCR API
 
 In Ink Away's gear settings, check **experimental OCR api** to reveal **API URL**,
 **API key**, and **Model name**. Enter your own image-capable OpenAI-compatible
@@ -126,7 +126,10 @@ deadline, and limits of 4 megapixels / 4 MiB PNG. Stop discards the result; the
 provider may still finish the request, so another job waits until that request
 has ended or timed out. The API must support an image data URL, the `OCR:` prompt,
 `max_tokens`, and a non-streaming text response. This does not support every
-OpenAI model or Responses-only endpoint. Kobo hardware acceptance is pending.
+OpenAI model or Responses-only endpoint. Tested on a Kobo Libra Colour with
+KOReader 2026.07.1 and an image-capable PaddleOCR-VL provider; recognition quality
+and latency depend on the provider, model and handwriting. Other readers still
+need device testing.
 
 ### Notebooks and PDFs
 
