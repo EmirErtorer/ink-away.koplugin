@@ -9,6 +9,9 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- The pen's eraser end erases while reading, without opening the annotation
+  mode: highlights and Ink Away's ink it runs over go. It can be switched off
+  in the book's Ink Away menu (#59).
 - The zoom and Pan buttons can sit at the left, out from under a resting
   right palm, or be hidden: Settings, Zoom and Pan buttons (#63).
 - Convert to text online (experimental): Convert to text can use your own

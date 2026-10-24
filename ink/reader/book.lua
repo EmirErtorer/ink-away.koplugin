@@ -471,6 +471,48 @@ function Book:highlightsAt(pts, r)
     return out
 end
 
+-- Erase along the screen path `pts` with radius `r`, while reading (the pen's
+-- eraser end, see ink/reader/penhighlight.lua): the highlights it reaches go,
+-- and the book's ink it crosses is cut as the annotation mode's eraser cuts it,
+-- with that mode's eraser settings. Returns how many highlights and strokes went
+-- or changed.
+function Book:eraseAlong(pts, r)
+    if not (pts and #pts >= 2) then return 0 end
+    local n = 0
+    for _i, it in ipairs(self:highlightsAt(pts, r)) do
+        if self:removeHighlight(it) then n = n + 1 end
+    end
+    local placed = self:pageOps()
+    if placed and #placed.ops > 0 then
+        local G = rawget(_G, "G_reader_settings")
+        local function get(k, d)
+            local v = G and G.readSetting and G:readSetting(k)
+            if v == nil then return d end
+            return v
+        end
+        local Cut = require("ink/cut")
+        local opts = { text = not get("inkaway_text_erase_protect", true), pictures = get("inkaway_erase_bg", false) }
+        local ops, changed = Cut.ops(placed.ops, pts, r, opts)
+        if changed and get("inkaway_erase_whole", false) then
+            -- the whole-stroke eraser: what it reached goes entirely
+            ops = {}
+            for _i, op in ipairs(placed.ops) do
+                local _o, hit = Cut.ops({ op }, pts, r, opts)
+                if not hit then ops[#ops + 1] = op end
+            end
+        end
+        if changed then
+            local came_from = {}
+            for i, op in ipairs(placed.ops) do came_from[op] = placed.items[i] end
+            for _i, op in ipairs(ops) do if not came_from[op] then n = n + 1 end end
+            self:setPageOps(ops, came_from, placed.items)
+            self:save()
+            if n == 0 then n = 1 end
+        end
+    end
+    return n
+end
+
 -- Put a removed highlight back (redo). Returns it as saved now.
 function Book:restoreHighlight(item)
     return self:addHighlight({ text = item.text, pos0 = item.pos0, pos1 = item.pos1, pboxes = item.pboxes,

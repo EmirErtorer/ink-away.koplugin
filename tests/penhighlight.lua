@@ -30,6 +30,8 @@ local function world(kobo)
     UIManager:show(ui)
     local book = { ui = ui, made = {} }
     function book:highlight(op) self.made[#self.made + 1] = op; return { text = "words" } end
+    book.erased = {}
+    function book:eraseAlong(pts, r) self.erased[#self.erased + 1] = { pts = pts, r = r }; return 1 end
     local other = { frames = 0 }
     w.input:registerStylusCallback(function() other.frames = other.frames + 1; return false end)
     other.cb = w.input.stylus_callback
@@ -91,10 +93,22 @@ for _, kobo in ipairs({ true, false }) do
     ok(#w.gestures == g0, tag .. ": KOReader saw none of it (no page turn, no selection)")
     ok(other.frames == f0, tag .. ": nor did the other plugin")
     ok(ph.stroke == nil, tag .. ": the stroke ended at the lift")
-    -- the eraser end, set to erase: not a highlight, the frames go on
+    -- the eraser end, set to erase: it erases along its path (#59), and
+    -- nothing reaches KOReader
     g0 = #w.gestures
     if kobo then stroke(w, 800, C.BTN_STYLUS) else stroke(w, 800, nil, true) end
-    ok(#book.made == 1 and #w.gestures > g0, tag .. ": the eraser end (set to erase) is left alone while reading")
+    local e = book.erased[1]
+    ok(#book.made == 1 and #book.erased == 1 and #w.gestures == g0,
+        tag .. ": the eraser end erases while reading, and is no highlight or touch")
+    ys = e and #e.pts >= 8 and e.r > 0
+    for i = 2, #(e and e.pts or {}), 2 do if math.abs(e.pts[i] - 800) > 4 then ys = false end end
+    ok(ys, tag .. ": along where the eraser end went")
+    -- with erasing switched off it is left alone, as before
+    PenHighlight.setEraseEnabled(false)
+    g0 = #w.gestures
+    if kobo then stroke(w, 820, C.BTN_STYLUS) else stroke(w, 820, nil, true) end
+    ok(#book.erased == 1 and #w.gestures > g0, tag .. ": switched off, the eraser end is left alone while reading")
+    PenHighlight.setEraseEnabled(true)
     -- set to the Highlighter, the eraser end highlights too
     local b = Actions.load(function(k) return G_reader_settings:readSetting(k) end)
     Actions.set(b, "pen_eraser", "highlighter")
@@ -135,9 +149,13 @@ for _, kobo in ipairs({ true, false }) do
     w.input:registerStylusCallback(later)
     ph:detach()
     ok(w.input.stylus_callback == later, tag .. ": a callback registered since is left in place")
-    -- off in the settings: it does not attach at all
+    -- off in the settings: it does not attach at all, unless erasing is still on
     PenHighlight.setEnabled(false)
-    ok(not PenHighlight.new(book, w.input):attach(), tag .. ": turned off, it does not watch the pen")
+    ok(PenHighlight.new(book, w.input):attach(), tag .. ": highlighting off, it still watches the pen to erase")
+    w.input:unregisterStylusCallback()
+    PenHighlight.setEraseEnabled(false)
+    ok(not PenHighlight.new(book, w.input):attach(), tag .. ": both turned off, it does not watch the pen")
+    PenHighlight.setEraseEnabled(true)
     PenHighlight.setEnabled(true)
 end
 

@@ -115,7 +115,16 @@ function InkAway:addToMainMenu(menu_items)
                 callback = function()
                     local on = not PenHighlight.enabled()
                     PenHighlight.setEnabled(on)
-                    if on then self.pen_highlight:attach() else self.pen_highlight:detach() end
+                    if PenHighlight.anyEnabled() then self.pen_highlight:attach() else self.pen_highlight:detach() end
+                end,
+            })
+            table.insert(menu_items.inkaway.sub_item_table, {
+                text = _("Erase with the pen's eraser end"),
+                help_text = _("Run the pen's eraser end over a highlight or over Ink Away's ink on the page: it goes, without opening the annotation mode. The eraser settings of the annotation mode apply. The part of the pen is the one set to Eraser in Gestures and pen buttons."),
+                checked_func = function() return PenHighlight.eraseEnabled() end,
+                callback = function()
+                    PenHighlight.setEraseEnabled(not PenHighlight.eraseEnabled())
+                    if PenHighlight.anyEnabled() then self.pen_highlight:attach() else self.pen_highlight:detach() end
                 end,
             })
         end

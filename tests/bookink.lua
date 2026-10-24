@@ -342,6 +342,39 @@ do
     ok(b._index ~= nil and same and map2 and #now2 == 1, "index: changed on the shown pages only, as a full rebuild has it")
 end
 
+-- ---- the pen's eraser end while reading (#59) ------------------------------------------
+do
+    local Book = require("ink/reader/book")
+    local doc = { kind = "paging", zoom = 1 }
+    function doc:toPage(x, y) return 5, x, y, 1 end
+    function doc:toScreen(_, px, py) return px, py, 1 end
+    local hl = { text = "words", pos0 = "a", pos1 = "b" }
+    local anns = { hl }
+    local view = { state = { page = 5, zoom = 1 }, highlight = { visible_boxes = {
+        { index = 1, rect = { x = 100, y = 300, w = 200, h = 30 } } } } }
+    function view:screenToPageTransform(pos) return { x = pos.x, y = pos.y, page = 5 } end
+    local ui = { paging = true, view = view, annotation = { annotations = anns },
+        highlight = { deleteHighlight = function(_, i) table.remove(anns, i) end } }
+    local b = setmetatable({ ui = ui, rev = 0, has_file = true }, Book)
+    b._doc = doc
+    b.layoutKey = function() return "L" end
+    local saved = 0
+    b.save = function() saved = saved + 1 end
+    local function ink(x0, y, x1) return { kind = "ink", width = 2, alpha = 255, pts = { x0, y, x1, y } } end
+    local long, apart = Place.anchor(ink(100, 100, 300), doc), Place.anchor(ink(100, 600, 300), doc)
+    b._data = { version = 1, items = { long, apart } }
+    -- a stroke down through the middle of the long line, and one across the highlight
+    ok(b:eraseAlong({ 200, 60, 200, 140 }, 20) > 0 and saved == 1, "pen eraser: it erases and saves")
+    local has = {}
+    for _, it in ipairs(b._data.items) do has[it] = true end
+    ok(#b._data.items == 3 and has[apart] and not has[long],
+        "pen eraser: the line it crossed is cut in two, the ink away from it untouched")
+    ok(#anns == 1, "pen eraser: a stroke away from the highlight leaves it")
+    ok(b:eraseAlong({ 150, 315, 250, 315 }, 20) == 1 and #anns == 0 and #b._data.items == 3,
+        "pen eraser: across a highlight it goes, the ink stays")
+    ok(b:eraseAlong({ 700, 900, 750, 900 }, 20) == 0 and saved == 1, "pen eraser: over nothing, nothing changes or is saved")
+end
+
 -- ---- the file is written from each item's kept text ------------------------------------
 do
     local Project = require("ink/project")

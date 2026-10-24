@@ -207,7 +207,7 @@ With the [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) plugin inst
 |---|---|
 | **Dark mode** | Light, Dark or following KOReader's night mode, for Ink Away's toolbars, menus and library. Your page and colours are never changed. |
 | **Palm rejection** | Rest your hand on the screen while the pen writes (on by default on Kindle Scribe and reMarkable). The pen can still tap the toolbar and menus. |
-| **Stylus buttons** | The eraser end erases, and holding the side button makes the pen a highlighter, on pens that have them. You can set them to anything else. |
+| **Stylus buttons** | The eraser end erases, and holding the side button makes the pen a highlighter, on pens that have them. Both work while reading too, without opening the annotation mode. You can set them to anything else. |
 | **Colour screens** | A theme colour, Ink Away green by default, and colour ink that shows as you draw. In KOReader's night mode ink keeps its colour: blue stays blue, and dark ink turns light to read on the dark page. |
 | **E-ink** | Light refreshes while you draw, an optional clean-up refresh every few strokes, a full refresh whenever you like from Settings or a gesture, portrait or landscape, and bars that fold away for more room. |
 

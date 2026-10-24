@@ -11,6 +11,10 @@ taken; every other frame goes on to whatever had the pen before (another
 plugin), or to KOReader as a touch, so the pen turns pages and selects text as
 it always did. An Ink Away view opened over the book takes the pen and gives
 it back as it closes (see InkAwayView:takeStylus).
+
+The part set to the Eraser (by default the eraser end) erases the same way
+(#59): the reader's highlights and the book's Ink Away ink it runs over go at
+the lift, cut as the annotation mode's eraser cuts them (see Book:eraseAlong).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -25,6 +29,8 @@ local Screen = Device.screen
 local BLACK = Blitbuffer.COLOR_BLACK
 
 local SETTING = "inkaway_reader_pen_highlight"
+local ERASE_SETTING = "inkaway_reader_pen_erase"
+local ERASER_WIDTH = 40   -- the annotation mode's eraser, as it starts
 
 local PenHighlight = {}
 PenHighlight.__index = PenHighlight
@@ -42,6 +48,21 @@ end
 function PenHighlight.setEnabled(on)
     local G = rawget(_G, "G_reader_settings")
     if G and G.saveSetting then G:saveSetting(SETTING, on and true or false) end
+end
+
+-- Is erasing with the pen's eraser end on (it is unless turned off)?
+function PenHighlight.eraseEnabled()
+    return setting(ERASE_SETTING) ~= false
+end
+
+function PenHighlight.setEraseEnabled(on)
+    local G = rawget(_G, "G_reader_settings")
+    if G and G.saveSetting then G:saveSetting(ERASE_SETTING, on and true or false) end
+end
+
+-- Is either on, so the pen is worth watching?
+function PenHighlight.anyEnabled()
+    return PenHighlight.enabled() or PenHighlight.eraseEnabled()
 end
 
 -- Can this KOReader hand a plugin the pen? (2026.07 or newer; on Android only
@@ -76,7 +97,7 @@ end
 
 -- Watch the pen, keeping what had it before to hand every other frame on to.
 function PenHighlight:attach()
-    if self.attached or not PenHighlight.supported(self.input) or not PenHighlight.enabled() then return false end
+    if self.attached or not PenHighlight.supported(self.input) or not PenHighlight.anyEnabled() then return false end
     local inp = self.input
     local cur = inp.stylus_callback
     self.prev = cur ~= self.cb and cur or nil
@@ -161,15 +182,17 @@ function PenHighlight:frame(inp, slot)
         if slot.x and slot.y then self:addPoint(Stylus.screenXY(slot, Screen)) end
         return true
     end
-    -- a new contact: ours only with the Highlighter's button held, on the page,
+    -- a new contact: ours only with the Highlighter's button (or the Eraser's) held, on the page,
     -- and once the pen's slot is known only there (a palm the panel numbers as
     -- the eraser looks like the pen while the eraser end is held)
     if role ~= Stylus.ROLE_PEN or slot.id == nil or slot.id < 0 then return false end
     if self.learned_slot ~= nil and sn ~= self.learned_slot and slot.tool ~= Stylus.TOOL_PEN then return false end
-    if self:action(slot, facts) ~= "highlighter" then return false end
+    local action = self:action(slot, facts)
+    local erase = action == "eraser" and PenHighlight.eraseEnabled()
+    if not (erase or (action == "highlighter" and PenHighlight.enabled())) then return false end
     if not (slot.x and slot.y) or not self:pageOnTop() then return false end
-    local pen = self:highlighter()
-    self.stroke = { slot = sn, pts = {}, width = pen.width, color = pen.color,
+    local pen = erase and { width = ERASER_WIDTH } or self:highlighter()
+    self.stroke = { slot = sn, pts = {}, width = pen.width, color = pen.color, erase = erase,
         x0 = math.huge, y0 = math.huge, x1 = -math.huge, y1 = -math.huge }
     self:addPoint(Stylus.screenXY(slot, Screen))
     return true
@@ -202,12 +225,18 @@ function PenHighlight:addPoint(x, y)
     UIManager:setDirty(nil, "fast", Geom:new{ x = rx0, y = ry0, w = rx1 - rx0, h = ry1 - ry0 })
 end
 
--- The pen lifted: make the stroke the highlight of the text it ran over, and
--- draw the page again where the line was (with the highlight, if there is one).
+-- The pen lifted: make the stroke the highlight of the text it ran over (or
+-- erase along it), and draw the page again where the line was.
 function PenHighlight:finish()
     local s = self.stroke
     self.stroke = nil
     if not s then return end
+    if s.erase then
+        local ok, gone = pcall(self.book.eraseAlong, self.book, s.pts, s.width / 2)
+        if not ok then logger.warn("Ink Away: pen eraser:", gone) end
+        self:repaint(s)
+        return ok and gone or nil
+    end
     local op = { kind = "ink", style = "highlighter", width = s.width, color = s.color, pts = s.pts }
     local ok, item = pcall(self.book.highlight, self.book, op)
     if not ok then logger.warn("Ink Away: pen highlight:", item) end
