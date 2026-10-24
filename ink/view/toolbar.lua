@@ -330,8 +330,8 @@ function InkAwayView:fabRect(which)
         if self.fab_side == "hidden" then return nil end
         local h = Screen:scaleBySize(92)
         if self.fab_side == "left" then
-            -- (above the notebook bar's chevron in that corner)
-            local up = self.notebook and Screen:scaleBySize(14) or 0
+            -- (well above the notebook bar's chevron, which sits under it)
+            local up = self.notebook and Screen:scaleBySize(28) or 0
             return { x = v.area_x + m, y = v.area_y + v.area_h - m - h - up, w = w, h = h }
         end
         return { x = v.area_x + v.area_w - m - w, y = v.area_y + v.area_h - m - h, w = w, h = h }
@@ -356,7 +356,8 @@ function InkAwayView:fabRect(which)
         if not self.notebook then return nil end
         local bw = Screen:scaleBySize(34)
         local bh = Screen:scaleBySize(22)
-        local cx = v.area_x + Screen:scaleBySize(24)
+        -- (under the zoom pill when that is at the left: one column)
+        local cx = self.fab_side == "left" and v.area_x + m + w / 2 or v.area_x + Screen:scaleBySize(24)
         return { x = math.floor(cx - bw / 2), y = v.area_y + v.area_h - bh - Screen:scaleBySize(2),
                  w = bw, h = bh }
     else -- "bar": a small bare chevron centred under the toolbar's Exit button
