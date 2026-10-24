@@ -4,7 +4,7 @@ selection's menu. The strokes are split into lines, words and characters
 (ink/hwr.lua), each character read by the small network in ink/hwrnet.lua,
 each word checked against the English word list (ink/hwrwords.lua), and the
 writing replaced by one text box in the current text style, in one undo step.
-Everything runs on the reader; nothing is sent anywhere.
+Recognition runs locally unless experimental OCR api is explicitly enabled.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -12,6 +12,9 @@ local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
 local Hwr = require("ink/hwr")
+local Cut = require("ink/cut")
+local Canvas = require("ink/canvas")
+local Symmetry = require("ink/symmetry")
 local Text = require("ink/text")
 
 local InkAwayView = {}
@@ -45,17 +48,47 @@ end
 -- lines a hold to straighten may have made of single strokes. Returns the strokes (flat
 -- point lists, in writing order) and their ops.
 function InkAwayView:writingOf(idxs)
+    local c, selected, ops, working = self.canvas, {}, {}, {}
+    local function isWriting(op)
+        return op.pts and #op.pts >= 2
+            and (op.kind == "ink" or (op.kind == "shape" and op.shape == "line"))
+    end
+    local function hidden(op)
+        return op.hidden or (c.layers and c.hidden_layers and c.hidden_layers[op.layer or 1])
+    end
     local sorted = {}
     for i, idx in ipairs(idxs) do sorted[i] = idx end
     table.sort(sorted)
-    local strokes, ops = {}, {}
     for _, idx in ipairs(sorted) do
-        local op = self.canvas.ops[idx]
-        if op and op.pts and #op.pts >= 2
-                and (op.kind == "ink" or (op.kind == "shape" and op.shape == "line")) then
-            strokes[#strokes + 1] = op.pts
+        local op = c.ops[idx]
+        if op and isWriting(op) and not hidden(op) and not selected[op] then
+            selected[op] = true
             ops[#ops + 1] = op
         end
+    end
+    for _, op in ipairs(c.ops) do
+        if not hidden(op) then
+            if op.kind == "erase" and op.pts and #op.pts >= 2 then
+                for _, flip in ipairs(Symmetry.flips(op.sym)) do
+                    working = Cut.ops(working, Symmetry.flipPoints(op.pts, flip,
+                        self.view.canvas_w, self.view.canvas_h), (op.width or 1) / 2, {
+                        only = function(target)
+                            return target._hwr_source and selected[target._hwr_source]
+                                and isWriting(target._hwr_source)
+                                and (not c.layers or (target.layer or 1) == (op.layer or 1))
+                        end,
+                    })
+                end
+            elseif selected[op] and isWriting(op) then
+                local copy = Canvas.cloneOp(nil, op)
+                copy._hwr_source = op
+                working[#working + 1] = copy
+            end
+        end
+    end
+    local strokes = {}
+    for _, op in ipairs(working) do
+        if selected[op._hwr_source] and isWriting(op) then strokes[#strokes + 1] = op.pts end
     end
     return strokes, ops
 end
@@ -76,9 +109,10 @@ end
 -- Convert the selected writing to text. Shows a message when there is none, or
 -- when something fails, rather than letting an error reach KOReader.
 function InkAwayView:convertSelectionToText()
-    local ok, err = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
+    local ok = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
     if not ok then
-        logger.warn("InkAway: converting handwriting failed:", err)
+        self:cancelOcrApi()
+        logger.warn("InkAway: converting handwriting failed")
         self:tell(_("Something went wrong reading the writing."))
     end
 end
@@ -90,6 +124,7 @@ function InkAwayView:convertSelectionToTextNow()
         self:showNotice(_("There is no handwriting in the selection."), 2)
         return
     end
+    if self:ocrApiConfig().enabled then return self:convertSelectionWithApi(strokes, ops) end
     local net, words = self:hwrModels()
     if not net then
         self:tell(words)
@@ -112,6 +147,11 @@ function InkAwayView:convertSelectionToTextNow()
         self:showNotice(_("No writing could be read there."), 2)
         return
     end
+    self:reviewWriting(text, strokes, ops, self:hwrContext())
+end
+
+function InkAwayView:reviewWriting(text, strokes, ops, context)
+    if not self:hwrContextCurrent(context) or not self:hwrSelectionCurrent(ops) then return end
     local x0, y0 = math.huge, math.huge
     for _, pts in ipairs(strokes) do
         for i = 1, #pts - 1, 2 do
@@ -119,8 +159,42 @@ function InkAwayView:convertSelectionToTextNow()
             if pts[i + 1] < y0 then y0 = pts[i + 1] end
         end
     end
-    self:resetLasso()
-    self:replaceWithText(text, ops, x0, y0)
+    local InputDialog = require("ui/widget/inputdialog")
+    local dialog
+    local function close()
+        UIManager:close(dialog)
+        if self._ocr_dialog == dialog then self._ocr_dialog = nil end
+    end
+    local function apply()
+        if not self:hwrContextCurrent(context) then
+            close()
+            self:showNotice(_("The page changed. Please read the writing again."), 2)
+            return
+        end
+        if not self:hwrSelectionCurrent(ops) then
+            close()
+            self:showNotice(_("The selection changed. Please read the writing again."), 2)
+            return
+        end
+        local edited = dialog:getInputText()
+        if edited:gsub("%s", "") == "" then
+            close()
+            self:showNotice(_("No writing could be read there."), 2)
+            return
+        end
+        close()
+        self:resetLasso()
+        self:replaceWithText(edited, ops, x0, y0)
+    end
+    dialog = InputDialog:new{
+        title = _("Review recognized writing"), input = text, allow_newline = true,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() close() end },
+            { text = _("Apply"), callback = apply },
+        }},
+    }
+    self._ocr_dialog = dialog
+    UIManager:show(dialog)
 end
 
 -- Replace the ops `ink_ops` with one text box holding `text`, its top left at

@@ -33,12 +33,21 @@ if exists(EMU .. "/luajit") then
         "tests/realbb/android.lua", "tests/realbb/wash.lua", "tests/realbb/smudge.lua", "tests/realbb/greylive.lua",
         "tests/realbb/theme.lua", "tests/realbb/paper.lua", "tests/realbb/layers.lua",
         "tests/realbb/update.lua", "tests/realbb/text.lua",
-        "tests/realbb/notebookcover.lua", "tests/realbb/framecover.lua", "tests/realbb/folderlook.lua", "tests/realbb/share.lua", "tests/realbb/erasecursor.lua", "tests/realbb/rotation.lua", "tests/realbb/lift.lua" }) do
+    "tests/realbb/notebookcover.lua", "tests/realbb/framecover.lua", "tests/realbb/folderlook.lua", "tests/realbb/share.lua", "tests/realbb/erasecursor.lua", "tests/realbb/rotation.lua", "tests/realbb/lift.lua", "tests/realbb/ocrjob.lua" }) do
         suites[#suites + 1] = t
         REAL[t] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. t .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
     end
 end
 local fail = 0
+for _, suite in ipairs({ "tests/ocr_api.lua", "tests/ocr_job.lua", "tests/ocr_image.lua", "tests/ocr_view.lua" }) do
+    suites[#suites + 1] = suite
+end
+if exists(EMU .. "/luajit") then
+    local here = io.popen("pwd"):read("*l")
+    local suite = "tests/realbb/ocr.lua"
+    suites[#suites + 1] = suite
+    REAL[suite] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. suite .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
+end
 -- Lint: any global read/write in the plugin outside the standard library is a
 -- typo or a local used before its definition (Lua resolves it as a nil global).
 do

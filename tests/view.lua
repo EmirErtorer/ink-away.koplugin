@@ -5589,6 +5589,60 @@ do
     local view = InkAwayView:new{}
     UIManager:show(view)
     view.stampTextInto = function() end   -- the mock cannot lay out text
+    local ink = { kind = "ink", width = 2, pts = { 20, 50, 30, 50 }, pr = { 40, 90 }, layer = 1 }
+    local erase = { kind = "erase", width = 20, pts = { 25, 40, 25, 60 }, layer = 1 }
+    view.canvas:setOps({ ink, erase })
+    local before_pts, before_pr = table.concat(ink.pts, ","), table.concat(ink.pr, ",")
+    local strokes, selected = view:writingOf({ 1 })
+    ok(#strokes == 0 and #selected == 1, "hwr: an erased selection has no writing, and retains its source op")
+    ok(table.concat(ink.pts, ",") == before_pts and table.concat(ink.pr, ",") == before_pr,
+        "hwr: recognition leaves original points and pressure untouched")
+    local partial = { kind = "ink", width = 2, pts = { 0, 100, 100, 100 }, pr = { 20, 220 } }
+    before_pts, before_pr = table.concat(partial.pts, ","), table.concat(partial.pr, ",")
+    view.canvas:setOps({ partial, { kind = "erase", width = 10, pts = { 50, 90, 50, 110 } } })
+    strokes = view:writingOf({ 1 })
+    local has_left, has_right, has_erased = false, false, false
+    for _, pts in ipairs(strokes) do
+        for i = 1, #pts - 1, 2 do
+            if pts[i] < 45 then has_left = true end
+            if pts[i] > 55 then has_right = true end
+            if pts[i] >= 45 and pts[i] <= 55 then has_erased = true end
+        end
+    end
+    ok(has_left and has_right and not has_erased, "hwr: a partial erase leaves only the two visible runs")
+    ok(table.concat(partial.pts, ",") == before_pts and table.concat(partial.pr, ",") == before_pr,
+        "hwr: cutting recognition copies preserves source geometry and pressure")
+    view.canvas:setOps({ { kind = "erase", width = 10, pts = { 50, 90, 50, 110 } }, partial })
+    strokes = view:writingOf({ 2 })
+    ok(#strokes == 1 and table.concat(strokes[1], ",") == table.concat(partial.pts, ","),
+        "hwr: an eraser before ink does not erase later writing")
+    local redraw = { kind = "ink", width = 2, pts = { 50, 90, 50, 110 } }
+    view.canvas:setOps({ partial, { kind = "erase", width = 10, pts = { 50, 90, 50, 110 } }, redraw })
+    strokes = view:writingOf({ 3 })
+    ok(#strokes == 1 and table.concat(strokes[1], ",") == table.concat(redraw.pts, ","),
+        "hwr: ink redrawn after an erase remains readable")
+    local other = { kind = "ink", width = 2, pts = { 150, 100, 180, 100 } }
+    view.canvas:setOps({ partial, other, { kind = "erase", width = 10, pts = { 50, 90, 50, 110 } } })
+    local mixed
+    strokes, mixed = view:writingOf({ 2, 1 })
+    ok(#strokes == 3 and #mixed == 2 and mixed[1] == partial and mixed[2] == other,
+        "hwr: mixed selections use visible cut geometry and preserve source order")
+    local hidden_erase = { kind = "erase", width = 10, pts = { 50, 90, 50, 110 }, hidden = true }
+    view.canvas:setOps({ partial, hidden_erase })
+    strokes = view:writingOf({ 1 })
+    ok(#strokes == 1, "hwr: a hidden eraser does not remove visible writing")
+    partial.hidden = true
+    strokes, selected = view:writingOf({ 1 })
+    ok(#strokes == 0 and #selected == 0, "hwr: hidden writing is excluded from recognition")
+    partial.hidden = nil
+    partial.layer = 1
+    local other_layer_erase = { kind = "erase", width = 10, pts = { 50, 90, 50, 110 }, layer = 2 }
+    view.canvas:setOps({ partial, other_layer_erase })
+    view.canvas.layers = { { id = 1 }, { id = 2 } }
+    strokes = view:writingOf({ 1 })
+    ok(#strokes == 1, "hwr: an eraser on another layer does not remove selected writing")
+    view.canvas.layers, partial.layer = nil, nil
+
     -- "milk" in a UJI test writer's hand, as ink ops on the page
     local hand = dofile("tests/hwr_writers.lua")
     local name
@@ -5643,7 +5697,32 @@ do
     local convert = sheetButton("Convert to text")
     ok(convert ~= nil, "hwr: the lasso menu offers Convert to text for handwriting")
     local n_before = view.canvas:opCount()
+    local old_dialog = package.loaded["ui/widget/inputdialog"]
+    package.loaded["ui/widget/inputdialog"] = { new = function(_, options)
+        local dialog = { options = options, input = options.input }
+        function dialog:getInputText() return self.input end
+        return dialog
+    end }
     convert.callback()
+    local dialog = UIManager.shown
+    ok(dialog and dialog.options.allow_newline and dialog.input == "milk" and view.canvas:opCount() == n_before,
+        "hwr: recognition opens an editable multiline preview without replacing ink")
+    local function dialogButton(label)
+        for _, row in ipairs(dialog.options.buttons) do
+            for _, button in ipairs(row) do if button.text == label then return button end end
+        end
+    end
+    local cancel, apply = dialogButton("Cancel"), dialogButton("Apply")
+    ok(cancel ~= nil and apply ~= nil, "hwr: the preview has explicit Apply and Cancel actions")
+    cancel.callback()
+    ok(view.canvas:opCount() == n_before, "hwr: cancelling the preview leaves ink untouched")
+    convert.callback()
+    dialog = UIManager.shown
+    dialog.input = "milk edited"
+    for _, row in ipairs(dialog.options.buttons) do
+        for _, button in ipairs(row) do if button.text == "Apply" then button.callback() end end
+    end
+    package.loaded["ui/widget/inputdialog"] = old_dialog
     local text_op
     for _, op in ipairs(view.canvas.ops) do if op.kind == "text" then text_op = op end end
     local Text = require("ink/text")
@@ -5652,7 +5731,7 @@ do
             local r = {} for _, run in ipairs(p.runs or p) do r[#r + 1] = run.text or run end
             t[#t + 1] = table.concat(r) end return t end)(), "\n"))
     ok(text_op ~= nil, "hwr: the writing becomes a text box")
-    ok(got == "milk", "hwr: reading " .. tostring(got))
+    ok(got == "milk edited", "hwr: edited preview text is applied (" .. tostring(got) .. ")")
     ok(view.canvas:opCount() == 2, "hwr: the ink is gone, the shape outside the writing stays")
     ok(not view.selection, "hwr: and the selection is done with")
     view:undo()

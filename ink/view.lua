@@ -424,6 +424,7 @@ end
 -- KOReader puts the reader to sleep: the Elipsa's display helper stops (see
 -- startElipsaDrive) and so does sharing.
 function InkAwayView:onSuspend()
+    self:cancelOcrApi()
     self:stopElipsaDrive()
     self:stopSendForSleep()
 end
@@ -435,6 +436,7 @@ end
 
 function InkAwayView:onCloseWidget()
     self.closing = true
+    self:cancelOcrApi()
     self:updatesOnClose()
     self:uninstallRawFinger()
     self:stopEinkDrive()
@@ -1029,7 +1031,7 @@ end
 -- Add the methods of every part (ink/view/*.lua) to the class.
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "document", "library", "input", "toolbar", "menus",
-    "settings", "sheetkit", "handwriting", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
+    "settings", "sheetkit", "handwriting", "ocrapi", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
     "paper", "updates", "layers", "keys", "share", "receive", "dialogs", "erasecursor" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do

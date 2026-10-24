@@ -62,3 +62,21 @@ Some of the screen handling can only be checked on the reader itself.
      a book: page turns and full refreshes still work.
 
   If the helper fails, crash.log says "Elipsa refresh worker failed" and why.
+
+## Experimental OCR API checks
+
+`luajit tests/run.lua` includes `ocr_api.lua`, `ocr_job.lua`, `ocr_image.lua`,
+and `ocr_view.lua`. With `KO_EMU` pointing to a built KOReader runtime, it also
+runs native PNG/erase round trips and the real subprocess/IPC/cancellation test.
+
+Run `KO_EMU=/absolute/path/to/koreader sh tests/ocr_tls_native.sh` separately for
+real bundled LuaSocket/LuaSec HTTPS checks. It needs Python 3, OpenSSL, and permission
+to bind localhost. It uses generated CA/certificates, synthetic image bytes and a
+dummy key, and checks untrusted CA rejection, trusted SAN acceptance, and hostname
+mismatch rejection. Only the device-dependent socketutil setup is substituted;
+the transport uses the bundled socket/http, LuaSec and JSON. It sends no provider
+requests and removes its fixture directory on exit.
+
+Sandbox restrictions on Unix sockets or localhost listeners can make existing
+Elipsa IPC/share tests fail; rerun with the appropriate local permissions rather
+than treating those checks as passed or modifying their expectations.

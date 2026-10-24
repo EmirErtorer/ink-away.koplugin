@@ -120,7 +120,7 @@ function InkAwayView:promptText(o)
         o.on_ok(text, toggle_on)
     end
     local pad, border = S(8), Size.border.inputtext or 2
-    input = InputText:new{ text = o.input or "", hint = o.hint, input_type = o.input_type,
+    input = InputText:new{ text = o.input or "", hint = o.hint, input_type = o.input_type, text_type = o.text_type,
         face = Font:getFace("cfont", 20), width = content_w - 2 * (pad + border),
         padding = pad, margin = 0, bordersize = border, focused = true, scroll = false,
         enter_callback = ok }
