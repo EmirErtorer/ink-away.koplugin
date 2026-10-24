@@ -428,15 +428,15 @@ function InkAwayView:openFillColor()
     self:showSheet("_fill_dialog", build)
 end
 
--- The text sheet: font chooser, a size slider, and the snap and eraser-protect
--- toggles.
+-- The text sheet: font chooser, a size slider, the snap and eraser-protect
+-- toggles, and Convert to text's online service (ink/view/ocrapi.lua).
 function InkAwayView:openTextSettings()
-    self:closeSheet("_text_settings")
+    if self:rebuildSheet("_text_settings") then return end
     self:ensureUserIcons()
     local content_w = self:sheetWidth()
-    local size = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
     local closeSelf = function() self:closeSheet("_text_settings") end
     local build = function(menu)
+        local size = self.text_size or math.max(16, math.floor(self.view.canvas_w / 32))
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Text"), content_w, _("Done"), closeSelf))
@@ -466,6 +466,8 @@ function InkAwayView:openTextSettings()
             callback = function(on)
                 self.text_erase_protect = on; self:setSetting("inkaway_text_erase_protect", on)
             end })
+        add(vspan(10))
+        self:addOcrApiRows(add, menu, content_w)
         return content
     end
     self:showSheet("_text_settings", build)

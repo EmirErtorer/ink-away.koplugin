@@ -4,7 +4,8 @@ selection's menu. The strokes are split into lines, words and characters
 (ink/hwr.lua), each character read by the small network in ink/hwrnet.lua,
 each word checked against the English word list (ink/hwrwords.lua), and the
 writing replaced by one text box in the current text style, in one undo step.
-Recognition runs locally unless experimental OCR api is explicitly enabled.
+Everything runs on the reader, unless Convert to text online is switched on in
+the Text sheet (ink/view/ocrapi.lua).
 Part of InkAwayView (see ink/view.lua).
 ]]
 
@@ -109,10 +110,10 @@ end
 -- Convert the selected writing to text. Shows a message when there is none, or
 -- when something fails, rather than letting an error reach KOReader.
 function InkAwayView:convertSelectionToText()
-    local ok = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
+    local ok, err = xpcall(function() self:convertSelectionToTextNow() end, debug.traceback)
     if not ok then
         self:cancelOcrApi()
-        logger.warn("InkAway: converting handwriting failed")
+        logger.warn("InkAway: converting handwriting failed:", err)
         self:tell(_("Something went wrong reading the writing."))
     end
 end
@@ -159,42 +160,22 @@ function InkAwayView:reviewWriting(text, strokes, ops, context)
             if pts[i + 1] < y0 then y0 = pts[i + 1] end
         end
     end
-    local InputDialog = require("ui/widget/inputdialog")
-    local dialog
-    local function close()
-        UIManager:close(dialog)
-        if self._ocr_dialog == dialog then self._ocr_dialog = nil end
-    end
-    local function apply()
-        if not self:hwrContextCurrent(context) then
-            close()
-            self:showNotice(_("The page changed. Please read the writing again."), 2)
-            return
-        end
-        if not self:hwrSelectionCurrent(ops) then
-            close()
-            self:showNotice(_("The selection changed. Please read the writing again."), 2)
-            return
-        end
-        local edited = dialog:getInputText()
-        if edited:gsub("%s", "") == "" then
-            close()
-            self:showNotice(_("No writing could be read there."), 2)
-            return
-        end
-        close()
-        self:resetLasso()
-        self:replaceWithText(edited, ops, x0, y0)
-    end
-    dialog = InputDialog:new{
-        title = _("Review recognized writing"), input = text, allow_newline = true,
-        buttons = {{
-            { text = _("Cancel"), id = "close", callback = function() close() end },
-            { text = _("Apply"), callback = apply },
-        }},
-    }
-    self._ocr_dialog = dialog
-    UIManager:show(dialog)
+    -- what was read, to check and fix before it replaces the writing; Cancel
+    -- keeps the writing as it is
+    self:promptText{ field = "_hwr_review", title = _("Convert to text"), input = text, lines = 4,
+        description = _("Fix anything misread, then convert."), ok_text = _("Convert"),
+        on_ok = function(edited)
+            if not self:hwrContextCurrent(context) then
+                self:showNotice(_("The page changed. Please read the writing again."), 2)
+            elseif not self:hwrSelectionCurrent(ops) then
+                self:showNotice(_("The selection changed. Please read the writing again."), 2)
+            elseif (edited or ""):gsub("%s", "") == "" then
+                self:showNotice(_("No writing could be read there."), 2)
+            else
+                self:resetLasso()
+                self:replaceWithText(edited, ops, x0, y0)
+            end
+        end }
 end
 
 -- Replace the ops `ink_ops` with one text box holding `text`, its top left at

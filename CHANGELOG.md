@@ -9,12 +9,11 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
-- Optional external handwriting recognition through an image-capable
-  OpenAI-compatible HTTPS provider. Enable **experimental OCR api** in Settings
-  to enter your own URL, key and model; it is off by default. Review and edit
-  recognised writing before applying it, or cancel to keep the original ink.
-- Editable recognition previews for local handwriting conversion too; erased
-  writing and hidden layers are excluded from recognition.
+- Convert to text online (experimental): Convert to text can use your own
+  online service instead of reading on the reader. Switch it on in the Text
+  tool's sheet and set the address, key and model; it is off by default.
+- Convert to text shows what was read to check and fix before it replaces the
+  writing; erased writing and hidden layers are no longer read.
 - Phone or computer (Wi-Fi): get your notebooks and drawings onto a phone or
   computer, or add PDFs and pictures from one, with nothing to install. Open
   it from the library's menu, Export, or Add image; the reader shows a QR code

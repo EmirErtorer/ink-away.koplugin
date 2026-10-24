@@ -101,35 +101,30 @@ Sketch, ink and colour each on a layer of its own, as in a desktop or tablet dra
 | | |
 |---|---|
 | **Lasso** | Loop writing, shapes, pictures and text, then move, resize, turn, flip, recolour, change opacity or size, duplicate or delete them, or cut, copy and paste to any page of any notebook or drawing. With Pan, a touch picks a shape or picture. |
-| **Convert to text** | Lassoed handwriting opens an editable preview. Apply replaces the writing with a text box; Cancel preserves it. One undo brings the writing back. Local recognition supports English letters and digits; optional external OCR is described below. |
+| **Convert to text** | Lassoed handwriting is read on the device (English letters and digits), shown to check and fix, then becomes a text box with Convert, or stays as it is with Cancel. One undo brings the writing back. It can also use an online service, below. |
 | **Undo and redo** | From the toolbar, or with two fingers (see Gestures). |
 
-### Experimental OCR API
+### Convert to text online (experimental)
 
-In Ink Away's gear settings, check **experimental OCR api** to reveal **API URL**,
-**API key**, and **Model name**. Enter your own image-capable OpenAI-compatible
-Chat Completions provider. For example, use `https://your-provider.example/v1`
-and model `paddleocr-vl`. The URL may also be the full `/chat/completions` endpoint.
-The key field is masked. These values are saved in KOReader settings, without
-encryption, and are not saved in notebooks or exports. Unchecking the option
-hides the fields, retains their values, and returns Convert to text to local OCR.
+For handwriting the reader cannot read well, Convert to text can use an online
+service of your own instead. Tap the Text tool twice to open its sheet and switch on **Convert
+to text online**, then set its **Address**, **Key** and **Model**. The service has
+to take pictures through the OpenAI-style Chat Completions API, for example
+`https://your-provider.example/v1` with the model `paddleocr-vl`. The address can
+also be the full `/chat/completions` one. The key is never shown, but it is kept
+unencrypted in KOReader's settings, not in notebooks or exports. Switching it off
+hides the fields, keeps what you typed, and goes back to reading on the reader.
 
-Turn on Wi-Fi, lasso handwriting, then choose **Convert to text**. The provider
-receives only the selected handwriting as a cropped PNG on white, with erasures
-preserved and pen colours normalized to black for contrast. Book text, pictures,
-guides and unselected writing are excluded. Review and edit the result before
-**Apply**. Errors never replace ink or silently switch to local OCR.
+With Wi-Fi on, lasso the writing and choose **Convert to text**. Only the selected
+writing is sent, as a black-on-white picture with erased parts left out; the page,
+pictures and other writing are not. What comes back is shown to check and fix
+before **Convert**. If the service fails, the writing stays as it was.
 
-HTTPS certificate and hostname validation is required; HTTP and redirects are
-rejected. One job may run at a time, with no automatic retries, a 90-second
-deadline, and limits of 4 megapixels / 4 MiB PNG. Stop discards the result; the
-provider may still finish the request, so another job waits until that request
-has ended or timed out. The API must support an image data URL, the `OCR:` prompt,
-`max_tokens`, and a non-streaming text response. This does not support every
-OpenAI model or Responses-only endpoint. Tested on a Kobo Libra Colour with
-KOReader 2026.07.1 and an image-capable PaddleOCR-VL provider; recognition quality
-and latency depend on the provider, model and handwriting. Other readers still
-need device testing.
+Only HTTPS addresses with a valid certificate work; plain HTTP and redirects are
+refused. One request runs at a time, for up to 90 seconds, with pictures up to
+4 megapixels. Stop drops the answer, though the service may still finish the request.
+Tested on a Kobo Libra Colour with KOReader 2026.07.1 and PaddleOCR-VL; how well it
+reads depends on the service, the model and the handwriting.
 
 ### Notebooks and PDFs
 

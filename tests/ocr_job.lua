@@ -29,6 +29,7 @@ package.loaded["ffi"] = {
     end },
     string = function() return root end,
 }
+package.loaded["libs/libkoreader-lfs"] = { attributes = function() return "directory" end }
 package.loaded["ffi/util"] = util
 package.loaded["ui/uimanager"] = UIManager
 package.loaded["socket"] = { gettime = function() return clock end }

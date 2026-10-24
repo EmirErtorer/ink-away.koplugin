@@ -1,8 +1,10 @@
 -- Optional external recognition. Settings belong to KOReader, never a notebook.
-local UIManager = require("ui/uimanager")
+local VerticalSpan = require("ui/widget/verticalspan")
+local Screen = require("device").screen
 local _ = require("gettext")
 local InkAwayView = {}
 local SETTING = "inkaway_ocr_api"
+local function vspan(h) return VerticalSpan:new{ width = Screen:scaleBySize(h) } end
 
 function InkAwayView:ocrApiConfig()
     local saved = self:getSetting(SETTING)
@@ -14,33 +16,36 @@ function InkAwayView:ocrApiConfig()
     return config
 end
 
-function InkAwayView:addOcrApiSettings(add, menu, width)
-    local CheckButton = require("ui/widget/checkbutton")
+-- The Text sheet's rows for it: a switch, then, when on, a note on what is sent
+-- and a button for each of the URL, key and model. The key is never shown.
+function InkAwayView:addOcrApiRows(add, menu, width)
+    local ToggleRow = require("ink/ui/controls").ToggleRow
     local config = self:ocrApiConfig()
-    local checkbox
-    checkbox = CheckButton:new{ text = _("experimental OCR api"), checked = config.enabled,
-        width = width, parent = menu, callback = function()
-            config.enabled = checkbox.checked
+    add(ToggleRow:new{ label = _("Convert to text online"), is_on = config.enabled,
+        width = width, parent = menu,
+        callback = function(on)
+            config.enabled = on
             self:setSetting(SETTING, config)
-            self:openSettings()
-        end }
-    add(checkbox)
+            self:openTextSettings()
+        end })
     if not config.enabled then return end
-    add(self:sheetHint(_("Selected handwriting is sent to your provider. The API key is stored locally in KOReader settings."), width))
-    for _i, field in ipairs({ { "url", _("API URL"), "https://example.com/v1" },
-            { "key", _("API key"), "" }, { "model", _("Model name"), "paddleocr-vl" } }) do
+    add(self:sheetHint(_("Experimental. Convert to text sends the selected writing to your service instead of reading it on the reader. The key is kept unencrypted in KOReader's settings."), width))
+    for _i, field in ipairs({ { "url", _("Address"), "https://example.com/v1" },
+            { "key", _("Key"), "" }, { "model", _("Model"), "paddleocr-vl" } }) do
         local key, label, hint = field[1], field[2], field[3]
         local value = config[key]
-        if key == "key" then value = value ~= "" and "********" or "" end
+        if value == "" then value = _("not set")
+        elseif key == "key" then value = "********" end
+        add(vspan(8))
         add(self:actionButton(label .. ": " .. value, width, function()
-            self:closeSheet("_settings_dialog")
+            self:closeSheet("_text_settings")
             self:promptText{ field = "_ocr_config", title = label, input = config[key], hint = hint,
                 text_type = key == "key" and "password" or nil, ok_text = _("Save"),
-                on_cancel = function() self:openSettings() end,
+                on_cancel = function() self:openTextSettings() end,
                 on_ok = function(text)
                     config[key] = text or ""
                     self:setSetting(SETTING, config)
-                    self:openSettings()
+                    self:openTextSettings()
                 end }
         end))
     end
@@ -70,7 +75,7 @@ end
 function InkAwayView:cancelOcrApi()
     if self._ocr_cancel then self._ocr_cancel(); self._ocr_cancel = nil end
     if self._ocr_progress then self._ocr_progress.close(); self._ocr_progress = nil end
-    if self._ocr_dialog then UIManager:close(self._ocr_dialog); self._ocr_dialog = nil end
+    self:closeSheet("_hwr_review")
     self:closeSheet("_ocr_config")
 end
 
@@ -79,7 +84,7 @@ function InkAwayView:convertSelectionWithApi(strokes, ops)
     local config, err = Api.validate(self:ocrApiConfig())
     if not config then
         self:tell(err)
-        self:openSettings()
+        self:openTextSettings()
         return
     end
     local NetworkMgr = require("ui/network/manager")

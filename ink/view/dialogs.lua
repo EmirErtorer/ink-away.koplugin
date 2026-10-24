@@ -100,7 +100,9 @@ end
 -- the toggle's state), plus optional on_cancel(), `default` (the text on_ok
 -- gets when the field is left empty), `extra` ({ text, callback(text) }: a
 -- second button that gets what was typed so far) and `toggle` ({ label, is_on }:
--- a switch under the field) and field. Enter does what the main button does.
+-- a switch under the field) and field. Enter does what the main button does,
+-- unless `lines` asks for a taller field of that many lines, where Enter
+-- starts a new line.
 function InkAwayView:promptText(o)
     local field = o.field or "_prompt"
     self:closeSheet(field)
@@ -122,8 +124,9 @@ function InkAwayView:promptText(o)
     local pad, border = S(8), Size.border.inputtext or 2
     input = InputText:new{ text = o.input or "", hint = o.hint, input_type = o.input_type, text_type = o.text_type,
         face = Font:getFace("cfont", 20), width = content_w - 2 * (pad + border),
-        padding = pad, margin = 0, bordersize = border, focused = true, scroll = false,
-        enter_callback = ok }
+        padding = pad, margin = 0, bordersize = border, focused = true, scroll = o.lines ~= nil,
+        height = o.lines and S(28) * o.lines or nil, allow_newline = o.lines ~= nil,
+        enter_callback = not o.lines and ok or nil }
     local build = function(menu)
         local g = VerticalGroup:new{ align = "left", self:sheetTitle(o.title, content_w, _("Cancel"), cancel) }
         if o.description then
@@ -167,6 +170,8 @@ function InkAwayView:promptText(o)
         input:onCloseWidget()
     end })
     input.parent = self[field]
+    -- (its two answers, for whoever holds the sheet)
+    self[field].ok_callback, self[field].cancel_callback = ok, cancel
     -- what the keyboard on top does not take (typed text, a physical keyboard's
     -- keys) comes on to the sheet and its field, as with KOReader's own text dialogs
     self[field].is_always_active = true

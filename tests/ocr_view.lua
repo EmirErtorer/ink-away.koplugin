@@ -11,24 +11,31 @@ function V:setSetting(k, value) saved[k] = value end
 function V:closeSheet() end
 function V:sheetHint(text) return { text = text } end
 function V:actionButton(text, _, cb) return { text = text, callback = cb } end
+
 function V:promptText(options) self.prompt = options end
-function V:openSettings()
+-- the switch, as the Text sheet's ToggleRow: tapping flips it and calls back
+package.loaded["ink/ui/controls"] = { ToggleRow = { new = function(_, o)
+    function o:onTap() self.is_on = not self.is_on; self.callback(self.is_on) end
+    return o
+end } }
+function V:openTextSettings()
     self.fields = {}
-    self:addOcrApiSettings(function(w) self.fields[#self.fields + 1] = w end, {}, 600)
+    self:addOcrApiRows(function(w) if w.is_on ~= nil or w.text then self.fields[#self.fields + 1] = w end end, {}, 600)
 end
 local view = setmetatable({}, { __index = V })
-view:openSettings()
-assert(#view.fields == 1 and not view.fields[1].checked, "default off; all configuration hidden")
-view.fields[1]:onTapCheckButton()
-assert(#view.fields == 5 and view.fields[1].checked, "checkbox immediately reveals three fields")
+view:openTextSettings()
+assert(#view.fields == 1 and not view.fields[1].is_on, "default off; all configuration hidden")
+view.fields[1]:onTap()
+assert(#view.fields == 5 and view.fields[1].is_on, "the switch immediately reveals three fields")
+assert(view.fields[3].text == "Address: not set", "an empty field says so")
 for i, text in ipairs({ "https://example.test/v1", "private-test-key", "paddleocr-vl" }) do
     view.fields[i + 2].callback()
     assert((view.prompt.text_type == "password") == (i == 2), "key editor is masked")
     view.prompt.on_ok(text)
 end
-assert(view.fields[4].text == "API key: ********", "key never shown on settings button")
-view.fields[1]:onTapCheckButton()
-assert(#view.fields == 1 and view:ocrApiConfig().key == "private-test-key", "disable hides and retains values")
+assert(view.fields[4].text == "Key: ********", "key never shown on the sheet")
+view.fields[1]:onTap()
+assert(#view.fields == 1 and view:ocrApiConfig().key == "private-test-key", "switching off hides and retains values")
 local reopened = setmetatable({}, { __index = V })
 assert(reopened:ocrApiConfig().model == "paddleocr-vl" and not reopened:ocrApiConfig().enabled,
     "settings survive view recreation")
@@ -52,50 +59,47 @@ package.loaded["ink/ocr/job"] = { start = function(fn, cb)
     return function() cancelled = true end
 end }
 package.loaded["ui/network/manager"] = { isOnline = function() return true end }
-package.loaded["ui/widget/inputdialog"] = { new = function(_, options)
-    local d = { options = options, input = options.input }
-    function d:getInputText() return self.input end
-    return d
-end }
+local function review() return view.prompt and view.prompt.field == "_hwr_review" and view.prompt end
+function V:closeSheet(field) if field == "_hwr_review" and view.prompt and view.prompt.field == field then view.prompt = nil end end
 local function press(label)
-    local d = view._ocr_dialog
-    for _, row in ipairs(d.options.buttons) do
-        for _, b in ipairs(row) do if b.text == label then return b.callback() end end
-    end
-    error("missing button")
+    local d = assert(review(), "no review sheet")
+    local edited = d.edited or d.input
+    view.prompt = nil
+    if label == "Convert" then return d.on_ok(edited) end
+    if d.on_cancel then d.on_cancel() end
 end
 view:convertSelectionToTextNow()
-assert(starts == 0 and view._ocr_dialog.input == "local result", "disabled means zero API jobs")
+assert(starts == 0 and review().input == "local result" and review().lines, "disabled means zero API jobs; a multiline review")
 press("Cancel"); assert(not view.applied, "cancel preview preserves ink")
 saved.inkaway_ocr_api.enabled = true
 view.showProgress = function(_, o) return { close = function() end, options = o } end
 view:convertSelectionToTextNow()
 assert(starts == 1 and work and not view.applied, "API starts asynchronously without replacing ink")
 done("first line\nsecond line")
-assert(view._ocr_dialog.input == "first line\nsecond line", "multiline API response is editable")
-view._ocr_dialog.input = "edited result"
-press("Apply"); assert(view.applied == "edited result", "only edited Apply replaces ink")
+assert(review().input == "first line\nsecond line", "multiline API response is editable")
+review().edited = "edited result"
+press("Convert"); assert(view.applied == "edited result", "only edited Apply replaces ink")
 view.applied, view.selection = nil, { idxs = { 1 } }
 view:convertSelectionToTextNow()
 view.doc_path = "another.inkaway"
 done("stale")
-assert(not view._ocr_dialog and not view.applied, "changed document rejects remote result")
+assert(not review() and not view.applied, "changed document rejects remote result")
 view.doc_path = nil
 view:convertSelectionToTextNow()
 view.selection = nil
 done("stale selection")
-assert(not view._ocr_dialog, "changed selection rejects remote preview")
+assert(not review(), "changed selection rejects remote preview")
 view.selection = { idxs = { 1 } }
 view:convertSelectionToTextNow()
 done("review then mutate")
 view.canvas.rev = view.canvas.rev + 1
-press("Apply"); assert(not view.applied, "revision change rejects Apply")
+press("Convert"); assert(not view.applied, "revision change rejects Convert")
 view:convertSelectionToTextNow()
 view:cancelOcrApi()
-assert(cancelled and not view._ocr_dialog and not view._ocr_progress, "cancel/close drops OCR UI")
+assert(cancelled and not review() and not view._ocr_progress, "cancel/close drops OCR UI")
 view:convertSelectionToTextNow()
 done(nil, "OCR service returned HTTP 503.")
-assert(not view.applied and not view._ocr_dialog and view.notice:find("503"), "API error preserves ink, without local fallback")
+assert(not view.applied and not review() and view.notice:find("503"), "API error preserves ink, without local fallback")
 view:convertSelectionToTextNow()
 local review = view.reviewWriting
 view.reviewWriting = function() error("preview constructor failure") end
@@ -105,6 +109,6 @@ view.reviewWriting = review
 saved.inkaway_ocr_api.url = ""
 local n = starts
 view:convertSelectionToTextNow()
-assert(starts == n and view.fields[1].checked, "incomplete configuration opens settings without network")
+assert(starts == n and view.fields[1].is_on, "incomplete configuration opens the Text sheet without network")
 UI.reset()
 print("ocr_view: opt-in, conditional settings, key masking, routing, preview, stale results and cancellation passed")

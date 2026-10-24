@@ -258,9 +258,6 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
-        self:addOcrApiSettings(add, menu, content_w)
-        add(vspan(16))
-
         -- orientation: picking one closes the sheet, as the screen size changes
         if self:orientationSupported() then
             add(self:sheetLabel(_("Orientation"), true))

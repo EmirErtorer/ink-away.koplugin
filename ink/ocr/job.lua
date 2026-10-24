@@ -5,9 +5,17 @@ local DEADLINE = 90
 local MAX_RESULT = 256 * 1024
 local active
 
+-- A private folder for the child's answer: in /tmp, or in KOReader's cache
+-- where there is no /tmp (Android).
 local function tempDirectory(ffi)
-    ffi.cdef[[char *mkdtemp(char *template);]]
-    local template = "/tmp/inkaway-ocr-XXXXXX"
+    pcall(ffi.cdef, "char *mkdtemp(char *template);")
+    local lfs = require("libs/libkoreader-lfs")
+    local base = "/tmp"
+    if lfs.attributes(base, "mode") ~= "directory" then
+        base = require("datastorage"):getDataDir() .. "/cache"
+        if lfs.attributes(base, "mode") ~= "directory" then lfs.mkdir(base) end
+    end
+    local template = base .. "/inkaway-ocr-XXXXXX"
     local buffer = ffi.new("char[?]", #template + 1, template)
     local path = ffi.C.mkdtemp(buffer)
     return path ~= nil and ffi.string(path) or nil

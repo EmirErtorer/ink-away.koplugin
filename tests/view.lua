@@ -5697,32 +5697,18 @@ do
     local convert = sheetButton("Convert to text")
     ok(convert ~= nil, "hwr: the lasso menu offers Convert to text for handwriting")
     local n_before = view.canvas:opCount()
-    local old_dialog = package.loaded["ui/widget/inputdialog"]
-    package.loaded["ui/widget/inputdialog"] = { new = function(_, options)
-        local dialog = { options = options, input = options.input }
-        function dialog:getInputText() return self.input end
-        return dialog
-    end }
+    local InputText = require("ui/widget/inputtext")
     convert.callback()
-    local dialog = UIManager.shown
-    ok(dialog and dialog.options.allow_newline and dialog.input == "milk" and view.canvas:opCount() == n_before,
-        "hwr: recognition opens an editable multiline preview without replacing ink")
-    local function dialogButton(label)
-        for _, row in ipairs(dialog.options.buttons) do
-            for _, button in ipairs(row) do if button.text == label then return button end end
-        end
-    end
-    local cancel, apply = dialogButton("Cancel"), dialogButton("Apply")
-    ok(cancel ~= nil and apply ~= nil, "hwr: the preview has explicit Apply and Cancel actions")
-    cancel.callback()
-    ok(view.canvas:opCount() == n_before, "hwr: cancelling the preview leaves ink untouched")
+    local review = view._hwr_review
+    ok(review and InputText.last.text == "milk" and InputText.last.allow_newline and not InputText.last.enter_callback
+        and view.canvas:opCount() == n_before,
+        "hwr: recognition opens an editable multiline review in Ink Away's sheet without replacing ink")
+    ok(review and review.ok_callback and review.cancel_callback, "hwr: the review has Convert and Cancel")
+    review.cancel_callback()
+    ok(not view._hwr_review and view.canvas:opCount() == n_before, "hwr: cancelling the review leaves ink untouched")
     convert.callback()
-    dialog = UIManager.shown
-    dialog.input = "milk edited"
-    for _, row in ipairs(dialog.options.buttons) do
-        for _, button in ipairs(row) do if button.text == "Apply" then button.callback() end end
-    end
-    package.loaded["ui/widget/inputdialog"] = old_dialog
+    InputText.last.text = "milk edited"
+    view._hwr_review.ok_callback()
     local text_op
     for _, op in ipairs(view.canvas.ops) do if op.kind == "text" then text_op = op end end
     local Text = require("ink/text")
