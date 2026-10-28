@@ -8,7 +8,7 @@ Part of InkAwayView (see ink/view.lua).
 local Device = require("device")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local PenBridge = require("ink/penbridge")
 local PenTest = require("ink/pentest")
 local Pens = require("ink/pens")

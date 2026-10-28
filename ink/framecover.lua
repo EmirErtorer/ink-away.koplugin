@@ -36,7 +36,7 @@ DrawingShelf.takeSnapshot), never from its strokes.
 ]]
 
 local Storage = require("ink/storage")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 
 local FrameCover = {}
 

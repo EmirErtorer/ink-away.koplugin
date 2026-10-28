@@ -59,7 +59,7 @@ function Book:save()
         logger.warn("Ink Away: could not save the book's ink in", self.sidecar)
         if not self._save_warned then
             self._save_warned = true
-            local _ = require("gettext")
+            local _ = require("ink/l10n")
             require("ink/view").tellAnywhere(_("Ink Away could not save this book's ink: its folder can't be written to."))
         end
     end
@@ -558,7 +558,7 @@ function Book:annotate()
     if self._view and shown(self._view) then return end
     self._view = nil
     if self:data().read_only then
-        local _ = require("gettext")
+        local _ = require("ink/l10n")
         require("ink/view").tellAnywhere(_("This book's ink was saved by a newer Ink Away. Update Ink Away to change it."))
         return
     end

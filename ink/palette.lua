@@ -3,7 +3,7 @@ The colour swatches: grey shades, the colours offered on colour screens and the
 paper colours.
 ]]
 
-local _ = require("gettext")
+local _ = require("ink/l10n")
 
 local Palette = {}
 

@@ -15,7 +15,7 @@ local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Storage = require("ink/storage")
 local ThumbGrid = require("ink/ui/thumbgrid")
 

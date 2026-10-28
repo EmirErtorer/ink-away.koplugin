@@ -11,7 +11,7 @@ Part of InkAwayView (see ink/view.lua).
 
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Hwr = require("ink/hwr")
 local Cut = require("ink/cut")
 local Canvas = require("ink/canvas")

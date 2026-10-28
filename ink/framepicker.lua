@@ -12,7 +12,7 @@ once and leaves nothing behind.
 
 local Library = require("ink/library")
 local UIManager = require("ui/uimanager")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local DShelf = require("ink/drawingshelf")
 local FrameCover = require("ink/framecover")
 local Shelf = require("ink/bookshelf")

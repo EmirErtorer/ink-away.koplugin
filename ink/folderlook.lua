@@ -14,7 +14,7 @@ opening the library again draws nothing.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Storage = require("ink/storage")
 
 local FolderLook = {}

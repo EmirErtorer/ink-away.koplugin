@@ -9,7 +9,7 @@ Part of InkAwayView (see ink/view.lua).
 local GeomUI = require("ui/geometry")
 local UIManager = require("ui/uimanager")
 local Device = require("device")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Canvas = require("ink/canvas")
 local Clipboard = require("ink/clipboard")
 local InkGeom = require("ink/geom")

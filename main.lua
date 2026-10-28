@@ -8,7 +8,7 @@ book's ink (ink/reader/): shown over the pages, and drawn in the annotation mode
 local Dispatcher = require("dispatcher")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 
 local InkAway = WidgetContainer:extend{
     name = "inkaway",

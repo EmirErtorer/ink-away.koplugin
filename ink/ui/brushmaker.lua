@@ -19,7 +19,7 @@ local Accent = require("ink/accent")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Theme = require("ink/ui/theme")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 
 local Screen = Device.screen
 

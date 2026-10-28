@@ -530,7 +530,7 @@ function Shelf.register(ui, plugin)
         return false
     end
     local UIManager = require("ui/uimanager")
-    local _ = require("gettext")
+    local _ = require("ink/l10n")
     local covers = Shelf.covers
     if not covers then
         covers = Shelf.newCovers{

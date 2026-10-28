@@ -9,7 +9,7 @@ Part of InkAwayView (see ink/view.lua).
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Device = require("device")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Folder = require("ink/folder")
 local Library = require("ink/library")
 local Notebook = require("ink/notebook")

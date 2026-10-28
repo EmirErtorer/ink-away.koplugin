@@ -33,7 +33,7 @@ local Notebook = require("ink/notebook")
 local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 
 local Cover = {}
 

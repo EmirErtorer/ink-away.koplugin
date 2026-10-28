@@ -131,6 +131,16 @@ end
 ok(L10n("x") == "x", "module: under the English mock a message comes back as it is")
 ok(type(L10n.parse) == "function" and type(L10n.build) == "function", "module: exposes parse and build")
 
+-- ---- every file translates through the loader ---------------------------------------------
+do
+    local direct = {}
+    for f in io.popen([[grep -rl --include='*.lua' 'require("gettext")' ink main.lua]]):lines() do
+        direct[#direct + 1] = f
+    end
+    ok(#direct == 1 and direct[1] == "ink/l10n.lua",
+        "call sites: only the loader requires gettext itself (found: " .. table.concat(direct, ", ") .. ")")
+end
+
 os.execute("rm -rf '" .. dir .. "'")
 print(("l10n: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

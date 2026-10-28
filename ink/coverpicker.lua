@@ -14,7 +14,7 @@ closes, so the sheet opens at once and leaves nothing behind.
 local Device = require("device")
 local Library = require("ink/library")
 local UIManager = require("ui/uimanager")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Cover = require("ink/notebookcover")
 local Palette = require("ink/palette")
 local Shelf = require("ink/bookshelf")

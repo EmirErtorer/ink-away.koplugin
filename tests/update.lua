@@ -131,6 +131,7 @@ do
     end
     ok(E("ink-away.koplugin/link", "symlink") == nil and E("ink-away.koplugin/x", "other") == nil,
         "unpack: no links or devices")
+    ok(E("ink-away.koplugin/ink/l10n/es.po", "file") == "ink/l10n/es.po", "unpack: the translation files")
 end
 
 -- ---- release notes -----------------------------------------------------------------------------

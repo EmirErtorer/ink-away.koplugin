@@ -1,7 +1,7 @@
 -- Optional external recognition. Settings belong to KOReader, never a notebook.
 local VerticalSpan = require("ui/widget/verticalspan")
 local Screen = require("device").screen
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local InkAwayView = {}
 local SETTING = "inkaway_ocr_api"
 local function vspan(h) return VerticalSpan:new{ width = Screen:scaleBySize(h) } end

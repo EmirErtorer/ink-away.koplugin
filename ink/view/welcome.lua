@@ -16,7 +16,7 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
-local _ = require("gettext")
+local _ = require("ink/l10n")
 local Welcome = require("ink/welcome")
 
 local Screen = Device.screen

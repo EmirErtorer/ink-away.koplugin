@@ -345,7 +345,7 @@ function DShelf.register(ui, plugin)
         return false
     end
     local UIManager = require("ui/uimanager")
-    local _ = require("gettext")
+    local _ = require("ink/l10n")
     local covers = DShelf.covers
     if not covers then
         covers = DShelf.newCovers{
