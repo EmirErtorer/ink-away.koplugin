@@ -3,6 +3,7 @@
 --   luajit tests/l10n.lua
 package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
 local L10n = require("ink/l10n")
+local Extract = require("tools/l10n/extract")
 
 local checks, failures = 0, 0
 local function ok(cond, what)
@@ -130,6 +131,100 @@ end
 -- ---- the module itself ------------------------------------------------------------------
 ok(L10n("x") == "x", "module: under the English mock a message comes back as it is")
 ok(type(L10n.parse) == "function" and type(L10n.build) == "function", "module: exposes parse and build")
+
+-- ---- extract: the _() calls of a source ------------------------------------------------
+do
+    local got = Extract.calls([==[
+local a = _("a")
+local b = _([[b]])
+local c = _("c" ..
+    "d")
+local d = _("e\n\u{201C}")
+local e = foo_("x")
+local f = T(_("y"), z)
+-- _("commented")
+local g = _(variable)
+local h = _("half" .. x)
+]==])
+    ok(table.concat(got, "|") == "a|b|cd|e\n\u{201C}|y", "calls: found " .. table.concat(got, "|"))
+end
+
+-- ---- extract: capitalised strings of a data file ------------------------------------------
+do
+    local got = Extract.capitals([==[
+local a = "Hello there"
+local b = "lower"
+-- "Commented"
+local c = "Joined " .. "chain"
+local d = "Frag " .. x .. " rest"
+]==])
+    ok(table.concat(got, "|") == "Hello there|Joined chain|Frag ", "capitals: found " .. table.concat(got, "|"))
+end
+
+-- ---- extract: placeholders ----------------------------------------------------------------
+do
+    local P = Extract.placeholders
+    ok(table.concat(P("shown at %d%%"), ",") == "%d", "placeholders: %d beside a literal %%")
+    ok(table.concat(P("%1 and %2"), ",") == "%1,%2", "placeholders: %1 %2")
+    ok(table.concat(P("%.1f mm"), ",") == "%.1f", "placeholders: %.1f")
+    ok(#P("100%% sure, 5% of it") == 0, "placeholders: none in a literal percent")
+end
+
+-- ---- extract: the .pot text ---------------------------------------------------------------
+do
+    local pot = Extract.format({
+        ['say "hi"\\'] = { "b.lua", "a.lua" }, ["two\nlines"] = { "a.lua" },
+        ["%1 of %d"] = { "a.lua" }, Zed = { "z.lua" }, Alpha = { "a.lua" } })
+    ok(pot:find('msgid "say \\"hi\\"\\\\"', 1, true), "pot: quotes and backslashes are escaped")
+    ok(pot:find('msgid ""\n"two\\n"\n"lines"', 1, true), "pot: a message with a newline is split after it")
+    ok(pot:find('#, lua-format\nmsgid "%1 of %d"', 1, true), "pot: a message with placeholders is flagged")
+    ok(pot:find('#: a.lua\n#: b.lua\nmsgid "say', 1, true), "pot: references are sorted, one per line")
+    ok(pot:find("Alpha", 1, true) < pot:find("Zed", 1, true), "pot: sorted by message")
+    ok(pot:find("charset=UTF-8", 1, true) and pot:find('msgid ""\nmsgstr ""\n"Project-Id-Version', 1, true), "pot: a header")
+end
+
+-- ---- the committed template ---------------------------------------------------------------
+do
+    local f = io.open("ink/l10n/ink-away.pot", "rb")
+    local committed = f and f:read("*a")
+    if f then f:close() end
+    ok(committed == Extract.pot(), "template: ink/l10n/ink-away.pot is current (run: luajit tools/l10n/extract.lua)")
+
+    local msgs = Extract.messages()
+    local n = 0
+    for _id in pairs(msgs) do n = n + 1 end
+    ok(n > 700, "template: holds the plugin's messages (" .. n .. ")")
+    ok(next(L10n.parse(Extract.format(msgs))) == nil, "template: untranslated, it parses to nothing")
+    local back, lost = L10n.parse(Extract.format(msgs, function(s) return s end)), nil
+    for id in pairs(msgs) do if back[id] ~= id then lost = lost or id end end
+    ok(lost == nil, "template: every message survives writing and reading (first lost: " .. tostring(lost) .. ")")
+
+    -- the text the views translate through a variable is all in it
+    local missing = {}
+    local function need(s, where)
+        if type(s) == "string" and s ~= "" and not msgs[s] then missing[#missing + 1] = where .. ": " .. s end
+    end
+    local Guide, Actions = require("ink/guide"), require("ink/actions")
+    local Penset, Brushes = require("ink/penset"), require("ink/brushes")
+    local PenTest, Welcome = require("ink/pentest"), require("ink/welcome")
+    for _i, t in ipairs(Guide.TOPICS) do
+        need(t.title, "guide"); need(t.line, "guide")
+        for _j, c in ipairs(t.cards) do need(c.title, "guide card"); need(c.text, "guide card") end
+    end
+    for _i, a in ipairs(Actions.LIST) do need(a.label, "action") end
+    for _i, t in ipairs(Actions.TRIGGERS) do need(t.label, "trigger") end
+    for _i, note in ipairs(Actions.notes({ two_swipe_left = "next_page" }, "two_swipe_left")) do need(note, "note") end
+    for _i, note in ipairs(Actions.notes({ two_tap = "redo", two_double_tap = "undo" }, "two_tap")) do need(note, "note") end
+    for _i, g in ipairs(Penset.GROUPS) do need(g.label, "pen group") end
+    for _style, label in pairs(Penset.LABELS) do need(label, "pen") end
+    for _i, f in ipairs(Brushes.FIELDS) do need(f.label, "brush field") end
+    need(PenTest.NO_PEN_HINT, "pen test")
+    need(PenTest.androidTip({ android = true, boox = true }), "boox tip")
+    need(PenTest.androidTip({ android = true }), "android tip")
+    for _i, f in ipairs(Welcome.FEATURES) do need(f.title, "welcome"); need(f.text, "welcome") end
+    for _k, g in pairs(Welcome.GESTURES) do need(g.text, "welcome gesture") end
+    ok(#missing == 0, "template: holds the data modules' text (" .. #missing .. " missing, first: " .. tostring(missing[1]) .. ")")
+end
 
 -- ---- every file translates through the loader ---------------------------------------------
 do
