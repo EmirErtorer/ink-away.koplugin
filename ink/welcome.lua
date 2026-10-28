@@ -34,11 +34,23 @@ local function isEdge(ges)
     return ges:find("^one_finger_swipe_right_edge") ~= nil
 end
 
+-- A message with %1, %2... filled in (as the views' own T): all that content() does
+-- to its sentences when it is given no translator.
+function Welcome.fill(s, ...)
+    local args = { ... }
+    return (s:gsub("%%(%d)", function(i) return tostring(args[tonumber(i)]) end))
+end
+
 -- The notice's content for `state`, what the gesture setup saved (nil when it
 -- never ran): { rows = { { feature, glyph, gesture, outside } }, info, warnings }.
 -- A row's glyph and gesture are nil when the feature has none; `outside` says
--- what the same swipe does outside a book (book notes opens Ink Away).
-function Welcome.content(state)
+-- what the same swipe does outside a book (book notes opens Ink Away). The
+-- sentences it builds (`outside`, `info`, the warnings) are whole messages passed
+-- to `_(message, values...)`, so a translation can reorder the values; by default
+-- that fills them in as English (Welcome.fill). The rest is left for the view to
+-- translate.
+function Welcome.content(state, _)
+    _ = _ or Welcome.fill
     local rows, warnings = {}, {}
     local placed = state and state.placed or {}
     local held = state and state.held or {}
@@ -59,8 +71,8 @@ function Welcome.content(state)
             row.gesture = gesText(ges)
             if not isEdge(ges) then two_finger = true end
             if f.id == "booknotes" and where.gesture_fm then
-                row.outside = where.gesture_fm == ges and "Outside a book, it opens Ink Away."
-                    or ("Outside a book, " .. gesText(where.gesture_fm):lower() .. " opens Ink Away.")
+                row.outside = where.gesture_fm == ges and _("Outside a book, it opens Ink Away.")
+                    or _("Outside a book, %1 opens Ink Away.", _(gesText(where.gesture_fm)):lower())
             end
         elseif not off then
             missing[#missing + 1] = f
@@ -70,29 +82,34 @@ function Welcome.content(state)
     local info
     if two_finger then
         if #edge_what > 0 then
-            info = "The swipes along the right edge already do something on your reader ("
-                .. table.concat(edge_what, ", ") .. "), so Ink Away uses two-finger swipes."
+            info = _("The swipes along the right edge already do something on your reader (%1), so Ink Away uses two-finger swipes.",
+                table.concat(edge_what, ", "))
         else
-            info = "The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes."
+            info = _("The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes.")
         end
     end
     if off then
-        warnings[#warnings + 1] = "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
+        warnings[#warnings + 1] = _("KOReader's gesture manager is off, so Ink Away couldn't give these a gesture.")
     else
         for _i, f in ipairs(missing) do
             local parts = {}
             for _j, h in ipairs(held) do
                 if h.feature == f.id and h.section == "gesture_reader" then
-                    parts[#parts + 1] = gesText(h.ges):lower()
-                        .. (h.what and h.what ~= "" and (" (" .. h.what .. ")") or "")
+                    local part = _(gesText(h.ges)):lower()
+                    parts[#parts + 1] = h.what and h.what ~= "" and _("%1 (%2)", part, h.what) or part
                 end
             end
-            warnings[#warnings + 1] = f.title .. " has no gesture: "
-                .. (#parts > 0 and (table.concat(parts, " and ") .. " already do something else.") or "its gestures are taken.")
+            if #parts > 0 then
+                local list = parts[1]
+                for i = 2, #parts do list = _("%1 and %2", list, parts[i]) end
+                warnings[#warnings + 1] = _("%1 has no gesture: %2 already do something else.", _(f.title), list)
+            else
+                warnings[#warnings + 1] = _("%1 has no gesture: its gestures are taken.", _(f.title))
+            end
         end
     end
     if #warnings > 0 then
-        warnings[#warnings + 1] = "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are \u{201C}Ink Away: annotate the book\u{201D} and \u{201C}Ink Away: book notes\u{201D}."
+        warnings[#warnings + 1] = _("Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are \u{201C}Ink Away: annotate the book\u{201D} and \u{201C}Ink Away: book notes\u{201D}.")
     end
     return { rows = rows, info = info, warnings = warnings }
 end

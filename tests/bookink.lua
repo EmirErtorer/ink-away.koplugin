@@ -504,6 +504,67 @@ do
     ok(#c.warnings == 2, "notice: no setup yet reads as off")
 end
 
+-- ---- the notice's sentences are whole messages a translation can reorder ------------------
+do
+    local Welcome = require("ink/welcome")
+    local R_UP, R_DOWN = "one_finger_swipe_right_edge_up", "one_finger_swipe_right_edge_down"
+    local NW, SW = "two_finger_swipe_northwest", "two_finger_swipe_southwest"
+    local seen = {}
+    local ES = {
+        ["Annotate the book"] = "Anotar el libro", ["Book notes"] = "Notas del libro",
+        ["Swipe up along the right edge"] = "Deslizar hacia arriba por el borde derecho",
+        ["Swipe down along the right edge"] = "Deslizar hacia abajo por el borde derecho",
+        ["Two-finger swipe from the top right to the bottom left"] = "Deslizar con dos dedos de arriba a la derecha hacia abajo a la izquierda",
+        ["Two-finger swipe from the bottom right to the top left"] = "Deslizar con dos dedos de abajo a la derecha hacia arriba a la izquierda",
+        ["%1 and %2"] = "%1 y %2",
+        ["%1 has no gesture: %2 already do something else."] = "%1 no tiene gesto: %2 ya hacen otra cosa.",
+        ["%1 has no gesture: its gestures are taken."] = "%1 no tiene gesto: sus gestos están ocupados.",
+        ["Outside a book, it opens Ink Away."] = "Fuera de un libro, abre Ink Away.",
+        ["Outside a book, %1 opens Ink Away."] = "Fuera de un libro, %1 abre Ink Away.",
+        ["The swipes along the right edge already do something on your reader (%1), so Ink Away uses two-finger swipes."]
+            = "Los gestos del borde derecho ya hacen algo en tu lector (%1), así que Ink Away usa gestos de dos dedos.",
+    }
+    local function es(s, ...)
+        seen[s] = true
+        return Welcome.fill(ES[s] or s, ...)
+    end
+
+    -- the plain English is what it always was
+    ok(Welcome.fill("%1 of %2", "a", 3) == "a of 3", "notice: fill puts the values in")
+
+    -- a feature with no gesture: names the ones in the way, in the translator's words and order
+    local c = Welcome.content({ placed = {}, held = {
+        { feature = "annotate", section = "gesture_reader", ges = R_DOWN, what = "Warmth down" },
+        { feature = "annotate", section = "gesture_reader", ges = SW, what = "" } } }, es)
+    ok(c.warnings[1] == "Anotar el libro no tiene gesto: deslizar hacia abajo por el borde derecho (Warmth down) y "
+        .. "deslizar con dos dedos de arriba a la derecha hacia abajo a la izquierda ya hacen otra cosa.",
+        "notice, translated: a feature without a gesture: " .. tostring(c.warnings[1]))
+    ok(c.warnings[2] == "Notas del libro no tiene gesto: sus gestos están ocupados.",
+        "notice, translated: and one whose gestures are all taken: " .. tostring(c.warnings[2]))
+    ok(seen["%1 (%2)"], "notice: a gesture with what holds it is one message")
+    ok(seen["Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, "
+        .. "Gesture manager: the actions are \u{201C}Ink Away: annotate the book\u{201D} and \u{201C}Ink Away: book notes\u{201D}."],
+        "notice: the closing line is a message")
+
+    -- the swipe note, and what a gesture does outside a book
+    local placed = { annotate = { gesture_reader = SW }, booknotes = { gesture_reader = NW, gesture_fm = R_UP } }
+    c = Welcome.content({ placed = placed, held = {
+        { section = "gesture_reader", ges = R_UP, what = "Warmth up" },
+        { section = "gesture_reader", ges = R_DOWN, what = "Warmth down" } } }, es)
+    ok(c.info == "Los gestos del borde derecho ya hacen algo en tu lector (Warmth up, Warmth down), así que Ink Away usa gestos de dos dedos.",
+        "notice, translated: the swipe note: " .. tostring(c.info))
+    ok(c.rows[2].outside == "Fuera de un libro, deslizar hacia arriba por el borde derecho abre Ink Away.",
+        "notice, translated: outside a book, a different gesture: " .. tostring(c.rows[2].outside))
+    c = Welcome.content({ placed = { booknotes = { gesture_reader = NW, gesture_fm = NW } }, held = {} }, es)
+    ok(c.rows[2].outside == "Fuera de un libro, abre Ink Away.", "notice, translated: outside a book, the same gesture")
+    ok(seen["The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes."],
+        "notice: the swipe note without a list is a message")
+
+    -- the gesture manager off
+    Welcome.content({ off = true }, es)
+    ok(seen["KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."], "notice: gesture manager off is a message")
+end
+
 -- ---- what the eraser leaves of a shape stays together -------------------------------
 do
     local doc = rollingDoc()

@@ -25,9 +25,29 @@ msgstr ""
 msgid " · this page"
 msgstr ""
 
+#: ink/welcome.lua
+#, lua-format
+msgid "%1 (%2)"
+msgstr ""
+
+#: ink/welcome.lua
+#, lua-format
+msgid "%1 and %2"
+msgstr ""
+
 #: ink/view/layers.lua
 #, lua-format
 msgid "%1 and everything on it are deleted. Undo brings them back."
+msgstr ""
+
+#: ink/welcome.lua
+#, lua-format
+msgid "%1 has no gesture: %2 already do something else."
+msgstr ""
+
+#: ink/welcome.lua
+#, lua-format
+msgid "%1 has no gesture: its gestures are taken."
 msgstr ""
 
 #: ink/view/updates.lua
@@ -2590,7 +2610,8 @@ msgid "Ornament name"
 msgstr ""
 
 #: ink/welcome.lua
-msgid "Outside a book, "
+#, lua-format
+msgid "Outside a book, %1 opens Ink Away."
 msgstr ""
 
 #: ink/welcome.lua
@@ -3717,7 +3738,8 @@ msgid ""
 msgstr ""
 
 #: ink/welcome.lua
-msgid "The swipes along the right edge already do something on your reader ("
+#, lua-format
+msgid "The swipes along the right edge already do something on your reader (%1), so Ink Away uses two-finger swipes."
 msgstr ""
 
 #: ink/welcome.lua

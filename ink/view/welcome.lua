@@ -55,7 +55,7 @@ function InkAwayView:welcomeRow(row, w)
             para(_(row.gesture), text_w - gsz - Screen:scaleBySize(8), 15, true) }
         if row.outside then
             col[#col + 1] = vspan(3)
-            col[#col + 1] = para(_(row.outside), text_w, 13, false, GREY)
+            col[#col + 1] = para(row.outside, text_w, 13, false, GREY)
         end
     end
     return HorizontalGroup:new{ align = "top",
@@ -65,7 +65,8 @@ end
 -- Show the notice, once: it is marked seen as it opens (and the device tip with
 -- it, when it is part of it).
 function InkAwayView:showWelcome()
-    local c = Welcome.content(self:getSetting("inkaway_entry_gestures"))
+    local c = Welcome.content(self:getSetting("inkaway_entry_gestures"),
+        function(s, ...) return Welcome.fill(_(s), ...) end)
     local tip = not self:getSetting("inkaway_device_tip_shown") and self:deviceTipText(true) or nil
     local content_w = self:sheetWidth()
     local function closeSelf() self:closeSheet("_welcome_sheet") end
@@ -79,7 +80,7 @@ function InkAwayView:showWelcome()
         end
         if c.info then
             add(vspan(14))
-            add(self:sheetHint(_(c.info), content_w))
+            add(self:sheetHint(c.info, content_w))
         end
         if #c.warnings > 0 then
             add(vspan(16))
@@ -88,7 +89,7 @@ function InkAwayView:showWelcome()
                 para(_("Not set up"), content_w - 2 * pad, 15, true) }
             for _i, line in ipairs(c.warnings) do
                 inner[#inner + 1] = vspan(6)
-                inner[#inner + 1] = para(_(line), content_w - 2 * pad, 14)
+                inner[#inner + 1] = para(line, content_w - 2 * pad, 14)
             end
             add(FrameContainer:new{ bordersize = Screen:scaleBySize(2), color = BLACK,
                 radius = Screen:scaleBySize(12), padding = pad, margin = 0, inner })
