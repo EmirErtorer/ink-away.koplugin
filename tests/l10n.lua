@@ -11,6 +11,41 @@ local function ok(cond, what)
     if not cond then failures = failures + 1; print("FAIL: " .. what) end
 end
 
+local MSGS = Extract.messages()
+
+-- The placeholders of a message as one comparable string.
+local function placeholderKey(s)
+    local p = Extract.placeholders(s)
+    table.sort(p)
+    return table.concat(p, " ")
+end
+
+-- What is wrong with the text of a translation file, as a list of sentences: no
+-- language or charset, a message the code no longer has, a changed placeholder (T()
+-- would print the wrong thing), and, for `complete` ones, any message without a
+-- translation (an empty or fuzzy one counts as none, as the loader skips them).
+local function translationProblems(text, complete)
+    local out = {}
+    if not (text:find("Language: %a%a") and text:find("charset=UTF-8", 1, true)) then
+        out[#out + 1] = "header: needs Language: and charset=UTF-8"
+    end
+    local have = L10n.parse(text)
+    local leftover, changed = {}, {}
+    for id, str in pairs(have) do
+        if not MSGS[id] then leftover[#leftover + 1] = id
+        elseif placeholderKey(id) ~= placeholderKey(str) then changed[#changed + 1] = id end
+    end
+    if #leftover > 0 then out[#out + 1] = ("%d left over, not in the template, e.g. %q"):format(#leftover, leftover[1]) end
+    if #changed > 0 then out[#out + 1] = ("%d with a different placeholder, e.g. %q"):format(#changed, changed[1]) end
+    if complete then
+        local missing = {}
+        for id in pairs(MSGS) do if not have[id] then missing[#missing + 1] = id end end
+        table.sort(missing)
+        if #missing > 0 then out[#out + 1] = ("%d missing a translation, e.g. %q"):format(#missing, missing[1]) end
+    end
+    return out
+end
+
 -- A throwaway folder for .po files.
 local dir = io.popen("mktemp -d"):read("*l") .. "/"
 local function write(name, text)
@@ -190,7 +225,7 @@ do
     if f then f:close() end
     ok(committed == Extract.pot(), "template: ink/l10n/ink-away.pot is current (run: luajit tools/l10n/extract.lua)")
 
-    local msgs = Extract.messages()
+    local msgs = MSGS
     local n = 0
     for _id in pairs(msgs) do n = n + 1 end
     ok(n > 700, "template: holds the plugin's messages (" .. n .. ")")
@@ -224,6 +259,52 @@ do
     for _i, f in ipairs(Welcome.FEATURES) do need(f.title, "welcome"); need(f.text, "welcome") end
     for _k, g in pairs(Welcome.GESTURES) do need(g.text, "welcome gesture") end
     ok(#missing == 0, "template: holds the data modules' text (" .. #missing .. " missing, first: " .. tostring(missing[1]) .. ")")
+end
+
+-- ---- what a shipped translation must be --------------------------------------------------
+-- (checked on made-up files first, so we know the checks can fail; then on ink/l10n/*.po)
+do
+    local ids = {}
+    for id in pairs(MSGS) do ids[#ids + 1] = id end
+    table.sort(ids)
+    local withPh, plain
+    for _i, id in ipairs(ids) do
+        if not withPh and #Extract.placeholders(id) > 0 then withPh = id end
+        if not plain and #Extract.placeholders(id) == 0 and #id > 3 then plain = id end
+    end
+    local function make(fill)
+        return (Extract.format(MSGS, fill):gsub('"Language: \\n"', '"Language: es\\n"'))
+    end
+    local function has(list, word)
+        for _i, p in ipairs(list) do if p:find(word, 1, true) then return true end end
+        return false
+    end
+    local function same(s) return s end
+
+    ok(#translationProblems(make(same), true) == 0, "po check: a complete file passes")
+    ok(#translationProblems(make(function(s) return s == plain and "" or s end), false) == 0,
+        "po check: a partial file passes when it need not be complete")
+    ok(has(translationProblems(make(function(s) return s == plain and "" or s end), true), "missing"),
+        "po check: an untranslated message is found when it must be complete")
+    ok(has(translationProblems(make(function(s) return s == withPh and "sin marcador" or s end), false), "placeholder"),
+        "po check: a lost placeholder is found")
+    ok(has(translationProblems(make(same) .. '\nmsgid "Not in the template"\nmsgstr "x"\n', false), "left over"),
+        "po check: a message the code no longer has is found")
+    ok(has(translationProblems((make(same):gsub("\n(#: [^\n]+\n)", "\n%1#, fuzzy\n", 1)), true), "missing"),
+        "po check: a fuzzy message counts as untranslated when it must be complete")
+    ok(has(translationProblems((make(same):gsub('"Language: es\\n"\n', "", 1)), false), "header"),
+        "po check: a file with no language is found")
+
+    local langs = io.popen("ls ink/l10n/*.po 2>/dev/null")
+    for path in langs:lines() do
+        local lang = path:match("([^/]+)%.po$")
+        local f = assert(io.open(path, "rb"))
+        local text = f:read("*a")
+        f:close()
+        local found = translationProblems(text, lang == "es")
+        ok(#found == 0, path .. ": " .. table.concat(found, "; "):sub(1, 400))
+    end
+    langs:close()
 end
 
 -- ---- every file translates through the loader ---------------------------------------------
