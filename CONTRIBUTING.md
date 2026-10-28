@@ -20,6 +20,8 @@ go through [SECURITY.md](SECURITY.md), never a public issue.
   or open a [feature request](https://github.com/EmirErtorer/ink-away.koplugin/issues/new/choose).
 - **Answer questions** in Discussions, or on Reddit when someone asks about Ink Away.
 - **Improve the README or the guide** when something was hard to find or explained badly.
+- **Translate Ink Away** into your language. You do not need to write code; see
+  [Translating](#translating).
 - **Send a fix or a feature** as a pull request.
 
 ## Before you write code
@@ -107,6 +109,26 @@ A fix should come with a test that fails without it, and a feature with tests
 for what it does. Look at the suites next to the code you changed and follow
 their pattern.
 
+## Translating
+
+Ink Away's words live in `ink/l10n/`, one `.po` file per language, and it uses the
+one for the language KOReader is set to. To add one:
+
+1. Copy `ink/l10n/ink-away.pot` to `ink/l10n/<code>.po`, with the code KOReader
+   uses for the language (`it`, `pt_BR`, `tr`).
+2. Put the language in its `Language:` header, then fill in the `msgstr` lines.
+   Keep `%1`, `%2` and `%d` as they are (you can move them), keep the `\n` line
+   breaks, and use the words KOReader itself uses for the same thing, so Ink Away
+   blends in. The `#:` lines say which file shows a message.
+3. Run `luajit tests/l10n.lua`. It checks that the file names its language, has
+   nothing the code no longer says, and keeps every placeholder.
+
+A message left empty (or marked `#, fuzzy`) shows in English, so a partly done
+translation is fine to send. Spanish is checked to be complete.
+
+When you add or change text in the code, run `luajit tools/l10n/extract.lua` to
+update the template; the tests fail until you do.
+
 ## Code style
 
 - Match the code around you: its naming, its comments and how it is laid out.
@@ -116,6 +138,8 @@ their pattern.
 - Use KOReader's APIs and widgets rather than writing your own versions.
 - Text people see is in plain English with British spelling (colour, grey,
   centre), short and friendly, and wrapped in `_()` as the rest of the code does.
+  Put values in with `%1` (`T(_("Saved %1"), name)`) rather than joining a phrase to
+  them, so a translation can move them. See [Translating](#translating).
 
 ## Pull requests
 

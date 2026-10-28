@@ -8,6 +8,12 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Ink Away in Spanish (part of #24): with KOReader set to Español, Ink Away's
+  screens, menus and guide are in Spanish. The report on Test pen and touch
+  stays in English so it can go into a bug report. Other languages can follow:
+  a translation is one file, and CONTRIBUTING.md says how to send one.
+
 ## [4.3.0] - 2026-10-24
 
 Everything from the 4.2.1 and 4.2.2 prereleases, plus the pen's eraser end and
