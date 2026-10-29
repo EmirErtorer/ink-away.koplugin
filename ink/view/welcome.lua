@@ -68,6 +68,7 @@ function InkAwayView:showWelcome()
     local c = Welcome.content(self:getSetting("inkaway_entry_gestures"),
         function(s, ...) return Welcome.fill(_(s), ...) end)
     local tip = not self:getSetting("inkaway_device_tip_shown") and self:deviceTipText(true) or nil
+    if tip then tip = _(tip) end
     local content_w = self:sheetWidth()
     local function closeSelf() self:closeSheet("_welcome_sheet") end
     local build = function()

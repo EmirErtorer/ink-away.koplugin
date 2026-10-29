@@ -2282,6 +2282,21 @@ do
     view:closeSheet("_guide")
     view:openSettings(); check("_settings_dialog"); view:closeSheet("_settings_dialog")
     view:showWelcome(); check("_welcome_sheet"); view:closeSheet("_welcome_sheet")
+    -- the device tip at the foot of the notice is translated like the rest of it
+    do
+        local tip = require("ink/pentest").androidTip({ android = true, boox = true })
+        local gt, was = require("gettext"), view:getSetting("inkaway_device_tip_shown")
+        view.deviceTipText = function() return tip end
+        view:setSetting("inkaway_device_tip_shown", false)
+        gt.map = { [tip] = "Titulo traducido\n\nCuerpo traducido" }
+        view:showWelcome()
+        ok(walkFind(view._welcome_sheet, function(x) return x.text == "Titulo traducido" end) ~= nil
+            and walkFind(view._welcome_sheet, function(x) return x.text == "Cuerpo traducido" end) ~= nil,
+            "welcome: the device tip is translated")
+        gt.map, view.deviceTipText = nil, nil
+        view:setSetting("inkaway_device_tip_shown", was)
+        view:closeSheet("_welcome_sheet")
+    end
     view:ask{ field = "_c", title = "T", text = "text", ok_text = "Delete", ok_icon = "trash", on_ok = function() end }
     check("_c"); view:closeSheet("_c")
     view:tell("text", { field = "_c", title = "T" }); check("_c"); view:closeSheet("_c")
