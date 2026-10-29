@@ -127,6 +127,16 @@ msgstr "guardado"
     ok(t.kept == "guardado", "skip: the entry after them is kept (no flag leaks on)")
 end
 
+-- ---- parse: untidy files ----------------------------------------------------------------
+do
+    -- a fuzzy flag straight after an entry (no blank line) belongs to the next one
+    local t = L10n.parse('msgid "good"\nmsgstr "bueno"\n#, fuzzy\nmsgid "other"\nmsgstr "otro"\n')
+    ok(t.good == "bueno" and t.other == nil, "untidy: a flag with no blank line before it marks the entry after it")
+    -- keywords with leading spaces are read, not fatal
+    local good, t2 = pcall(L10n.parse, '  msgid "indented"\n  msgstr "sangrado"\n\nmsgid "fine"\nmsgstr "bien"\n')
+    ok(good and t2.fine == "bien" and t2.indented == "sangrado", "untidy: an indented keyword does not break the file")
+end
+
 -- ---- build: English ---------------------------------------------------------------------
 for _i, lang in ipairs({ "C", "en_US", "en_GB" }) do
     local gt = fakeGt(lang)

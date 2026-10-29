@@ -31,13 +31,15 @@ function L10n.parse(text)
         if line:match("^%s*$") then
             flush()
         elseif line:match("^#") then
-            -- a comment (or an obsolete entry, "#~"); only the fuzzy flag matters
+            -- a comment (or an obsolete entry, "#~"); only the fuzzy flag matters. One
+            -- straight after a finished entry, with no blank line, is the next one's.
+            if e.str then flush() end
             if line:match("^#,") and line:find("fuzzy", 1, true) then e.fuzzy = true end
         elseif line:match('^%s*"') then
             local piece = unquote(line)
             if piece and field then e[field] = e[field] .. piece end
         else
-            local kw, rest = line:match("^(%S+)%s*(.*)$")
+            local kw, rest = line:match("^%s*(%S+)%s*(.*)$")
             if kw == "msgid" then
                 if e.str then flush() end
                 e.id, field = unquote(rest) or "", "id"
