@@ -302,12 +302,12 @@ function InkAwayView:openPenSettings()
         end
         preview()
         self._pen_strip = strip
-        local label = Penset.name(cur)
+        local label = Penset.display(cur, _)
         add(HorizontalGroup:new{ align = "center",
             FrameContainer:new{ bordersize = Screen:scaleBySize(1), color = HAIRLINE, radius = Screen:scaleBySize(10),
                 padding = Screen:scaleBySize(2), margin = 0, background = WHITE, strip },
             HorizontalSpan:new{ width = gap },
-            self:actionButton(_(label) .. "  \u{203A}", name_w, function() closeSelf(); self:openPenTypes() end) })
+            self:actionButton(label .. "  \u{203A}", name_w, function() closeSelf(); self:openPenTypes() end) })
         local function showPreview()
             preview()
             if strip.dimen then UIManager:setDirty(menu, "fast", strip.dimen) end
@@ -386,7 +386,7 @@ function InkAwayView:openPenTypes(adding)
                     self:openPenSettings()
                 end, hold_cb),
                 not adding and cur.style == style)
-            return VerticalGroup:new{ align = "center", tile, caption(_(label), kw) }
+            return VerticalGroup:new{ align = "center", tile, caption(label, kw) }
         end
         for _i, g in ipairs(Penset.GROUPS) do
             add(vspan(10))
@@ -396,7 +396,7 @@ function InkAwayView:openPenTypes(adding)
             for _j, style in ipairs(g.types) do
                 -- the smudge needs the page under the ink, which a book's ink does not keep
                 if not (self.reader_mode and style == "smudge") then
-                    tiles[#tiles + 1] = kindTile(style, Penset.LABELS[style])
+                    tiles[#tiles + 1] = kindTile(style, _(Penset.LABELS[style]))
                 end
             end
             add(rows(tiles, cols, gap))
@@ -484,7 +484,7 @@ function InkAwayView:editSavedPen(i)
     rows_[#rows_ + 1] = { { _("Remove"), function() Penset.removeFav(case, i); done() end, true } }
     -- named for the pen held, with its size
     local p = case.favs[i]
-    self:openActionSheet("_penfav_menu", p and _(Penset.name(p)) or _("Saved pen"),
+    self:openActionSheet("_penfav_menu", p and Penset.display(p, _) or _("Saved pen"),
         p and Penset.mmText(p.width, self:pxPerMM()) or nil, rows_)
 end
 

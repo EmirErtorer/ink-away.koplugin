@@ -289,6 +289,13 @@ function Penset.name(p)
     return Penset.LABELS[style] or style:match("^user:(.*)$") or style
 end
 
+-- A pen's name for the screen: a kind of pen through the translator `_`, a brush's own
+-- name as its owner typed it (so a brush called "Pencil" is not turned into "Lápiz").
+function Penset.display(p, _)
+    local kind = Penset.LABELS[p and p.style or "solid"]
+    return kind and _(kind) or Penset.name(p)
+end
+
 function Penset.mmText(px, pxmm)
     local mm = px / (pxmm or 11.8)
     if mm < 10 then return string.format("%.1f mm", mm) end

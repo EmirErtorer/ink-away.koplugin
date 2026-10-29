@@ -5335,6 +5335,29 @@ do
     sweep("pen", "_pen_dialog", function() view:openPenSettings() end)
     sweep("pen input", "_peninput_dialog", function() view:openPenInput() end)
     sweep("pen types", "_pentypes_dialog", function() view:openPenTypes() end)
+    -- a brush the reader named like a kind of pen keeps its name; the kinds are translated
+    do
+        local gt, Brushes = require("gettext"), require("ink/brushes")
+        local get = function(k) return view:getSetting(k) end
+        local set = function(k, v) view:setSetting(k, v) end
+        Brushes.save(get, set, "Fineliner", Brushes.defaults())
+        gt.map = { Fineliner = "Punta fina" }
+        view:openPenTypes()
+        local function shows(w, text, seen)
+            if type(w) ~= "table" or seen[w] then return false end
+            seen[w] = true
+            if w.text == text then return true end
+            for k, v in pairs(w) do
+                if k ~= "show_parent" and k ~= "parent" and shows(v, text, seen) then return true end
+            end
+            return false
+        end
+        ok(shows(view._pentypes_dialog, "Punta fina", {}) and shows(view._pentypes_dialog, "Fineliner", {}),
+            "pen kinds: the kind is translated and a brush named like it is not")
+        gt.map = nil
+        view:closeSheet("_pentypes_dialog")
+        Brushes.remove(get, set, "Fineliner")
+    end
     sweep("eraser", "_eraser_dialog", function() view:openEraserSettings() end)
     sweep("shapes", "_shape_dialog", function() view:openShapePicker() end)
     sweep("text", "_text_settings", function() view:openTextSettings() end)

@@ -141,5 +141,13 @@ end
 
 ok(Penset.mmText(5, 11.8) == "0.4 mm" and Penset.mmText(130, 11.8) == "11 mm", "mm: as a reader reads it")
 
+-- a pen's name on screen: kinds are translated, a brush's own name is left as typed
+do
+    local function tr(s) return "<" .. s .. ">" end
+    ok(Penset.display({ style = "solid" }, tr) == "<Fineliner>" and Penset.display(nil, tr) == "<Fineliner>",
+        "display: a kind of pen goes through the translator")
+    ok(Penset.display({ style = "user:Pencil" }, tr) == "Pencil", "display: a brush's own name does not, even if it matches a kind")
+end
+
 print(("penset: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
