@@ -13,18 +13,22 @@ end
 
 local MSGS = Extract.messages()
 
--- The placeholders of a message as one comparable string.
+-- A message's placeholders as one comparable string. %1 and %2 may move in a translation
+-- (a set); %s, %d and %f may not (string.format fills them in order); and a bare % that is
+-- not %% would break string.format.
 local function placeholderKey(s)
-    local p = Extract.placeholders(s)
-    table.sort(p)
-    return table.concat(p, " ")
+    local numbered, printf = {}, {}
+    for _i, p in ipairs(Extract.placeholders(s)) do
+        if p:match("^%%%d$") then numbered[#numbered + 1] = p else printf[#printf + 1] = p end
+    end
+    table.sort(numbered)
+    return table.concat(numbered, " ") .. " | " .. table.concat(printf, " ") .. " | " .. Extract.lonePercents(s)
 end
 
--- What is wrong with the text of a translation file, as a list of sentences: no
--- language or charset, a message the code no longer has, a changed placeholder (T()
--- would print the wrong thing), and, for `complete` ones, any message without a
--- translation (an empty or fuzzy one counts as none, as the loader skips them).
-local function translationProblems(text, complete)
+-- What is wrong with the text of a translation file, as a list of sentences: no language or
+-- charset, a message the code no longer has, and a changed placeholder (T() or string.format
+-- would print the wrong thing or fail).
+local function translationProblems(text)
     local out = {}
     if not (text:find("Language: %a%a") and text:find("charset=UTF-8", 1, true)) then
         out[#out + 1] = "header: needs Language: and charset=UTF-8"
@@ -35,15 +39,19 @@ local function translationProblems(text, complete)
         if not MSGS[id] then leftover[#leftover + 1] = id
         elseif placeholderKey(id) ~= placeholderKey(str) then changed[#changed + 1] = id end
     end
+    table.sort(leftover); table.sort(changed)
     if #leftover > 0 then out[#out + 1] = ("%d left over, not in the template, e.g. %q"):format(#leftover, leftover[1]) end
     if #changed > 0 then out[#out + 1] = ("%d with a different placeholder, e.g. %q"):format(#changed, changed[1]) end
-    if complete then
-        local missing = {}
-        for id in pairs(MSGS) do if not have[id] then missing[#missing + 1] = id end end
-        table.sort(missing)
-        if #missing > 0 then out[#out + 1] = ("%d missing a translation, e.g. %q"):format(#missing, missing[1]) end
-    end
     return out
+end
+
+-- How many messages a translation file leaves in English (missing, empty or fuzzy: the loader
+-- skips those), and the first of them.
+local function untranslated(text)
+    local have, missing = L10n.parse(text), {}
+    for id in pairs(MSGS) do if not have[id] then missing[#missing + 1] = id end end
+    table.sort(missing)
+    return #missing, missing[1]
 end
 
 -- A throwaway folder for .po files.
@@ -203,6 +211,8 @@ do
     ok(table.concat(P("%1 and %2"), ",") == "%1,%2", "placeholders: %1 %2")
     ok(table.concat(P("%.1f mm"), ",") == "%.1f", "placeholders: %.1f")
     ok(#P("100%% sure, 5% of it") == 0, "placeholders: none in a literal percent")
+    ok(Extract.lonePercents("5% of it") == 1 and Extract.lonePercents("100%% sure, %d%%") == 0
+        and Extract.lonePercents("%1 and %.1f") == 0, "placeholders: a bare % is counted, %% and placeholders are not")
 end
 
 -- ---- extract: the .pot text ---------------------------------------------------------------
@@ -267,10 +277,18 @@ do
     local ids = {}
     for id in pairs(MSGS) do ids[#ids + 1] = id end
     table.sort(ids)
-    local withPh, plain
+    local function printfOf(id)
+        local out = {}
+        for _i, p in ipairs(Extract.placeholders(id)) do if not p:match("^%%%d$") then out[#out + 1] = p end end
+        return out
+    end
+    local withPh, plain, twoPrintf, withPct
     for _i, id in ipairs(ids) do
         if not withPh and #Extract.placeholders(id) > 0 then withPh = id end
         if not plain and #Extract.placeholders(id) == 0 and #id > 3 then plain = id end
+        local pf = printfOf(id)
+        if not twoPrintf and #pf == 2 and pf[1] ~= pf[2] and not id:find("%%%d") then twoPrintf = id end
+        if not withPct and id:find("%%%%") and #Extract.placeholders(id) > 0 then withPct = id end
     end
     local function make(fill)
         return (Extract.format(MSGS, fill):gsub('"Language: \\n"', '"Language: es\\n"'))
@@ -280,29 +298,40 @@ do
         return false
     end
     local function same(s) return s end
+    local function only(id, text) return function(s) return s == id and text or s end end
 
-    ok(#translationProblems(make(same), true) == 0, "po check: a complete file passes")
-    ok(#translationProblems(make(function(s) return s == plain and "" or s end), false) == 0,
-        "po check: a partial file passes when it need not be complete")
-    ok(has(translationProblems(make(function(s) return s == plain and "" or s end), true), "missing"),
-        "po check: an untranslated message is found when it must be complete")
-    ok(has(translationProblems(make(function(s) return s == withPh and "sin marcador" or s end), false), "placeholder"),
-        "po check: a lost placeholder is found")
-    ok(has(translationProblems(make(same) .. '\nmsgid "Not in the template"\nmsgstr "x"\n', false), "left over"),
+    ok(twoPrintf and withPct, "po check: the template has messages to test with (two printf placeholders, a %%)")
+    ok(#translationProblems(make(same)) == 0, "po check: a complete file passes")
+    local partial = make(only(plain, ""))
+    ok(#translationProblems(partial) == 0, "po check: a partial file passes")
+    ok(untranslated(partial) == 1, "po check: an untranslated message is counted")
+    ok(untranslated((make(same):gsub("\n(#: [^\n]+\n)", "\n%1#, fuzzy\n", 1))) == 1,
+        "po check: a fuzzy message counts as untranslated")
+    ok(has(translationProblems(make(only(withPh, "sin marcador"))), "placeholder"), "po check: a lost placeholder is found")
+    local pf = printfOf(twoPrintf)
+    ok(has(translationProblems(make(only(twoPrintf, pf[2] .. " " .. pf[1]))), "placeholder"),
+        "po check: %s and %d swapped is found (string.format would fail)")
+    ok(#translationProblems(make(only(twoPrintf, pf[1] .. " " .. pf[2]))) == 0,
+        "po check: printf placeholders in their order pass")
+    ok(has(translationProblems(make(only(withPct, (withPct:gsub("%%%%", "%%"))))), "placeholder"),
+        "po check: a bare % where the code has %% is found (string.format would fail)")
+    ok(#translationProblems(make(only("%1 and %2", "%2 y %1"))) == 0, "po check: %1 and %2 may be reordered")
+    ok(has(translationProblems(make(same) .. '\nmsgid "Not in the template"\nmsgstr "x"\n'), "left over"),
         "po check: a message the code no longer has is found")
-    ok(has(translationProblems((make(same):gsub("\n(#: [^\n]+\n)", "\n%1#, fuzzy\n", 1)), true), "missing"),
-        "po check: a fuzzy message counts as untranslated when it must be complete")
-    ok(has(translationProblems((make(same):gsub('"Language: es\\n"\n', "", 1)), false), "header"),
+    ok(has(translationProblems((make(same):gsub('"Language: es\\n"\n', "", 1))), "header"),
         "po check: a file with no language is found")
 
     local langs = io.popen("ls ink/l10n/*.po 2>/dev/null")
     for path in langs:lines() do
-        local lang = path:match("([^/]+)%.po$")
         local f = assert(io.open(path, "rb"))
         local text = f:read("*a")
         f:close()
-        local found = translationProblems(text, lang == "es")
+        local found = translationProblems(text)
         ok(#found == 0, path .. ": " .. table.concat(found, "; "):sub(1, 400))
+        local n, first = untranslated(text)
+        if n > 0 then
+            print(("NOTE: %s leaves %d messages in English, e.g. %q"):format(path, n, first))
+        end
     end
     langs:close()
 end

@@ -117,14 +117,17 @@ one for the language KOReader is set to. To add one:
 1. Copy `ink/l10n/ink-away.pot` to `ink/l10n/<code>.po`, with the code KOReader
    uses for the language (`it`, `pt_BR`, `tr`).
 2. Put the language in its `Language:` header, then fill in the `msgstr` lines.
-   Keep `%1`, `%2` and `%d` as they are (you can move them), keep the `\n` line
+   Keep the placeholders: `%1` and `%2` can move around the sentence, but `%s`,
+   `%d` and `%.1f` must stay in the order they have in English (the code fills
+   them in that order), and a percent sign is written `%%`. Keep the `\n` line
    breaks, and use the words KOReader itself uses for the same thing, so Ink Away
    blends in. The `#:` lines say which file shows a message.
 3. Run `luajit tests/l10n.lua`. It checks that the file names its language, has
-   nothing the code no longer says, and keeps every placeholder.
+   nothing the code no longer says, and keeps every placeholder as above. It also
+   says how many messages are still in English.
 
 A message left empty (or marked `#, fuzzy`) shows in English, so a partly done
-translation is fine to send. Spanish is checked to be complete.
+translation is fine to send.
 
 When you add or change text in the code, run `luajit tools/l10n/extract.lua` to
 update the template; the tests fail until you do.

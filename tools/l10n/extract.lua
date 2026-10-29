@@ -112,19 +112,24 @@ function Extract.capitals(src)
     return out
 end
 
--- The placeholders in a message (%1, %d, %.1f), a literal %% not counted.
-function Extract.placeholders(s)
-    local out, i = {}, 1
+-- The placeholders in a message (%1, %d, %.1f) in order, a literal %% not counted, and
+-- how many other bare % are left (string.format fails on one).
+local function scan(s)
+    local out, lone, i = {}, 0, 1
     s = s:gsub("%%%%", "")
     while true do
         local at = s:find("%", i, true)
         if not at then break end
         local ph = s:match("^%%[%.%d]*[sdfgxXcu]", at) or s:match("^%%%d", at)
-        if ph then out[#out + 1] = ph end
+        if ph then out[#out + 1] = ph else lone = lone + 1 end
         i = at + (ph and #ph or 1)
     end
-    return out
+    return out, lone
 end
+
+function Extract.placeholders(s) return (scan(s)) end
+
+function Extract.lonePercents(s) return select(2, scan(s)) end
 
 -- main.lua and every Lua file of the plugin.
 local function sourceFiles()
