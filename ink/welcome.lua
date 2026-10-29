@@ -70,6 +70,9 @@ function Welcome.content(state, _)
             row.glyph = Welcome.GESTURES[ges] and Welcome.GESTURES[ges].glyph
             row.gesture = gesText(ges)
             if not isEdge(ges) then two_finger = true end
+            -- shortcut: lower() only changes A-Z, so a translated gesture phrase has to start with
+            -- one (fine for Spanish); languages with other capitals (Turkish İ and I) need a
+            -- lowercase message of their own, when one of them is added
             if f.id == "booknotes" and where.gesture_fm then
                 row.outside = where.gesture_fm == ges and _("Outside a book, it opens Ink Away.")
                     or _("Outside a book, %1 opens Ink Away.", _(gesText(where.gesture_fm)):lower())

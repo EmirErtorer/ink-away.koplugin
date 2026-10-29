@@ -210,7 +210,7 @@ function Extract.pot()
     return Extract.format(Extract.messages())
 end
 
-if arg and arg[0] == "tools/l10n/extract.lua" then
+if arg and arg[0] and arg[0]:match("extract%.lua$") then
     os.execute("mkdir -p ink/l10n")
     local f = assert(io.open("ink/l10n/ink-away.pot", "wb"))
     f:write(Extract.pot())

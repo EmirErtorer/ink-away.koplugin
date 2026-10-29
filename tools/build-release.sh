@@ -37,4 +37,4 @@ find "$OUT/$NAME" -name '.DS_Store' -delete 2>/dev/null || true
 echo "Built $ZIP"
 du -h "$ZIP"
 echo "Contents:"
-unzip -l "$ZIP" | awk '{print $4}' | grep -E '\.(lua|svg|md|txt)$|LICENSE' | sed 's#^#  #'
+unzip -l "$ZIP" | awk '{print $4}' | grep -E '\.(lua|svg|md|txt|po|pot)$|LICENSE' | sed 's#^#  #'

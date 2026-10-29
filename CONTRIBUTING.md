@@ -129,8 +129,17 @@ one for the language KOReader is set to. To add one:
 A message left empty (or marked `#, fuzzy`) shows in English, so a partly done
 translation is fine to send.
 
+Two messages are lowercased in the middle of a sentence: the four swipe
+descriptions in `ink/welcome.lua` ("Swipe up along the right edge" and so on).
+Lua's `lower()` only changes A to Z, so write them as noun phrases that start with
+one of those letters, or say so in the pull request and we will give your language
+a lowercase message of its own.
+
 When you add or change text in the code, run `luajit tools/l10n/extract.lua` to
-update the template; the tests fail until you do.
+update the template; the tests fail until you do. Text the views pass to `_()`
+through a variable (the guide, welcome, action, pen and brush data) is read from the
+list of files at the top of that tool, and a test fails when a file not yet looked at
+starts doing that: add its source to the list and to the test.
 
 ## Code style
 

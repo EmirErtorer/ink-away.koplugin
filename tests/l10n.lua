@@ -346,6 +346,53 @@ do
     langs:close()
 end
 
+-- ---- the tool writes the template however its path is spelt -----------------------------
+do
+    for _i, path in ipairs({ "tools/l10n/extract.lua", "./tools/l10n/extract.lua" }) do
+        local pipe = io.popen("luajit " .. path .. " 2>&1")
+        local out = pipe:read("*a")
+        pipe:close()
+        ok(out:find("messages", 1, true), "extract: running " .. path .. " writes the template (it said: " .. out:sub(1, 80) .. ")")
+    end
+end
+
+-- ---- text passed to _() through a variable is known to the template ------------------------
+-- The scan for _("...") cannot see text that a view passes in a variable (_(row.title)); the
+-- template takes it from the data files in DATA in tools/l10n/extract.lua. These files do pass
+-- variables: a new one must be looked at, so that its text reaches the template.
+do
+    local EXPECTED = {
+        ["ink/penset.lua"] = true,
+        ["ink/ui/brushmaker.lua"] = true,
+        ["ink/view/gestures.lua"] = true,
+        ["ink/view/guide.lua"] = true,
+        ["ink/view/input.lua"] = true,
+        ["ink/view/pencase.lua"] = true,
+        ["ink/view/settings.lua"] = true,
+        ["ink/view/welcome.lua"] = true,
+        ["ink/welcome.lua"] = true,
+    }
+    local found = {}
+    local pipe = io.popen("find ink -name '*.lua'; echo main.lua")
+    for file in pipe:lines() do
+        local f = assert(io.open(file, "rb"))
+        for line in f:lines() do
+            local code = line:gsub("^%s+", "")
+            if code:sub(1, 2) ~= "--" and (" " .. code):find("[^%w_.]_%(%s*[^%s\"'%[%)]") then
+                found[#found + 1] = file
+                break
+            end
+        end
+        f:close()
+    end
+    pipe:close()
+    local new = {}
+    for _i, file in ipairs(found) do if not EXPECTED[file] then new[#new + 1] = file end end
+    table.sort(new)
+    ok(#new == 0, "variables: these files pass a variable to _(); make sure its text reaches the template (DATA in "
+        .. "tools/l10n/extract.lua), then list them in EXPECTED in tests/l10n.lua: " .. table.concat(new, ", "))
+end
+
 -- ---- every file translates through the loader ---------------------------------------------
 do
     local direct = {}
