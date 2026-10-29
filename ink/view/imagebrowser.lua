@@ -163,7 +163,7 @@ function InkAwayView:imageBrowserBuild(menu)
     -- run.
     local SOURCE_LABEL = { openverse = _("Openverse"), commons = _("Wikimedia") }
     local src = self:actionButton(
-        _("Source: ") .. (SOURCE_LABEL[st.provider] or _("Openverse")) .. "   \u{21C4}", content_w,
+        string.format(_("Source: %s"), SOURCE_LABEL[st.provider] or _("Openverse")) .. "   \u{21C4}", content_w,
         function()
             st.provider = (st.provider == "commons") and "openverse" or "commons"
             self:setSetting("inkaway_img_source", st.provider)
@@ -210,7 +210,7 @@ function InkAwayView:imageBrowserBuild(menu)
     do
         local parts = {}
         if #st.results > 0 and st.provider and FRIENDLY[st.provider] then
-            parts[#parts + 1] = _("via ") .. FRIENDLY[st.provider]
+            parts[#parts + 1] = string.format(_("via %s"), FRIENDLY[st.provider])
         end
         if (st.page and st.page > 1) or st.has_next then
             parts[#parts + 1] = string.format(_("Page %d"), st.page or 1)

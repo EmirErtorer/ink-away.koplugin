@@ -441,7 +441,7 @@ function InkAwayView:openTextSettings()
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Text"), content_w, _("Done"), closeSelf))
         add(vspan(16))
-        add(self:actionButton(_("Font: ") .. self:textFontDisplay(), content_w,
+        add(self:actionButton(string.format(_("Font: %s"), self:textFontDisplay()), content_w,
             function() closeSelf(); self:openTextFont() end))
         add(vspan(12))
         add(SliderRow:new{ label = _("Font size"), value = size, min = 10, max = 96,

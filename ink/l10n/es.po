@@ -126,11 +126,6 @@ msgstr "%s llegó a %s. ¿Abrirlo ahora?"
 msgid "%s in %s"
 msgstr "%s en %s"
 
-#: ink/view/document.lua
-#, lua-format
-msgid "%s is in Library: Imported only holds what you sent"
-msgstr "%s está en Biblioteca: Importados solo guarda lo que enviaste"
-
 #: ink/view/receive.lua
 #, lua-format
 msgid "%s isn't there any more"
@@ -369,8 +364,9 @@ msgid "Area: the whole page (tap to choose)"
 msgstr "Área: toda la página (toca para elegir)"
 
 #: ink/view/receive.lua
-msgid "Arrived: "
-msgstr "Recibido: "
+#, lua-format
+msgid "Arrived: %s"
+msgstr "Recibido: %s"
 
 #: ink/view/menus.lua
 msgid "Arrowhead size"
@@ -654,8 +650,9 @@ msgid "Colour while drawing"
 msgstr "Color al dibujar"
 
 #: ink/view/settings.lua
-msgid "Colour: "
-msgstr "Color: "
+#, lua-format
+msgid "Colour: %s"
+msgstr "Color: %s"
 
 #: ink/view/overview.lua
 msgid "Colour…"
@@ -1300,8 +1297,9 @@ msgid "Exporting %d page(s) to PDF"
 msgstr "Exportando %d página(s) a PDF"
 
 #: ink/view/settings.lua
-msgid "Exports: "
-msgstr "Exportaciones: "
+#, lua-format
+msgid "Exports: %s"
+msgstr "Exportaciones: %s"
 
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -1456,8 +1454,9 @@ msgstr "Tamaño de letra"
 
 #: ink/view/menus.lua
 #: ink/view/textformat.lua
-msgid "Font: "
-msgstr "Letra: "
+#, lua-format
+msgid "Font: %s"
+msgstr "Letra: %s"
 
 #: ink/guide.lua
 msgid "For pen readers: rest your hand while you write. Finger on the page sets what a finger does then."
@@ -1637,8 +1636,9 @@ msgid "Grid"
 msgstr "Cuadrícula"
 
 #: ink/view/settings.lua
-msgid "Grid: "
-msgstr "Cuadrícula: "
+#, lua-format
+msgid "Grid: %s"
+msgstr "Cuadrícula: %s"
 
 #: ink/reader/inkview.lua
 #: ink/view/guide.lua
@@ -2008,8 +2008,9 @@ msgid "Library folder: %s"
 msgstr "Carpeta de la biblioteca: %s"
 
 #: ink/view/settings.lua
-msgid "Library: "
-msgstr "Biblioteca: "
+#, lua-format
+msgid "Library: %s"
+msgstr "Biblioteca: %s"
 
 #: ink/view/settings.lua
 msgid "Light"
@@ -2795,8 +2796,9 @@ msgid "Paper for this page"
 msgstr "Papel de esta página"
 
 #: ink/view/settings.lua
-msgid "Paper: "
-msgstr "Papel: "
+#, lua-format
+msgid "Paper: %s"
+msgstr "Papel: %s"
 
 #: ink/guide.lua
 msgid "Papers and planners"
@@ -3479,8 +3481,9 @@ msgid "Something went wrong reading the writing."
 msgstr "Algo salió mal al leer la escritura."
 
 #: ink/view/imagebrowser.lua
-msgid "Source: "
-msgstr "Fuente: "
+#, lua-format
+msgid "Source: %s"
+msgstr "Fuente: %s"
 
 #: ink/brushes.lua
 msgid "Spread"
@@ -3679,14 +3682,14 @@ msgstr "El portapapeles está vacío."
 msgid "The contents lists the pages that have a title. Give pages a title first: tap the page number, then Rename."
 msgstr "El índice enumera las páginas que tienen título. Primero ponles un título: toca el número de página y luego Renombrar."
 
-#: ink/view/library.lua
-msgid "The copy"
-msgstr "La copia"
+#: ink/view/document.lua
+msgid "The copy is in Library: Imported only holds what you sent"
+msgstr "La copia está en Biblioteca: Importados solo guarda lo que enviaste"
 
 #: ink/view/document.lua
 #, lua-format
-msgid "The copy, “%s”,"
-msgstr "La copia, “%s”,"
+msgid "The copy, “%s”, is in Library: Imported only holds what you sent"
+msgstr "La copia, “%s”, está en Biblioteca: Importados solo guarda lo que enviaste"
 
 #: ink/guide.lua
 msgid "The eraser rubs out what it touches; Erase whole strokes takes each stroke it crosses."
@@ -3717,8 +3720,8 @@ msgid "The name of one of the service's models that can read pictures, as its mo
 msgstr "El nombre de uno de los modelos del servicio que pueden leer imágenes, tal como lo escribe su lista de modelos, por ejemplo gpt-4o-mini o paddleocr-vl."
 
 #: ink/view/document.lua
-msgid "The new document"
-msgstr "El documento nuevo"
+msgid "The new document is in Library: Imported only holds what you sent"
+msgstr "El documento nuevo está en Biblioteca: Importados solo guarda lo que enviaste"
 
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
@@ -4343,8 +4346,9 @@ msgid "storyboard"
 msgstr "guion gráfico"
 
 #: ink/view/imagebrowser.lua
-msgid "via "
-msgstr "vía "
+#, lua-format
+msgid "via %s"
+msgstr "vía %s"
 
 #: ink/view/settings.lua
 msgid "week columns"
@@ -4358,3 +4362,8 @@ msgstr "semanal"
 #, lua-format
 msgid "“%s” already exists. Replace it?"
 msgstr "“%s” ya existe. ¿Reemplazarlo?"
+
+#: ink/view/document.lua
+#, lua-format
+msgid "“%s” is in Library: Imported only holds what you sent"
+msgstr "“%s” está en Biblioteca: Importados solo guarda lo que enviaste"

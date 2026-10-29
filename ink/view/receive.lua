@@ -416,7 +416,7 @@ function InkAwayView:noteArrivals()
             parts[#parts + 1] = string.format(_("%s in %s"), what, self:importedPlace(k))
         end
     end
-    self:showNotice(_("Arrived: ") .. table.concat(parts, "; "))
+    self:showNotice(string.format(_("Arrived: %s"), table.concat(parts, "; ")))
 end
 
 -- The question: the notebooks that arrived, each to open, or later; and

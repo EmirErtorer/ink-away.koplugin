@@ -254,6 +254,14 @@ do
     for id in pairs(msgs) do if back[id] ~= id then lost = lost or id end end
     ok(lost == nil, "template: every message survives writing and reading (first lost: " .. tostring(lost) .. ")")
 
+    -- a message that ends in a space or a comma has a value joined on after it, which a
+    -- translation cannot move: it needs a %s or %1 inside it ("Paper: %s")
+    local fragments = {}
+    for id in pairs(msgs) do if id:find("[ ,]$") then fragments[#fragments + 1] = id end end
+    table.sort(fragments)
+    ok(#fragments == 0, "template: messages that end where a value is joined on (give them a %s): "
+        .. table.concat(fragments, " | "):sub(1, 300))
+
     -- the text the views translate through a variable is all in it
     local missing = {}
     local function need(s, where)

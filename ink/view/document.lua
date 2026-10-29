@@ -72,9 +72,21 @@ function InkAwayView:writableDir(dir)
     return dir, false
 end
 
--- Say that something meant for Imported went in the library instead.
-function InkAwayView:noteNotImported(what)
-    self:showNotice(string.format(_("%s is in Library: Imported only holds what you sent"), what))
+-- Say that something meant for Imported went in the library instead. `what` is "new" (a
+-- new document), "copy", "copy_named" (a copy called `name`) or anything else for a
+-- document called `name`; each is a whole sentence, so a translation can agree its words.
+function InkAwayView:noteNotImported(what, name)
+    local text
+    if what == "new" then
+        text = _("The new document is in Library: Imported only holds what you sent")
+    elseif what == "copy" then
+        text = _("The copy is in Library: Imported only holds what you sent")
+    elseif what == "copy_named" then
+        text = string.format(_("The copy, \u{201C}%s\u{201D}, is in Library: Imported only holds what you sent"), name)
+    else
+        text = string.format(_("\u{201C}%s\u{201D} is in Library: Imported only holds what you sent"), name)
+    end
+    self:showNotice(text)
 end
 
 -- Is there anything in the document worth a file: ink, a background picture,
@@ -237,7 +249,7 @@ function InkAwayView:beginDocument(kind, name, setup, dir)
     self.save_area, self.export_opts = nil, nil
     setup()
     self:resetSaveState()
-    if moved then self:noteNotImported(_("The new document")) end
+    if moved then self:noteNotImported("new") end
 end
 
 -- Replace the drawing with `ops`, dropping every selection and cached image.
@@ -422,7 +434,7 @@ function InkAwayView:duplicateDocument()
     Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
     if self:openDocument(copy) then
         if moved then
-            self:noteNotImported(string.format(_("The copy, \u{201C}%s\u{201D},"), Storage.stem(copy)))
+            self:noteNotImported("copy_named", Storage.stem(copy))
         else
             self:showNotice(string.format(_("Now in the copy, \u{201C}%s\u{201D}"), Storage.stem(copy)))
         end

@@ -744,7 +744,7 @@ function InkAwayView:openTextFormatMenu()
             add(vspan(4))
             add(self:sheetHint(_("Or turn the box to any angle with the ring above it."), content_w))
             add(vspan(10))
-            add(self:actionButton(_("Font: ") .. self:textFontDisplay(), content_w,
+            add(self:actionButton(string.format(_("Font: %s"), self:textFontDisplay()), content_w,
                 function() self:openTextFont(again) end))
         else
             local has_clip = self:clipboardText() ~= nil

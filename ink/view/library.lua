@@ -267,7 +267,7 @@ function InkAwayView:promptNewFolder(dir, after)
                 self:tell(_("Could not create the folder."))
                 return
             end
-            if moved then self:noteNotImported(string.format("\u{201C}%s\u{201D}", name)) end
+            if moved then self:noteNotImported("named", name) end
             if after then after(path) end
         end }
 end
@@ -350,7 +350,7 @@ function InkAwayView:duplicateItem(it)
     end
     Folder.update(Storage.dirName(copy), function(d) Folder.add(d, Storage.baseName(copy)) end)
     self:refreshLibrary()
-    if moved then self:noteNotImported(_("The copy")) end
+    if moved then self:noteNotImported("copy") end
 end
 
 -- The question before something goes to the trash: a document or folder

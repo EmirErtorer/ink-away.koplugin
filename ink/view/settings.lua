@@ -318,14 +318,14 @@ function InkAwayView:openSettings()
         if self.notebook then
             local t = self.notebook.template
             add(HorizontalGroup:new{ align = "center",
-                act(_("Paper: ") .. (TEMPLATE_LABEL[t.style or "lines"] or t.style), half, function()
+                act(string.format(_("Paper: %s"), TEMPLATE_LABEL[t.style or "lines"] or t.style), half, function()
                     self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
                         t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
                         self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
                     end }
                 end, nil, "page"),
                 HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-                self:paperColourButton(_("Colour: ") .. paper_name, half, function() self:openPaperColour() end) })
+                self:paperColourButton(string.format(_("Colour: %s"), paper_name), half, function() self:openPaperColour() end) })
             add(vspan(12))
             add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
                 width = content_w, parent = menu, format = pxfmt,
@@ -346,9 +346,9 @@ function InkAwayView:openSettings()
                 habits = _("Habit tracker"), cornell = _("Cornell") }
             local cur = self.grid_on and self.grid_style or "off"
             add(HorizontalGroup:new{ align = "center",
-                act(_("Grid: ") .. (GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end, nil, "grid"),
+                act(string.format(_("Grid: %s"), GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end, nil, "grid"),
                 HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-                self:paperColourButton(_("Paper: ") .. paper_name, half, function() self:openPaperColour() end) })
+                self:paperColourButton(string.format(_("Paper: %s"), paper_name), half, function() self:openPaperColour() end) })
         end
         add(vspan(16))
 
@@ -378,10 +378,10 @@ function InkAwayView:openSettings()
         add(vspan(6))
         -- the library and export folders side by side, each named for its folder
         add(HorizontalGroup:new{ align = "center",
-            act(_("Library: ") .. Storage.baseName(self:libraryDir()), half,
+            act(string.format(_("Library: %s"), Storage.baseName(self:libraryDir())), half,
                 function() self:chooseLibraryRoot() end, nil, "library"),
             HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-            act(_("Exports: ") .. Storage.baseName(self:defaultExportDir()), half,
+            act(string.format(_("Exports: %s"), Storage.baseName(self:defaultExportDir())), half,
                 function() self:chooseExportRoot() end, nil, "export") })
         add(vspan(10))
         add(self:sheetLabel(_("When Ink Away opens")))
