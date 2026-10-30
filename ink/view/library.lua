@@ -104,6 +104,7 @@ function InkAwayView:openLibrary(dir, over_grid)
             { "\u{22EF}", function() self:libraryMenu() end },
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,
+        on_back_top = (dir ~= root) and function() self:libraryGo(self:libraryDir()) end or nil,
         render = function(it, w, h)
             if it.picture then return self:pictureThumb(it.path, w, h) end
             return self:docThumb(it.path, w, h)
@@ -122,6 +123,7 @@ function InkAwayView:libraryGo(dir)
     self._lib_dir = dir
     lib.gpage = 0
     lib.on_back = (dir ~= self:libraryDir()) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil
+    lib.on_back_top = (dir ~= self:libraryDir()) and function() self:libraryGo(self:libraryDir()) end or nil
     lib:setItems(self:libraryItems(dir), self:libraryTitle(dir))
 end
 

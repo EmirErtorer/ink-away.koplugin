@@ -39,6 +39,7 @@ local ThumbGrid = InputContainer:extend{
     on_pick = nil,      -- function(item) after a tap; the grid stays open unless it closes itself
     on_hold = nil,      -- function(item) after a hold
     on_back = nil,      -- function(): shows a back arrow before the title
+    on_back_top = nil,  -- function(): a hold on that arrow, straight to the top
     on_close = nil,     -- function() once the grid has closed
     actions = nil,      -- header buttons left of the close pill: { { label, cb, dark, icon = svg path }, ... }
     close_label = nil,  -- the close pill's text (Close by default)
@@ -502,6 +503,7 @@ end
 
 function ThumbGrid:onTgHold(_, ges)
     local p = ges and ges.pos
+    if p and hit(self._back, p) and self.on_back_top then self.on_back_top(); return true end
     local tab = p and self:tabAt(p)
     if type(tab) == "table" then
         if self.on_tab_hold then self.on_tab_hold(tab) end
