@@ -132,5 +132,37 @@ do
     end
     os.remove(out)
 end
+-- a page with no colour is stored as a grey JPEG (a third of the size); one with
+-- colour stays RGB; both open in MuPDF and keep their page size
+do
+    local Canvas = require("ink/canvas")
+    local function pageWith(colour)
+        local c = Canvas.new(W, H)
+        c:setOps({ { kind = "ink", style = "solid", width = 12, alpha = 255, color = colour, pts = { 100, 300, 900, 340, 500, 900 } } })
+        return c
+    end
+    local g_path, c_path = tmp .. "/inkaway_grey.jpg", tmp .. "/inkaway_colour.jpg"
+    local _a, _b, _c, _d, g_grey = Export.saveJPEG(pageWith({ 40, 40, 40 }), g_path, 85, { bg = bg(3), bg_opaque = true })
+    local _e, _f, _g, _h, c_grey = Export.saveJPEG(pageWith({ 220, 20, 20 }), c_path, 85, { bg = bg(3), bg_opaque = true })
+    ok(g_grey == true and not c_grey, "a grey page is saved grey, a coloured one is not")
+    local fg = io.open(g_path, "rb"); local dg = fg:read("*a"); fg:close()
+    local fc = io.open(c_path, "rb"); local dc = fc:read("*a"); fc:close()
+    ok(#dg < #dc, ("the grey page is smaller (%d against %d bytes)"):format(#dg, #dc))
+    os.remove(g_path); os.remove(c_path)
+    local mixed = { {}, {} }
+    local job4 = assert(Export.notebookPDFJob(mixed, W, H, { style = "blank" }, out, 85, tmp,
+        function(i) return bg(i) end, { bg_opaque = true, box = function() return 300.5, 400.25 end }))
+    local state
+    repeat state = job4.step() until state ~= "page"
+    local f = io.open(out, "rb"); local s = f:read("*a"); f:close()
+    ok(state == "done" and s:find("/DeviceGray", 1, true) and s:find("MediaBox [0 0 300.50 400.25]", 1, true),
+        "grey pages are written as DeviceGray, and a page box can be given in points")
+    if mok then
+        local dok, doc = pcall(Mupdf.openDocument, out)
+        ok(dok and doc and doc:getPages() == 2, "MuPDF opens the grey-paged PDF")
+        if dok and doc then doc:close() end
+    end
+    os.remove(out)
+end
 print(("realbb pdfexport: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

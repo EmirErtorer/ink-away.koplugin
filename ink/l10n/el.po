@@ -66,6 +66,11 @@ msgstr "Λήφθηκαν %d αρχεία"
 msgid "%d files sent"
 msgstr "Στάλθηκαν %d αρχεία"
 
+#: ink/view/export.lua
+#, lua-format
+msgid "%d item(s) can't be kept editable. You'll choose what to do when you export."
+msgstr "%d στοιχεία δεν μπορούν να μείνουν επεξεργάσιμα. Θα επιλέξετε τι θα γίνει κατά την εξαγωγή."
+
 #: ink/view/lasso.lua
 #, lua-format
 msgid "%d item(s) on the clipboard"
@@ -239,6 +244,11 @@ msgstr "Ένα σημειωματάριο ή μερικές από τις σελ
 msgid "A picture file on this reader."
 msgstr "Ένα αρχείο εικόνας σε αυτή τη συσκευή."
 
+#: ink/view/export.lua
+#, lua-format
+msgid "A picture of each page takes about 0.3 MB, so this PDF will be around %d MB."
+msgstr "Η εικόνα κάθε σελίδας πιάνει περίπου 0,3 MB, άρα αυτό το PDF θα έχει περίπου %d MB."
+
 #: ink/view/updates.lua
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Μια προ-έκδοση είναι δοκιμαστική δημιουργία. Μπορείτε να γυρίσετε στην τελευταία έκδοση από τις Ρυθμίσεις, Ενημερώσεις."
@@ -280,9 +290,17 @@ msgstr "Προσθήκη εικόνας"
 msgid "Add this image?"
 msgstr "Να προστεθεί αυτή η εικόνα;"
 
+#: ink/view/exportbook.lua
+msgid "Adding your annotations to the PDF"
+msgstr "Προσθήκη των σχολιασμών σας στο PDF"
+
 #: ink/view/ocrapi.lua
 msgid "Address"
 msgstr "Διεύθυνση"
+
+#: ink/view/export.lua
+msgid "Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them."
+msgstr "Προσθέτει το μελάνι και τις επισημάνσεις σας σε ένα αντίγραφο του αρχικού PDF. Το κείμενο παραμένει πραγματικό κείμενο, το αρχείο παραμένει μικρό και κάθε πρόγραμμα προβολής PDF μπορεί να τα επεξεργαστεί ή να τα αφαιρέσει."
 
 #: ink/view/textformat.lua
 msgid "Alignment"
@@ -311,6 +329,10 @@ msgstr "Ήδη σε χρήση"
 #: ink/view/search.lua
 msgid "Also look inside pages (slower)"
 msgstr "Αναζήτηση και μέσα στις σελίδες (πιο αργά)"
+
+#: ink/view/exportbook.lua
+msgid "An editable PDF can't hold these as annotations, so they would be left out:"
+msgstr "Ένα επεξεργάσιμο PDF δεν μπορεί να κρατήσει αυτά ως σχολιασμούς, γι’ αυτό θα παραλείπονταν:"
 
 #: ink/guide.lua
 #: ink/welcome.lua
@@ -546,6 +568,7 @@ msgstr "Καλλιγραφία"
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 #: ink/view/images.lua
 #: ink/view/library.lua
 #: ink/view/links.lua
@@ -756,8 +779,17 @@ msgid "Could not duplicate.\n"
 msgstr "Δεν ήταν δυνατή η αναπαραγωγή.\n"
 
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 msgid "Could not export PDF.\n"
 msgstr "Δεν ήταν δυνατή η εξαγωγή του PDF.\n"
+
+#: ink/view/export.lua
+msgid "Could not export.\n"
+msgstr "Δεν ήταν δυνατή η εξαγωγή.\n"
+
+#: ink/view/exportbook.lua
+msgid "Could not make the folder.\n"
+msgstr "Δεν ήταν δυνατή η δημιουργία του φακέλου.\n"
 
 #: ink/view/library.lua
 msgid "Could not move it.\n"
@@ -797,6 +829,10 @@ msgid ""
 msgstr ""
 "Δεν ήταν δυνατή η αποθήκευση της εικόνας.\n"
 "%s"
+
+#: ink/view/exportbook.lua
+msgid "Could not save the images.\n"
+msgstr "Δεν ήταν δυνατή η αποθήκευση των εικόνων.\n"
 
 #: ink/view/export.lua
 #, lua-format
@@ -1170,6 +1206,10 @@ msgstr "Έβενος"
 msgid "Edit"
 msgstr "Επεξεργασία"
 
+#: ink/view/export.lua
+msgid "Editable"
+msgstr "Επεξεργάσιμο"
+
 #: ink/view/receive.lua
 msgid "Either way they stay in Library › Imported. To be asked again, turn on \"Ask to open notebooks that arrive\" in Phone or computer (Wi-Fi)."
 msgstr "Και στις δύο περιπτώσεις μένουν στη Βιβλιοθήκη › Εισαγμένα. Για να ρωτηθείτε ξανά, ενεργοποιήστε το «Ερώτηση για άνοιγμα των σημειωματαρίων που φτάνουν» στο Τηλέφωνο ή υπολογιστής (Wi-Fi)."
@@ -1254,6 +1294,11 @@ msgstr "Εξαγωγή"
 
 #: ink/view/export.lua
 #, lua-format
+msgid "Export %d page(s) as PNGs"
+msgstr "Εξαγωγή %d σελίδων ως PNG"
+
+#: ink/view/export.lua
+#, lua-format
 msgid "Export %d page(s) to PDF"
 msgstr "Εξαγωγή %d σελίδων σε PDF"
 
@@ -1278,6 +1323,14 @@ msgstr "Εξαγωγή ως PDF…"
 msgid "Export as PNG"
 msgstr "Εξαγωγή ως PNG"
 
+#: ink/view/export.lua
+msgid "Export as images"
+msgstr "Εξαγωγή ως εικόνες"
+
+#: ink/view/export.lua
+msgid "Export editable PDF"
+msgstr "Εξαγωγή επεξεργάσιμου PDF"
+
 #: ink/view/settings.lua
 #, lua-format
 msgid "Export folder: %s"
@@ -1286,6 +1339,10 @@ msgstr "Φάκελος εξαγωγής: %s"
 #: ink/view/export.lua
 msgid "Export stopped."
 msgstr "Η εξαγωγή σταμάτησε."
+
+#: main.lua
+msgid "Export the book with its annotations…"
+msgstr "Εξαγωγή του βιβλίου με τους σχολιασμούς του…"
 
 #: ink/view/export.lua
 msgid "Export the folder as PDF"
@@ -1301,6 +1358,7 @@ msgstr "Εξαγωγή %d σελίδων σε PDF"
 msgid "Exports: %s"
 msgstr "Εξαγωγές: %s"
 
+#: ink/reader/inkview.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/overview.lua
@@ -1372,6 +1430,11 @@ msgstr "Γέμισμα"
 #: ink/view/menus.lua
 msgid "Fill colour"
 msgstr "Χρώμα γεμίσματος"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Filled shapes and fills: %d"
+msgstr "Γεμισμένα σχήματα και γεμίσματα: %d"
 
 #: ink/penset.lua
 msgid "Fineliner"
@@ -1775,6 +1838,10 @@ msgid "Include the background"
 msgstr "Συμπερίληψη του φόντου"
 
 #: ink/view/export.lua
+msgid "Include the book's pages"
+msgstr "Συμπερίληψη των σελίδων του βιβλίου"
+
+#: ink/view/export.lua
 msgid "Include the grid"
 msgstr "Συμπερίληψη του πλέγματος"
 
@@ -1978,6 +2045,10 @@ msgstr "Επίπεδο %1 από %2. Το νέο σχέδιο μπαίνει σ�
 #: ink/view/document.lua
 msgid "Layers"
 msgstr "Επίπεδα"
+
+#: ink/view/exportbook.lua
+msgid "Leave them out"
+msgstr "Να παραλειφθούν"
 
 #: ink/reader/inkview.lua
 #: ink/view/settings.lua
@@ -2463,6 +2534,10 @@ msgstr "Δεν υπάρχουν ακόμη πρότυπα. Αποθηκεύστ�
 msgid "No writing could be read there."
 msgstr "Δεν διαβάστηκε γράψιμο εκεί."
 
+#: ink/view/export.lua
+msgid "None of the pages has ink."
+msgstr "Καμία σελίδα δεν έχει μελάνι."
+
 #: ink/view/textformat.lua
 msgid "Normal"
 msgstr "Κανονικό"
@@ -2570,6 +2645,10 @@ msgstr "Στο Android, η απόρριψη παλάμης χρειάζεται 
 msgid "On its own Ink Away looks once a day, when it opens on Wi-Fi; it never turns Wi-Fi on."
 msgstr "Από μόνο του, το Ink Away ελέγχει μία φορά την ημέρα, όταν ανοίγει με Wi-Fi· δεν ανοίγει ποτέ το Wi-Fi."
 
+#: ink/view/export.lua
+msgid "One PNG per page, in a folder of its own."
+msgstr "Ένα PNG ανά σελίδα, σε δικό του φάκελο."
+
 #: ink/guide.lua
 msgid "One shape or picture"
 msgstr "Ένα σχήμα ή μια εικόνα"
@@ -2581,6 +2660,10 @@ msgstr "Στέλνεται μόνο το γράψιμο που κυκλώσατ�
 #: ink/view/gestures.lua
 msgid "Only this one"
 msgstr "Μόνο αυτό"
+
+#: ink/view/export.lua
+msgid "Only your ink, on white pages."
+msgstr "Μόνο το μελάνι σας, σε λευκές σελίδες."
 
 #: ink/view/menus.lua
 #: ink/view/pencase.lua
@@ -2666,6 +2749,10 @@ msgstr "PDF"
 msgid "PDF saved"
 msgstr "Το PDF αποθηκεύτηκε"
 
+#: ink/view/export.lua
+msgid "PDF type"
+msgstr "Τύπος PDF"
+
 #: ink/guide.lua
 msgid "PDFs"
 msgstr "PDF"
@@ -2675,8 +2762,8 @@ msgid "PNG"
 msgstr "PNG"
 
 #: ink/view/export.lua
-msgid "PNG image"
-msgstr "Εικόνα PNG"
+msgid "PNG images"
+msgstr "Εικόνες PNG"
 
 #: ink/guide.lua
 msgid "PNG, PDF and more"
@@ -2739,6 +2826,11 @@ msgstr "Σελίδες"
 #, lua-format
 msgid "Pages %d–%d (tap to change)"
 msgstr "Σελίδες %d–%d (πατήστε για αλλαγή)"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Pages with ink that you added to the notebook: %d"
+msgstr "Σελίδες με μελάνι που προσθέσατε στο σημειωματάριο: %d"
 
 #: ink/guide.lua
 msgid "Pages, papers and PDFs"
@@ -2934,8 +3026,14 @@ msgid "Picture on the sides"
 msgstr "Εικόνα στα πλάγια"
 
 #: ink/guide.lua
+#: ink/view/export.lua
 msgid "Pictures"
 msgstr "Εικόνες"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Pictures: %d"
+msgstr "Εικόνες: %d"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."
@@ -3186,6 +3284,10 @@ msgstr "Αποθήκευση"
 msgid "Save as bookshelf ornament"
 msgstr "Αποθήκευση ως στολίδι του Bookshelf"
 
+#: ink/view/exportbook.lua
+msgid "Save as pictures"
+msgstr "Αποθήκευση ως εικόνες"
+
 #: ink/view/notebook.lua
 msgid "Save as template…"
 msgstr "Αποθήκευση ως πρότυπο…"
@@ -3193,6 +3295,15 @@ msgstr "Αποθήκευση ως πρότυπο…"
 #: ink/ui/brushmaker.lua
 msgid "Save brush"
 msgstr "Αποθήκευση πινέλου"
+
+#: ink/view/export.lua
+#, lua-format
+msgid ""
+"Saved %d page(s) as images:\n"
+"%s"
+msgstr ""
+"Αποθηκεύτηκαν %d σελίδες ως εικόνες:\n"
+"%s"
 
 #: ink/view/export.lua
 #, lua-format
@@ -3225,6 +3336,15 @@ msgstr ""
 "Αποθηκεύτηκε στολίδι του Bookshelf:\n"
 "%s"
 
+#: ink/view/export.lua
+#, lua-format
+msgid ""
+"Saved image:\n"
+"%s"
+msgstr ""
+"Η εικόνα αποθηκεύτηκε:\n"
+"%s"
+
 #: ink/view/document.lua
 #, lua-format
 msgid "Saved in %s once there is something in it"
@@ -3254,6 +3374,19 @@ msgstr "Αποθηκεύτηκε το πρότυπο «%s»"
 #: ink/view/export.lua
 msgid "Saved. Open it from your library."
 msgstr "Αποθηκεύτηκε. Ανοίξτε το από τη βιβλιοθήκη σας."
+
+#: ink/view/export.lua
+msgid "Saves each page as a picture with your ink on it. It looks the same everywhere, but the file is bigger and its text can't be selected."
+msgstr "Αποθηκεύει κάθε σελίδα ως εικόνα με το μελάνι σας πάνω της. Φαίνεται ίδια παντού, αλλά το αρχείο είναι μεγαλύτερο και το κείμενό του δεν μπορεί να επιλεγεί."
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Saving %d page(s) as images"
+msgstr "Αποθήκευση %d σελίδων ως εικόνες"
+
+#: ink/view/exportbook.lua
+msgid "Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected."
+msgstr "Η αποθήκευση των σελίδων ως εικόνες διατηρεί τα πάντα, αλλά δίνει μεγαλύτερο PDF με κείμενο που δεν μπορεί να επιλεγεί."
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
@@ -3464,6 +3597,11 @@ msgstr "Εξομαλύνει τις τρεμάμενες γραμμές. Οι υ
 msgid "Smudge"
 msgstr "Μουτζούρωμα"
 
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Smudges: %d"
+msgstr "Μουτζουρώματα: %d"
+
 #: ink/view/menus.lua
 msgid "Snap lines to ruling"
 msgstr "Προσκόλληση γραμμών στις γραμμές χαρτιού"
@@ -3479,6 +3617,10 @@ msgstr "Προσκόλληση στο πλέγμα"
 #: ink/brushes.lua
 msgid "Soft edge"
 msgstr "Απαλή άκρη"
+
+#: ink/view/exportbook.lua
+msgid "Some items can't stay editable"
+msgstr "Ορισμένα στοιχεία δεν μπορούν να παραμείνουν επεξεργάσιμα"
 
 #: ink/view/imagebrowser.lua
 msgid "Something went wrong adding that image. Please try another."
@@ -3540,8 +3682,13 @@ msgid "Stop"
 msgstr "Τερματισμός"
 
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 msgid "Stop exporting? The PDF will not be saved."
 msgstr "Να διακοπεί η εξαγωγή; Το PDF δεν θα αποθηκευτεί."
+
+#: ink/view/exportbook.lua
+msgid "Stop exporting? The images saved so far will be deleted."
+msgstr "Να διακοπεί η εξαγωγή; Οι εικόνες που έχουν αποθηκευτεί μέχρι τώρα θα διαγραφούν."
 
 #: ink/view/dialogs.lua
 msgid "Stop now?"
@@ -3656,6 +3803,11 @@ msgstr "Κείμενο"
 msgid "Text and pictures"
 msgstr "Κείμενο και εικόνες"
 
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Text boxes: %d"
+msgstr "Πλαίσια κειμένου: %d"
+
 #: ink/view/search.lua
 msgid "That document is no longer there."
 msgstr "Αυτό το έγγραφο δεν υπάρχει πια."
@@ -3758,6 +3910,10 @@ msgstr "Το μενού της σελίδας, Δημιουργία σελίδα
 #: ink/view/links.lua
 msgid "The page this leads to is no longer there."
 msgstr "Η σελίδα στην οποία οδηγεί δεν υπάρχει πια."
+
+#: ink/view/export.lua
+msgid "The pages are saved as pictures, laid out as you read them now: your font, margins and page size."
+msgstr "Οι σελίδες αποθηκεύονται ως εικόνες, όπως τις διαβάζετε τώρα: με τη γραμματοσειρά, τα περιθώρια και το μέγεθος σελίδας σας."
 
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."
@@ -3868,6 +4024,7 @@ msgid "There is nothing to export in this folder."
 msgstr "Δεν υπάρχει τίποτα για εξαγωγή σε αυτόν τον φάκελο."
 
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 msgid "There is nothing to export yet."
 msgstr "Δεν υπάρχει ακόμη τίποτα για εξαγωγή."
 

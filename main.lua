@@ -114,6 +114,8 @@ function InkAway:addToMainMenu(menu_items)
                   callback = function() self:onInkAwayAnnotate() end },
                 { text = _("Book notes"), keep_menu_open = false,
                   callback = function() self:onInkAwayBookNotes() end },
+                { text = _("Export the book with its annotations\u{2026}"), keep_menu_open = false,
+                  callback = function() self:onInkAwayExportBook() end },
                 { text = _("Open Ink Away"), keep_menu_open = false,
                   callback = function() self:openCanvas() end },
             },
@@ -189,6 +191,20 @@ end
 -- Draw on the book being read (does nothing outside a book).
 function InkAway:onInkAwayAnnotate()
     if self.book then self.book:annotate() end
+    return true
+end
+
+-- The export sheet of the book being read, over the annotation mode (the one
+-- place a book is exported from, see ink/view/export.lua).
+function InkAway:onInkAwayExportBook()
+    if not self.book then return true end
+    self.book:annotate()
+    local view = self.book._view
+    if view then
+        UIManager:nextTick(function()
+            if view == self.book._view then view:openExport() end
+        end)
+    end
     return true
 end
 

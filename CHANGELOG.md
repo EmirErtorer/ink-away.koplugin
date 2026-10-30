@@ -8,6 +8,34 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+
+- Editable PDF export. A PDF notebook, or a PDF you annotate while reading, can be
+  saved as a copy of the original with your ink and highlights added as real PDF
+  annotations: the text stays selectable, the file stays about the original's size
+  (a 12 page PDF no longer turns into 12 MB of pictures) and any PDF viewer can edit
+  or remove them. Text boxes, pictures and fills can't be annotations, so the export
+  lists them first and lets you leave them out or save the pages as pictures instead.
+- Exporting a book you annotate, from Export in Book ink settings or from Tools, Ink
+  Away: an EPUB, MOBI or any reflowing book becomes a fixed PDF of pictures laid out
+  as you read it now, with ink, shapes and highlights exactly where they are on the
+  screen. The pages with ink can also be saved as PNGs, one file each in a folder, or
+  only your ink on white pages. A progress bar shows the way and Stop ends an export
+  and deletes what it wrote.
+- PNGs of several pages for notebooks too, not only the page shown.
+
+### Changed
+
+- One Export sheet for drawings, notebooks and books, with the same choices for each.
+- A PDF of pictures keeps the original PDF's page size, and pages with no colour are
+  stored as grey images.
+
+### Fixed
+
+- A highlighter over a page picture (a PDF notebook, or a book's page) covered the
+  text under it in exported PNGs and PDFs. It now multiplies with the page, as on the
+  screen.
+
 ## [4.4.0] - 2026-10-30
 
 Ink Away in ten languages, a toolbar you can move to the left or right of the

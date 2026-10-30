@@ -52,6 +52,12 @@ function Pdf.text(s)
     return table.concat(out)
 end
 
+-- A page size in points: whole numbers as they are, else two decimals.
+local function pts(v)
+    if v == math.floor(v) then return string.format("%d", v) end
+    return string.format("%.2f", v)
+end
+
 function Stream:put(s)
     if self.failed then return false end
     if not self.f:write(s) then self.failed = true; return false end
@@ -61,10 +67,10 @@ end
 
 -- Add one page from a JPEG file on disk, copied in chunks so it is never held in
 -- memory whole. `w`, `h` are the page box in points and `pxw`, `pxh` the JPEG's
--- pixel size. `links` (optional) are areas that lead to other pages of the
+-- pixel size (`grey`: a one-channel JPEG). `links` (optional) are areas that lead to other pages of the
 -- file: { x0, y0, x1, y1 (points, y up), page = its number from 1 }. Returns
 -- ok, err.
-function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links)
+function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links, grey)
     local jf = io.open(jpeg_path, "rb")
     if not jf then return false, "could not read rendered page" end
     local len = jf:seek("end")
@@ -76,7 +82,7 @@ function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links)
     self.off[img_n] = self.pos
     self:put(img_n .. " 0 obj\n<< /Type /XObject /Subtype /Image /Width " ..
         pxw .. " /Height " .. pxh ..
-        " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " ..
+        " /ColorSpace /" .. (grey and "DeviceGray" or "DeviceRGB") .. " /BitsPerComponent 8 /Filter /DCTDecode /Length " ..
         len .. " >>\nstream\n")
     while true do
         local chunk = jf:read(262144)
@@ -85,7 +91,7 @@ function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links)
     end
     jf:close()
     self:put("\nendstream\nendobj\n")
-    local content = string.format("q\n%d 0 0 %d 0 0 cm\n/Im0 Do\nQ\n", w, h)
+    local content = "q\n" .. pts(w) .. " 0 0 " .. pts(h) .. " 0 0 cm\n/Im0 Do\nQ\n"
     self.off[con_n] = self.pos
     self:put(con_n .. " 0 obj\n<< /Length " .. #content .. " >>\nstream\n" ..
         content .. "endstream\nendobj\n")
@@ -102,7 +108,7 @@ function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links)
     end
     self.off[pg_n] = self.pos
     self:put(pg_n .. " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " ..
-        w .. " " .. h .. "] /Resources << /XObject << /Im0 " ..
+        pts(w) .. " " .. pts(h) .. "] /Resources << /XObject << /Im0 " ..
         img_n .. " 0 R >> >> /Contents " .. con_n .. " 0 R" .. annots .. " >>\nendobj\n")
     if self.failed then return false, "could not write the PDF (is the storage full?)" end
     return true

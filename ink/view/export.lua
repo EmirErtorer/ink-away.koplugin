@@ -111,8 +111,11 @@ end
 function InkAwayView:exportOptions()
     if not self.export_opts then
         local nb = self.notebook
-        self.export_opts = { fmt = nb and "pdf" or "png", scope = "all", transparent = not nb,
-            include_bg = true, on_paper = "page", numbers = false }
+        local paged = nb or self.book
+        -- a book starts from the pages with ink: what was written, not all of it
+        self.export_opts = { fmt = paged and "pdf" or "png", scope = self.book and "ink" or "all",
+            transparent = not paged, include_bg = true, on_paper = "page", numbers = false,
+            pdf_type = "editable" }
     end
     return self.export_opts
 end
@@ -152,25 +155,41 @@ function InkAwayView:selectedNotebookPages()
     return sel
 end
 
--- One sheet for every export: PNG or PDF, then what goes in it, then Export.
--- A PNG holds the page shown (or the area chosen on it); a notebook's PDF can
--- hold that page, all of them, the ones with ink, or a range.
+-- One sheet for every export: PNG or PDF, then what goes in it, then Export. A
+-- drawing's PNG holds the page shown (or the area chosen on it). A notebook or
+-- a book can export the page shown, all pages, the ones with ink or a range,
+-- as a PDF or as PNGs. A PDF (a PDF notebook, a PDF book) can instead be saved
+-- as an editable PDF: a copy of the original with the ink and highlights as
+-- annotations. What each source can do is decided here and in
+-- ink/view/exportbook.lua, nowhere else.
 function InkAwayView:openExport()
     self:flushPending()
     self:resetLasso()   -- drop any selection first
     if self.notebook then self:nbSyncOut() end
-    if not self:docHasContent() then
+    if self.book then self:saveDocument() end
+    if not self:exportHasContent() then
         self:showNotice(_("There is nothing to export yet."), 2)
         return
     end
     local o = self:exportOptions()
-    local nb = self.notebook
-    local is_pdf_nb = nb and nb.template.pdf_path
+    local nb, book = self.notebook, self.book
+    local paged = nb or book
+    local count = paged and self:exportCount() or 1
+    local pdf_src = paged and self:exportPdf() or nil
+    local can_edit = pdf_src and o.fmt == "pdf" and self:exportEditable() or false
+    local editable = can_edit and o.pdf_type ~= "pictures"
+    -- a book that reflows is saved as pictures laid out as it is now
+    local reflow = book and not pdf_src
     self:closeSheet("_save_dialog")
     self:ensureUserIcons()
     local content_w = self:sheetWidth()
     local closeSelf = function() self:closeSheet("_save_dialog") end
     local reopen = function() self:openExport() end   -- rebuild after a choice changes the layout
+    local left, added
+    if editable then
+        local _w
+        _w, left, added = self:editableWork()
+    end
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
@@ -183,9 +202,26 @@ function InkAwayView:openExport()
         add(vspan(16))
         add(self:sheetLabel(_("Format"), true))
         add(vspan(6))
-        add(self:segmentedRow({ { "png", _("PNG image") }, { "pdf", _("PDF") } }, o.fmt, content_w,
+        add(self:segmentedRow({ { "png", _("PNG images") }, { "pdf", _("PDF") } }, o.fmt, content_w,
             function(v) o.fmt = v; reopen() end))
-        if o.fmt == "pdf" and nb then
+        if can_edit then
+            add(vspan(12))
+            add(self:sheetLabel(_("PDF type"), true))
+            add(vspan(6))
+            add(self:segmentedRow({ { "editable", _("Editable") }, { "pictures", _("Pictures") } },
+                editable and "editable" or "pictures", content_w,
+                function(v) o.pdf_type = v; reopen() end))
+            add(vspan(4))
+            add(self:sheetHint(editable
+                and _("Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them.")
+                or _("Saves each page as a picture with your ink on it. It looks the same everywhere, but the file is bigger and its text can't be selected."), content_w))
+            if editable and left.total + added > 0 then
+                add(vspan(4))
+                add(self:sheetHint(string.format(_("%d item(s) can't be kept editable. You'll choose what to do when you export."),
+                    left.total + added), content_w))
+            end
+        end
+        if paged and not editable then
             add(vspan(12))
             add(self:sheetLabel(_("Pages"), true))
             add(vspan(6))
@@ -193,30 +229,35 @@ function InkAwayView:openExport()
                     { "range", _("Range") } }, o.scope, content_w,
                 function(v)
                     o.scope = v
-                    if v == "range" and not o.range then o.range = { from = 1, to = nb:count() } end
+                    if v == "range" and not o.range then o.range = { from = 1, to = count } end
                     reopen()
                 end))
             if o.scope == "range" then
                 add(vspan(8))
                 add(self:actionButton(string.format(_("Pages %d\u{2013}%d (tap to change)"),
-                    o.range.from or 1, o.range.to or nb:count()), content_w,
+                    o.range.from or 1, o.range.to or count), content_w,
                     function() closeSelf(); self:promptExportRange() end))
             end
         end
         if o.fmt == "png" then
-            add(vspan(12))
-            local area = self.save_area
-                and string.format(_("Area: %d\u{00D7}%d (tap for the whole page)"), self.save_area.w, self.save_area.h)
-                or _("Area: the whole page (tap to choose)")
-            add(self:actionButton(area, content_w, function()
-                if self.save_area then self.save_area = nil; reopen()
-                else closeSelf(); self:beginCropSelect() end
-            end))
-            if nb and nb:count() > 1 then
+            if paged and o.scope ~= "page" then
                 add(vspan(4))
-                add(self:sheetHint(string.format(_("A PNG holds the page shown, page %d."), nb.index), content_w))
+                add(self:sheetHint(_("One PNG per page, in a folder of its own."), content_w))
+            elseif not book then
+                add(vspan(12))
+                local area = self.save_area
+                    and string.format(_("Area: %d\u{00D7}%d (tap for the whole page)"), self.save_area.w, self.save_area.h)
+                    or _("Area: the whole page (tap to choose)")
+                add(self:actionButton(area, content_w, function()
+                    if self.save_area then self.save_area = nil; reopen()
+                    else closeSelf(); self:beginCropSelect() end
+                end))
+                if nb and nb:count() > 1 then
+                    add(vspan(4))
+                    add(self:sheetHint(string.format(_("A PNG holds the page shown, page %d."), nb.index), content_w))
+                end
             end
-        else
+        elseif not editable and not book then
             -- a light paper can print on white instead (a dark one always goes,
             -- or its white ink would not show)
             local p = self:paperRGB()
@@ -229,43 +270,72 @@ function InkAwayView:openExport()
                     function(v) o.on_paper = v; reopen() end))
             end
         end
-        if nb then
-            -- an imported PDF always prints its own pages into a PDF
-            if not (is_pdf_nb and o.fmt == "pdf") then
-                toggle(is_pdf_nb and _("Include the PDF page") or _("Include the paper"), "include_bg")
+        if not editable then
+            if nb then
+                toggle(pdf_src and _("Include the PDF page") or _("Include the paper"), "include_bg")
+            elseif book then
+                toggle(_("Include the book's pages"), "include_bg")
+                if not o.include_bg then
+                    add(vspan(4))
+                    add(self:sheetHint(_("Only your ink, on white pages."), content_w))
+                end
+            elseif self.bg_bb then
+                toggle(_("Include the background"), "include_bg")
             end
-        elseif self.bg_bb then
-            toggle(_("Include the background"), "include_bg")
+            if reflow and o.fmt == "pdf" then
+                add(vspan(4))
+                add(self:sheetHint(_("The pages are saved as pictures, laid out as you read them now: your font, margins and page size."), content_w))
+                -- a picture of a page is a few hundred KB: say what the PDF will weigh
+                local mb = math.floor(#self:exportPageList() * 0.3 + 0.5)
+                if mb >= 10 and o.include_bg then
+                    add(vspan(4))
+                    add(self:sheetHint(string.format(_("A picture of each page takes about 0.3 MB, so this PDF will be around %d MB."), mb), content_w))
+                end
+            end
+            -- a drawing's grid can go into an export on a page (not a transparent one)
+            local grid_row = not paged and self.grid_on
+            if o.fmt == "png" then toggle(_("Transparent"), "transparent", grid_row and reopen or nil) end
+            if grid_row and (o.fmt == "pdf" or not o.transparent) then toggle(_("Include the grid"), "include_grid") end
+            if o.fmt == "pdf" then toggle(_("Page numbers"), "numbers") end
         end
-        -- a drawing's grid can go into an export on a page (not a transparent one)
-        local grid_row = not nb and self.grid_on
-        if o.fmt == "png" then toggle(_("Transparent"), "transparent", grid_row and reopen or nil) end
-        if grid_row and (o.fmt == "pdf" or not o.transparent) then toggle(_("Include the grid"), "include_grid") end
-        if o.fmt == "pdf" then toggle(_("Page numbers"), "numbers") end
         add(vspan(16))
         local label = _("Export PNG")
-        if o.fmt == "pdf" then
-            label = nb and string.format(_("Export %d page(s) to PDF"), #self:selectedNotebookPages())
+        if editable then
+            label = _("Export editable PDF")
+        elseif o.fmt == "pdf" then
+            label = paged and string.format(_("Export %d page(s) to PDF"), #self:exportPageList())
                 or _("Export PDF")
+        elseif paged and o.scope ~= "page" then
+            label = string.format(_("Export %d page(s) as PNGs"), #self:exportPageList())
         end
         add(self:actionButton(label, content_w, function()
-            if o.fmt == "pdf" and nb and #self:selectedNotebookPages() == 0 then
-                self:showNotice(_("No pages match the chosen range."), 3)
+            local function go() closeSelf(); self:promptExportName() end
+            if editable then
+                if left.total + added > 0 then
+                    closeSelf()
+                    self:exportLeftOutSheet(left, added, function() self:promptExportName() end,
+                        function() o.pdf_type = "pictures"; self:promptExportName() end)
+                    return
+                end
+            elseif paged and #self:exportPageList() == 0 then
+                self:showNotice(o.scope == "ink" and _("None of the pages has ink.") or _("No pages match the chosen range."), 3)
                 return
             end
-            closeSelf(); self:promptExportName()
+            go()
         end, true))
         -- save straight into the bookshelf plugin's ornament folder, when that
         -- plugin is in use; always a transparent PNG
-        if o.fmt == "png" and self:ornamentsDir() then
+        if o.fmt == "png" and not paged and self:ornamentsDir() then
             add(vspan(10))
             add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
                 closeSelf(); self:saveOrnament() end, nil, nil, "frame"))
         end
         -- (see ink/view/share.lua)
-        add(vspan(10))
-        add(self:actionButton(_("Send to phone or computer (Wi-Fi)\u{2026}"), content_w, function()
-            closeSelf(); self:openSend() end, nil, nil, "qr"))
+        if not book then
+            add(vspan(10))
+            add(self:actionButton(_("Send to phone or computer (Wi-Fi)\u{2026}"), content_w, function()
+                closeSelf(); self:openSend() end, nil, nil, "qr"))
+        end
         return content
     end
     self:showSheet("_save_dialog", build)
@@ -281,11 +351,11 @@ end
 
 -- Ask for the first and last page of the export range.
 function InkAwayView:promptExportRange()
-    local nb = self.notebook
+    local count = self:exportCount()
     local o = self:exportOptions()
     self:promptText{
-        title = string.format(_("Page range (1\u{2013}%d), e.g. 3-8"), nb:count()),
-        input = string.format("%d-%d", o.range.from or 1, o.range.to or nb:count()),
+        title = string.format(_("Page range (1\u{2013}%d), e.g. 3-8"), count),
+        input = string.format("%d-%d", o.range.from or 1, o.range.to or count),
         ok_text = _("Set"),
         on_ok = function(text)
             local s = text or ""
@@ -315,7 +385,9 @@ function InkAwayView:askExportPath(o)
             end)
         end },
         on_ok = function(text)
-            local path = Storage.join(o.dir, Storage.fileName(text, o.ext))
+            -- (a folder of images takes the name as it is)
+            local path = o.ext and Storage.join(o.dir, Storage.fileName(text, o.ext))
+                or Storage.join(o.dir, (text:gsub("[/\\]", "_")))
             self:confirmReplace(path, function() o.on_path(path) end)
         end,
     }
@@ -327,14 +399,21 @@ end
 function InkAwayView:promptExportName(name, dir)
     local o = self:exportOptions()
     local ext = o.fmt
+    local paged = self.notebook or self.book
+    -- PNGs of several pages go in a folder of their own, named here
+    local folder = ext == "png" and paged and o.scope ~= "page" and #self:exportPageList() > 1
+    local title = ext == "pdf" and _("Export as PDF") or folder and _("Export as images") or _("Export as PNG")
     self:askExportPath{
-        title = ext == "pdf" and _("Export as PDF") or _("Export as PNG"),
-        name = name or o.name or self:docName(), default = self:docName(),
-        dir = dir or self:exportDir(), ext = ext,
+        title = title,
+        name = name or o.name or self:exportName(), default = self:exportName(),
+        dir = dir or self:exportDir(), ext = not folder and ext or nil,
         on_dir = function(d) o.dir = d end,
         on_path = function(path)
             o.name = Storage.stem(path)
-            if ext == "pdf" then self:writePDF(path) else self:writePNG(path) end
+            if ext == "pdf" then self:writeExport(path)
+            elseif paged and (folder or self.book) then self:writePagesPNG(path)
+            elseif paged and o.scope ~= "page" then self:writePagesPNG(path)
+            else self:writePNG(path) end
         end,
     }
 end
@@ -382,12 +461,17 @@ end
 
 -- Bookmarks for the titled pages among `pages` (notebook pages, in export
 -- order): { title, page } each.
-local function titledPages(pages)
+function InkAwayView:titledPages(pages)
     local out = {}
     for j, page in ipairs(pages) do
         if page.title then out[#out + 1] = { title = page.title, page = j } end
     end
     return out
+end
+
+-- A blank export template on white, for a page with only ink on it.
+function InkAwayView:exportDress(t)
+    return dress(t, nil)
 end
 
 -- Export.savePNG options for the page shown: the area, the paper or background
@@ -421,54 +505,25 @@ function InkAwayView:writePNG(path)
     end
 end
 
--- Write the chosen pages (a drawing is one page) to a PDF.
+-- Write the export as the sheet has it set: an editable PDF where that is
+-- chosen and possible, else the pages as pictures.
+function InkAwayView:writeExport(path)
+    local o = self:exportOptions()
+    if o.pdf_type ~= "pictures" and (self.notebook or self.book) and self:exportEditable() then
+        return self:writeEditablePDF(path)
+    end
+    return self:writePDF(path)
+end
+
+-- Write the chosen pages (a drawing is one page) to a PDF as pictures.
 function InkAwayView:writePDF(path)
     local o = self:exportOptions()
-    local nb = self.notebook
-    local pages_ops, template, bg, w, h, outline, links
-    local bg_opaque, quality = false, 85
-    if nb then
-        self:nbSyncOut()
-        local sel = self:selectedNotebookPages()
-        local pages = {}
-        pages_ops = {}
-        for j = 1, #sel do pages[j] = nb.pages[sel[j]]; pages_ops[j] = pages[j].ops end
-        outline = titledPages(pages)
-        -- links between the exported pages become links in the PDF
-        local at = {}
-        for j, p in ipairs(pages) do if p.id then at[p.id] = j end end
-        links = function(j)
-            return Links.pdfAnnots(pages_ops[j], h, function(to)
-                if to.path and to.path ~= self.doc_path then return nil end
-                return to.id and at[to.id]
-            end)
-        end
-        w, h = nb.w, nb.h
-        template = function(j) return self:exportTemplate(sel[j]) end
-        if nb.template.pdf_path then
-            -- each source page is rendered when its page is written, one at a
-            -- time, so memory stays flat however long the PDF
-            self:ensureNotebookPDF()
-            local doc = self._nb_pdf_doc
-            bg = function(j, s)
-                s = s or 1
-                local src = nb.pages[sel[j]] and nb.pages[sel[j]].src
-                local img = src and self:renderPdfPage(doc, src, nb.w * s, nb.h * s) or nil
-                if not img then return nil end
-                local rgba = bbToRGBA(img, nb.w * s, nb.h * s)
-                img:free()
-                return rgba
-            end
-            bg_opaque, quality = true, 90   -- rendered PDF pages are drawn on white
-        end
-    else
-        pages_ops = { self:drawnOps() }
-        w, h = self.canvas.w, self.canvas.h
-        template = self:drawingGridTemplate() or self:drawingPaperTemplate()
-        if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
-    end
-    self:runPdfJob(path, { pages = pages_ops, w = w, h = h, template = template, bg = bg,
-        bg_opaque = bg_opaque, numbers = o.numbers, quality = quality, outline = outline, links = links })
+    if self.notebook or self.book then return self:runPdfJob(path, self:exportSpec()) end
+    local bg
+    if o.include_bg and self.bg_bb then bg = self.bg_rgba or self:buildBgRGBA() end
+    self:runPdfJob(path, { pages = { self:drawnOps() }, w = self.canvas.w, h = self.canvas.h,
+        template = self:drawingGridTemplate() or self:drawingPaperTemplate(), bg = bg,
+        numbers = o.numbers, quality = 85 })
 end
 
 -- Add the pages of the document at `path` to `acc` (pages, templates, sources,
@@ -590,34 +645,50 @@ function InkAwayView:exportFolderPDF(dir)
     }
 end
 
--- Write a PDF one page per UI step, with a progress bar and a way to stop, then
--- offer to open it. `spec` holds pages (op lists), w, h, template (one, or a
--- function of the page), bg (one RGBA buffer, or a function rendering each
--- page's own), bg_opaque, numbers, quality, outline and done(), called when the
--- job ends however it ends (see Export.notebookPDFJob).
+-- Write a PDF of pictures one page per UI step, with a progress bar and a way to
+-- stop, then offer to open it. `spec` holds pages (op lists, or a function of
+-- the page), n (when pages is a function), w and h (or size, and box: each
+-- page's own), template (one, or a function of the page), bg (one RGBA buffer,
+-- or a function rendering each page's own), bg_opaque, numbers, quality,
+-- outline, links, prepare and done(), called when the job ends however it ends
+-- (see Export.notebookPDFJob).
 function InkAwayView:runPdfJob(path, spec)
-    local pages_ops = spec.pages
+    local n = spec.n or #spec.pages
     -- each page streams to disk and is freed before the next, so a long
     -- imported PDF neither freezes the reader nor builds the whole file in memory
-    local job, jerr = Export.notebookPDFJob(pages_ops, spec.w, spec.h, spec.template, path, spec.quality or 85,
+    local job, jerr = Export.notebookPDFJob(spec.pages, spec.w, spec.h, spec.template, path, spec.quality or 85,
         Storage.settingsDir(), spec.bg,
         { footer = spec.numbers or nil, bg_opaque = spec.bg_opaque or nil, outline = spec.outline,
-          links = spec.links })
+          links = spec.links, n = spec.n, size = spec.size, box = spec.box, prepare = spec.prepare })
     if not job then
         if spec.done then spec.done() end
         self:tell(_("Could not export PDF.\n") .. tostring(jerr))
         return
     end
+    self:runExportJob(job, { path = path, n = n, done = spec.done, pdf = true,
+        title = string.format(_("Exporting %d page(s) to PDF"), n),
+        stop = _("Stop exporting? The PDF will not be saved.") })
+end
+
+-- Run an export job (anything with step() and cancel(), see Export.notebookPDFJob)
+-- a step at a time under a progress sheet whose Stop ends it for good: the
+-- job's partial files are deleted and `o.done` runs however it ends. `o`: path,
+-- n (the steps shown), title, stop (what Stop asks), done(), pdf (offer to open
+-- the PDF at the end) or images (the folder, to say where they went).
+function InkAwayView:runExportJob(job, o)
     self._export_job = job
+    local function finish()
+        if self._export_job == job then self._export_job = nil end
+        self._export_finish = nil
+        if o.done then o.done() end
+    end
+    self._export_finish = finish   -- (for Ink Away closing under the job)
     local function stopped()
         job.cancel()
-        if self._export_job == job then self._export_job = nil end
-        if spec.done then spec.done() end
+        finish()
     end
     self:runSteps{
-        title = string.format(_("Exporting %d page(s) to PDF"), #pages_ops),
-        max = #pages_ops,
-        dismiss_text = _("Stop exporting? The PDF will not be saved."),
+        title = o.title, max = o.n, dismiss_text = o.stop,
         step = function()
             if self._export_job ~= job then return "abort" end
             local state, a = job.step()
@@ -631,16 +702,21 @@ function InkAwayView:runPdfJob(path, spec)
         end,
         on_error = function(err)
             stopped()
-            self:tell(_("Could not export PDF.\n") .. tostring(err))
+            self:tell(_("Could not export.\n") .. tostring(err))
         end,
         on_done = function()
-            self._export_job = nil
-            if spec.done then spec.done() end
-            -- make the PDF open as a full page with no auto-crop the first time
-            self:seedPdfView(path)
+            finish()
             self:markDirty()   -- keep the export settings with the document
-            self:ask{ title = _("PDF saved"), text = path .. "\n\n" .. _("Open the PDF now?"),
-                ok_text = _("Open"), ok_icon = "open", on_ok = function() self:openExportedPDF(path) end }
+            if o.pdf then
+                -- make the PDF open as a full page with no auto-crop the first time
+                self:seedPdfView(o.path)
+                self:ask{ title = _("PDF saved"), text = o.path .. "\n\n" .. _("Open the PDF now?"),
+                    ok_text = _("Open"), ok_icon = "open", on_ok = function() self:openExportedPDF(o.path) end }
+            elseif o.images then
+                self:tell(string.format(_("Saved %d page(s) as images:\n%s"), o.n, o.images))
+            else
+                self:tell(string.format(_("Saved image:\n%s"), o.path))
+            end
         end,
     }
 end

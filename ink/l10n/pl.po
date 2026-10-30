@@ -66,6 +66,11 @@ msgstr "Odebrano plików: %d"
 msgid "%d files sent"
 msgstr "Wysłano plików: %d"
 
+#: ink/view/export.lua
+#, lua-format
+msgid "%d item(s) can't be kept editable. You'll choose what to do when you export."
+msgstr "Niektórych elementów (%d) nie da się zachować jako edytowalne. Zdecydujesz, co z nimi zrobić, przy eksporcie."
+
 #: ink/view/lasso.lua
 #, lua-format
 msgid "%d item(s) on the clipboard"
@@ -239,6 +244,11 @@ msgstr "Notatnik lub niektóre jego strony, z zakładkami dla stron z tytułami 
 msgid "A picture file on this reader."
 msgstr "Plik obrazu na tym czytniku."
 
+#: ink/view/export.lua
+#, lua-format
+msgid "A picture of each page takes about 0.3 MB, so this PDF will be around %d MB."
+msgstr "Obraz każdej strony zajmuje około 0,3 MB, więc ten PDF będzie miał około %d MB."
+
 #: ink/view/updates.lua
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Wersja wstępna to kompilacja testowa. Do ostatniego wydania możesz wrócić w Ustawieniach, Aktualizacje."
@@ -280,9 +290,17 @@ msgstr "Dodaj obraz"
 msgid "Add this image?"
 msgstr "Dodać ten obraz?"
 
+#: ink/view/exportbook.lua
+msgid "Adding your annotations to the PDF"
+msgstr "Dodawanie adnotacji do pliku PDF"
+
 #: ink/view/ocrapi.lua
 msgid "Address"
 msgstr "Adres"
+
+#: ink/view/export.lua
+msgid "Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them."
+msgstr "Dodaje twój tusz i zakreślenia do kopii oryginalnego pliku PDF. Tekst pozostaje prawdziwym tekstem, plik pozostaje mały, a każda przeglądarka PDF może je edytować lub usunąć."
 
 #: ink/view/textformat.lua
 msgid "Alignment"
@@ -311,6 +329,10 @@ msgstr "Już używane"
 #: ink/view/search.lua
 msgid "Also look inside pages (slower)"
 msgstr "Szukaj także wewnątrz stron (wolniej)"
+
+#: ink/view/exportbook.lua
+msgid "An editable PDF can't hold these as annotations, so they would be left out:"
+msgstr "Edytowalny PDF nie może zawierać ich jako adnotacji, więc zostałyby pominięte:"
 
 #: ink/guide.lua
 #: ink/welcome.lua
@@ -546,6 +568,7 @@ msgstr "Kaligrafia"
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 #: ink/view/images.lua
 #: ink/view/library.lua
 #: ink/view/links.lua
@@ -756,8 +779,17 @@ msgid "Could not duplicate.\n"
 msgstr "Nie udało się zduplikować.\n"
 
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 msgid "Could not export PDF.\n"
 msgstr "Nie udało się wyeksportować pliku PDF.\n"
+
+#: ink/view/export.lua
+msgid "Could not export.\n"
+msgstr "Nie udało się wyeksportować.\n"
+
+#: ink/view/exportbook.lua
+msgid "Could not make the folder.\n"
+msgstr "Nie udało się utworzyć folderu.\n"
 
 #: ink/view/library.lua
 msgid "Could not move it.\n"
@@ -797,6 +829,10 @@ msgid ""
 msgstr ""
 "Nie udało się zapisać obrazu.\n"
 "%s"
+
+#: ink/view/exportbook.lua
+msgid "Could not save the images.\n"
+msgstr "Nie udało się zapisać obrazów.\n"
 
 #: ink/view/export.lua
 #, lua-format
@@ -1170,6 +1206,10 @@ msgstr "Heban"
 msgid "Edit"
 msgstr "Edycja"
 
+#: ink/view/export.lua
+msgid "Editable"
+msgstr "Edytowalny"
+
 #: ink/view/receive.lua
 msgid "Either way they stay in Library › Imported. To be asked again, turn on \"Ask to open notebooks that arrive\" in Phone or computer (Wi-Fi)."
 msgstr "W obu przypadkach zostają w Biblioteka › Zaimportowane. Aby znów być pytanym, włącz „Pytaj, czy otwierać nadchodzące notatniki” w Telefon lub komputer (Wi-Fi)."
@@ -1254,6 +1294,11 @@ msgstr "Eksportuj"
 
 #: ink/view/export.lua
 #, lua-format
+msgid "Export %d page(s) as PNGs"
+msgstr "Eksportuj stron jako PNG: %d"
+
+#: ink/view/export.lua
+#, lua-format
 msgid "Export %d page(s) to PDF"
 msgstr "Eksportuj stron do PDF: %d"
 
@@ -1278,6 +1323,14 @@ msgstr "Eksportuj jako PDF…"
 msgid "Export as PNG"
 msgstr "Eksportuj jako PNG"
 
+#: ink/view/export.lua
+msgid "Export as images"
+msgstr "Eksportuj jako obrazy"
+
+#: ink/view/export.lua
+msgid "Export editable PDF"
+msgstr "Eksportuj edytowalny PDF"
+
 #: ink/view/settings.lua
 #, lua-format
 msgid "Export folder: %s"
@@ -1286,6 +1339,10 @@ msgstr "Folder eksportu: %s"
 #: ink/view/export.lua
 msgid "Export stopped."
 msgstr "Eksport zatrzymany."
+
+#: main.lua
+msgid "Export the book with its annotations…"
+msgstr "Eksportuj książkę z adnotacjami…"
 
 #: ink/view/export.lua
 msgid "Export the folder as PDF"
@@ -1301,6 +1358,7 @@ msgstr "Eksport stron do PDF: %d"
 msgid "Exports: %s"
 msgstr "Eksporty: %s"
 
+#: ink/reader/inkview.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/overview.lua
@@ -1372,6 +1430,11 @@ msgstr "Wypełnienie"
 #: ink/view/menus.lua
 msgid "Fill colour"
 msgstr "Kolor wypełnienia"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Filled shapes and fills: %d"
+msgstr "Wypełnione kształty i wypełnienia: %d"
 
 #: ink/penset.lua
 msgid "Fineliner"
@@ -1775,6 +1838,10 @@ msgid "Include the background"
 msgstr "Dołącz tło"
 
 #: ink/view/export.lua
+msgid "Include the book's pages"
+msgstr "Dołącz strony książki"
+
+#: ink/view/export.lua
 msgid "Include the grid"
 msgstr "Dołącz siatkę"
 
@@ -1978,6 +2045,10 @@ msgstr "Warstwa %1 z %2. Nowy rysunek trafia na tę warstwę."
 #: ink/view/document.lua
 msgid "Layers"
 msgstr "Warstwy"
+
+#: ink/view/exportbook.lua
+msgid "Leave them out"
+msgstr "Pomiń je"
 
 #: ink/reader/inkview.lua
 #: ink/view/settings.lua
@@ -2463,6 +2534,10 @@ msgstr "Nie ma jeszcze szablonów. Zapisz stronę jako szablon z tego menu: Zapi
 msgid "No writing could be read there."
 msgstr "Nie dało się tam odczytać pisma."
 
+#: ink/view/export.lua
+msgid "None of the pages has ink."
+msgstr "Żadna ze stron nie ma tuszu."
+
 #: ink/view/textformat.lua
 msgid "Normal"
 msgstr "Normalny"
@@ -2570,6 +2645,10 @@ msgstr "W Androidzie odrzucanie dłoni wymaga KOReadera nowszego niż 2026.07.1 
 msgid "On its own Ink Away looks once a day, when it opens on Wi-Fi; it never turns Wi-Fi on."
 msgstr "Samodzielnie Ink Away sprawdza raz dziennie, gdy otwiera się przez Wi-Fi; nigdy nie włącza Wi-Fi."
 
+#: ink/view/export.lua
+msgid "One PNG per page, in a folder of its own."
+msgstr "Jeden PNG na stronę, w osobnym folderze."
+
 #: ink/guide.lua
 msgid "One shape or picture"
 msgstr "Jeden kształt lub obraz"
@@ -2581,6 +2660,10 @@ msgstr "Wysyłane jest tylko pismo otoczone lassem. Klucz jest przechowywany bez
 #: ink/view/gestures.lua
 msgid "Only this one"
 msgstr "Tylko ten"
+
+#: ink/view/export.lua
+msgid "Only your ink, on white pages."
+msgstr "Tylko twój tusz, na białych stronach."
 
 #: ink/view/menus.lua
 #: ink/view/pencase.lua
@@ -2666,6 +2749,10 @@ msgstr "PDF"
 msgid "PDF saved"
 msgstr "Zapisano plik PDF"
 
+#: ink/view/export.lua
+msgid "PDF type"
+msgstr "Rodzaj PDF"
+
 #: ink/guide.lua
 msgid "PDFs"
 msgstr "Pliki PDF"
@@ -2675,8 +2762,8 @@ msgid "PNG"
 msgstr "PNG"
 
 #: ink/view/export.lua
-msgid "PNG image"
-msgstr "Obraz PNG"
+msgid "PNG images"
+msgstr "Obrazy PNG"
 
 #: ink/guide.lua
 msgid "PNG, PDF and more"
@@ -2739,6 +2826,11 @@ msgstr "Strony"
 #, lua-format
 msgid "Pages %d–%d (tap to change)"
 msgstr "Strony %d–%d (dotknij, aby zmienić)"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Pages with ink that you added to the notebook: %d"
+msgstr "Strony z tuszem dodane do notatnika: %d"
 
 #: ink/guide.lua
 msgid "Pages, papers and PDFs"
@@ -2934,8 +3026,14 @@ msgid "Picture on the sides"
 msgstr "Obraz po bokach"
 
 #: ink/guide.lua
+#: ink/view/export.lua
 msgid "Pictures"
 msgstr "Obrazy"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Pictures: %d"
+msgstr "Obrazy: %d"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."
@@ -3186,6 +3284,10 @@ msgstr "Zapisz"
 msgid "Save as bookshelf ornament"
 msgstr "Zapisz jako ozdobę Bookshelf"
 
+#: ink/view/exportbook.lua
+msgid "Save as pictures"
+msgstr "Zapisz jako obrazy"
+
 #: ink/view/notebook.lua
 msgid "Save as template…"
 msgstr "Zapisz jako szablon…"
@@ -3193,6 +3295,15 @@ msgstr "Zapisz jako szablon…"
 #: ink/ui/brushmaker.lua
 msgid "Save brush"
 msgstr "Zapisz pędzel"
+
+#: ink/view/export.lua
+#, lua-format
+msgid ""
+"Saved %d page(s) as images:\n"
+"%s"
+msgstr ""
+"Zapisano stron jako obrazy: %d\n"
+"%s"
 
 #: ink/view/export.lua
 #, lua-format
@@ -3225,6 +3336,15 @@ msgstr ""
 "Zapisano ozdobę Bookshelf:\n"
 "%s"
 
+#: ink/view/export.lua
+#, lua-format
+msgid ""
+"Saved image:\n"
+"%s"
+msgstr ""
+"Zapisano obraz:\n"
+"%s"
+
 #: ink/view/document.lua
 #, lua-format
 msgid "Saved in %s once there is something in it"
@@ -3254,6 +3374,19 @@ msgstr "Zapisano szablon „%s”"
 #: ink/view/export.lua
 msgid "Saved. Open it from your library."
 msgstr "Zapisano. Otwórz go ze swojej biblioteki."
+
+#: ink/view/export.lua
+msgid "Saves each page as a picture with your ink on it. It looks the same everywhere, but the file is bigger and its text can't be selected."
+msgstr "Zapisuje każdą stronę jako obraz z twoim tuszem. Wygląda wszędzie tak samo, ale plik jest większy, a jego tekstu nie można zaznaczać."
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Saving %d page(s) as images"
+msgstr "Zapisywanie stron jako obrazy: %d"
+
+#: ink/view/exportbook.lua
+msgid "Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected."
+msgstr "Zapisanie stron jako obrazów zachowuje wszystko, ale daje większy plik PDF, którego tekstu nie można zaznaczać."
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
@@ -3464,6 +3597,11 @@ msgstr "Wygładza drżące linie. Wyższe wartości stabilizują kreskę, ale le
 msgid "Smudge"
 msgstr "Rozmaż"
 
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Smudges: %d"
+msgstr "Rozmazania: %d"
+
 #: ink/view/menus.lua
 msgid "Snap lines to ruling"
 msgstr "Przyciągaj linie do liniatury"
@@ -3479,6 +3617,10 @@ msgstr "Przyciągaj do siatki"
 #: ink/brushes.lua
 msgid "Soft edge"
 msgstr "Miękka krawędź"
+
+#: ink/view/exportbook.lua
+msgid "Some items can't stay editable"
+msgstr "Niektóre elementy nie mogą pozostać edytowalne"
 
 #: ink/view/imagebrowser.lua
 msgid "Something went wrong adding that image. Please try another."
@@ -3540,8 +3682,13 @@ msgid "Stop"
 msgstr "Stop"
 
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 msgid "Stop exporting? The PDF will not be saved."
 msgstr "Zatrzymać eksport? Plik PDF nie zostanie zapisany."
+
+#: ink/view/exportbook.lua
+msgid "Stop exporting? The images saved so far will be deleted."
+msgstr "Zatrzymać eksport? Dotychczas zapisane obrazy zostaną usunięte."
 
 #: ink/view/dialogs.lua
 msgid "Stop now?"
@@ -3656,6 +3803,11 @@ msgstr "Tekst"
 msgid "Text and pictures"
 msgstr "Tekst i obrazy"
 
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Text boxes: %d"
+msgstr "Pola tekstowe: %d"
+
 #: ink/view/search.lua
 msgid "That document is no longer there."
 msgstr "Tego dokumentu już nie ma."
@@ -3758,6 +3910,10 @@ msgstr "Menu strony, Utwórz stronę spisu treści: każda strona z tytułem sta
 #: ink/view/links.lua
 msgid "The page this leads to is no longer there."
 msgstr "Strony, do której to prowadzi, już nie ma."
+
+#: ink/view/export.lua
+msgid "The pages are saved as pictures, laid out as you read them now: your font, margins and page size."
+msgstr "Strony są zapisywane jako obrazy, tak jak czytasz je teraz: z twoją czcionką, marginesami i rozmiarem strony."
 
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."
@@ -3868,6 +4024,7 @@ msgid "There is nothing to export in this folder."
 msgstr "W tym folderze nie ma nic do wyeksportowania."
 
 #: ink/view/export.lua
+#: ink/view/exportbook.lua
 msgid "There is nothing to export yet."
 msgstr "Nie ma jeszcze nic do wyeksportowania."
 

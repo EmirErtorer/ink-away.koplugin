@@ -342,8 +342,11 @@ end
 -- Build a packed RGBA buffer (ow*oh*4 bytes), transparent where there is no ink.
 -- `rect` optionally crops to {x,y,w,h}. The optional `clear_mask` (ow*oh bytes)
 -- gets 1 wherever a hard erase (op.ebg) clears, so the background composite
--- leaves those pixels transparent. Returns buf, byte_count, ow, oh.
-function Export.buildRGBA(canvas, rect, clear_mask, template)
+-- leaves those pixels transparent. The optional `flags` (ow*oh bytes) gets 1
+-- where a highlighter or marker drew on nothing and nothing was drawn over it
+-- since: the page under it is to be multiplied there (see compositeOverBg).
+-- Returns buf, byte_count, ow, oh.
+function Export.buildRGBA(canvas, rect, clear_mask, template, flags)
     local ow, oh, offx, offy = dims(canvas, rect)
     local n = ow * oh * 4
     local buf = ffi.new("uint8_t[?]", n)  -- starts all zero, so fully transparent
@@ -400,7 +403,19 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
     local spare_erase = text_buf and copyRun(buf, text_buf, ow, 4, clip) or plain_erase
     local text_px = textPixel(buf, ow, 4, clip)
     replay(canvas,
-        function(r, g, b, alpha) return fillRun(buf, ow, 4, clip, r, g, b, alpha) end,
+        function(r, g, b, alpha)
+            local put = fillRun(buf, ow, 4, clip, r, g, b, alpha)
+            if not flags then return put end
+            -- ink drawn over a highlighter is plain ink again
+            return function(x, y, len)
+                put(x, y, len)
+                local cx, cy, clen = clip(x, y, len)
+                if cx then
+                    local base = cy * ow + cx
+                    for i = 0, clen - 1 do flags[base + i] = 0 end
+                end
+            end
+        end,
         function(op)
             if op.ebg then return hard_erase end
             if op.spare_text and spare_erase then return spare_erase end
@@ -408,14 +423,14 @@ function Export.buildRGBA(canvas, rect, clear_mask, template)
         end,
         function(op) Export.eachTextPixel(op, text_px, template) end,
         function(op) putImage(buf, op) end,
-        function(op) Export.washInto(buf, ow, oh, 4, offx, offy, canvas, op) end,
+        function(op) Export.washInto(buf, ow, oh, 4, offx, offy, canvas, op, flags) end,
         smudger(canvas, buf, smudge_base, ow, oh, 4, offx, offy), template and template.dark)
     return buf, n, ow, oh
 end
 
 -- Blend a see-through pen's stroke into a packed export buffer.
 local wash_scratch
-function Export.washInto(buf, ow, oh, bpp, offx, offy, canvas, op)
+function Export.washInto(buf, ow, oh, bpp, offx, offy, canvas, op, flags)
     local _w, st = Wash.isWash(op)
     -- the screen's mask when it keeps one (a watercolour's takes long to build),
     -- else one built in the export's own scratch buffer
@@ -425,7 +440,7 @@ function Export.washInto(buf, ow, oh, bpp, offx, offy, canvas, op)
         if not m then return end
         if not wash_scratch or m.w * m.h > wash_scratch.w * wash_scratch.h then wash_scratch = m end
     end
-    Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st)
+    Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st, flags)
 end
 
 -- Build a packed RGB buffer (ow*oh*3 bytes) with the ink over the paper, for
@@ -526,15 +541,25 @@ end
 
 -- Composite the RGBA ink layer `ink` over the RGBA background `bg` (source over),
 -- writing the result into `ink`. `bg` is canvas sized and (offx, offy) place the
--- crop within it.
-local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy, clear_mask)
+-- crop within it. Where `mult` (see buildRGBA's `flags`) is 1 the ink is a
+-- highlighter's tint, and the background is multiplied by it instead, so the
+-- page's text shows through as it does on the screen.
+local function compositeOverBg(ink, ow, oh, bg, bgw, offx, offy, clear_mask, mult)
     for y = 0, oh - 1 do
         local by = (y + offy)
         for x = 0, ow - 1 do
             local i = y * ow + x
             local io = i * 4
             local ai = ink[io + 3]
-            if ai < 255 and not (clear_mask and clear_mask[i] == 1) then
+            local bo0 = (by * bgw + (x + offx)) * 4
+            if mult and mult[i] == 1 and bg[bo0 + 3] > 0 and not (clear_mask and clear_mask[i] == 1) then
+                local fa = ai / 255
+                for c = 0, 2 do
+                    local tint = 255 - (255 - ink[io + c]) * fa
+                    ink[io + c] = math.floor(bg[bo0 + c] * tint / 255 + 0.5)
+                end
+                ink[io + 3] = bg[bo0 + 3]
+            elseif ai < 255 and not (clear_mask and clear_mask[i] == 1) then
                 local bo = (by * bgw + (x + offx)) * 4
                 local ab = bg[bo + 3]
                 if ab > 0 then
@@ -579,11 +604,12 @@ function Export.buildPNGRGBA(canvas, opts)
     opts = opts or {}
     local ow, oh = dims(canvas, opts.rect)
     local mask = opts.bg and ffi.new("uint8_t[?]", ow * oh) or nil
-    local buf = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
+    local mult = opts.bg and ffi.new("uint8_t[?]", ow * oh) or nil
+    local buf = Export.buildRGBA(canvas, opts.rect, mask, opts.template, mult)
     if opts.bg then
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
-        compositeOverBg(buf, ow, oh, opts.bg, canvas.w, offx, offy, mask)
+        compositeOverBg(buf, ow, oh, opts.bg, canvas.w, offx, offy, mask, mult)
     end
     if opts.white then flattenOn(buf, ow, oh, paperOf(opts.template)) end
     return buf, ow, oh
@@ -649,7 +675,8 @@ function Export.buildJPEGRGB(canvas, opts)
         -- composite ink over the background, then flatten the result onto the paper
         ow, oh = dims(canvas, opts.rect)
         local mask = ffi.new("uint8_t[?]", ow * oh)
-        local rgba = Export.buildRGBA(canvas, opts.rect, mask, opts.template)
+        local mult = ffi.new("uint8_t[?]", ow * oh)
+        local rgba = Export.buildRGBA(canvas, opts.rect, mask, opts.template, mult)
         local offx = opts.rect and opts.rect.x or 0
         local offy = opts.rect and opts.rect.y or 0
         local bgw = canvas.w
@@ -657,9 +684,10 @@ function Export.buildJPEGRGB(canvas, opts)
         if s > 1 then      -- match the ink layer to the high-res background
             rgba, ow, oh = upscaleRGBA(rgba, ow, oh, s)
             mask = upscaleMask(mask, ow / s, oh / s, s)
+            mult = upscaleMask(mult, ow / s, oh / s, s)
             offx, offy, bgw = 0, 0, ow
         end
-        compositeOverBg(rgba, ow, oh, opts.bg, bgw, offx, offy, mask)
+        compositeOverBg(rgba, ow, oh, opts.bg, bgw, offx, offy, mask, mult)
         rgb = ffi.new("uint8_t[?]", ow * oh * 3)
         local p = paperOf(opts.template)
         for i = 0, ow * oh - 1 do
@@ -683,10 +711,34 @@ function Export.hasVisibleOps(canvas)
     return false
 end
 
+-- Is a packed pixel buffer (`n` bytes a pixel: 3 = RGB, 4 = RGBA) grey all over?
+-- A page with no colour (black text, grey ink, a grey screen's pictures) is then
+-- stored as a grey JPEG, a third of the size. Stops at the first coloured pixel.
+function Export.isGrey(buf, w, h, n)
+    for i = 0, w * h * n - n, n do
+        local r = buf[i]
+        if buf[i + 1] ~= r or buf[i + 2] ~= r then return false end
+    end
+    return true
+end
+
+-- Encode `buf` (n bytes a pixel) as a JPEG at `path`: grey when the page has no
+-- colour and this KOReader's encoder can. Returns ok, err, is_grey.
+local function encodeJPEG(Jpeg, path, buf, w, h, n, quality)
+    local gray_sub
+    if Export.isGrey(buf, w, h, n) then
+        local ok, v = pcall(function() return ffi.C.TJSAMP_GRAY end)
+        if ok then gray_sub = v end
+    end
+    local ok, err = Jpeg.encodeToFile(path, buf, w, h, n, quality, w * n, gray_sub)
+    return ok, err, gray_sub ~= nil
+end
+
 -- Save the canvas as a JPEG on white. `opts` may carry `rect`, `template`, `bg`,
 -- `footer` and `scale`: an integer above 1 renders at that pixel multiple (the
 -- background comes rendered at that size and the ink is upscaled to match), so
--- text in an imported PDF stays crisp. Returns ok, err, pixel_w, pixel_h.
+-- text in an imported PDF stays crisp. Returns ok, err, pixel_w, pixel_h, grey
+-- (the file has one colour channel, see encodeJPEG).
 function Export.saveJPEG(canvas, path, quality, opts)
     local Jpeg = require("ffi/jpeg")
     opts = opts or {}
@@ -696,12 +748,35 @@ function Export.saveJPEG(canvas, path, quality, opts)
         -- ink) is the background itself, encoded as it is
         local s = opts.scale or 1
         local ow, oh = canvas.w * s, canvas.h * s
-        local ok, err = Jpeg.encodeToFile(path, opts.bg, ow, oh, 4, quality or 90, ow * 4)
-        return ok, err, ow, oh
+        local ok, err, grey = encodeJPEG(Jpeg, path, opts.bg, ow, oh, 4, quality or 90)
+        return ok, err, ow, oh, grey
     end
     local rgb, ow, oh = Export.buildJPEGRGB(canvas, opts)
-    local ok, err = Jpeg.encodeToFile(path, rgb, ow, oh, 3, quality or 90, ow * 3)
-    return ok, err, ow, oh
+    local ok, err, grey = encodeJPEG(Jpeg, path, rgb, ow, oh, 3, quality or 90)
+    return ok, err, ow, oh, grey
+end
+
+-- What one page of a job is drawn from: its canvas (sized by `opts.size(i)` when
+-- the pages differ, else w x h) with its ops (`pages` is a list of op lists, or
+-- a function(i) giving page i's), the page's template and background, and the
+-- options the JPEG and PNG encoders take. `opts.prepare(i)` runs first, for a
+-- source that has to be moved to page i before it can say what it holds.
+local function pageInputs(i, n, pages, w, h, template, bg, opts)
+    if opts.prepare then opts.prepare(i) end
+    local scale = opts.scale or 1
+    local cw, ch = w, h
+    if opts.size then cw, ch = opts.size(i) end
+    local c = Canvas.new(cw, ch)
+    c:setOps(type(pages) == "function" and pages(i) or pages[i])
+    -- a function gives each page its own; it may have none (a blank page
+    -- inserted into an imported PDF)
+    local page_bg = bg
+    if type(bg) == "function" then page_bg = bg(i, scale) end
+    local page_template = template
+    if type(template) == "function" then page_template = template(i) end
+    return c, { template = page_template, bg = page_bg, bg_opaque = opts.bg_opaque,
+        scale = (page_bg and scale) or 1,
+        footer = opts.footer and (tostring(i) .. " / " .. n) or nil }, cw, ch
 end
 
 -- Export a notebook (a list of per-page op lists) to a PDF at `path`: one page
@@ -714,16 +789,18 @@ end
 --   opts: { footer = stamp "i / n" page numbers, scale = pixel multiplier,
 --           bg_opaque = the background has no transparency,
 --           outline = bookmarks, { title, page, kids } (see Pdf Stream:finish),
---           links = function(i) -> page i's link areas (see Pdf Stream:addJPEGFile) }
+--           links = function(i) -> page i's link areas (see Pdf Stream:addJPEGFile),
+--           n = the page count when `pages` is a function, size(i) = page i's
+--           canvas size in px, box(i) = its page size in PDF points (else the
+--           canvas size), prepare(i) = see pageInputs }
 -- step() returns "page", i, n while working, "done" when the file is complete,
 -- or nil, err (the partial file is removed). cancel() stops and deletes it.
 function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
     opts = opts or {}
-    local scale = opts.scale or 1
     tmp_dir = tmp_dir or "/tmp"
     local stream, err = Pdf.openStream(path)
     if not stream then return nil, err end
-    local job = { i = 0, n = #pages }
+    local job = { i = 0, n = opts.n or #pages }
     local tmp = tmp_dir .. "/inkaway_page.jpg"
     local function fail(e)
         stream:abort(); os.remove(tmp); job.over = true
@@ -739,31 +816,65 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
         end
         job.i = job.i + 1
         local i = job.i
-        local c = Canvas.new(w, h)
-        c:setOps(pages[i])
-        -- a function gives each page its own; it may have none (a blank page
-        -- inserted into an imported PDF)
-        local page_bg = bg
-        if type(bg) == "function" then page_bg = bg(i, scale) end
-        local page_template = template
-        if type(template) == "function" then page_template = template(i) end
-        local jopts = { template = page_template, bg = page_bg, bg_opaque = opts.bg_opaque,
-            scale = (page_bg and scale) or 1,
-            footer = opts.footer and (tostring(i) .. " / " .. job.n) or nil }
-        local ok, e, pxw, pxh = Export.saveJPEG(c, tmp, quality or 85, jopts)
+        local c, jopts, cw, ch = pageInputs(i, job.n, pages, w, h, template, bg, opts)
+        local ok, e, pxw, pxh, grey = Export.saveJPEG(c, tmp, quality or 85, jopts)
         if not ok then return fail(e or "could not render a page") end
-        ok, e = stream:addJPEGFile(tmp, w, h, pxw, pxh, opts.links and opts.links(i))
+        local bw, bh = cw, ch
+        if opts.box then bw, bh = opts.box(i) end
+        ok, e = stream:addJPEGFile(tmp, bw, bh, pxw, pxh, opts.links and opts.links(i), grey)
         os.remove(tmp)
         if not ok then return fail(e) end
         -- release this page's buffers now (several MB each), not whenever the GC
         -- gets round to it, so a long export never piles them up
-        page_bg, c, jopts = nil, nil, nil   -- luacheck: ignore 311
+        c, jopts = nil, nil   -- luacheck: ignore 311
         collectgarbage("collect")
         return "page", i, job.n
     end
     function job.cancel()
         if job.over then return end
         stream:abort(); os.remove(tmp); job.over = true
+    end
+    return job
+end
+
+-- The same pages as one PNG each, "page-001.png" and on, in folder `dir`
+-- (made if need be): `opts` as above, plus white = lay the page on its paper
+-- instead of leaving it transparent, and file(i) = the path of page i's PNG
+-- instead of the folder's. step() and cancel() as the PDF job's; a
+-- stopped job deletes the files it wrote.
+function Export.pagesPNGJob(pages, w, h, template, dir, bg, opts)
+    opts = opts or {}
+    local job = { i = 0, n = opts.n or #pages }
+    local made = {}
+    local png = require("ffi/png")
+    local function fail(e)
+        for _i, p in ipairs(made) do os.remove(p) end
+        job.over = true
+        return nil, e
+    end
+    function job.step()
+        if job.over then return nil, "finished" end
+        if job.i >= job.n then job.over = true; return "done" end
+        job.i = job.i + 1
+        local i = job.i
+        local c, jopts = pageInputs(i, job.n, pages, w, h, template, bg, opts)
+        local path = opts.file and opts.file(i) or string.format("%s/page-%03d.png", dir, i)
+        local ok, e
+        if jopts.bg and jopts.bg_opaque and not Export.hasVisibleOps(c) then
+            -- nothing drawn over an opaque page picture: the picture as it is
+            ok, e = png.encodeToFile(path, jopts.bg, c.w, c.h, 4)
+        else
+            ok, e = Export.savePNG(c, path, { template = jopts.template, bg = jopts.bg, white = opts.white })
+        end
+        if not ok then return fail(e or "could not save a page") end
+        made[#made + 1] = path
+        c, jopts = nil, nil   -- luacheck: ignore 311
+        collectgarbage("collect")
+        return "page", i, job.n
+    end
+    function job.cancel()
+        if job.over then return end
+        fail("stopped")
     end
     return job
 end

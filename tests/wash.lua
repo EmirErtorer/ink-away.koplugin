@@ -105,5 +105,32 @@ do
     ok(r2 < r1, "over: where two strokes cross it is darker")
 end
 
+-- ---- a highlighter over a page picture multiplies it, in a PNG and a JPEG ----------
+do
+    local W, H = 120, 40
+    local function page()   -- an opaque white page with a black word at x 40-79
+        local b = ffi.new("uint8_t[?]", W * H * 4)
+        ffi.fill(b, W * H * 4, 255)
+        for y = 12, 27 do for x = 40, 79 do local o = (y * W + x) * 4; b[o], b[o + 1], b[o + 2] = 0, 0, 0 end end
+        return b
+    end
+    local c = Canvas.new(W, H)
+    c.ops = { { kind = "ink", style = "highlighter", width = 30, alpha = 255, color = { 255, 235, 59 }, pts = { 5, 20, 115, 20 } } }
+    local png = Export.buildPNGRGBA(c, { bg = page(), white = true, template = { style = "blank", paper = { 255, 255, 255 } } })
+    local function p4(b, x, y) local o = (y * W + x) * 4; return b[o], b[o + 1], b[o + 2], b[o + 3] end
+    local r, g, bl = p4(png, 20, 20)
+    ok(r == 255 and g > 200 and bl < 120, "highlighter over white: the page takes its colour")
+    r, g, bl = p4(png, 60, 20)
+    ok(r < 40 and g < 40 and bl < 40, "highlighter over a black word: the word stays black")
+    local jpg = Export.buildJPEGRGB(c, { bg = page(), bg_opaque = true, template = { style = "blank", paper = { 255, 255, 255 } } })
+    local o = (20 * W + 60) * 3
+    ok(jpg[o] < 40 and jpg[o + 1] < 40 and jpg[o + 2] < 40, "the same in a JPEG's pixels")
+    -- ink drawn over the highlighter is plain ink again
+    c.ops[2] = { kind = "ink", style = "solid", width = 6, alpha = 255, color = { 220, 0, 0 }, pts = { 5, 20, 115, 20 } }
+    local png2 = Export.buildPNGRGBA(c, { bg = page(), white = true, template = { style = "blank", paper = { 255, 255, 255 } } })
+    r, g, bl = p4(png2, 60, 20)
+    ok(r > 200 and g < 60, "a pen over the highlighter and the black word stays red")
+end
+
 print(("wash: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

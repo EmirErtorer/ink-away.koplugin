@@ -384,8 +384,10 @@ end
 
 -- Blend a mask into a packed buffer `buf` (ow x oh, bpp 3 = RGB or 4 = RGBA, the
 -- canvas offset by offx, offy), the way the C blitter does on screen. On RGBA,
--- "over" also raises the alpha, so a transparent PNG gets the wash too.
-function Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st)
+-- "over" also raises the alpha, so a transparent PNG gets the wash too. `flags`
+-- (ow*oh bytes, optional) gets 1 where a multiplying pen drew on nothing, so an
+-- export that lays the page under the ink can multiply it with the page there.
+function Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st, flags)
     local mbuf, mw, mh = m.buf, m.w, m.h
     local x0, y0 = m.ox - offx, m.oy - offy
     local multiply = st.blend == "multiply"
@@ -408,6 +410,7 @@ function Wash.blendBuffer(buf, ow, oh, bpp, offx, offy, m, op, st)
                     if multiply then
                         if bpp == 4 and buf[o + 3] == 0 then
                             buf[o], buf[o + 1], buf[o + 2], buf[o + 3] = hc[1], hc[2], hc[3], ha
+                            if flags then flags[y * ow + x] = 1 end
                         else
                             buf[o] = div255(buf[o] * r)
                             buf[o + 1] = div255(buf[o + 1] * g)
