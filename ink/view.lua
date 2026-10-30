@@ -700,6 +700,7 @@ end
 InkAwayView.onIaHoldRel = InkAwayView.onIaPanRelease
 
 function InkAwayView:onIaSwipe(_, ges)
+    if self:diagonalGesture(ges) then return false end   -- KOReader's screenshot
     if self:fingerRejected(ges and ges.pos) then return true end
     if self._finger_nav and not self._pen_feeding then
         return self:fingerNavEnd(ges and (ges.end_pos or ges.pos), ges and ges.direction)

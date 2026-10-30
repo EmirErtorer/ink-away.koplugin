@@ -163,6 +163,7 @@ end
 -- arrives as gestures) is dropped first, so an undo takes back the last real
 -- change and not the dot; any other stroke still open is committed first.
 function InkAwayView:onIaTwoTap(_, ges)
+    if self:diagonalGesture(ges) then return false end   -- KOReader's screenshot
     if self:fingerRejected() then return true end   -- the writing hand, not a gesture
     self._finger_nav = nil
     if self.capturing and self._finger_dot and self.canvas.live
@@ -203,6 +204,17 @@ function InkAwayView:onIaTwoTap(_, ges)
         UIManager:scheduleIn(TWO_TAP_REDO_MS / 1000, entry.pending)
     end
     return true
+end
+
+-- Is this KOReader's screenshot gesture: two fingers tapping, or one finger
+-- swiping, between opposite corners (as far apart as the screen's diagonal, give
+-- or take 200 px, as its Screenshot module reads it)? Ink Away leaves those to it.
+function InkAwayView:diagonalGesture(ges)
+    if not ges then return false end
+    local a, b = ges.pos, ges.end_pos
+    local span = ges.span or (a and b and math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)) or 0
+    local diagonal = math.sqrt(Screen:getWidth() ^ 2 + Screen:getHeight() ^ 2)
+    return span >= diagonal - Screen:scaleBySize(200) and span <= diagonal + 1
 end
 
 -- A gesture Ink Away has no use for goes to KOReader's own, so the gestures the

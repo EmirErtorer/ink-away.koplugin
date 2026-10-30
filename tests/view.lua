@@ -6540,6 +6540,12 @@ for _, wh in ipairs(SIZES) do
     ok(view:handBack({ ges = "swipe", direction = "west" }, true) == false and handed == nil,
         "gestures: a plain swipe over a book is not" .. tag)
     view.kui = nil
+    -- the screenshot gesture, opposite corners, is KOReader's: not an undo
+    local diag = math.sqrt(Screen:getWidth() ^ 2 + Screen:getHeight() ^ 2)
+    ok(view:onIaTwoTap(nil, { ges = "two_finger_tap", span = diag - 20 }) == false
+        and view:onIaSwipe(nil, { ges = "swipe", pos = { x = 0, y = 0 },
+            end_pos = { x = Screen:getWidth(), y = Screen:getHeight() } }) == false,
+        "gestures: a tap or swipe between opposite corners is left to KOReader" .. tag)
     -- the Lasso button picks the lasso and is lit
     view:setTool("pen")
     ids.lasso.button.callback()
