@@ -21,8 +21,9 @@ versions marked *Prerelease* were test builds.
   Away: an EPUB, MOBI or any reflowing book becomes a fixed PDF of pictures laid out
   as you read it now, with ink, shapes and highlights exactly where they are on the
   screen. The pages with ink can also be saved as PNGs, one file each in a folder, or
-  only your ink on white pages. A progress bar shows the way and Stop ends an export
-  and deletes what it wrote.
+  only your ink on white pages. The PDF's pages carry their text under the picture, so
+  it can be searched, selected and copied in any PDF viewer. A progress bar shows the
+  way and Stop ends an export and deletes what it wrote.
 - PNGs of several pages for notebooks too, not only the page shown.
 
 ### Changed

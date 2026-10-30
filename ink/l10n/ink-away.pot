@@ -3869,7 +3869,7 @@ msgid "The page this leads to is no longer there."
 msgstr ""
 
 #: ink/view/export.lua
-msgid "The pages are saved as pictures, laid out as you read them now: your font, margins and page size."
+msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
 msgstr ""
 
 #: ink/view/pencase.lua

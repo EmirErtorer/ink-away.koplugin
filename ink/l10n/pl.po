@@ -3917,8 +3917,8 @@ msgid "The page this leads to is no longer there."
 msgstr "Strony, do której to prowadzi, już nie ma."
 
 #: ink/view/export.lua
-msgid "The pages are saved as pictures, laid out as you read them now: your font, margins and page size."
-msgstr "Strony są zapisywane jako obrazy, tak jak czytasz je teraz: z twoją czcionką, marginesami i rozmiarem strony."
+msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
+msgstr "Strony są zapisywane jako obrazy z tekstem pod spodem, który można przeszukiwać i zaznaczać. Mają układ taki, jak czytasz je teraz: z twoją czcionką, marginesami i rozmiarem strony."
 
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."

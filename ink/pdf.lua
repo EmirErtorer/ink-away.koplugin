@@ -6,6 +6,14 @@ however long the document. An optional outline (bookmarks) is added at the end.
 Objects: 1 catalog, 2 page tree, then for page i: 3i image, 3i+1 content, 3i+2
 page, then the outline. The catalog and page tree go last, once everything they
 point to is known; the xref table records where each object sits.
+
+With `text` (see openStream) a page can also carry invisible text laid over its
+picture, so a viewer can search, select and copy it: objects 3 to 6 are then one
+font shared by every page, and the pages' objects follow from 7 (3i+4 and on).
+The font is a CID font read by Unicode with no glyphs of its own, and a ToUnicode
+map saying each code is its own Unicode value; the text is never drawn (render
+mode 3), so no real font is needed. Positions inside a line follow Helvetica's
+letter widths, so a selection tracks the line closely, not to the pixel.
 ]]
 
 local Pdf = {}
@@ -13,13 +21,99 @@ local Pdf = {}
 local Stream = {}
 Stream.__index = Stream
 
--- Open `path` for streaming. Returns the writer, or nil, err.
-function Pdf.openStream(path)
+-- Helvetica's widths (thousandths of the font size) for the characters 32 to 126;
+-- everything else is DEFAULT_WIDTH.
+local WIDTHS = { 278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+    1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+    333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584 }
+local DEFAULT_WIDTH = 556
+
+-- The Unicode code points of a UTF-8 string that a two byte code can hold.
+local function codepoints(str)
+    local out, i, n = {}, 1, #str
+    while i <= n do
+        local c = str:byte(i)
+        local cp, len
+        if c < 0x80 then cp, len = c, 1
+        elseif c >= 0xF0 then cp, len = nil, 4
+        elseif c >= 0xE0 then cp, len = c % 0x10, 3
+        elseif c >= 0xC0 then cp, len = c % 0x20, 2
+        else cp, len = nil, 1 end
+        if cp and len > 1 then
+            for k = 1, len - 1 do cp = cp * 64 + ((str:byte(i + k) or 0x80) % 64) end
+        end
+        if cp and cp >= 32 and cp ~= 127 and not (cp >= 0x80 and cp < 0xA0) then out[#out + 1] = cp end
+        i = i + len
+    end
+    return out
+end
+
+-- How wide `str` is at font size 1, by the widths the text font declares.
+function Pdf.textWidth(str)
+    local w = 0
+    for _i, cp in ipairs(codepoints(str)) do w = w + (WIDTHS[cp - 31] or DEFAULT_WIDTH) end
+    return w / 1000
+end
+
+local TOUNICODE = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
+    .. "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n"
+    .. "/CMapName /Adobe-Identity-UCS def /CMapType 2 def\n"
+    .. "1 begincodespacerange <0000> <FFFF> endcodespacerange\n"
+    .. "1 beginbfrange <0000> <FFFF> <0000> endbfrange\n"
+    .. "endcmap CMapName currentdict /CMap defineresource pop end end"
+
+-- Open `path` for streaming. `o.text` makes room for invisible page text (see the
+-- top). Returns the writer, or nil, err.
+function Pdf.openStream(path, o)
     local f, err = io.open(path, "wb")
     if not f then return nil, err end
     local st = setmetatable({ f = f, path = path, pos = 0, off = {}, n = 0, sizes = {} }, Stream)
     if not st:put("%PDF-1.4\n%\226\227\207\211\n") then st:abort(); return nil, "write failed" end
+    st.base = 0
+    if o and o.text then
+        st.base = 4
+        local w = {}
+        for i, v in ipairs(WIDTHS) do w[i] = v end
+        st.off[3] = st.pos
+        st:put("3 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /InkAwayText /Encoding /Identity-H"
+            .. " /DescendantFonts [4 0 R] /ToUnicode 5 0 R >>\nendobj\n")
+        st.off[4] = st.pos
+        st:put("4 0 obj\n<< /Type /Font /Subtype /CIDFontType2 /BaseFont /InkAwayText"
+            .. " /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R"
+            .. " /DW " .. DEFAULT_WIDTH .. " /W [32 [" .. table.concat(w, " ") .. "]] /CIDToGIDMap /Identity >>\nendobj\n")
+        st.off[5] = st.pos
+        st:put("5 0 obj\n<< /Length " .. #TOUNICODE .. " >>\nstream\n" .. TOUNICODE .. "\nendstream\nendobj\n")
+        st.off[6] = st.pos
+        st:put("6 0 obj\n<< /Type /FontDescriptor /FontName /InkAwayText /Flags 4 /FontBBox [0 -200 1000 900]"
+            .. " /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>\nendobj\n")
+    end
     return st
+end
+
+-- The object number of page i.
+function Stream:pageObj(i) return 3 * i + self.base + 2 end
+
+-- The invisible text of a page's lines (`lines`: { s = text, x, y (the baseline, in
+-- points, up from the page's foot), size, w (the width the line fills) }) as a
+-- content stream fragment. Each line is stretched or squeezed to its width.
+local function textContent(lines)
+    local out = { "BT\n3 Tr\n" }
+    for _i, l in ipairs(lines) do
+        local cps = codepoints(l.s)
+        if #cps > 0 and l.size > 0 then
+            local hex = {}
+            for k, cp in ipairs(cps) do hex[k] = string.format("%04X", cp) end
+            local natural = Pdf.textWidth(l.s) * l.size
+            local tz = natural > 0 and math.max(10, math.min(500, l.w / natural * 100)) or 100
+            out[#out + 1] = string.format("/F1 %.2f Tf %.1f Tz 1 0 0 1 %.2f %.2f Tm <%s> Tj\n",
+                l.size, tz, l.x, l.y, table.concat(hex))
+        end
+    end
+    out[#out + 1] = "ET\n"
+    return table.concat(out)
 end
 
 -- A PDF text string: plain ASCII as a literal string, anything else as UTF-16
@@ -70,14 +164,14 @@ end
 -- pixel size (`grey`: a one-channel JPEG). `links` (optional) are areas that lead to other pages of the
 -- file: { x0, y0, x1, y1 (points, y up), page = its number from 1 }. Returns
 -- ok, err.
-function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links, grey)
+function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links, grey, lines)
     local jf = io.open(jpeg_path, "rb")
     if not jf then return false, "could not read rendered page" end
     local len = jf:seek("end")
     jf:seek("set", 0)
     self.n = self.n + 1
     local i = self.n
-    local img_n, con_n, pg_n = 3 * i, 3 * i + 1, 3 * i + 2
+    local img_n, con_n, pg_n = 3 * i + self.base, 3 * i + self.base + 1, 3 * i + self.base + 2
     pxw, pxh = pxw or w, pxh or h
     self.off[img_n] = self.pos
     self:put(img_n .. " 0 obj\n<< /Type /XObject /Subtype /Image /Width " ..
@@ -92,24 +186,26 @@ function Stream:addJPEGFile(jpeg_path, w, h, pxw, pxh, links, grey)
     jf:close()
     self:put("\nendstream\nendobj\n")
     local content = "q\n" .. pts(w) .. " 0 0 " .. pts(h) .. " 0 0 cm\n/Im0 Do\nQ\n"
+    if lines and #lines > 0 and self.base > 0 then content = content .. textContent(lines) end
     self.off[con_n] = self.pos
     self:put(con_n .. " 0 obj\n<< /Length " .. #content .. " >>\nstream\n" ..
         content .. "endstream\nendobj\n")
-    -- a page's object number is 3 * its number + 2, so a link can name a page
+    -- a page's object number follows from its number (see pageObj), so a link can name a page
     -- not written yet
     local annots = ""
     if links and #links > 0 then
         local a = {}
         for _, l in ipairs(links) do
             a[#a + 1] = string.format("<< /Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0]"
-                .. " /Dest [%d 0 R /Fit] >>", l.x0, l.y0, l.x1, l.y1, 3 * l.page + 2)
+                .. " /Dest [%d 0 R /Fit] >>", l.x0, l.y0, l.x1, l.y1, self:pageObj(l.page))
         end
         annots = " /Annots [" .. table.concat(a, " ") .. "]"
     end
     self.off[pg_n] = self.pos
     self:put(pg_n .. " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " ..
         pts(w) .. " " .. pts(h) .. "] /Resources << /XObject << /Im0 " ..
-        img_n .. " 0 R >> >> /Contents " .. con_n .. " 0 R" .. annots .. " >>\nendobj\n")
+        img_n .. " 0 R >>" .. (self.base > 0 and " /Font << /F1 3 0 R >>" or "") .. " >> /Contents " .. con_n
+        .. " 0 R" .. annots .. " >>\nendobj\n")
     if self.failed then return false, "could not write the PDF (is the storage full?)" end
     return true
 end
@@ -146,8 +242,8 @@ end
 function Stream:finish(outline)
     local n = self.n
     local kids = {}
-    for i = 1, n do kids[i] = (3 * i + 2) .. " 0 R" end
-    self.next = 3 * n + 3
+    for i = 1, n do kids[i] = self:pageObj(i) .. " 0 R" end
+    self.next = 3 * n + self.base + 3
     local outline_ref = ""
     if outline and #outline > 0 and n > 0 then
         local root = self.next

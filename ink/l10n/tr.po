@@ -3917,8 +3917,8 @@ msgid "The page this leads to is no longer there."
 msgstr "Bunun işaret ettiği sayfa artık yok."
 
 #: ink/view/export.lua
-msgid "The pages are saved as pictures, laid out as you read them now: your font, margins and page size."
-msgstr "Sayfalar, şu an okuduğunuz gibi resim olarak kaydedilir: yazı tipiniz, kenar boşluklarınız ve sayfa boyutunuzla."
+msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
+msgstr "Sayfalar, altlarında metinleriyle birlikte resim olarak kaydedilir; böylece metin aranabilir ve seçilebilir. Şu an okuduğunuz gibi yerleştirilirler: yazı tipiniz, kenar boşluklarınız ve sayfa boyutunuz."
 
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."

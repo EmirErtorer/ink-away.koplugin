@@ -32,6 +32,7 @@ local BookInk = require("ink/reader/bookink")
 local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local Overlay = require("ink/export/pdfoverlay")
+local PageText = require("ink/reader/pagetext")
 local BookExport = require("ink/reader/bookexport")
 local ImageProc = require("ink/imageproc")
 local Links = require("ink/links")
@@ -465,6 +466,10 @@ function InkAwayView:reflowBookSpec(o)
             return bbToRGBA(shot, W, H)
         end
         spec.bg_opaque = true
+        -- the page's text laid invisibly under its picture, to search, select and copy
+        spec.text = function()
+            return PageText.forPdf(PageText.lines(doc, W, H), pt, H * pt)
+        end
     end
     return spec
 end

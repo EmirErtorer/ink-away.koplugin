@@ -284,7 +284,7 @@ function InkAwayView:openExport()
             end
             if reflow and o.fmt == "pdf" then
                 add(vspan(4))
-                add(self:sheetHint(_("The pages are saved as pictures, laid out as you read them now: your font, margins and page size."), content_w))
+                add(self:sheetHint(_("The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."), content_w))
                 -- a picture of a page is a few hundred KB: say what the PDF will weigh
                 local mb = math.floor(#self:exportPageList() * 0.3 + 0.5)
                 if mb >= 10 and o.include_bg then
@@ -660,7 +660,7 @@ function InkAwayView:runPdfJob(path, spec)
     local job, jerr = Export.notebookPDFJob(spec.pages, spec.w, spec.h, spec.template, path, spec.quality or 85,
         Storage.settingsDir(), spec.bg,
         { footer = spec.numbers or nil, bg_opaque = spec.bg_opaque or nil, outline = spec.outline,
-          links = spec.links, n = spec.n, size = spec.size, box = spec.box, prepare = spec.prepare })
+          links = spec.links, n = spec.n, size = spec.size, box = spec.box, prepare = spec.prepare, text = spec.text })
     if not job then
         if spec.done then spec.done() end
         self:tell(_("Could not export PDF.\n") .. tostring(jerr))

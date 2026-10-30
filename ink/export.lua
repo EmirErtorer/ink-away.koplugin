@@ -792,13 +792,14 @@ end
 --           links = function(i) -> page i's link areas (see Pdf Stream:addJPEGFile),
 --           n = the page count when `pages` is a function, size(i) = page i's
 --           canvas size in px, box(i) = its page size in PDF points (else the
---           canvas size), prepare(i) = see pageInputs }
+--           canvas size), prepare(i) = see pageInputs,
+--           text(i) = page i's lines of invisible text (see Pdf textContent) }
 -- step() returns "page", i, n while working, "done" when the file is complete,
 -- or nil, err (the partial file is removed). cancel() stops and deletes it.
 function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg, opts)
     opts = opts or {}
     tmp_dir = tmp_dir or "/tmp"
-    local stream, err = Pdf.openStream(path)
+    local stream, err = Pdf.openStream(path, { text = opts.text ~= nil })
     if not stream then return nil, err end
     local job = { i = 0, n = opts.n or #pages }
     local tmp = tmp_dir .. "/inkaway_page.jpg"
@@ -821,7 +822,7 @@ function Export.notebookPDFJob(pages, w, h, template, path, quality, tmp_dir, bg
         if not ok then return fail(e or "could not render a page") end
         local bw, bh = cw, ch
         if opts.box then bw, bh = opts.box(i) end
-        ok, e = stream:addJPEGFile(tmp, bw, bh, pxw, pxh, opts.links and opts.links(i), grey)
+        ok, e = stream:addJPEGFile(tmp, bw, bh, pxw, pxh, opts.links and opts.links(i), grey, opts.text and opts.text(i))
         os.remove(tmp)
         if not ok then return fail(e) end
         -- release this page's buffers now (several MB each), not whenever the GC
