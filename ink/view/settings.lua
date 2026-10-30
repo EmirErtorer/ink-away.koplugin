@@ -277,6 +277,15 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
+        -- the toolbar: across the top, or down the left or right of the screen
+        add(self:sheetLabel(_("Toolbar side"), true))
+        add(vspan(6))
+        add(self:segmentedRow({ { "top", _("Top") }, { "left", _("Left") }, { "right", _("Right") } },
+            self:canvasBarSide(), content_w, function(side)
+                closeSelf(); self:setCanvasBarSide(side); self:openSettings()
+            end))
+        add(vspan(16))
+
         -- the zoom and Pan buttons: at either side, or none (pinch and two
         -- fingers do the same)
         add(self:sheetLabel(_("Zoom and Pan buttons"), true))

@@ -124,6 +124,7 @@ end
 function InkAwayView:nbBarHeight()
     if self._nb_collapsed then return 0 end   -- hidden via the bottom-bar toggle
     -- as tall as the toolbar, so both bars hold the same icons the same way
+    if self._vb_side then return self:vbarRoomBelow() end
     if self.toolbar then return self.toolbar:getSize().h end
     local isz = self._icon_sz or math.max(20, Screen:scaleBySize(26))
     return isz + 2 * Screen:scaleBySize(4)

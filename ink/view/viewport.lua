@@ -171,9 +171,7 @@ function InkAwayView:relayout()
     self:buildToolbar()
     self[1] = self.toolbar
     if self.notebook then self.nb_bar_h = self:nbBarHeight() end
-    local th = self.toolbar:getSize().h
-    local v = self.view
-    v.area_x, v.area_y, v.area_w, v.area_h = 0, th, W, H - th - self.nb_bar_h
+    self:fitBars(W, H)
     self:refitArea()   -- the canvas keeps its size; only the on-screen buffer follows the screen
     self._area_only = false   -- layout/chrome changed: the next paint must be full
 end
@@ -240,10 +238,7 @@ function InkAwayView:setToolbarHidden(hidden)
     self:flushPending()
     self._toolbar_hidden = hidden
     self._area_only = false   -- toolbar shown/hidden: the next paint must be full
-    local v = self.view
-    local th = self.toolbar:getSize().h
-    v.area_y = hidden and 0 or th
-    v.area_h = (hidden and self.screen_h or (self.screen_h - th)) - self.nb_bar_h
+    self:fitBars()
     -- when hidden, the toolbar buttons must not swallow taps in the freed strip
     -- (plain if/else: `hidden and nil or self.toolbar` would never yield nil)
     if hidden then self[1] = nil else self[1] = self.toolbar end
@@ -259,10 +254,7 @@ function InkAwayView:setNbBarHidden(hidden)
     self:flushPending()
     self._nb_collapsed = hidden
     self.nb_bar_h = self:nbBarHeight()      -- 0 when collapsed (see nbBarHeight)
-    local v = self.view
-    local th = self._toolbar_hidden and 0 or self.toolbar:getSize().h
-    v.area_y = th
-    v.area_h = self.screen_h - th - self.nb_bar_h
+    self:fitBars()
     self:refitArea()
     self:refresh(self, "full")
 end
@@ -294,9 +286,7 @@ end
 -- fit zoom, then reallocate the on-screen buffer to the new height.
 function InkAwayView:recomputeArea()
     local v = self.view
-    local th = self.toolbar:getSize().h
-    v.area_y = th
-    v.area_h = self.screen_h - th - self.nb_bar_h
+    self:fitBars()
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
     -- cover the whole area, as for a drawing, even when the page shape differs

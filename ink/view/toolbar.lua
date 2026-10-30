@@ -21,6 +21,7 @@ local Accent = require("ink/accent")
 local Theme = require("ink/ui/theme")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
+local VBar = require("ink/reader/vbar")
 
 local Screen = Device.screen
 local HAIRLINE = Paint.HAIRLINE
@@ -48,9 +49,91 @@ local PEN_STRIP_MAX = 4   -- saved pens on the floating strip
 
 local InkAwayView = {}
 
+-- what a toolbar down a side shares with the annotation mode (see ink/reader/vbar.lua)
+InkAwayView.vbarCell, InkAwayView.vbarHas, InkAwayView.vbarActive = VBar.vbarCell, VBar.vbarHas, VBar.vbarActive
+
 ------------------------------------------------------------------------------
 -- Toolbar
 ------------------------------------------------------------------------------
+
+-- The side the toolbar runs along: across the top (the default), or down the
+-- left or right.
+function InkAwayView:canvasBarSide()
+    local s = self:getSetting("inkaway_toolbar_side", "top")
+    return (s == "left" or s == "right") and s or "top"
+end
+
+-- Move the toolbar to another side (from Settings): kept, and laid out again.
+function InkAwayView:setCanvasBarSide(side)
+    if side == self:canvasBarSide() then return end
+    self:flushPending()
+    self:setSetting("inkaway_toolbar_side", side)
+    self:relayout()
+    UIManager:setDirty(self, "full")
+end
+
+-- What a toolbar down a side leaves free at the bottom for the notebook's bar.
+function InkAwayView:vbarRoomBelow()
+    return Screen:scaleBySize(26) + 2 * Screen:scaleBySize(4)
+end
+
+-- Put the toolbar and the drawing area beside or under it: the area's corner
+-- and size, and where the toolbar is drawn. W and H default to the screen's.
+function InkAwayView:fitBars(W, H)
+    W, H = W or self.screen_w, H or self.screen_h
+    local v, side = self.view, self._vb_side
+    local t = 0
+    if not self._toolbar_hidden then t = side and (self._vb_thick or 0) or self.toolbar:getSize().h end
+    v.area_x, v.area_y, v.area_w = 0, 0, W
+    self._bar_x, self._bar_y = 0, 0
+    if side == "left" then v.area_x, v.area_w = t, W - t
+    elseif side == "right" then v.area_w, self._bar_x = W - t, W - t
+    else v.area_y = t end
+    v.area_h = H - v.area_y - self.nb_bar_h
+end
+
+-- The pill behind the active tool and the hairline with the pen's colour, for a
+-- toolbar across the top or down a side.
+function InkAwayView:paintBarMarks(bb, tx, ty)
+    if self._vb_side then
+        VBar.drawActiveToolPill(self, bb, tx, ty)
+    else
+        self:drawActiveToolPill(bb, tx, ty)
+    end
+end
+
+function InkAwayView:paintBarIcons(bb, tx, ty)
+    if self._vb_side then VBar.drawToolbarIcons(self, bb, tx, ty) else self:drawToolbarIcons(bb, tx, ty) end
+end
+
+-- The small tab that slides a toolbar down a side away and back: beside the
+-- toolbar near its top, or at that edge once it is hidden.
+function InkAwayView:vbarTabRect()
+    local W = self.screen_w
+    local gap, len, wid, inset = Screen:scaleBySize(2), Screen:scaleBySize(40), Screen:scaleBySize(24), Screen:scaleBySize(8)
+    local t = self._toolbar_hidden and 0 or (self._vb_thick or 0)
+    if self._vb_side == "right" then return { x = W - t - gap - wid, y = inset, w = wid, h = len } end
+    return { x = t + gap, y = inset, w = wid, h = len }
+end
+
+-- That tab: a light rounded tab with a chevron pointing where the toolbar goes.
+function InkAwayView:drawVbarTab(bb, ox, oy, r)
+    local fill, edge = Blitbuffer.Color8(0xF0), Blitbuffer.Color8(0xB4)
+    local x, y = ox + r.x, oy + r.y
+    bb:paintRoundedRect(x, y, r.w, r.h, edge, Screen:scaleBySize(8))
+    local b = Screen:scaleBySize(1)
+    bb:paintRoundedRect(x + b, y + b, r.w - 2 * b, r.h - 2 * b, fill, Screen:scaleBySize(7))
+    local cx, cy = x + math.floor(r.w / 2), y + math.floor(r.h / 2)
+    local s = Screen:scaleBySize(6)
+    local t = math.max(2, Screen:scaleBySize(2))
+    local toward = self._vb_side == "left" and -1 or 1
+    local dir = self._toolbar_hidden and -toward or toward
+    for i = 0, s do
+        local a = -dir * math.floor(s / 2) + dir * i
+        bb:paintRect(cx + a, cy - s + i, t, t, Blitbuffer.COLOR_BLACK)
+        bb:paintRect(cx + a, cy + s - i - t + 1, t, t, Blitbuffer.COLOR_BLACK)
+    end
+end
 
 function InkAwayView:buildToolbar()
     local specs = {
@@ -87,6 +170,17 @@ function InkAwayView:buildToolbar()
         image = "image", lasso = "lasso",
         undo = "undo", redo = "redo", menu = "menu", library = "library", file = "file", exit = "exit" }
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
+    -- down the left or right of the screen instead (Settings, Toolbar side): the
+    -- same buttons in the narrow column the annotation mode over a book uses
+    local side = self:canvasBarSide()
+    if side ~= "top" then
+        local column = {}
+        for i, s in ipairs(specs) do column[i] = { id = s.id, icon = ICON[s.id], tool = s.tool, cb = s.cb } end
+        VBar.buildVBar(self, column, Screen:getHeight() - self:vbarRoomBelow(), side)
+        self._btn_w, self._last_btn_center = nil, nil
+        return
+    end
+    self._vb_side, self._vb_thick, self._vbar_h, self._vb_cell, self._btn_h, self._bar_w = nil, nil, nil, nil, nil, nil
     local n = #specs
     local btn_w = math.floor(Screen:getWidth() / n)
     -- the button height, which is also the active pill's; the toolbar is taller by
@@ -320,6 +414,7 @@ end
 -- Screen rect of a named control ("zoom", "pan", "bar", "nbbar" or "back"), or nil.
 function InkAwayView:fabRect(which)
     if not self.view then return nil end
+    if which == "bar" and self._vb_side then return self:vbarTabRect() end
     local v = self.view
     local m = Screen:scaleBySize(16)
     local w = Screen:scaleBySize(46)
@@ -671,7 +766,10 @@ function InkAwayView:drawFabs(bb, ox, oy, br)
     -- while a text box is edited, as its Done button sits in that corner
     if not self._bar_toggle_hidden and not self.editing_text then
         local r = self:fabRect("bar")
-        if reached(r) then stamp(self._toolbar_hidden and "chev_down" or "chev_up", r) end
+        if reached(r) then
+            if self._vb_side then self:drawVbarTab(bb, ox, oy, r)
+            else stamp(self._toolbar_hidden and "chev_down" or "chev_up", r) end
+        end
     end
     -- notebook bottom-bar toggle: the same chevron at the bar's top left, down
     -- to collapse and up to bring it back

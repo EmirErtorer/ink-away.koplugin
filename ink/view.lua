@@ -348,12 +348,11 @@ end
 -- ink/reader/inkview.lua).
 function InkAwayView:initLayout(W, H)
     self:buildToolbar()
-    local th = self.toolbar:getSize().h
     self.view = {
-        area_x = 0, area_y = th, area_w = W, area_h = H - th - self.nb_bar_h,
         canvas_w = W, canvas_h = H,
         zoom = 1, pan_x = 0, pan_y = 0,
     }
+    self:fitBars(W, H)
     self.zoom_min = InkGeom.coverZoom(self.view)
     self.view.zoom = self.zoom_min
     InkGeom.clampPan(self.view)
@@ -726,7 +725,7 @@ function InkAwayView:onIaSwipe(_, ges)
         if self._view_stale then self:liveFlush() end   -- show where the pan ended
         return true
     end
-    if not self.capturing then return false end
+    if not self.capturing then return self:handBack(ges, ges and ges.ges == "swipe") end
     -- swipe reports the lift point separately as end_pos
     local p = ges and (ges.end_pos or ges.pos)
     if p then self:addScreenPoint(p.x, p.y, false, true) end
@@ -945,9 +944,9 @@ function InkAwayView:paintTo(bb, x, y)
         -- or where a mode puts it)
         if not self._toolbar_hidden then
             local tx, ty = x + (self._bar_x or 0), y + (self._bar_y or 0)
-            self:drawActiveToolPill(bb, tx, ty)   -- black pill behind the active tool
+            self:paintBarMarks(bb, tx, ty)   -- black pill behind the active tool
             self.toolbar:paintTo(bb, tx, ty)
-            self:drawToolbarIcons(bb, tx, ty)
+            self:paintBarIcons(bb, tx, ty)
             self:darkToolbar(bb, tx, ty)
         end
     end

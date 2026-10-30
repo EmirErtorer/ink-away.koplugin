@@ -77,8 +77,14 @@ end
 -- open right where the hand tapped (falls back to a small margin if unknown).
 -- Where sheets may go across: nil centres them on the screen; a mode with a
 -- toolbar down a side keeps them beside it.
-function InkAwayView:sheetLeftX() return nil end
-function InkAwayView:sheetRightX() return nil end
+function InkAwayView:sheetLeftX()
+    if self._toolbar_hidden or self._vb_side ~= "left" then return nil end
+    return self._vb_thick
+end
+function InkAwayView:sheetRightX()
+    if self._toolbar_hidden or self._vb_side ~= "right" then return nil end
+    return self.screen_w - (self._vb_thick or 0)
+end
 function InkAwayView:sheetBottomY() return nil end   -- (a toolbar along the bottom, over a book)
 
 function InkAwayView:sheetTopY()
