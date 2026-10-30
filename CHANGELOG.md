@@ -8,8 +8,24 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-10-31
+
+Your annotations leave the reader: any book can be exported with its ink and
+highlights as a PDF or as PNGs, and a PDF you annotate comes back as an editable
+copy of the original. Plus Ink Away in ten languages, a toolbar you can move to
+the left or right of the canvas, PDFs opened as notebooks from KOReader's own
+menus, and KOReader's gestures working inside Ink Away.
+
 ### Added
 
+- Export your annotations from any book, from Export in Book ink settings or from
+  Tools, Ink Away. An EPUB, MOBI or any reflowing book becomes a fixed PDF laid out
+  as you read it now, with your pen strokes, shapes, placed pictures and highlights
+  exactly where they are on the screen, in the colours you chose. Each page also
+  carries its text under the picture, so the PDF can be searched, selected and
+  copied in any PDF viewer. The pages with ink can instead be saved as PNGs, one
+  file each in a folder, or as only your ink on white pages. A progress bar shows
+  the way and Stop ends an export and deletes what it wrote.
 - Editable PDF export. A PDF notebook, or a PDF you annotate while reading, can be
   saved as a copy of the original with your ink and highlights added as real PDF
   annotations: the text stays selectable, the file stays about the original's size
@@ -17,34 +33,7 @@ versions marked *Prerelease* were test builds.
   or remove them. Text boxes, pictures and fills can't be annotations, so the export
   lists them first and either leaves them out or keeps the ink of just those pages as
   a picture laid over the page, while every other page stays editable.
-- Exporting a book you annotate, from Export in Book ink settings or from Tools, Ink
-  Away: an EPUB, MOBI or any reflowing book becomes a fixed PDF of pictures laid out
-  as you read it now, with ink, shapes and highlights exactly where they are on the
-  screen. The pages with ink can also be saved as PNGs, one file each in a folder, or
-  only your ink on white pages. The PDF's pages carry their text under the picture, so
-  it can be searched, selected and copied in any PDF viewer. A progress bar shows the
-  way and Stop ends an export and deletes what it wrote.
 - PNGs of several pages for notebooks too, not only the page shown.
-
-### Changed
-
-- One Export sheet for drawings, notebooks and books, with the same choices for each.
-- A PDF of pictures keeps the original PDF's page size, and pages with no colour are
-  stored as grey images.
-
-### Fixed
-
-- A highlighter over a page picture (a PDF notebook, or a book's page) covered the
-  text under it in exported PNGs and PDFs. It now multiplies with the page, as on the
-  screen.
-
-## [4.4.0] - 2026-10-30
-
-Ink Away in ten languages, a toolbar you can move to the left or right of the
-canvas, PDFs opened as notebooks from KOReader's own menus, and KOReader's
-gestures working inside Ink Away.
-
-### Added
 - Ink Away in ten languages (#24): German, Greek, Spanish, French, Italian, Polish,
   Brazilian Portuguese, Portuguese, Russian and Turkish. With KOReader set to one
   of them, Ink Away's screens, menus and guide are in that language, and Ink Away
@@ -67,10 +56,16 @@ gestures working inside Ink Away.
   top of Settings opens a QR code for the coffee page and a few plain words.
 
 ### Changed
+- One Export sheet for drawings, notebooks and books, with the same choices for each.
+- A PDF of pictures keeps the original PDF's page size, and pages with no colour are
+  stored as grey images.
 - New, From a PDF chooses the file from KOReader's own file list, with its
   sorting and without the .sdr folders, instead of Ink Away's grid (#67).
 
 ### Fixed
+- A highlighter over a page picture (a PDF notebook, or a book's page) covered the
+  text under it in exported PNGs and PDFs. It now multiplies with the page, as on the
+  screen.
 - KOReader's own gestures work inside Ink Away's screens (#67): a gesture Ink
   Away has no use for (a two-finger swipe or tap it has no action for, a
   multiswipe) is handed back to KOReader, so the light, a refresh and the like

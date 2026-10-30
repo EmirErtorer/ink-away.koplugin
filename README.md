@@ -15,7 +15,7 @@ Ink Away is a drawing, notes and book annotation app for KOReader, with **palm r
 * **Take notes** in notebooks of lined, grid, dotted or planner pages, kept in folders and searchable, with handwriting turned into text.
 * **Annotate any book** KOReader opens, from EPUB, MOBI and FB2 to PDF, DjVu and comics, with ink that follows its words when you change the font.
 
-Export a transparent or white PNG, or a paged PDF, at your exact screen size.
+**Take your annotations with you.** Export any book you have written on, EPUB or PDF, as a PDF with your ink, highlights and pictures exactly where they are on the page and its text still searchable, as PNGs, or as an editable copy of the original PDF. Drawings and notebooks export as a transparent or white PNG, or a paged PDF, at your exact screen size.
 
 ## Write on your books
 
@@ -199,7 +199,7 @@ With the [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) plugin inst
 | **PNG** | Transparent or white, at your screen size, of the whole page or an area you pick, with or without the grid. A notebook or a book can save the page shown, all pages, the ones with ink or a range, one PNG each in a folder of their own. |
 | **PDF** | A notebook, some of its pages, or a whole folder at once, with bookmarks for titled pages, working links and page numbers, on white or sandpaper paper. |
 | **Editable PDF** | For a PDF notebook or a PDF you annotate while reading: a copy of the original with your ink and highlights added as real annotations. The text stays selectable, the file stays about the size it was, and any PDF viewer can edit or remove them. Whatever a PDF annotation can't hold (text boxes, pictures, fills) is listed first. You choose to leave it out, or to keep those pages' ink as a small picture over just those pages, while every other page stays editable. |
-| **A book as a PDF** | In the annotation mode, Export (in Book ink settings, or Tools, Ink Away) saves an EPUB, MOBI or any other book as a fixed PDF of pictures, laid out as you read it now, with your ink, shapes and highlights exactly where they are on the screen. Or the pages with ink as PNGs, or only your ink on white pages. |
+| **A book as a PDF** | In the annotation mode, Export (in Book ink settings, or Tools, Ink Away) saves an EPUB, MOBI or any other book as a fixed PDF, laid out as you read it now, with your pen strokes, shapes, placed pictures and highlights exactly where they are on the screen, in the colours you chose. Each page carries its text under the picture, so the PDF can be searched, selected and copied in any PDF viewer. Or save the pages with ink as PNGs, one file each in a folder, or only your ink on white pages. A progress bar shows the way, and Stop ends the export and deletes what it wrote. |
 | **Bookshelf ornament** | With the Bookshelf plugin installed, save a drawing straight into its ornaments. |
 | **Phone or computer (Wi-Fi)** | Scan a QR code on the reader with any phone or computer on the same Wi-Fi to download your notebooks and drawings as PDF, PNG or Ink Away files in its browser, or to send PDFs (they become notebooks) and pictures (made smaller on the phone if you like) to Library › Imported. Nothing to install, no account, and nothing leaves your home network. |
 
