@@ -8,18 +8,44 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-10-30
+
+Ink Away in ten languages, a toolbar you can move to the left or right of the
+canvas, PDFs opened as notebooks from KOReader's own menus, and KOReader's
+gestures working inside Ink Away.
+
 ### Added
 - Ink Away in ten languages (#24): German, Greek, Spanish, French, Italian, Polish,
   Brazilian Portuguese, Portuguese, Russian and Turkish. With KOReader set to one
   of them, Ink Away's screens, menus and guide are in that language, and Ink Away
   stays Ink Away. The report on Test pen and touch stays in English so it can go
   into a bug report. A translation is one file in `ink/l10n/`, and CONTRIBUTING.md
-  says how to fix or add one.
+  says how to fix or add one. Spanish is by Sebas Moran, the translation system
+  too (thanks, #68).
 - The tests refuse a message that is missing from any language, so no new text
   ships untranslated: `luajit tools/l10n/lang.lua sync` adds it to every language,
   and `check` lists what is left.
+- The toolbar on the canvas can run down the left or right of the screen instead
+  of across the top: Settings, Toolbar side (#66). The drawing area, the notebook
+  bar, the sheets and the tab that hides the toolbar follow it.
+- Open as Ink Away notebook (#67): long-press a PDF in KOReader's file browser,
+  or open a PDF and use the reader menu, Tools, Ink Away. It becomes a notebook
+  in the library, written on over the PDF's pages.
+- Holding the Back arrow in the library goes straight to the top folder, from
+  any folder inside it (#57).
+- A quiet Support note: a small coffee button beside the dark mode button at the
+  top of Settings opens a QR code for the coffee page and a few plain words.
+
+### Changed
+- New, From a PDF chooses the file from KOReader's own file list, with its
+  sorting and without the .sdr folders, instead of Ink Away's grid (#67).
 
 ### Fixed
+- KOReader's own gestures work inside Ink Away's screens (#67): a gesture Ink
+  Away has no use for (a two-finger swipe or tap it has no action for, a
+  multiswipe) is handed back to KOReader, so the light, a refresh and the like
+  do what you set. The screenshot gesture, a tap or swipe between opposite
+  corners, is no longer taken for an undo.
 - A gesture shown in the middle of a sentence in the welcome notice is lowercased
   the way the language writes it, so Turkish keeps its dotted and dotless i.
 
