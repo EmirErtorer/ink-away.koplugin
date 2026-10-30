@@ -24,6 +24,7 @@ local TextBoxWidget = require("ui/widget/textboxwidget")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Event = require("ui/event")
+local UIManager = require("ui/uimanager")
 local Font = require("ui/font")
 local logger = require("logger")
 local _ = require("ink/l10n")
@@ -424,6 +425,20 @@ function InkAwayView:pdfBookSpec(o)
     return spec
 end
 
+-- Run fn with the reader's screen refreshes switched off. Moving the reader to a page
+-- asks for a refresh of the whole screen, which on e-ink is a flash that holds up
+-- the touch screen for as long as it takes: a page at a time that is a flash a
+-- page and a Stop that cannot be pressed. The export has its own progress sheet to
+-- show; the reader is drawn again when it ends. Returns what fn returns.
+local function quietly(fn)
+    local set = UIManager.setDirty
+    UIManager.setDirty = function() end
+    local ok, a, b = pcall(fn)
+    UIManager.setDirty = set
+    if not ok then error(a, 0) end
+    return a, b
+end
+
 -- A reflowing book's pages (the chosen ones) as a spec, laid out as the reader
 -- has them now: each is the reader's own picture of the page with the ink drawn
 -- on it by the same code that draws it while reading (or the ink alone), so it
@@ -442,7 +457,9 @@ function InkAwayView:reflowBookSpec(o)
         template = self:exportDress({ style = "blank" }),
         box = function() return W * pt, H * pt end,
         -- (the reader's own event: moving its document directly does not take)
-        prepare = function(i) book.ui:handleEvent(Event:new("GotoPage", pages[i])) end,
+        prepare = function(i)
+            quietly(function() book.ui:handleEvent(Event:new("GotoPage", pages[i])) end)
+        end,
         pages = function()
             if o.include_bg then return {} end   -- (the ink is on the page's picture)
             local placed = book:pageOps()
@@ -450,7 +467,7 @@ function InkAwayView:reflowBookSpec(o)
         end,
         done = function()
             if shot then shot:free(); shot = nil end
-            book.ui:handleEvent(Event:new("GotoXPointer", home))
+            quietly(function() book.ui:handleEvent(Event:new("GotoXPointer", home)) end)
             book._placed = nil
             if self.loadBookPage then
                 self:loadBookPage()
@@ -462,7 +479,7 @@ function InkAwayView:reflowBookSpec(o)
     if o.include_bg then
         spec.bg = function()
             shot = shot or Blitbuffer.new(W, H, Screen.bb:getType())
-            book:snapshot(shot, true)
+            quietly(function() book:snapshot(shot, true) end)
             return bbToRGBA(shot, W, H)
         end
         spec.bg_opaque = true

@@ -690,6 +690,7 @@ function InkAwayView:runExportJob(job, o)
     end
     self:runSteps{
         title = o.title, max = o.n, dismiss_text = o.stop,
+        pause = 0.15,   -- (time to hear a touch between pages)
         step = function()
             if self._export_job ~= job then return "abort" end
             local state, a = job.step()
