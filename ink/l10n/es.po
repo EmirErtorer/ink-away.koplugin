@@ -143,7 +143,7 @@ msgstr "%s · página %d"
 
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
-msgstr "+ en el menú de la pluma pide su tipo (Punta fina, Bolígrafo, Estilográfica, Lápiz, Marcador, Resaltador, Acuarela...), y luego su tamaño y color."
+msgstr "Botón + en el menú de la pluma pide su tipo (Punta fina, Bolígrafo, Estilográfica, Lápiz, Marcador, ...), y luego su tamaño y color."
 
 #: ink/view/share.lua
 msgid "1 file received"
@@ -211,7 +211,7 @@ msgstr "Las libretas de una carpeta son pestañas junto a sus páginas. Mantén 
 
 #: ink/reader/inkview.lua
 msgid "A highlighter stroke over text becomes the reader's own highlight of it, in the pen's colour: in your highlights list, and with the text at any font size. Over empty space it stays ink."
-msgstr "Un trazo de resaltador sobre el texto se convierte en el subrayado propio del dispositivo, con el color de la pluma: aparece en tu lista de subrayados y sigue al texto con cualquier tamaño de letra. Sobre un espacio vacío sigue siendo tinta."
+msgstr "Un trazo de resaltador sobre el texto se convierte en el subrayado propio del dispositivo, con el color de la pluma: aparece en tu lista de subrayados y sigue al texto con cualquier tamaño de fuente. Sobre un espacio vacío sigue siendo tinta."
 
 #: ink/guide.lua
 msgid "A highlighter stroke over text becomes the reader's own highlight, from the first word it touches to the last. Over empty space it stays ink."
@@ -219,7 +219,7 @@ msgstr "Un trazo de resaltador sobre el texto se convierte en el subrayado propi
 
 #: ink/guide.lua
 msgid "A new pen"
-msgstr "Una pluma nueva"
+msgstr "Crea una pluma nueva"
 
 #: ink/view/updates.lua
 #, lua-format
@@ -233,7 +233,7 @@ msgstr "Una libreta conserva al menos una página."
 
 #: ink/guide.lua
 msgid "A notebook or some of its pages, with bookmarks for titled pages and links that work."
-msgstr "Una libreta o algunas de sus páginas, con marcadores para las páginas con título y enlaces que funcionan."
+msgstr "Una libreta o algunas de sus páginas, con marcadores para las páginas con título y enlaces que funcionen al momento."
 
 #: ink/view/images.lua
 msgid "A picture file on this reader."
@@ -245,7 +245,7 @@ msgstr "Una versión preliminar es una compilación de prueba. Puedes volver a l
 
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
-msgstr "Una tira con tus cuatro primeras plumas, a un toque: Stylus y entrada, Tus plumas en la página."
+msgstr "Una tira con tus cuatro primeras plumas, a un toque: Stylus y entrada, Mostrar plumas en la página."
 
 #: ink/view/updates.lua
 #, lua-format
@@ -332,7 +332,7 @@ msgstr "Anotaciones de este libro"
 
 #: ink/view/links.lua
 msgid "Another notebook…"
-msgstr "Otro cuaderno…"
+msgstr "Otra libreta…"
 
 #: ink/framecover.lua
 msgid "Antique gold"
@@ -414,7 +414,7 @@ msgstr "Volver"
 
 #: ink/view/gestures.lua
 msgid "Back to the usual"
-msgstr "Volver a lo habitual"
+msgstr "Restaurar configuración"
 
 #: ink/view/images.lua
 msgid "Background image"
@@ -430,7 +430,7 @@ msgstr "Bolígrafo"
 
 #: ink/guide.lua
 msgid "Ballpoint, Fountain, Calligraphy and Pencil can follow how hard you press: Pen and input, Pen pressure (Beta), with Palm rejection on."
-msgstr "Bolígrafo, Estilográfica, Caligrafía y Lápiz pueden seguir la fuerza con que presionas: Stylus y entrada, Presión del stylus (Beta), con el Rechazo de palma activado."
+msgstr "Bolígrafo, Estilográfica, Caligrafía y Lápiz pueden seguir la fuerza con que presionas: Stylus y entrada, Presión del Stylus (Beta), con el Rechazo de palma activado."
 
 #: ink/framecover.lua
 #: ink/palette.lua
@@ -536,7 +536,7 @@ msgstr "Por nombre"
 
 #: ink/guide.lua
 msgid "By name, or tick look inside pages to search typed and converted text too."
-msgstr "Por nombre, o marca buscar dentro de las páginas para buscar también en el texto escrito y convertido."
+msgstr "Por nombre, o escoge Buscar dentro de las páginas, para buscar también en el texto escrito y convertido."
 
 #: ink/penset.lua
 msgid "Calligraphy"
@@ -660,7 +660,7 @@ msgstr "Color…"
 
 #: ink/notebookcover.lua
 msgid "Composition book"
-msgstr "Cuaderno escolar"
+msgstr "Composición"
 
 #: ink/view/links.lua
 msgid "Contents"
@@ -916,7 +916,7 @@ msgstr "Se cortaron %d elemento(s). Toca con el lazo para pegar."
 
 #: ink/guide.lua
 msgid "Cut or copy, then on any page of any notebook: the page menu, Paste."
-msgstr "Corta o copia y, luego, en cualquier página de cualquier libreta: el menú de la página, Pegar."
+msgstr "Corta o copia, luego, en cualquier página de cualquier libreta, selecciona Pegar en el menú de la página"
 
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
@@ -950,7 +950,7 @@ msgstr "Por defecto"
 
 #: ink/view/textformat.lua
 msgid "Default (content font)"
-msgstr "Por defecto (letra del contenido)"
+msgstr "Por defecto (fuente del contenido)"
 
 #: ink/reader/inkview.lua
 #: ink/view/layers.lua
@@ -1031,7 +1031,7 @@ msgstr "Lo eliminado se queda aquí %d días."
 
 #: ink/guide.lua
 msgid "Deleted things, a book's annotations too, wait 30 days and go back where they were."
-msgstr "Lo eliminado, incluidas las anotaciones de un libro, espera 30 días y vuelve a donde estaba."
+msgstr "Lo eliminado, incluidas las anotaciones de un libro, puedes recuperarlas o desaparecen en 30 días."
 
 #: ink/view/layers.lua
 #: ink/view/library.lua
@@ -1141,7 +1141,7 @@ msgstr "Dibujos"
 
 #: ink/view/document.lua
 msgid "Drawings and notebooks from the old “drawing projects” and “notebook projects” folders are now in the library."
-msgstr "Los dibujos y libretas de las antiguas carpetas “proyectos de dibujo” y “proyectos de cuaderno” ahora están en la biblioteca."
+msgstr "Los dibujos y libretas de las antiguas carpetas “proyectos de dibujo” y “proyectos de libreta” ahora están en la biblioteca."
 
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -1221,7 +1221,7 @@ msgstr "Borrado"
 
 #: ink/guide.lua
 msgid "Every drawing and notebook is a file that saves as you go. File has Rename, Duplicate, Export and New."
-msgstr "Cada dibujo y libreta es un archivo que se guarda sobre la marcha. Archivo tiene Renombrar, Duplicar, Exportar y Nuevo."
+msgstr "Cada dibujo y libreta es un archivo que se guarda sobre la marcha. El Archivo permite Renombrar, Duplicar, Exportar y Nuevo."
 
 #: ink/guide.lua
 msgid "Everything besides ink"
@@ -1355,7 +1355,7 @@ msgstr "Archivo, Exportar: transparente o blanco, la página entera o un área q
 
 #: ink/guide.lua
 msgid "File, Layers splits a drawing into layers. The strip at the right adds one or picks where you draw; tap that one for its menu."
-msgstr "Archivo, Capas divide un dibujo en capas. La tira de la derecha añade una o elige dónde dibujas; toca la activa para ver su menú."
+msgstr "Archivo, Capas: divide un dibujo en capas. La tira de la derecha añade una o elige en cuál dibujas; toca la capa activa para ver su menú."
 
 #: ink/view/settings.lua
 msgid "Files"
@@ -1450,17 +1450,17 @@ msgstr "Carpeta…"
 
 #: ink/view/menus.lua
 msgid "Font size"
-msgstr "Tamaño de letra"
+msgstr "Tamaño de la Fuente"
 
 #: ink/view/menus.lua
 #: ink/view/textformat.lua
 #, lua-format
 msgid "Font: %s"
-msgstr "Letra: %s"
+msgstr "Fuente: %s"
 
 #: ink/guide.lua
 msgid "For pen readers: rest your hand while you write. Finger on the page sets what a finger does then."
-msgstr "Para lectores con Stylus: apoya la mano mientras escribes. Dedo en la página define qué hace entonces un dedo."
+msgstr "Para lectores con Stylus: apoya la mano mientras escribes. Dedo en la página: define qué hace entonces un dedo."
 
 #: ink/coverpicker.lua
 msgid "Forest"
@@ -1474,7 +1474,7 @@ msgstr "Formato"
 
 #: ink/guide.lua
 msgid "Format, Paragraph, Checklist puts a box before each line. Tap a box to tick it, with the text open or closed."
-msgstr "Formato, Párrafo, Lista de tareas pone una casilla antes de cada línea. Toca una casilla para marcarla, con el texto abierto o cerrado."
+msgstr "Formato, Párrafo, Lista de tareas: pone una casilla antes de cada línea. Toca una casilla para marcarla, con el texto abierto o cerrado."
 
 #: ink/penset.lua
 msgid "Fountain"
@@ -1542,7 +1542,7 @@ msgstr "Gestos y botones del Stylus"
 
 #: ink/guide.lua
 msgid "Gestures and pen buttons gives each one an action, and the page turn buttons too: undo, lasso, a saved pen, hiding the toolbar and more."
-msgstr "Gestos y botones del Stylus da una acción a cada uno, y también a los botones de pasar página: deshacer, lazo, una pluma guardada, ocultar la barra de herramientas y más."
+msgstr "Da una acción a cada gesto, y también a los botones: deshacer, lazo, una pluma guardada, ocultar la barra de herramientas y más."
 
 #: ink/view/images.lua
 msgid "Get from your phone or computer"
@@ -1666,7 +1666,7 @@ msgstr "Rayado"
 
 #: ink/view/settings.lua
 msgid "Hidden"
-msgstr "Oculta"
+msgstr "Oculto"
 
 #: ink/view/layers.lua
 msgid "Hide"
@@ -1752,11 +1752,11 @@ msgstr "Imagen"
 
 #: ink/guide.lua
 msgid "Image adds one from a file or from the web. Move, resize or turn it; Remove background cuts it out."
-msgstr "Imagen añade una desde un archivo o desde la web. Muévela, cambia su tamaño o gírala; Quitar fondo la recorta."
+msgstr "Añade una imagen desde un archivo o desde la web. Muévela, cambia su tamaño o gírala; Quitar fondo la recorta."
 
 #: ink/guide.lua
 msgid "Image, Background puts a picture behind the page. Hold New drawing to start a drawing from one."
-msgstr "Imagen, Fondo pone una imagen detrás de la página. Mantén presionado Nuevo dibujo para empezar un dibujo desde una."
+msgstr "Imagen, Fondo: pone una imagen detrás de la página. Mantén presionado Nuevo dibujo para empezar un dibujo desde una imagen."
 
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
@@ -1836,7 +1836,7 @@ msgstr "Biblioteca de Ink Away"
 
 #: ink/bookshelf.lua
 msgid "Ink Away notebooks"
-msgstr "Cuadernos de Ink Away"
+msgstr "Libretas de Ink Away"
 
 #: main.lua
 msgid "Ink Away: annotate the book"
@@ -1852,7 +1852,7 @@ msgstr "La tinta aparece con el actualizado rápido en blanco y negro del Boox m
 
 #: ink/guide.lua
 msgid "Ink stays with the words when the font changes. Also in the reader menu: Tools, Ink Away."
-msgstr "La tinta se queda con las palabras cuando cambia la letra. También en el menú del dispositivo: Herramientas, Ink Away."
+msgstr "La tinta se queda con las palabras cuando cambia la fuente. También en el menú del dispositivo: Herramientas, Ink Away."
 
 #: ink/view/notebook.lua
 msgid "Insert before"
@@ -1932,7 +1932,7 @@ msgstr "Kraft con ventana"
 
 #: ink/view/settings.lua
 msgid "Landscape"
-msgstr "Paisaje"
+msgstr "Horizontal"
 
 #: ink/actions.lua
 #: ink/guide.lua
@@ -1942,7 +1942,7 @@ msgstr "Lazo"
 
 #: ink/guide.lua
 msgid "Lasso printed handwriting and Convert to text makes it a text box. One undo brings the writing back."
-msgstr "Selecciona con el lazo escritura en letra de imprenta y Convertir a texto la vuelve un cuadro de texto. Un solo Deshacer devuelve la escritura."
+msgstr "Con el Lazo puedes selecionar escritura a mano y Convertir a texto la vuelve un cuadro de texto. Un solo Deshacer devuelve la escritura."
 
 #: ink/view/updates.lua
 #, lua-format
@@ -2067,7 +2067,7 @@ msgstr "Enlace a una página"
 
 #: ink/guide.lua
 msgid "Link to page in the lasso's menu makes it a link: tap it with Pan, or a finger with palm rejection on, to jump there; Back returns."
-msgstr "Enlazar a página en el menú del lazo lo convierte en un enlace: tócalo con Desplazar, o con un dedo si el rechazo de palma está activado, para saltar allí; Volver regresa."
+msgstr "Enlazar a página en el menú del lazo lo convierte en un enlace: tócalo con Desplazar, o con un dedo si el rechazo de palma está activado, para ir ahí."
 
 #: ink/view/selection.lua
 msgid "Link to page…"
@@ -2149,7 +2149,7 @@ msgstr "Hacer una copia"
 
 #: ink/guide.lua
 msgid "Make them yours"
-msgstr "Hazlas tuyas"
+msgstr "Modifícalos"
 
 #: ink/view/share.lua
 msgid "Making a notebook in Library › Imported › PDFs…"
@@ -2477,7 +2477,7 @@ msgstr "Sin configurar"
 
 #: ink/view/textformat.lua
 msgid "Note font"
-msgstr "Letra de la nota"
+msgstr "Fuente de la nota"
 
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -2485,12 +2485,12 @@ msgstr "Letra de la nota"
 #: ink/view/overview.lua
 #: ink/view/share.lua
 msgid "Notebook"
-msgstr "Cuaderno"
+msgstr "Libreta"
 
 #: ink/view/search.lua
 #, lua-format
 msgid "Notebook in %s"
-msgstr "Cuaderno en %s"
+msgstr "Libreta en %s"
 
 #: ink/view/settings.lua
 msgid "Notebook paper"
@@ -2501,7 +2501,7 @@ msgstr "Papel de libreta"
 #: ink/view/overview.lua
 #: ink/view/settings.lua
 msgid "Notebooks"
-msgstr "Cuadernos"
+msgstr "Libretas"
 
 #: ink/actions.lua
 #: ink/view/pencase.lua
@@ -2760,7 +2760,7 @@ msgid ""
 "\n"
 "To draw with a finger, turn off Palm rejection in the pen menu, Pen and input."
 msgstr ""
-"El rechazo de palma está activado: el stylus dibuja y un dedo no hace nada en la página.\n"
+"El rechazo de palma está activado: el Stylus dibuja y un dedo no hace nada en la página.\n"
 "\n"
 "Para dibujar con un dedo, desactiva Rechazo de palma en el menú de la pluma, Stylus y entrada."
 
@@ -2770,7 +2770,7 @@ msgid ""
 "\n"
 "To draw with a finger, turn off Palm rejection in the pen menu, Pen and input."
 msgstr ""
-"El rechazo de palma está activado: el stylus dibuja y un dedo mueve la página.\n"
+"El rechazo de palma está activado: el Stylus dibuja y un dedo mueve la página.\n"
 "\n"
 "Para dibujar con un dedo, desactiva Rechazo de palma en el menú de la pluma, Stylus y entrada."
 
@@ -2780,7 +2780,7 @@ msgstr "El rechazo de palma necesita KOReader 2026.07 o posterior (esa versión 
 
 #: ink/guide.lua
 msgid "Pan, above the zoom, moves the page; tap it again to go back to your tool. Two fingers move the page with any tool."
-msgstr "Desplazar, sobre el zoom, mueve la página; tócala de nuevo para volver a tu herramienta. Dos dedos mueven la página con cualquier herramienta."
+msgstr "Desplazar: mueve la página; tócala de nuevo para volver a tu herramienta. Dos dedos mueven la página con cualquier herramienta."
 
 #: ink/view/export.lua
 msgid "Paper"
@@ -2818,7 +2818,7 @@ msgstr "Parte de un trazo, o todo"
 
 #: ink/guide.lua
 msgid "Part or whole"
-msgstr "Parte o todo"
+msgstr "Poco o todo"
 
 #: ink/view/lasso.lua
 #: ink/view/notebook.lua
@@ -2956,7 +2956,7 @@ msgstr "Ciruela"
 
 #: ink/view/settings.lua
 msgid "Portrait"
-msgstr "Retrato"
+msgstr "Vertical"
 
 #: ink/view/share.lua
 #, lua-format
@@ -2986,7 +2986,7 @@ msgstr "Proteger el texto del borrador"
 
 #: ink/guide.lua
 msgid "Protect text from eraser and Erase pictures, in the eraser's menu, decide what it may take."
-msgstr "Proteger el texto del borrador y Borrar imágenes, en el menú del borrador, deciden qué puede quitar."
+msgstr "Proteger el texto del borrador y Borrar imágenes, en el menú del borrador, deciden qué se puede borrar."
 
 #: ink/folderlook.lua
 #: ink/palette.lua
@@ -3072,7 +3072,7 @@ msgstr "Rehacer"
 #: ink/reader/inkview.lua
 #: ink/view/settings.lua
 msgid "Refresh the screen"
-msgstr "Refrescar la pantalla"
+msgstr "Actualizar la pantalla"
 
 #: ink/view/updates.lua
 msgid "Release"
@@ -3364,19 +3364,19 @@ msgstr "Configuración"
 
 #: ink/guide.lua
 msgid "Settings, Ghosting: a full refresh every few strokes clears the faint marks fast drawing leaves. The Refresh the screen button below it does one now."
-msgstr "Configuración, Efecto fantasma: un actualizado completo cada pocos trazos borra las marcas tenues que deja el dibujo rápido. El botón Refrescar la pantalla de debajo hace uno ahora."
+msgstr "Configuración, Efecto fantasma: un actualizado completo cada pocos trazos borra las marcas tenues que deja el dibujo rápido. El botón 'Actualizar la pantalla' de debajo lo hace ahora."
 
 #: ink/guide.lua
 msgid "Settings, Updates: the latest release, and prereleases apart. Once a day, opening on Wi-Fi, Ink Away looks; a dot on Settings means news."
-msgstr "Configuración, Actualizaciones: la última versión y, aparte, las versiones preliminares. Una vez al día, al abrirse con Wi-Fi, Ink Away busca; un punto en Configuración indica novedades."
+msgstr "Configuración, Actualizaciones: la última versión y las versiones preliminares. Una vez al día: requiere Wi-Fi, Ink Away busca automáticamente; un punto en Configuración indica novedades."
 
 #: ink/guide.lua
 msgid "Settings, When Ink Away opens: the last document, the Library or your Notebooks."
-msgstr "Configuración, Al abrir Ink Away: el último documento, la Biblioteca o tus Cuadernos."
+msgstr "En Configuración, Al abrir Ink Away, escoge: el último documento, la Biblioteca o tus Libretas."
 
 #: ink/guide.lua
 msgid "Settings, beside the paper or the grid: cream, sandpaper, kraft, chalkboard and more (white or black on grey). On a dark one black ink shows white."
-msgstr "Configuración, junto al papel o la cuadrícula: crema, lija, kraft, pizarra y más (blanco o negro sobre gris). En uno oscuro, la tinta negra se ve blanca."
+msgstr "Configuración, junto al papel o cuadrícula: crema, lija, kraft, pizarra y más (blanco o negro sobre gris). En un color oscuro, la tinta negra se ve blanca."
 
 #: ink/guide.lua
 msgid "Settings, the round button by Guide: light, dark, or as KOReader's night mode. The page keeps its colours."
@@ -3418,7 +3418,7 @@ msgstr "Mostrarlos en la biblioteca"
 
 #: ink/guide.lua
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
-msgstr "Muestra cómo llegan tu Stylus, sus botones y tu mano. Útil en un informe de error."
+msgstr "Muestra cómo se detecta tu Stylus, sus botones y tu mano. Útil en un informe de error."
 
 #: ink/actions.lua
 msgid "Side button"
@@ -3608,7 +3608,7 @@ msgstr "Toca para abrir; mantén presionado para renombrar, mover, duplicar, exp
 
 #: ink/guide.lua
 msgid "Tap where it should go. Format stays open while you pick styles, colours, highlights, lists, spacing and the font; on lined paper text sits on the lines."
-msgstr "Toca dónde debe ir. Formato queda abierto mientras eliges estilos, colores, subrayados, listas, espaciado y letra; en papel con líneas el texto se apoya en las líneas."
+msgstr "Toca para colocar. El formato queda abierto mientras eliges estilos, colores, subrayados, listas, espaciado y fuente; en una hoja con cuadrícula, el texto se apoya en las líneas."
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -3663,7 +3663,7 @@ msgstr "Las anotaciones de %s están de vuelta donde estaba el libro. Se verán 
 
 #: ink/guide.lua
 msgid "The arrows in the bar at the bottom, or swipe two fingers sideways."
-msgstr "Las flechas de la barra inferior, o desliza dos dedos hacia un lado."
+msgstr "Con las flechas de la barra inferior, o desliza dos dedos hacia un lado."
 
 #: ink/view/document.lua
 #, lua-format
@@ -3693,7 +3693,7 @@ msgstr "La copia, “%s”, está en Biblioteca: Importados solo guarda lo que e
 
 #: ink/guide.lua
 msgid "The eraser rubs out what it touches; Erase whole strokes takes each stroke it crosses."
-msgstr "El borrador quita lo que toca; Borrar trazos completos se lleva cada trazo que cruza."
+msgstr "El borrador desaparece lo que toca; Borrar trazos completos se lleva todo el trazo que cruza."
 
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
@@ -4189,7 +4189,7 @@ msgstr "Escribir"
 
 #: ink/welcome.lua
 msgid "Write and draw on the book's pages. Your ink stays with the words when the font changes."
-msgstr "Escribe y dibuja en las páginas del libro. Tu tinta se queda con las palabras cuando cambia la letra."
+msgstr "Escribe y dibuja en las páginas del libro. Tu tinta se queda con las palabras cuando cambia la fuente."
 
 #: ink/view/library.lua
 msgid "Write on a PDF from this reader…"
@@ -4225,7 +4225,7 @@ msgstr "Tus propios pinceles"
 #: ink/guide.lua
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
-msgstr "Tus plumas en la página"
+msgstr "Mostrar plumas en la página"
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"
