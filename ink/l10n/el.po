@@ -1830,6 +1830,10 @@ msgstr "Αρχείο Ink Away"
 msgid "Ink Away in your books"
 msgstr "Το Ink Away στα βιβλία σας"
 
+#: ink/view/settings.lua
+msgid "Ink Away is free and made by one person. If it makes your writing better, a coffee helps keep it going."
+msgstr "Το Ink Away είναι δωρεάν και φτιαγμένο από ένα άτομο. Αν κάνει το γράψιμό σας καλύτερο, ένας καφές βοηθά να συνεχίσει."
+
 #: main.lua
 msgid "Ink Away library"
 msgstr "Βιβλιοθήκη Ink Away"
@@ -3259,6 +3263,10 @@ msgstr "Σαρώστε έναν κωδικό QR για να στείλετε ε�
 msgid "Scan with a phone or computer on the same Wi-Fi, or open:"
 msgstr "Σαρώστε με τηλέφωνο ή υπολογιστή στο ίδιο Wi-Fi ή ανοίξτε:"
 
+#: ink/view/settings.lua
+msgid "Scan with your phone"
+msgstr "Σαρώστε με το τηλέφωνό σας"
+
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/library.lua
@@ -3560,6 +3568,10 @@ msgstr "Ένταση"
 #: ink/view/textformat.lua
 msgid "Strike"
 msgstr "Διαγράμμιση"
+
+#: ink/view/settings.lua
+msgid "Support"
+msgstr "Υποστήριξη"
 
 #: ink/welcome.lua
 msgid "Swipe down along the right edge"

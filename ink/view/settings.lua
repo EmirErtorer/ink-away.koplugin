@@ -12,6 +12,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("ink/l10n")
 local Accent = require("ink/accent")
+local Blitbuffer = require("ffi/blitbuffer")
 local PenTest = require("ink/pentest")
 local Theme = require("ink/ui/theme")
 local Palette = require("ink/palette")
@@ -258,6 +259,7 @@ function InkAwayView:openSettings()
         local function add(w) table.insert(content, w) end
 
         add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "coffee", cb = function() self:openSupport() end },
             { icon = "appearance", cb = function() self:openAppearance() end },
             { label = _("Guide"), cb = function() self:openGuide() end } }))
         add(vspan(16))
@@ -435,6 +437,50 @@ function InkAwayView:openAppearance()
         return content
     end
     self:showSheet("_appearance", build)
+end
+
+-- A quiet note from the maker, one tap from Settings: a QR code for the coffee
+-- page and a few plain words. The code is black on white so it always scans; the
+-- rest takes the theme colour.
+local SUPPORT_URL = "https://buymeacoffee.com/emirertorer"
+function InkAwayView:openSupport()
+    self:closeSheet("_settings_dialog")
+    local content_w = self:sheetWidth()
+    local build = function()
+        local TextBoxWidget = require("ui/widget/textboxwidget")
+        local CenterContainer = require("ui/widget/container/centercontainer")
+        local Geom = require("ui/geometry")
+        local Font = require("ui/font")
+        local content = VerticalGroup:new{ align = "center" }
+        local function add(w) table.insert(content, w) end
+        local function para(text, size, bold, color)
+            return TextBoxWidget:new{ text = text, face = Font:getFace("cfont", size), bold = bold,
+                fgcolor = color, width = content_w, alignment = "center" }
+        end
+        add(self:sheetTitle(_("Support"), content_w, _("Done"), function() self:closeSheet("_support") end))
+        add(vspan(14))
+        local side = math.floor(math.min(content_w * 0.34, math.min(Screen:getWidth(), Screen:getHeight()) * 0.28))
+        local okq, QRWidget = pcall(require, "ui/widget/qrwidget")
+        if okq and QRWidget then
+            add(CenterContainer:new{ dimen = Geom:new{ w = content_w, h = side },
+                QRWidget:new{ text = SUPPORT_URL, width = side, height = side } })
+            add(vspan(12))
+        end
+        local a = Accent.get()
+        local FrameContainer = require("ui/widget/container/framecontainer")
+        local TextWidget = require("ui/widget/textwidget")
+        add(CenterContainer:new{ dimen = Geom:new{ w = content_w, h = Screen:scaleBySize(34) },
+            FrameContainer:new{ background = a.fill, bordersize = 0, radius = Screen:scaleBySize(11),
+                padding = Screen:scaleBySize(6), padding_left = Screen:scaleBySize(14), padding_right = Screen:scaleBySize(14),
+                margin = 0, TextWidget:new{ text = _("Scan with your phone"), face = Font:getFace("cfont", 14),
+                    bold = true, fgcolor = a.text } } })
+        add(vspan(4))
+        add(para("buymeacoffee.com/emirertorer", 14, false, Blitbuffer.COLOR_DARK_GRAY))
+        add(vspan(14))
+        add(para(_("Ink Away is free and made by one person. If it makes your writing better, a coffee helps keep it going."), 15))
+        return content
+    end
+    self:showSheet("_support", build)
 end
 
 -- The faster-drawing tip for this reader, or nil: none where KOReader drives

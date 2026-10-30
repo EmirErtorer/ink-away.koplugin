@@ -1830,6 +1830,10 @@ msgstr "Fichier Ink Away"
 msgid "Ink Away in your books"
 msgstr "Ink Away dans vos livres"
 
+#: ink/view/settings.lua
+msgid "Ink Away is free and made by one person. If it makes your writing better, a coffee helps keep it going."
+msgstr "Ink Away est gratuit et fait par une seule personne. S’il améliore votre écriture, un café aide à le faire vivre."
+
 #: main.lua
 msgid "Ink Away library"
 msgstr "Bibliothèque Ink Away"
@@ -3259,6 +3263,10 @@ msgstr "Scannez un code QR pour envoyer des images par Wi-Fi."
 msgid "Scan with a phone or computer on the same Wi-Fi, or open:"
 msgstr "Scannez avec un téléphone ou un ordinateur sur le même Wi-Fi, ou ouvrez :"
 
+#: ink/view/settings.lua
+msgid "Scan with your phone"
+msgstr "Scannez avec votre téléphone"
+
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/library.lua
@@ -3560,6 +3568,10 @@ msgstr "Intensité"
 #: ink/view/textformat.lua
 msgid "Strike"
 msgstr "Barré"
+
+#: ink/view/settings.lua
+msgid "Support"
+msgstr "Soutien"
 
 #: ink/welcome.lua
 msgid "Swipe down along the right edge"

@@ -6540,6 +6540,10 @@ for _, wh in ipairs(SIZES) do
     ok(view:handBack({ ges = "swipe", direction = "west" }, true) == false and handed == nil,
         "gestures: a plain swipe over a book is not" .. tag)
     view.kui = nil
+    -- the quiet support note, one tap from the top of Settings
+    view:openSupport()
+    ok(view._support ~= nil, "support: the coffee button opens its sheet" .. tag)
+    view:closeSheet("_support")
     -- the screenshot gesture, opposite corners, is KOReader's: not an undo
     local diag = math.sqrt(Screen:getWidth() ^ 2 + Screen:getHeight() ^ 2)
     ok(view:onIaTwoTap(nil, { ges = "two_finger_tap", span = diag - 20 }) == false
