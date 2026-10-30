@@ -26,7 +26,6 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local Event = require("ui/event")
 local UIManager = require("ui/uimanager")
 local Font = require("ui/font")
-local logger = require("logger")
 local _ = require("ink/l10n")
 local Annots = require("ink/export/annots")
 local BookInk = require("ink/reader/bookink")
@@ -503,7 +502,6 @@ end
 -- Save the chosen pages as PNGs: one file, or "page-001.png" and on in a folder
 -- of the chosen name, white pages unless `transparent`.
 function InkAwayView:writePagesPNG(path)
-    local Export = require("ink/export")
     local o = self:exportOptions()
     local spec = self:exportSpec()
     local one = spec.n == 1

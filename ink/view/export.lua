@@ -187,8 +187,7 @@ function InkAwayView:openExport()
     local reopen = function() self:openExport() end   -- rebuild after a choice changes the layout
     local left, added, left_pages
     if editable then
-        local _w
-        _w, left, added, left_pages = self:editableWork()
+        left, added, left_pages = select(2, self:editableWork())
     end
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }

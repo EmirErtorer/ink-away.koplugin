@@ -30,11 +30,10 @@ local function settle(lines, whole)
             if bn and (bw == bn or (#bw > 0 and (bn:sub(1, #bw) == bw or bw:sub(1, #bn) == bn))) then
                 kept[#kept + 1] = nxt
                 j = j + 1
-            elseif bp and #bw > 0 and (bw == bp or bp:sub(1, #bw) == bw or bw:sub(1, #bp) == bp
-                    or bp:sub(-#bw) == bw) then
-                -- (the word just placed, or its end)
-            else
-                -- not where the whole text has it: look a few words on, else keep it
+            elseif not (bp and #bw > 0 and (bw == bp or bp:sub(1, #bw) == bw or bw:sub(1, #bp) == bp
+                    or bp:sub(-#bw) == bw)) then
+                -- not where the whole text has it (and not the word just placed, or its
+                -- end, which is left out): look a few words on, else keep it
                 local found
                 for k = j + 1, math.min(#full, j + 3) do
                     if bare(full[k]) == bw then found = k; break end
