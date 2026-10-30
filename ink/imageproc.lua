@@ -32,12 +32,27 @@ end
 -- row (R and B are swapped back where the layout is B,G,R,A). Returns buf or nil.
 local function bbToRGBA(bb, W, H)
     if not bb then return nil end
+    -- A grey or 16-bit screen gives a buffer that is not 4 bytes a pixel; copying
+    -- it as if it were reads several rows into one and shows the page squeezed
+    -- and repeated. Draw it onto an RGB32 page first.
+    local own
+    if bb:getType() ~= Blitbuffer.TYPE_BBRGB32 then
+        local ok, conv = pcall(function()
+            local c = Blitbuffer.new(bb:getWidth(), bb:getHeight(), Blitbuffer.TYPE_BBRGB32)
+            c:fill(WHITE)
+            c:blitFrom(bb, 0, 0, 0, 0, bb:getWidth(), bb:getHeight())
+            return c
+        end)
+        if not ok or not conv then return nil end
+        bb, own = conv, conv
+    end
     local buf = ffi.new("uint8_t[?]", W * H * 4)
     local ok = pcall(function()
         local src = ffi.cast("uint8_t*", bb.data)
         local stride = bb.stride or (W * 4)
         for y = 0, H - 1 do ffi.copy(buf + y * W * 4, src + y * stride, W * 4) end
     end)
+    if own then own:free() end
     if not ok then return nil end
     if not rgb32IsRGBA() then
         for i = 0, W * H - 1 do local o = i * 4; buf[o], buf[o + 2] = buf[o + 2], buf[o] end
