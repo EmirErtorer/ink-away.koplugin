@@ -66,9 +66,11 @@ end
 -- The `_` for the language KOReader runs in (`gt.current_lang`: "es", "es_MX",
 -- "es.utf8"), reading <dir><language>.po, or just the part before the "_" when
 -- there is none for the full code. `gt` itself when the language is English or has
--- no file; a file that gives nothing is logged and ignored, never an error.
+-- no file; a file that gives nothing is logged and ignored, never an error. Leaves the
+-- language code in L10n.code, for the text case rules (ink/textcase.lua).
 function L10n.build(gt, dir)
     local code = gt.current_lang and gt.current_lang:match("^[^.@]+")
+    L10n.code = code
     if not code or code == "C" or code == "en" or code:match("^en_") then return gt end
     local text
     for _i, name in ipairs({ code, code:match("^([^_]+)_") }) do

@@ -6,6 +6,8 @@ or when KOReader's gesture manager is off. Plain Lua: the headless tests drive
 it; ink/view/welcome.lua shows it.
 ]]
 
+local TextCase = require("ink/textcase")
+
 local Welcome = {}
 
 -- The gestures Ink Away may set, in words and as a glyph (ink/icons).
@@ -47,9 +49,10 @@ end
 -- what the same swipe does outside a book (book notes opens Ink Away). The
 -- sentences it builds (`outside`, `info`, the warnings) are whole messages passed
 -- to `_(message, values...)`, so a translation can reorder the values; by default
--- that fills them in as English (Welcome.fill). The rest is left for the view to
--- translate.
-function Welcome.content(state, _)
+-- that fills them in as English (Welcome.fill). `lang` is KOReader's language code,
+-- so a gesture phrase put in the middle of a sentence is lowercased the way that
+-- language writes it. The rest is left for the view to translate.
+function Welcome.content(state, _, lang)
     _ = _ or Welcome.fill
     local rows, warnings = {}, {}
     local placed = state and state.placed or {}
@@ -70,12 +73,9 @@ function Welcome.content(state, _)
             row.glyph = Welcome.GESTURES[ges] and Welcome.GESTURES[ges].glyph
             row.gesture = gesText(ges)
             if not isEdge(ges) then two_finger = true end
-            -- shortcut: lower() only changes A-Z, so a translated gesture phrase has to start with
-            -- one (fine for Spanish); languages with other capitals (Turkish İ and I) need a
-            -- lowercase message of their own, when one of them is added
             if f.id == "booknotes" and where.gesture_fm then
                 row.outside = where.gesture_fm == ges and _("Outside a book, it opens Ink Away.")
-                    or _("Outside a book, %1 opens Ink Away.", _(gesText(where.gesture_fm)):lower())
+                    or _("Outside a book, %1 opens Ink Away.", TextCase.lower(_(gesText(where.gesture_fm)), lang))
             end
         elseif not off then
             missing[#missing + 1] = f
@@ -98,7 +98,7 @@ function Welcome.content(state, _)
             local parts = {}
             for _j, h in ipairs(held) do
                 if h.feature == f.id and h.section == "gesture_reader" then
-                    local part = _(gesText(h.ges)):lower()
+                    local part = TextCase.lower(_(gesText(h.ges)), lang)
                     parts[#parts + 1] = h.what and h.what ~= "" and _("%1 (%2)", part, h.what) or part
                 end
             end

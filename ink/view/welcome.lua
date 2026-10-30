@@ -16,7 +16,8 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
-local _ = require("ink/l10n")
+local L10n = require("ink/l10n")
+local _ = L10n
 local Welcome = require("ink/welcome")
 
 local Screen = Device.screen
@@ -66,7 +67,7 @@ end
 -- it, when it is part of it).
 function InkAwayView:showWelcome()
     local c = Welcome.content(self:getSetting("inkaway_entry_gestures"),
-        function(s, ...) return Welcome.fill(_(s), ...) end)
+        function(s, ...) return Welcome.fill(_(s), ...) end, L10n.code)
     local tip = not self:getSetting("inkaway_device_tip_shown") and self:deviceTipText(true) or nil
     if tip then tip = _(tip) end
     local content_w = self:sheetWidth()
