@@ -2603,6 +2603,10 @@ msgstr "%s aç"
 msgid "Open Ink Away"
 msgstr "Ink Away'i aç"
 
+#: main.lua
+msgid "Open as Ink Away notebook"
+msgstr "Ink Away defteri olarak aç"
+
 #: ink/view/images.lua
 msgid "Open image as background"
 msgstr "Resmi arka plan olarak aç"
@@ -3916,6 +3920,7 @@ msgid "Toolbar"
 msgstr "Araç çubuğu"
 
 #: ink/guide.lua
+#: ink/view/settings.lua
 msgid "Toolbar side"
 msgstr "Araç çubuğu tarafı"
 
@@ -3932,6 +3937,7 @@ msgid "Tooth"
 msgstr "Kâğıt dokusu"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Top"
 msgstr "Üst"
 

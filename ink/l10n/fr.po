@@ -2603,6 +2603,10 @@ msgstr "Ouvrir %s"
 msgid "Open Ink Away"
 msgstr "Ouvrir Ink Away"
 
+#: main.lua
+msgid "Open as Ink Away notebook"
+msgstr "Ouvrir comme carnet Ink Away"
+
 #: ink/view/images.lua
 msgid "Open image as background"
 msgstr "Ouvrir l’image comme arrière-plan"
@@ -3916,6 +3920,7 @@ msgid "Toolbar"
 msgstr "Barre d’outils"
 
 #: ink/guide.lua
+#: ink/view/settings.lua
 msgid "Toolbar side"
 msgstr "Côté de la barre d’outils"
 
@@ -3932,6 +3937,7 @@ msgid "Tooth"
 msgstr "Grain du papier"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Top"
 msgstr "Haut"
 

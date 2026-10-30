@@ -2603,6 +2603,10 @@ msgstr "Άνοιγμα του %s"
 msgid "Open Ink Away"
 msgstr "Άνοιγμα του Ink Away"
 
+#: main.lua
+msgid "Open as Ink Away notebook"
+msgstr "Άνοιγμα ως σημειωματάριο Ink Away"
+
 #: ink/view/images.lua
 msgid "Open image as background"
 msgstr "Άνοιγμα εικόνας ως φόντου"
@@ -3916,6 +3920,7 @@ msgid "Toolbar"
 msgstr "Γραμμή εργαλείων"
 
 #: ink/guide.lua
+#: ink/view/settings.lua
 msgid "Toolbar side"
 msgstr "Πλευρά γραμμής εργαλείων"
 
@@ -3932,6 +3937,7 @@ msgid "Tooth"
 msgstr "Υφή χαρτιού"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Top"
 msgstr "Επάνω"
 

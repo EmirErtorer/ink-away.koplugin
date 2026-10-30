@@ -3850,6 +3850,9 @@ do
     lib.on_back()
     ok(view._lib_dir == LIB and lib.title == "Library", "lib: back goes up a folder")
     view:libraryGo(LIB .. "/School")
+    lib.on_back_top()
+    ok(view._lib_dir == LIB and lib.on_back_top == nil, "lib: holding Back goes straight to the top")
+    view:libraryGo(LIB .. "/School")
     for _, it in ipairs(lib.items) do if it.path == inSchool then drawingItem = it end end
     view:moveItem(drawingItem)
     local chooser = UIManager.shown
@@ -6503,6 +6506,30 @@ for _, wh in ipairs(SIZES) do
     ok(view:getSetting("inkaway_fab_side") == "left", "fab side: the choice is saved" .. tag)
     view:closeSheet("_settings_dialog")
     view:setFabSide("right")
+    -- (#66) the toolbar down the right or left of the canvas, or back across the top
+    local top_h = v.area_y
+    view:setCanvasBarSide("right")
+    ok(view._vb_side == "right" and v.area_y == 0 and v.area_x == 0 and v.area_w == view.screen_w - view._vb_thick
+        and view._bar_x == v.area_w and view:getSetting("inkaway_toolbar_side") == "right",
+        "toolbar side: right leaves the drawing area beside the bar" .. tag)
+    ok(view:fabRect("bar").x < view._bar_x, "toolbar side: its tab sits beside the bar" .. tag)
+    view:setCanvasBarSide("left")
+    view:paintTo(Screen.bb, 0, 0)
+    ok(v.area_x == view._vb_thick and view._bar_x == 0 and v.area_w == view.screen_w - view._vb_thick
+        and view._active_btn_idx ~= nil, "toolbar side: left, drawn, with the active tool lit" .. tag)
+    view:setCanvasBarSide("top")
+    ok(view._vb_side == nil and v.area_x == 0 and v.area_y == top_h and v.area_w == view.screen_w,
+        "toolbar side: top is the layout it was" .. tag)
+    -- (#67) a gesture Ink Away has no use for goes to KOReader
+    local handed
+    view.kui = { handleEvent = function(_, ev) handed = ev; return true end }
+    ok(view:handBack({ ges = "two_finger_swipe", direction = "northeast" }) and handed ~= nil,
+        "gestures: an unused one is handed to KOReader" .. tag)
+    view.kui.document = {}
+    handed = nil
+    ok(view:handBack({ ges = "swipe", direction = "west" }, true) == false and handed == nil,
+        "gestures: a plain swipe over a book is not" .. tag)
+    view.kui = nil
     -- the Lasso button picks the lasso and is lit
     view:setTool("pen")
     ids.lasso.button.callback()

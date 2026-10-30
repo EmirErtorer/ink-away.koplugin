@@ -69,6 +69,18 @@ function InkAway:init()
             end
         end
     end
+    -- a long press on a PDF in the file browser offers it as an Ink Away notebook
+    if not self.ui.document and self.ui.addFileDialogButtons then
+        self.ui:addFileDialogButtons("inkaway_pdf", function(file, is_file)
+            if not (is_file and file:lower():match("%.pdf$")) then return nil end
+            return { { text = _("Open as Ink Away notebook"), callback = function()
+                local FileManager = require("apps/filemanager/filemanager")
+                local fm = FileManager.instance
+                if fm and fm.file_dialog then UIManager:close(fm.file_dialog) end
+                self:openPdfAsNotebook(file)
+            end } }
+        end)
+    end
     -- the book gestures, once, after every plugin (the gesture manager too) is up
     if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 2 then
         UIManager:nextTick(function() self:setupEntryGestures() end)
@@ -106,6 +118,13 @@ function InkAway:addToMainMenu(menu_items)
                   callback = function() self:openCanvas() end },
             },
         }
+        local file = self.ui.document and self.ui.document.file
+        if file and file:lower():match("%.pdf$") then
+            table.insert(menu_items.inkaway.sub_item_table, {
+                text = _("Open as Ink Away notebook"), keep_menu_open = false,
+                callback = function() self:openPdfAsNotebook(file) end,
+            })
+        end
         local PenHighlight = self.pen_highlight and require("ink/reader/penhighlight")
         if PenHighlight and PenHighlight.penReader() then
             table.insert(menu_items.inkaway.sub_item_table, {
@@ -205,6 +224,13 @@ function InkAway:onInkAwayLibrary()
     return true
 end
 
+-- A new notebook from the PDF at `path`, in the library's top folder, written on
+-- over the PDF's own pages.
+function InkAway:openPdfAsNotebook(path)
+    local view = self:openCanvas()
+    view:startPdfNotebook(path, view:libraryDir())
+end
+
 -- Open the canvas, with the library on top when `library` is set, or on the
 -- document at `path`. Returns the view.
 function InkAway:openCanvas(library, path)
@@ -219,7 +245,7 @@ function InkAway:openCanvas(library, path)
     end
     for _, w in ipairs(existing) do UIManager:close(w) end
     local InkAwayView = require("ink/view")
-    local view = InkAwayView:new{ show_library = library or nil, open_path = path }
+    local view = InkAwayView:new{ show_library = library or nil, open_path = path, kui = self.ui }
     UIManager:show(view)
     return view
 end

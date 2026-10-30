@@ -162,7 +162,7 @@ end
 -- A dot the first finger began (with palm rejection off, a drawing finger
 -- arrives as gestures) is dropped first, so an undo takes back the last real
 -- change and not the dot; any other stroke still open is committed first.
-function InkAwayView:onIaTwoTap()
+function InkAwayView:onIaTwoTap(_, ges)
     if self:fingerRejected() then return true end   -- the writing hand, not a gesture
     self._finger_nav = nil
     if self.capturing and self._finger_dot and self.canvas.live
@@ -177,6 +177,7 @@ function InkAwayView:onIaTwoTap()
     local last = self._two_tap
     if double == "nothing" then
         self._two_tap = nil
+        if single == "nothing" then self:handBack(ges) end
         self:runAction(single)
         return true
     end
@@ -204,6 +205,17 @@ function InkAwayView:onIaTwoTap()
     return true
 end
 
+-- A gesture Ink Away has no use for goes to KOReader's own, so the gestures the
+-- reader set (the light, a screenshot, a refresh...) work here too. A plain
+-- swipe over a book is left alone: it would turn the book's page underneath.
+function InkAwayView:handBack(ges, plain)
+    local ui = self.kui
+    if not (ui and ges and ui.handleEvent) or (plain and ui.document) then return false end
+    local Event = require("ui/event")
+    local ok, used = pcall(ui.handleEvent, ui, Event:new("Gesture", ges))
+    return ok and used and true or false
+end
+
 -- A two-finger swipe: sideways (unless the zoomed page moved sideways instead),
 -- or a long one up or down (a third of the area, when not zoomed in; a short one
 -- stays a scroll).
@@ -223,7 +235,7 @@ function InkAwayView:onIaTwoSwipe(_, ges)
         trigger = dy < 0 and "two_swipe_up" or "two_swipe_down"
     end
     local id = trigger and binds[trigger]
-    if not id or id == "nothing" then return true end
+    if not id or id == "nothing" then self:handBack(ges); return true end
     -- the two-finger move panned on its way: put the page back first
     if start and start.px and (trigger == "two_swipe_up" or trigger == "two_swipe_down") then
         self.view.pan_x, self.view.pan_y = start.px, start.py
