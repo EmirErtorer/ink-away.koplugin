@@ -672,7 +672,8 @@ end
 -- folder `dir`.
 function InkAwayView:openPdfAsNotebook(dir)
     self:pickFile(self:homeDir(), function(path) self:startPdfNotebook(path, dir) end,
-        function(name) return name:lower():match("%.pdf$") ~= nil end, "pdfpen", _("No PDFs or folders here."))
+        function(name) return name:lower():match("%.pdf$") ~= nil end, "pdfpen", _("No PDFs or folders here."),
+        _("From a PDF\u{2026}"))
 end
 
 -- A sheet of paper tiles, each a small page drawn with its ruling, six to a

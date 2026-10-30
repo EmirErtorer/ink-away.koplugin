@@ -361,10 +361,39 @@ function InkAwayView:browseFiles(o)
     UIManager:show(grid)
 end
 
+-- KOReader's own file list for choosing a file, starting in folder `path`: its
+-- sorting, without the .sdr folders, and a tap on a file picks it. `title` is
+-- shown above the list.
+function InkAwayView:browseKoreaderFiles(path, on_pick, accept, title)
+    local PathChooser = require("ui/widget/pathchooser")
+    local chooser
+    chooser = PathChooser:new{
+        title = title or true,
+        path = (path and Storage.isDir(path)) and path or self:homeDir(),
+        select_directory = false, select_file = true,
+        file_filter = accept and function(full) return accept(Storage.baseName(full)) end or nil,
+        onConfirm = function(file) on_pick(file) end,
+    }
+    local select = chooser.onMenuSelect
+    chooser.onMenuSelect = function(this, item)
+        local file = item and item.path
+        if file and not Storage.isDir(file) then
+            UIManager:close(this)
+            self:uncovered()
+            on_pick(file)
+            return true
+        end
+        return select(this, item)
+    end
+    UIManager:show(chooser)
+end
+
 -- Let the reader pick a file, starting in folder `path`: only the files
 -- accept(name) lets through are shown (all with none), with `icon` on their
--- cards; `empty` is said in a folder without any.
-function InkAwayView:pickFile(path, on_pick, accept, icon, empty)
+-- cards; `empty` is said in a folder without any. Pictures are chosen from a
+-- grid of thumbnails, anything else from KOReader's own file list, under `title`.
+function InkAwayView:pickFile(path, on_pick, accept, icon, empty, title)
+    if accept ~= isPicture then return self:browseKoreaderFiles(path, on_pick, accept, title) end
     self:browseFiles{ start = path, on_pick = on_pick, accept = accept, file_icon = icon,
         empty = empty or _("No files or folders here.") }
 end

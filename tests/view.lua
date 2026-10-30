@@ -3347,17 +3347,27 @@ do
     os.execute("rm -rf '" .. D .. "'; mkdir -p '" .. D .. "/Sub/Deeper' '" .. D .. "/.hidden'")
     for _, n in ipairs({ "b.png", "a.PDF", "notes.txt" }) do local f = io.open(D .. "/" .. n, "w"); f:write("x"); f:close() end
     local file
-    view:pickFile(D, function(p) file = p end, function(n) return n:lower():match("%.pdf$") ~= nil end, "pdfpen")
+    view:pickFile(D, function(p) file = p end, view.isPictureName)
     local grid = UIManager.shown
     local names = {}
     for _, it in ipairs(grid.items) do names[#names + 1] = (it.folder and "/" or "") .. it.label end
-    ok(table.concat(names, ",") == "/Sub,a.PDF" and grid.items[2].icon ~= nil,
-        "dialogs: a file picker shows folders, then the files it takes (" .. table.concat(names, ",") .. ")")
+    ok(table.concat(names, ",") == "/Sub,b.png" and grid.items[2].picture,
+        "dialogs: a picture picker shows folders, then the pictures (" .. table.concat(names, ",") .. ")")
     grid.on_pick(grid.items[1])
     ok(grid.title == "Sub" and #grid.items == 1 and grid.on_back ~= nil, "dialogs: a tap goes into a folder")
     grid.on_back()
     ok(grid.title == "browsetest", "dialogs: the arrow goes back up")
-    pickPath(D .. "/a.PDF")
+    pickPath(D .. "/b.png")
+    ok(file == D .. "/b.png", "dialogs: a tap on a picture picks it")
+    -- anything else, a PDF, is chosen from KOReader's own file list
+    file = nil
+    view:pickFile(D, function(p) file = p end, function(n) return n:lower():match("%.pdf$") ~= nil end, "pdfpen", nil, "From a PDF")
+    local kc = UIManager.shown
+    ok(kc.select_file and not kc.select_directory and kc.title == "From a PDF" and kc.path == D,
+        "dialogs: a PDF is chosen from KOReader's file list")
+    ok(kc.file_filter(D .. "/a.PDF") and not kc.file_filter(D .. "/notes.txt"), "dialogs: that list shows only PDFs")
+    ok(kc:onMenuSelect({ path = D .. "/Sub" }) == false and file == nil, "dialogs: a folder is left to KOReader's list")
+    kc:onMenuSelect({ path = D .. "/a.PDF" })
     ok(file == D .. "/a.PDF", "dialogs: a tap on a file picks it")
     local folder
     view:pickFolder(D, function(p) folder = p end)
