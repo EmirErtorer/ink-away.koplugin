@@ -4,6 +4,9 @@
 package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
 local L10n = require("ink/l10n")
 local Extract = require("tools/l10n/extract")
+local Check = require("tools/l10n/check")
+local Langs = require("tools/l10n/langs")
+local TextCase = require("ink/textcase")
 
 local checks, failures = 0, 0
 local function ok(cond, what)
@@ -339,19 +342,57 @@ do
     ok(has(translationProblems((make(same):gsub('"Language: es\\n"\n', "", 1))), "header"),
         "po check: a file with no language is found")
 
-    local langs = io.popen("ls ink/l10n/*.po 2>/dev/null")
-    for path in langs:lines() do
-        local f = assert(io.open(path, "rb"))
+    -- the strict checks (tools/l10n/check.lua) on made-up files: each must be able to fail
+    local function problemsOf(fill, fuzzyId)
+        local text = Extract.format(MSGS, fill, { code = "es", name = "Spanish", plural = "nplurals=2; plural=(n != 1);" },
+            fuzzyId and function(id) return id == fuzzyId end)
+        return Check.language(text, "es", MSGS)
+    end
+    local function anyHas(list, word)
+        for _i, p in ipairs(list) do if p:find(word, 1, true) then return true end end
+        return false
+    end
+    ok(#problemsOf(same) == 0, "strict: a complete file passes")
+    ok(anyHas(problemsOf(only(plain, "")), "not translated"), "strict: a message left empty is found")
+    ok(anyHas(problemsOf(same, plain), "fuzzy"), "strict: a fuzzy message is found")
+    ok(anyHas(problemsOf(only("Ink Away", "Ink-Away")), "Ink Away"), "strict: Ink Away changed or hyphenated is found")
+    ok(anyHas(problemsOf(only("Ink Away %1", "Tinta %1")), "Ink Away"), "strict: Ink Away missing is found")
+    ok(anyHas(problemsOf(only(" px", "px")), "space"), "strict: a lost leading space is found")
+    ok(anyHas(problemsOf(only("Could not delete it.\n", "No se pudo.")), "line breaks"), "strict: a lost line break is found")
+    ok(anyHas(problemsOf(only("PDF", "pdf")), "capitals"), "strict: lower case where the English is capitals is found")
+
+    local seen = {}
+    for _i, lang in ipairs(Langs) do
+        seen[lang.code .. ".po"] = true
+        local f = assert(io.open("ink/l10n/" .. lang.code .. ".po", "rb"), "no file for " .. lang.code)
         local text = f:read("*a")
         f:close()
-        local found = translationProblems(text)
-        ok(#found == 0, path .. ": " .. table.concat(found, "; "):sub(1, 400))
-        local n, first = untranslated(text)
-        if n > 0 then
-            print(("NOTE: %s leaves %d messages in English, e.g. %q"):format(path, n, first))
-        end
+        local found = Check.language(text, lang.code, MSGS)
+        ok(#found == 0, lang.code .. ": " .. table.concat(found, "; "):sub(1, 400))
     end
-    langs:close()
+    ok(#Langs == 10, "languages: the ten of tools/l10n/langs.lua are shipped")
+    local extra = {}
+    for name in io.popen("ls ink/l10n"):lines() do
+        if name:match("%.po$") and not seen[name] then extra[#extra + 1] = name end
+    end
+    ok(#extra == 0, "languages: every .po in ink/l10n is listed in tools/l10n/langs.lua (found: " .. table.concat(extra, ", ") .. ")")
+end
+
+-- ---- capitals and small letters per language ----------------------------------------------
+do
+    ok(TextCase.lower("İstanbul", "tr") == "istanbul", "case: Turkish İ lowercases to i")
+    ok(TextCase.lower("ISIK", "tr") == "ısık", "case: Turkish I lowercases to dotless ı")
+    ok(TextCase.upper("ışık", "tr") == "IŞIK", "case: Turkish dotless ı capitalises to I")
+    ok(TextCase.upper("izin", "tr") == "İZİN", "case: Turkish i capitalises to İ")
+    ok(TextCase.lower("ISIK", "en") == "isik", "case: English I lowercases to i")
+    ok(TextCase.lower("Él", "es") == "él", "case: Spanish accented capital lowercases")
+    ok(TextCase.lower("Ölçek", "de") == "ölçek", "case: German umlaut capital lowercases")
+    ok(TextCase.lower("Привет", "ru") == "привет", "case: Russian lowercases")
+    ok(TextCase.lower("Ωμέγα Ά", "el") == "ωμέγα ά", "case: Greek lowercases, accent kept")
+    ok(TextCase.upper("straße", "de") == "STRASSE", "case: German ß capitalises to SS")
+    ok(TextCase.upper("ά", "el") == "Α", "case: Greek capitals carry no accent")
+    ok(TextCase.lower("Łódź", "pl") == "łódź", "case: Polish lowercases")
+    ok(TextCase.lower("IRMAK", "tr_TR") == "ırmak", "case: a regional code uses its language")
 end
 
 -- ---- the tool writes the template however its path is spelt -----------------------------

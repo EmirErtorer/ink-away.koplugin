@@ -180,16 +180,30 @@ local function field(name, s)
 end
 
 -- The .pot text for `msgs` (msgid -> list of files), sorted by message. `fill(msgid)`
--- gives each msgstr; without it they are empty.
-function Extract.format(msgs, fill)
-    local out = {
-        "# Ink Away translation template, made by tools/l10n/extract.lua: do not edit it by hand.",
-        "# To translate, copy it to ink/l10n/<language>.po and fill in the msgstr lines.",
-        'msgid ""', 'msgstr ""',
-        '"Project-Id-Version: Ink Away\\n"', '"MIME-Version: 1.0\\n"',
-        '"Content-Type: text/plain; charset=UTF-8\\n"', '"Content-Transfer-Encoding: 8bit\\n"',
-        '"Language: \\n"',
-    }
+-- gives each msgstr; without it they are empty. For a language file, `lang` is
+-- { code, name, plural } for its header and `fuzzy(msgid)` says which messages
+-- keep their fuzzy mark.
+function Extract.format(msgs, fill, lang, fuzzy)
+    local out
+    if lang then
+        out = {
+            "# Ink Away: " .. lang.name .. " translation.",
+            'msgid ""', 'msgstr ""',
+            '"Project-Id-Version: Ink Away\\n"', '"MIME-Version: 1.0\\n"',
+            '"Content-Type: text/plain; charset=UTF-8\\n"', '"Content-Transfer-Encoding: 8bit\\n"',
+            '"Language: ' .. lang.code .. '\\n"', '"Language-Team: ' .. lang.name .. '\\n"',
+            '"Plural-Forms: ' .. lang.plural .. '\\n"',
+        }
+    else
+        out = {
+            "# Ink Away translation template, made by tools/l10n/extract.lua: do not edit it by hand.",
+            "# To translate, copy it to ink/l10n/<language>.po and fill in the msgstr lines.",
+            'msgid ""', 'msgstr ""',
+            '"Project-Id-Version: Ink Away\\n"', '"MIME-Version: 1.0\\n"',
+            '"Content-Type: text/plain; charset=UTF-8\\n"', '"Content-Transfer-Encoding: 8bit\\n"',
+            '"Language: \\n"',
+        }
+    end
     local ids = {}
     for id in pairs(msgs) do ids[#ids + 1] = id end
     table.sort(ids)
@@ -198,7 +212,10 @@ function Extract.format(msgs, fill)
         local refs = { unpack(msgs[id]) }
         table.sort(refs)
         for _j, file in ipairs(refs) do out[#out + 1] = "#: " .. file end
-        if #Extract.placeholders(id) > 0 then out[#out + 1] = "#, lua-format" end
+        local flags = {}
+        if fuzzy and fuzzy(id) then flags[#flags + 1] = "fuzzy" end
+        if #Extract.placeholders(id) > 0 then flags[#flags + 1] = "lua-format" end
+        if #flags > 0 then out[#out + 1] = "#, " .. table.concat(flags, ", ") end
         out[#out + 1] = field("msgid", id)
         out[#out + 1] = field("msgstr", fill and fill(id) or "")
     end

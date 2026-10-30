@@ -9,10 +9,19 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
-- Ink Away in Spanish (part of #24): with KOReader set to Español, Ink Away's
-  screens, menus and guide are in Spanish. The report on Test pen and touch
-  stays in English so it can go into a bug report. Other languages can follow:
-  a translation is one file, and CONTRIBUTING.md says how to send one.
+- Ink Away in ten languages (#24): German, Greek, Spanish, French, Italian, Polish,
+  Brazilian Portuguese, Portuguese, Russian and Turkish. With KOReader set to one
+  of them, Ink Away's screens, menus and guide are in that language, and Ink Away
+  stays Ink Away. The report on Test pen and touch stays in English so it can go
+  into a bug report. A translation is one file in `ink/l10n/`, and CONTRIBUTING.md
+  says how to fix or add one.
+- The tests refuse a message that is missing from any language, so no new text
+  ships untranslated: `luajit tools/l10n/lang.lua sync` adds it to every language,
+  and `check` lists what is left.
+
+### Fixed
+- A gesture shown in the middle of a sentence in the welcome notice is lowercased
+  the way the language writes it, so Turkish keeps its dotted and dotless i.
 
 ## [4.3.0] - 2026-10-24
 

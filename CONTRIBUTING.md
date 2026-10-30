@@ -111,35 +111,47 @@ their pattern.
 
 ## Translating
 
-Ink Away's words live in `ink/l10n/`, one `.po` file per language, and it uses the
-one for the language KOReader is set to. To add one:
+Ink Away speaks ten languages: German, Greek, Spanish, French, Italian, Polish,
+Brazilian Portuguese, Portuguese, Russian and Turkish. Its words live in
+`ink/l10n/`, one `.po` file per language, named with the code KOReader uses
+(`it_IT`, `pt_BR`, `tr`), and it uses the one for the language KOReader is set to.
+"Ink Away" itself is a name and is never translated, in any language.
 
-1. Copy `ink/l10n/ink-away.pot` to `ink/l10n/<code>.po`, with the code KOReader
-   uses for the language (`it`, `pt_BR`, `tr`).
-2. Put the language in its `Language:` header, then fill in the `msgstr` lines.
-   Keep the placeholders: `%1` and `%2` can move around the sentence, but `%s`,
-   `%d` and `%.1f` must stay in the order they have in English (the code fills
-   them in that order), and a percent sign is written `%%`. Keep the `\n` line
-   breaks, and use the words KOReader itself uses for the same thing, so Ink Away
-   blends in. The `#:` lines say which file shows a message.
-3. Run `luajit tests/l10n.lua`. It checks that the file names its language, has
-   nothing the code no longer says, and keeps every placeholder as above. It also
-   says how many messages are still in English.
+To fix a translation, edit its `.po` file and run `luajit tools/l10n/lang.lua check`.
+Keep the placeholders: `%1` and `%2` can move around the sentence, but `%s`, `%d`
+and `%.1f` must stay in the order they have in English (the code fills them in that
+order), and a percent sign is written `%%`. Keep the `\n` line breaks, and use the
+words KOReader itself uses for the same thing, so Ink Away blends in. Text the
+English writes in capitals stays in capitals, and the names in the checker's list
+(Ink Away, KOReader, Wi-Fi, Bookshelf and a few more) stay as they are.
 
-A message left empty (or marked `#, fuzzy`) shows in English, so a partly done
-translation is fine to send.
+To add a language:
 
-Two messages are lowercased in the middle of a sentence: the four swipe
-descriptions in `ink/welcome.lua` ("Swipe up along the right edge" and so on).
-Lua's `lower()` only changes A to Z, so write them as noun phrases that start with
-one of those letters, or say so in the pull request and we will give your language
-a lowercase message of its own.
+1. Add a line for it to `tools/l10n/langs.lua`, then run
+   `luajit tools/l10n/lang.lua new <code>`.
+2. Translate every message. `luajit tools/l10n/lang.lua export <code>` lists what is
+   left, numbered, and `import <code> <file>` reads lines of
+   `number<TAB>first five letters<TAB>translation` back in.
+3. Run `luajit tools/l10n/lang.lua check` until it says 0 problems. If your language
+   writes its small letters differently from A to Z (Turkish does), check that
+   `ink/textcase.lua` knows it.
 
-When you add or change text in the code, run `luajit tools/l10n/extract.lua` to
-update the template; the tests fail until you do. Text the views pass to `_()`
-through a variable (the guide, welcome, action, pen and brush data) is read from the
-list of files at the top of that tool, and a test fails when a file not yet looked at
-starts doing that: add its source to the list and to the test.
+Nothing ships untranslated. The checks run in `luajit tests/run.lua`, so a message
+that is missing, empty or marked `#, fuzzy` in any language fails the tests, as
+does a changed placeholder, a lost line break, a renamed name or a stale template.
+
+When you add or change text in the code:
+
+1. Wrap it in `_()` and put values in with `%1` (`T(_("Saved %1"), name)`) rather
+   than joining a phrase to them.
+2. Run `luajit tools/l10n/lang.lua sync`. It rewrites `ink/l10n/ink-away.pot` and
+   adds the new message, empty, to every language.
+3. Translate it in every language in the same commit, then run `check`.
+
+Text the views pass to `_()` through a variable (the guide, welcome, action, pen and
+brush data) is read from the list of files at the top of `tools/l10n/extract.lua`,
+and a test fails when a file not yet looked at starts doing that: add its source to
+the list and to the test.
 
 ## Code style
 
