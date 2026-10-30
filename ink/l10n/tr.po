@@ -331,8 +331,8 @@ msgid "Also look inside pages (slower)"
 msgstr "Sayfaların içine de bak (daha yavaş)"
 
 #: ink/view/exportbook.lua
-msgid "An editable PDF can't hold these as annotations, so they would be left out:"
-msgstr "Düzenlenebilir bir PDF bunları ek açıklama olarak tutamaz, bu yüzden dışarıda kalırlar:"
+msgid "An editable PDF can't hold these as annotations:"
+msgstr "Düzenlenebilir bir PDF bunları ek açıklama olarak tutamaz:"
 
 #: ink/guide.lua
 #: ink/welcome.lua
@@ -1977,6 +1977,15 @@ msgstr "Fildişi ve gümüş"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "KOReader'ın hareket yöneticisi kapalı, bu yüzden Ink Away bunlara bir hareket veremedi."
 
+#: ink/view/exportbook.lua
+msgid "Keep as pictures"
+msgstr "Resim olarak tut"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."
+msgstr "“Resim olarak tut”, bunların bulunduğu %d sayfanın üzerine mürekkebinizin bir resmini koyar, böylece çizdiğiniz gibi görünürler. Oradaki mürekkep artık çizgi çizgi düzenlenemez; diğer tüm sayfalar düzenlenebilir kalır. “Dışarıda bırak” PDF'yi onlarsız yazar."
+
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Gece modunda renkleri koru"
@@ -2829,8 +2838,8 @@ msgstr "Sayfalar %d–%d (değiştirmek için dokunun)"
 
 #: ink/view/exportbook.lua
 #, lua-format
-msgid "Pages with ink that you added to the notebook: %d"
-msgstr "Deftere eklediğiniz mürekkepli sayfalar: %d"
+msgid "Pages you added to the notebook aren't in the original PDF, so their ink is left out either way: %d"
+msgstr "Deftere eklediğiniz sayfalar özgün PDF'de yoktur, bu yüzden mürekkepleri her durumda dışarıda kalır: %d"
 
 #: ink/guide.lua
 msgid "Pages, papers and PDFs"
@@ -3284,10 +3293,6 @@ msgstr "Kaydet"
 msgid "Save as bookshelf ornament"
 msgstr "Bookshelf süsü olarak kaydet"
 
-#: ink/view/exportbook.lua
-msgid "Save as pictures"
-msgstr "Resim olarak kaydet"
-
 #: ink/view/notebook.lua
 msgid "Save as template…"
 msgstr "Şablon olarak kaydet…"
@@ -3383,10 +3388,6 @@ msgstr "Her sayfayı mürekkebinizle birlikte bir resim olarak kaydeder. Her yer
 #, lua-format
 msgid "Saving %d page(s) as images"
 msgstr "%d sayfa resim olarak kaydediliyor"
-
-#: ink/view/exportbook.lua
-msgid "Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected."
-msgstr "Sayfaları resim olarak kaydetmek her şeyi korur, ancak metni seçilemeyen daha büyük bir PDF oluşturur."
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
@@ -3621,6 +3622,10 @@ msgstr "Yumuşak kenar"
 #: ink/view/exportbook.lua
 msgid "Some items can't stay editable"
 msgstr "Bazı öğeler düzenlenebilir kalamaz"
+
+#: ink/view/exportbook.lua
+msgid "Some pages could not be kept as pictures in this PDF, so the items on them were left out."
+msgstr "Bazı sayfalar bu PDF'de resim olarak tutulamadı, bu yüzden üzerlerindeki öğeler dışarıda bırakıldı."
 
 #: ink/view/imagebrowser.lua
 msgid "Something went wrong adding that image. Please try another."

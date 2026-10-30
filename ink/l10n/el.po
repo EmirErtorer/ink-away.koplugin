@@ -331,8 +331,8 @@ msgid "Also look inside pages (slower)"
 msgstr "Αναζήτηση και μέσα στις σελίδες (πιο αργά)"
 
 #: ink/view/exportbook.lua
-msgid "An editable PDF can't hold these as annotations, so they would be left out:"
-msgstr "Ένα επεξεργάσιμο PDF δεν μπορεί να κρατήσει αυτά ως σχολιασμούς, γι’ αυτό θα παραλείπονταν:"
+msgid "An editable PDF can't hold these as annotations:"
+msgstr "Ένα επεξεργάσιμο PDF δεν μπορεί να κρατήσει αυτά ως σχολιασμούς:"
 
 #: ink/guide.lua
 #: ink/welcome.lua
@@ -1977,6 +1977,15 @@ msgstr "Ελεφαντόδοντο και ασήμι"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Ο διαχειριστής χειρονομιών του KOReader είναι ανενεργός, οπότε το Ink Away δεν μπόρεσε να τους δώσει χειρονομία."
 
+#: ink/view/exportbook.lua
+msgid "Keep as pictures"
+msgstr "Διατήρηση ως εικόνες"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."
+msgstr "Η «Διατήρηση ως εικόνες» βάζει μια εικόνα του μελανιού σας πάνω από τις %d σελίδες που τα έχουν, ώστε να μοιάζουν όπως τις σχεδιάσατε. Το μελάνι εκεί δεν μπορεί πλέον να επεξεργαστεί γραμμή προς γραμμή· όλες οι άλλες σελίδες μένουν επεξεργάσιμες. Το «Να παραλειφθούν» γράφει το PDF χωρίς αυτά."
+
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Διατήρηση χρωμάτων στη νυχτερινή λειτουργία"
@@ -2829,8 +2838,8 @@ msgstr "Σελίδες %d–%d (πατήστε για αλλαγή)"
 
 #: ink/view/exportbook.lua
 #, lua-format
-msgid "Pages with ink that you added to the notebook: %d"
-msgstr "Σελίδες με μελάνι που προσθέσατε στο σημειωματάριο: %d"
+msgid "Pages you added to the notebook aren't in the original PDF, so their ink is left out either way: %d"
+msgstr "Οι σελίδες που προσθέσατε στο σημειωματάριο δεν υπάρχουν στο αρχικό PDF, γι’ αυτό το μελάνι τους παραλείπεται σε κάθε περίπτωση: %d"
 
 #: ink/guide.lua
 msgid "Pages, papers and PDFs"
@@ -3284,10 +3293,6 @@ msgstr "Αποθήκευση"
 msgid "Save as bookshelf ornament"
 msgstr "Αποθήκευση ως στολίδι του Bookshelf"
 
-#: ink/view/exportbook.lua
-msgid "Save as pictures"
-msgstr "Αποθήκευση ως εικόνες"
-
 #: ink/view/notebook.lua
 msgid "Save as template…"
 msgstr "Αποθήκευση ως πρότυπο…"
@@ -3383,10 +3388,6 @@ msgstr "Αποθηκεύει κάθε σελίδα ως εικόνα με το �
 #, lua-format
 msgid "Saving %d page(s) as images"
 msgstr "Αποθήκευση %d σελίδων ως εικόνες"
-
-#: ink/view/exportbook.lua
-msgid "Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected."
-msgstr "Η αποθήκευση των σελίδων ως εικόνες διατηρεί τα πάντα, αλλά δίνει μεγαλύτερο PDF με κείμενο που δεν μπορεί να επιλεγεί."
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
@@ -3621,6 +3622,10 @@ msgstr "Απαλή άκρη"
 #: ink/view/exportbook.lua
 msgid "Some items can't stay editable"
 msgstr "Ορισμένα στοιχεία δεν μπορούν να παραμείνουν επεξεργάσιμα"
+
+#: ink/view/exportbook.lua
+msgid "Some pages could not be kept as pictures in this PDF, so the items on them were left out."
+msgstr "Ορισμένες σελίδες δεν μπόρεσαν να διατηρηθούν ως εικόνες σε αυτό το PDF, γι’ αυτό τα στοιχεία τους παραλείφθηκαν."
 
 #: ink/view/imagebrowser.lua
 msgid "Something went wrong adding that image. Please try another."

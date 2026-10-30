@@ -185,10 +185,10 @@ function InkAwayView:openExport()
     local content_w = self:sheetWidth()
     local closeSelf = function() self:closeSheet("_save_dialog") end
     local reopen = function() self:openExport() end   -- rebuild after a choice changes the layout
-    local left, added
+    local left, added, left_pages
     if editable then
         local _w
-        _w, left, added = self:editableWork()
+        _w, left, added, left_pages = self:editableWork()
     end
     local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
@@ -313,8 +313,9 @@ function InkAwayView:openExport()
             if editable then
                 if left.total + added > 0 then
                     closeSelf()
-                    self:exportLeftOutSheet(left, added, function() self:promptExportName() end,
-                        function() o.pdf_type = "pictures"; self:promptExportName() end)
+                    self:exportLeftOutSheet(left, added, left_pages,
+                        function() o.keep_pictures = false; self:promptExportName() end,
+                        function() o.keep_pictures = true; self:promptExportName() end)
                     return
                 end
             elseif paged and #self:exportPageList() == 0 then
@@ -710,7 +711,8 @@ function InkAwayView:runExportJob(job, o)
             if o.pdf then
                 -- make the PDF open as a full page with no auto-crop the first time
                 self:seedPdfView(o.path)
-                self:ask{ title = _("PDF saved"), text = o.path .. "\n\n" .. _("Open the PDF now?"),
+                local note = o.note and o.note()
+                self:ask{ title = _("PDF saved"), text = o.path .. (note and ("\n\n" .. note) or "") .. "\n\n" .. _("Open the PDF now?"),
                     ok_text = _("Open"), ok_icon = "open", on_ok = function() self:openExportedPDF(o.path) end }
             elseif o.images then
                 self:tell(string.format(_("Saved %d page(s) as images:\n%s"), o.n, o.images))

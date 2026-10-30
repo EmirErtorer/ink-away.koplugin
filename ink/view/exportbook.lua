@@ -17,6 +17,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
+local ffi = require("ffi")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -27,6 +28,10 @@ local Font = require("ui/font")
 local logger = require("logger")
 local _ = require("ink/l10n")
 local Annots = require("ink/export/annots")
+local BookInk = require("ink/reader/bookink")
+local Canvas = require("ink/canvas")
+local Export = require("ink/export")
+local Overlay = require("ink/export/pdfoverlay")
 local BookExport = require("ink/reader/bookexport")
 local ImageProc = require("ink/imageproc")
 local Links = require("ink/links")
@@ -111,14 +116,76 @@ local function fitMap(doc, src, W, H)
     return { s = dw / native.w, ox = math.floor((W - dw) / 2), oy = math.floor((H - dh) / 2) }
 end
 
+-- A page's ink as a picture to lay over the page: `ops` drawn on a transparent
+-- canvas of cw x ch px, cut to what shows inside the page (the page covers
+-- m.ox, m.oy, then pw*m.s, ph*m.s px of it), and packed (see Overlay.pack) with the
+-- box it covers in the page's units. Returns nil when nothing shows.
+function InkAwayView:overlayPicture(ops, cw, ch, m, pw, ph)
+    local c = Canvas.new(cw, ch)
+    c:setOps(ops)
+    local buf, _n, ow, oh = Export.buildRGBA(c, nil, nil, self:exportDress({ style = "blank" }))
+    local x0, y0 = math.max(0, math.floor(m.ox)), math.max(0, math.floor(m.oy))
+    local x1, y1 = math.min(ow, math.ceil(m.ox + pw * m.s)), math.min(oh, math.ceil(m.oy + ph * m.s))
+    local bx0, by0, bx1, by1 = math.huge, math.huge, -1, -1
+    for y = y0, y1 - 1 do
+        local row = y * ow
+        for x = x0, x1 - 1 do
+            if buf[(row + x) * 4 + 3] > 0 then
+                if x < bx0 then bx0 = x end
+                if x > bx1 then bx1 = x end
+                if y < by0 then by0 = y end
+                if y > by1 then by1 = y end
+            end
+        end
+    end
+    if bx1 < 0 then return nil end
+    local w, h = bx1 - bx0 + 1, by1 - by0 + 1
+    local rgb, al = ffi.new("uint8_t[?]", w * h * 3), ffi.new("uint8_t[?]", w * h)
+    local solid = 0
+    for y = by0, by1 do
+        for x = bx0, bx1 do if buf[(y * ow + x) * 4 + 3] == 255 then solid = solid + 1 end end
+    end
+    -- a picture with a good deal of solid colour (a photo) has its colour as a JPEG, a
+    -- fifth of the size; ink on nothing stays lossless. Where nothing shows, the colour
+    -- of the pixel before it fills in, so the JPEG has no hard edge to fringe.
+    local jpeg = w * h >= 20000 and solid >= 15000
+    local k = 0
+    for y = by0, by1 do
+        local r, g, b = 128, 128, 128
+        for x = bx0, bx1 do
+            local o = (y * ow + x) * 4
+            local a = buf[o + 3]
+            if a > 0 or not jpeg then r, g, b = buf[o], buf[o + 1], buf[o + 2] end
+            rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], al[k] = r, g, b, a
+            k = k + 1
+        end
+    end
+    local bytes = ffi.string(rgb, w * h * 3)
+    if jpeg then
+        local tmp = Storage.settingsDir() .. "/inkaway_overlay.jpg"
+        local ok = pcall(function()
+            return require("ffi/jpeg").encodeToFile(tmp, rgb, w, h, 3, 88, w * 3)
+        end)
+        local f = ok and io.open(tmp, "rb")
+        if f then bytes = f:read("*a"); f:close() else jpeg = false end
+        os.remove(tmp)
+    end
+    return Overlay.pack(w, h, bytes, ffi.string(al, w * h),
+        (bx0 - m.ox) / m.s, (by0 - m.oy) / m.s, (bx1 + 1 - m.ox) / m.s, (by1 + 1 - m.oy) / m.s, jpeg)
+end
+
 -- Everything an editable PDF holds: the pages' annotations (see Pdfedit.job), how
--- many items it has to leave out (Annots.leftOut) and how many pages were added
--- to a notebook that the original does not have.
+-- many items it cannot hold as annotations (Annots.leftOut) and on how many pages,
+-- and how many notebook pages were added that the original does not have. A page
+-- with such items gets a picture of its ink over it (`overlay`) unless the export
+-- is set to leave them out (`keep_pictures` false).
 function InkAwayView:editableWork()
+    local o = self:exportOptions()
+    local keep = o.keep_pictures ~= false
     local lists, by, work, added = {}, {}, {}, 0
     local function page(p)
         local w = by[p]
-        if not w then w = { page = p, groups = {}, marks = {} }; by[p] = w; work[#work + 1] = w end
+        if not w then w = { page = p, groups = {}, marks = {}, ops = {}, geo = nil }; by[p] = w; work[#work + 1] = w end
         return w
     end
     if self.book then
@@ -130,14 +197,27 @@ function InkAwayView:editableWork()
         local pages = {}
         for p in pairs(seen) do pages[#pages + 1] = p end
         table.sort(pages)
+        local picture = function(path) return BookInk.picturePath(book.sidecar, path) end
+        local Document = require("document/document")
+        local W, H = self.view.canvas_w, self.view.canvas_h
         for _i, p in ipairs(pages) do
-            local ops = BookExport.pageOps(items[p], nil, 1)
+            local ops = BookExport.pageOps(items[p], nil, 1, picture)
             lists[#lists + 1] = ops
             local w = page(p)
             for _j, g in ipairs(Annots.convert(ops, { s = 1, ox = 0, oy = 0 })) do w.groups[#w.groups + 1] = g end
             for _j, h in ipairs(marks[p] or {}) do
                 local _c, hex = BookExport.colour(h.color)
                 w.marks[#w.marks + 1] = { pboxes = h.pboxes, drawer = h.drawer, color = hex, note = h.note }
+            end
+            if #ops > 0 then
+                -- the picture is drawn at the screen's resolution, as a picture PDF's pages are
+                local native = Document.getNativePageDimensions(book.ui.document, p)
+                if native and native.w and native.h then
+                    local z = math.min(W / native.w, H / native.h)
+                    w.geo = { cw = math.max(1, math.floor(native.w * z + 0.5)), ch = math.max(1, math.floor(native.h * z + 0.5)),
+                        m = { s = z, ox = 0, oy = 0 }, pw = native.w, ph = native.h,
+                        ops = function() return BookExport.pageOps(items[p], nil, z, picture) end }
+                end
             end
         end
     else
@@ -149,10 +229,13 @@ function InkAwayView:editableWork()
             if #ops > 0 then
                 if pg.src then
                     local m = self._nb_pdf_doc and fitMap(self._nb_pdf_doc, pg.src, nb.w, nb.h)
-                    if m then
+                    local native = m and require("document/document").getNativePageDimensions(self._nb_pdf_doc, pg.src)
+                    if m and native then
                         lists[#lists + 1] = ops
                         local w = page(pg.src)
                         for _j, g in ipairs(Annots.convert(ops, m)) do w.groups[#w.groups + 1] = g end
+                        for _j, op in ipairs(ops) do w.ops[#w.ops + 1] = op end
+                        w.geo = { cw = nb.w, ch = nb.h, m = m, pw = native.w, ph = native.h, ops = function() return w.ops end }
                     end
                 elseif #Annots.settle(ops) > 0 then
                     added = added + 1
@@ -161,12 +244,25 @@ function InkAwayView:editableWork()
         end
         table.sort(work, function(a, b) return a.page < b.page end)
     end
-    return work, Annots.leftOut(lists), added
+    -- the pages with something an annotation cannot hold
+    local left_pages = 0
+    for _i, w in ipairs(work) do
+        if w.geo and Annots.leftOut({ w.geo.ops() }).total > 0 then
+            left_pages = left_pages + 1
+            if keep then
+                local g = w.geo
+                w.overlay = function() return self:overlayPicture(g.ops(), g.cw, g.ch, g.m, g.pw, g.ph) end
+            end
+        end
+    end
+    return work, Annots.leftOut(lists), added, left_pages
 end
 
 -- The sheet that says what an editable PDF cannot hold, with the two ways on:
--- leave those out, or save the pages as pictures, which keeps everything.
-function InkAwayView:exportLeftOutSheet(left, added, on_leave, on_pictures)
+-- keep those pages' ink as a picture over them, or leave the items out. When no
+-- page can take a picture (only ink on pages added to a notebook), there is just
+-- the one way on.
+function InkAwayView:exportLeftOutSheet(left, added, left_pages, on_leave, on_pictures)
     local field = "_export_left"
     self:closeSheet(field)
     local content_w, gap = self:sheetWidth()
@@ -176,23 +272,31 @@ function InkAwayView:exportLeftOutSheet(left, added, on_leave, on_pictures)
     for _i, k in ipairs(Annots.LEFT_OUT) do
         if left[k] > 0 then lines[#lines + 1] = string.format(names[k], left[k]) end
     end
-    if added > 0 then lines[#lines + 1] = string.format(_("Pages with ink that you added to the notebook: %d"), added) end
-    local text = _("An editable PDF can't hold these as annotations, so they would be left out:") .. "\n\n"
-        .. table.concat(lines, "\n") .. "\n\n"
-        .. _("Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected.")
+    local parts = {}
+    if #lines > 0 then
+        parts[#parts + 1] = _("An editable PDF can't hold these as annotations:") .. "\n\n" .. table.concat(lines, "\n")
+        parts[#parts + 1] = string.format(_("Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."), left_pages)
+    end
+    if added > 0 then
+        parts[#parts + 1] = string.format(_("Pages you added to the notebook aren't in the original PDF, so their ink is left out either way: %d"), added)
+    end
+    local text = table.concat(parts, "\n\n")
     local function close() self:closeSheet(field) end
     local build = function()
         local w = math.floor((content_w - gap) / 2)
         local g = VerticalGroup:new{ align = "left",
             self:sheetTitle(_("Some items can't stay editable"), content_w, _("Cancel"), close) }
         table.insert(g, VerticalSpan:new{ width = Screen:scaleBySize(10) })
-        table.insert(g, TextBoxWidget:new{ text = text, width = content_w,
-            face = Font:getFace("cfont", 16) })
+        table.insert(g, TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 16) })
         table.insert(g, VerticalSpan:new{ width = Screen:scaleBySize(18) })
-        table.insert(g, HorizontalGroup:new{ align = "center",
-            self:actionButton(_("Leave them out"), w, function() close(); on_leave() end),
-            HorizontalSpan:new{ width = gap },
-            self:actionButton(_("Save as pictures"), w, function() close(); on_pictures() end, true) })
+        if left_pages > 0 then
+            table.insert(g, HorizontalGroup:new{ align = "center",
+                self:actionButton(_("Leave them out"), w, function() close(); on_leave() end),
+                HorizontalSpan:new{ width = gap },
+                self:actionButton(_("Keep as pictures"), w, function() close(); on_pictures() end, true) })
+        else
+            table.insert(g, self:actionButton(_("Leave them out"), content_w, function() close(); on_leave() end, true))
+        end
         return g
     end
     self:showSheet(field, build)
@@ -212,7 +316,10 @@ function InkAwayView:writeEditablePDF(path)
         return
     end
     self:runExportJob(job, { path = path, n = #work + 1, title = _("Adding your annotations to the PDF"),
-        stop = _("Stop exporting? The PDF will not be saved."), pdf = true })
+        stop = _("Stop exporting? The PDF will not be saved."), pdf = true,
+        note = function()
+            return job.fell_back and _("Some pages could not be kept as pictures in this PDF, so the items on them were left out.")
+        end })
 end
 
 ------------------------------------------------------------------------------
@@ -276,6 +383,7 @@ function InkAwayView:pdfBookSpec(o)
     local book = self.book
     local pages = self:exportPageList()
     local items, marks = BookExport.inkByPage(book), BookExport.marksByPage(book)
+    local picture = function(path) return BookInk.picturePath(book.sidecar, path) end
     local W, H = self.view.canvas_w, self.view.canvas_h
     local doc
     local ok, d = pcall(function() return require("document/documentregistry"):openDocument(BookExport.pdfPath(book)) end)
@@ -298,7 +406,7 @@ function InkAwayView:pdfBookSpec(o)
         box = function(i) local g = geom(i); return g.pw, g.ph end,
         pages = function(i)
             local g = geom(i)
-            return BookExport.pageOps(items[pages[i]], marks[pages[i]], g.z)
+            return BookExport.pageOps(items[pages[i]], marks[pages[i]], g.z, picture)
         end,
         done = function() if doc then pcall(function() doc:close() end); doc = nil end end }
     if o.include_bg and doc then

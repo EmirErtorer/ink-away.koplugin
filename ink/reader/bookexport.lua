@@ -100,12 +100,16 @@ BookExport.colour = highlightColour
 
 -- A PDF page's ink and highlights as ops in the page's units times `s` (the
 -- size the page is drawn at; 1 for the page's own units). `items` are the book's
--- ink items on the page (see inkByPage), `marks` the page's highlights.
-function BookExport.pageOps(items, marks, s)
+-- ink items on the page (see inkByPage), `marks` the page's highlights, and
+-- `picture(path)` gives a placed picture's file (the book keeps its pictures
+-- beside its ink, see ink/reader/bookink.lua).
+function BookExport.pageOps(items, marks, s, picture)
     local ops = {}
     for _i, item in ipairs(items or {}) do
         local a = item.a
-        ops[#ops + 1] = Place.moved(item.op, a.x * s, a.y * s, s)
+        local op = Place.moved(item.op, a.x * s, a.y * s, s)
+        if op.kind == "image" and picture then op.path = picture(op.path) end
+        ops[#ops + 1] = op
     end
     for _i, h in ipairs(marks or {}) do
         local c = highlightColour(h.color)

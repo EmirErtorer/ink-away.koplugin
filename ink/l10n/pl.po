@@ -331,8 +331,8 @@ msgid "Also look inside pages (slower)"
 msgstr "Szukaj także wewnątrz stron (wolniej)"
 
 #: ink/view/exportbook.lua
-msgid "An editable PDF can't hold these as annotations, so they would be left out:"
-msgstr "Edytowalny PDF nie może zawierać ich jako adnotacji, więc zostałyby pominięte:"
+msgid "An editable PDF can't hold these as annotations:"
+msgstr "Edytowalny PDF nie może zawierać ich jako adnotacji:"
 
 #: ink/guide.lua
 #: ink/welcome.lua
@@ -1977,6 +1977,15 @@ msgstr "Kość słoniowa i srebro"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Menedżer gestów KOReadera jest wyłączony, więc Ink Away nie mógł im nadać gestu."
 
+#: ink/view/exportbook.lua
+msgid "Keep as pictures"
+msgstr "Zachowaj jako obrazy"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."
+msgstr "„Zachowaj jako obrazy” kładzie obraz twojego tuszu na stronach, które je mają (%d), więc wyglądają tak, jak zostały narysowane. Ich tuszu nie da się tam już edytować kreska po kresce; każda inna strona pozostaje edytowalna. „Pomiń je” zapisuje PDF bez nich."
+
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Zachowaj kolory w trybie nocnym"
@@ -2829,8 +2838,8 @@ msgstr "Strony %d–%d (dotknij, aby zmienić)"
 
 #: ink/view/exportbook.lua
 #, lua-format
-msgid "Pages with ink that you added to the notebook: %d"
-msgstr "Strony z tuszem dodane do notatnika: %d"
+msgid "Pages you added to the notebook aren't in the original PDF, so their ink is left out either way: %d"
+msgstr "Stron dodanych do notatnika nie ma w oryginalnym pliku PDF, więc ich tusz jest w każdym przypadku pomijany: %d"
 
 #: ink/guide.lua
 msgid "Pages, papers and PDFs"
@@ -3284,10 +3293,6 @@ msgstr "Zapisz"
 msgid "Save as bookshelf ornament"
 msgstr "Zapisz jako ozdobę Bookshelf"
 
-#: ink/view/exportbook.lua
-msgid "Save as pictures"
-msgstr "Zapisz jako obrazy"
-
 #: ink/view/notebook.lua
 msgid "Save as template…"
 msgstr "Zapisz jako szablon…"
@@ -3383,10 +3388,6 @@ msgstr "Zapisuje każdą stronę jako obraz z twoim tuszem. Wygląda wszędzie t
 #, lua-format
 msgid "Saving %d page(s) as images"
 msgstr "Zapisywanie stron jako obrazy: %d"
-
-#: ink/view/exportbook.lua
-msgid "Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected."
-msgstr "Zapisanie stron jako obrazów zachowuje wszystko, ale daje większy plik PDF, którego tekstu nie można zaznaczać."
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
@@ -3621,6 +3622,10 @@ msgstr "Miękka krawędź"
 #: ink/view/exportbook.lua
 msgid "Some items can't stay editable"
 msgstr "Niektóre elementy nie mogą pozostać edytowalne"
+
+#: ink/view/exportbook.lua
+msgid "Some pages could not be kept as pictures in this PDF, so the items on them were left out."
+msgstr "Niektórych stron nie dało się zachować jako obrazy w tym pliku PDF, więc znajdujące się na nich elementy pominięto."
 
 #: ink/view/imagebrowser.lua
 msgid "Something went wrong adding that image. Please try another."

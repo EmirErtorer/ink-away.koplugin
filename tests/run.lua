@@ -28,7 +28,7 @@ end
 local REAL = {}
 if exists(EMU .. "/luajit") then
     local here = io.popen("pwd"):read("*l")
-    for _, t in ipairs({ "tests/realbb/eraser.lua", "tests/realbb/colour.lua", "tests/realbb/pdfexport.lua", "tests/realbb/pdfedit.lua",
+    for _, t in ipairs({ "tests/realbb/eraser.lua", "tests/realbb/colour.lua", "tests/realbb/pdfexport.lua", "tests/realbb/pdfedit.lua", "tests/realbb/pdfoverlay.lua",
         "tests/realbb/wipe.lua", "tests/realbb/accent.lua", "tests/realbb/selection.lua",
         "tests/realbb/android.lua", "tests/realbb/wash.lua", "tests/realbb/smudge.lua", "tests/realbb/greylive.lua",
         "tests/realbb/theme.lua", "tests/realbb/paper.lua", "tests/realbb/layers.lua",

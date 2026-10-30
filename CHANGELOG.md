@@ -15,7 +15,8 @@ versions marked *Prerelease* were test builds.
   annotations: the text stays selectable, the file stays about the original's size
   (a 12 page PDF no longer turns into 12 MB of pictures) and any PDF viewer can edit
   or remove them. Text boxes, pictures and fills can't be annotations, so the export
-  lists them first and lets you leave them out or save the pages as pictures instead.
+  lists them first and either leaves them out or keeps the ink of just those pages as
+  a picture laid over the page, while every other page stays editable.
 - Exporting a book you annotate, from Export in Book ink settings or from Tools, Ink
   Away: an EPUB, MOBI or any reflowing book becomes a fixed PDF of pictures laid out
   as you read it now, with ink, shapes and highlights exactly where they are on the

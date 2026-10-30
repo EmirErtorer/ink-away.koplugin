@@ -331,8 +331,8 @@ msgid "Also look inside pages (slower)"
 msgstr "Procurar também dentro das páginas (mais lento)"
 
 #: ink/view/exportbook.lua
-msgid "An editable PDF can't hold these as annotations, so they would be left out:"
-msgstr "Um PDF editável não pode guardar isto como anotações, então ficaria de fora:"
+msgid "An editable PDF can't hold these as annotations:"
+msgstr "Um PDF editável não pode guardar isto como anotações:"
 
 #: ink/guide.lua
 #: ink/welcome.lua
@@ -1977,6 +1977,15 @@ msgstr "Marfim e prata"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "O gerenciador de gestos do KOReader está desligado, então o Ink Away não pôde dar um gesto a eles."
 
+#: ink/view/exportbook.lua
+msgid "Keep as pictures"
+msgstr "Manter como imagens"
+
+#: ink/view/exportbook.lua
+#, lua-format
+msgid "Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."
+msgstr "“Manter como imagens” coloca uma imagem da sua tinta sobre as %d página(s) que os têm, para que fiquem como você as desenhou. A tinta ali não poderá mais ser editada traço a traço; todas as outras páginas continuam editáveis. “Deixar de fora” grava o PDF sem eles."
+
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Manter as cores no modo noturno"
@@ -2829,8 +2838,8 @@ msgstr "Páginas %d–%d (toque para mudar)"
 
 #: ink/view/exportbook.lua
 #, lua-format
-msgid "Pages with ink that you added to the notebook: %d"
-msgstr "Páginas com tinta que você adicionou ao caderno: %d"
+msgid "Pages you added to the notebook aren't in the original PDF, so their ink is left out either way: %d"
+msgstr "As páginas que você adicionou ao caderno não estão no PDF original, então a tinta delas fica de fora de qualquer forma: %d"
 
 #: ink/guide.lua
 msgid "Pages, papers and PDFs"
@@ -3284,10 +3293,6 @@ msgstr "Salvar"
 msgid "Save as bookshelf ornament"
 msgstr "Salvar como ornamento do Bookshelf"
 
-#: ink/view/exportbook.lua
-msgid "Save as pictures"
-msgstr "Salvar como imagens"
-
 #: ink/view/notebook.lua
 msgid "Save as template…"
 msgstr "Salvar como modelo…"
@@ -3383,10 +3388,6 @@ msgstr "Salva cada página como uma imagem com a sua tinta por cima. Fica igual 
 #, lua-format
 msgid "Saving %d page(s) as images"
 msgstr "Salvando %d página(s) como imagens"
-
-#: ink/view/exportbook.lua
-msgid "Saving the pages as pictures keeps everything, but makes a bigger PDF whose text can't be selected."
-msgstr "Salvar as páginas como imagens mantém tudo, mas gera um PDF maior cujo texto não pode ser selecionado."
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
@@ -3621,6 +3622,10 @@ msgstr "Borda suave"
 #: ink/view/exportbook.lua
 msgid "Some items can't stay editable"
 msgstr "Alguns itens não podem continuar editáveis"
+
+#: ink/view/exportbook.lua
+msgid "Some pages could not be kept as pictures in this PDF, so the items on them were left out."
+msgstr "Algumas páginas não puderam ser mantidas como imagens neste PDF, então os itens delas ficaram de fora."
 
 #: ink/view/imagebrowser.lua
 msgid "Something went wrong adding that image. Please try another."
