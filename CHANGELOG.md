@@ -7,6 +7,9 @@ is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/rele
 versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
+### Added
+
+- Add Simplified Chinese (zh_CN) translation by adding file `ink/l10n/zh_CN.po`
 
 ## [4.4.0] - 2026-10-31
 
