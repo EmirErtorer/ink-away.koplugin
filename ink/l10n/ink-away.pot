@@ -1074,6 +1074,7 @@ msgstr ""
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1718,6 +1719,10 @@ msgstr ""
 msgid "Highlight"
 msgstr ""
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr ""
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr ""
@@ -1733,6 +1738,10 @@ msgstr ""
 
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
 msgstr ""
 
 #: ink/view/textformat.lua
@@ -3166,6 +3175,10 @@ msgstr ""
 msgid "Remove background"
 msgstr ""
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr ""
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr ""
@@ -3212,6 +3225,10 @@ msgstr ""
 
 #: ink/notebookcover.lua
 msgid "Reporter pad"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
 msgstr ""
 
 #: ink/view/updates.lua
@@ -4016,6 +4033,10 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
 msgstr ""
 
 #: ink/view/textformat.lua

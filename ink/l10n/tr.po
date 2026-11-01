@@ -1085,6 +1085,7 @@ msgstr "Bir daha sorma"
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1743,6 +1744,10 @@ msgstr "Araç çubuğunu gizle veya göster"
 msgid "Highlight"
 msgstr "Vurgula"
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr "Vurgu rengi"
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr "Okurken vurgula"
@@ -1759,6 +1764,10 @@ msgstr "Vurgulayıcı"
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
 msgstr "Vurgulayıcı metne yapışır"
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
+msgstr "Bir rengi listeden çıkarmak için basılı tut. Renk çarkı kendi renklerini ekler."
 
 #: ink/view/textformat.lua
 msgid "Hold a colour you added to remove it."
@@ -3202,6 +3211,10 @@ msgstr "Kaldır"
 msgid "Remove background"
 msgstr "Arka planı kaldır"
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr "Vurguyu kaldır"
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr "Bağlantıyı kaldır"
@@ -3249,6 +3262,10 @@ msgstr "Değiştirilsin mi?"
 #: ink/notebookcover.lua
 msgid "Reporter pad"
 msgstr "Muhabir bloknotu"
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
+msgstr "Renkleri sıfırla"
 
 #: ink/view/updates.lua
 msgid "Restart KOReader"
@@ -4072,6 +4089,10 @@ msgstr "Bu okuyucunun henüz bir ağ adresi yok. Wi-Fi'a bağlanıp yeniden dene
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Bu okuyucu Ink Away için özel bir ayar gerektirmez."
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
+msgstr "Bu KOReader sürümü vurgu üzerinde kendi renklerini tutamaz."
 
 #: ink/view/textformat.lua
 msgid "Tight"

@@ -747,7 +747,8 @@ function InkAwayView:onIaTap(_, ges)
         local nav = self._finger_nav
         self._finger_nav = nil
         local link = nav.mode == "navigate" and ges and ges.pos and self:linkAtScreen(ges.pos.x, ges.pos.y)
-        if link then self:followLink(link) end
+        if link then self:followLink(link)
+        elseif nav.mode == "navigate" and ges and ges.pos and self.highlightTap then self:highlightTap(ges.pos) end
         return true
     end
     if self._clip_press then
@@ -780,6 +781,11 @@ function InkAwayView:onIaTap(_, ges)
         local link = self._link_press
         self._link_press, self.pan_last = nil, nil
         self:followLink(link)
+        return true
+    end
+    -- a tap on a highlight with Pan offers its colours (in a book)
+    if self.tool == "pan" and self.highlightTap and not self.sel_drag and ges and ges.pos
+       and self:highlightTap(ges.pos) then
         return true
     end
     -- a tap on the selection (its touch began a drag that never moved) opens its

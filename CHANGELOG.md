@@ -8,6 +8,12 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+- Change a highlight's colour by tapping it in the annotation mode. A tap with a
+  navigating finger, the lasso or Pan, or a single tap with the highlighter on text
+  already highlighted, opens a sheet of colours (hold still offers to remove it).
+  The list is yours: hold a colour to take it off, add colours of your own from the
+  colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
+
 ## [4.4.0] - 2026-10-31
 
 Your annotations leave the reader: any book can be exported with its ink and
