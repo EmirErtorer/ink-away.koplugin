@@ -18,6 +18,7 @@ local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local Size = require("ui/size")
+local SupernoteDrive = require("ink/supernotedrive")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -138,7 +139,17 @@ end
 
 -- Close the sheet kept in self[field], if one is open.
 function InkAwayView:closeSheet(field)
-    if self[field] then UIManager:close(self[field]); self[field] = nil end
+    if self[field] then
+        UIManager:close(self[field])
+        self[field] = nil
+        -- a Supernote: closing any sheet is usually a stylus tap (Cancel, OK,
+        -- a colour swatch, Back), which the firmware overlay (its ownership
+        -- claimed for the whole view, not scoped to a managed stroke) draws
+        -- live ink for the same as any other pen contact; nothing else was
+        -- going to clear it. One central place for every sheet in Ink Away,
+        -- rather than each dialog clearing it on its own.
+        if self:supernoteDriven() then SupernoteDrive.clearSoon(UIManager) end
+    end
 end
 
 -- Rebuild the sheet in self[field] in place. Returns false, after closing

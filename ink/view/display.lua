@@ -443,7 +443,8 @@ end
 -- a Boox Ink Away drives, the original Elipsa's handwriting worker, or a
 -- Supernote whose firmware overlay shows its own rough preview meanwhile.
 function InkAwayView:fastLive()
-    return self:colourPanel() or self:einkDriven() or self:elipsaDriven() or self:supernoteDriven()
+    return self:colourPanel() or self:einkDriven() or self:elipsaDriven()
+        or self:supernoteDriven()
 end
 
 

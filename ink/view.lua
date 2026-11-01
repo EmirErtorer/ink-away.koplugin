@@ -21,6 +21,7 @@ local Canvas = require("ink/canvas")
 local Export = require("ink/export")
 local InkGeom = require("ink/geom")
 local Stylus = require("ink/stylus")
+local SupernoteDrive = require("ink/supernotedrive")
 local Theme = require("ink/ui/theme")
 
 local Screen = Device.screen
@@ -899,6 +900,10 @@ function InkAwayView:undo()
     if mark ~= nil and self.undoMark then self:undoMark(mark) end
     self:markDirty()
     self:recompose()   -- rebuild the master from the restored ops
+    -- a Supernote: a stylus tap on Undo (or any gesture that reaches here)
+    -- may have left live ink on the firmware overlay that nothing else was
+    -- going to clear, since its ownership isn't scoped to a managed stroke
+    if self:supernoteDriven() then SupernoteDrive.clearSoon(UIManager) end
     return true
 end
 
@@ -922,6 +927,8 @@ function InkAwayView:redo()
     if mark ~= nil and self.redoMark then self:redoMark(mark) end
     self:markDirty()
     self:recompose()
+    -- a Supernote: same reasoning as undo() above
+    if self:supernoteDriven() then SupernoteDrive.clearSoon(UIManager) end
 end
 
 -- Leave Ink Away. Nothing to ask: the document saves itself on the way out.

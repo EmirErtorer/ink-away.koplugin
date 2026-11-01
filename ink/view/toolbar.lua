@@ -21,6 +21,7 @@ local Accent = require("ink/accent")
 local Theme = require("ink/ui/theme")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
+local SupernoteDrive = require("ink/supernotedrive")
 local VBar = require("ink/reader/vbar")
 
 local Screen = Device.screen
@@ -381,6 +382,11 @@ function InkAwayView:setTool(tool)
     self._area_only = false
     UIManager:setDirty(self, "ui", GeomUI:new{
         x = 0, y = 0, w = self.screen_w, h = self.view.area_y })
+    -- a Supernote: picking a tool is usually a stylus tap on this very
+    -- toolbar, which the firmware overlay (its ownership claimed for the
+    -- whole view, not scoped to a managed stroke) draws live ink for the
+    -- same as any other pen contact; nothing else was going to clear it
+    if self:supernoteDriven() then SupernoteDrive.clearSoon(UIManager) end
 end
 
 ------------------------------------------------------------------------------

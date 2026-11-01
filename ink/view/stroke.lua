@@ -150,9 +150,11 @@ function InkAwayView:stampEraseRestore(cx, cy, fresh, reveal)
         local rr = rects[i]
         self:renderViewRect(rr.x0, rr.y0, rr.x1, rr.y1)
         -- a Supernote: the firmware overlay already shows this live, and a
-        -- repaint here would only race and flicker against it (see finalizeStroke
-        -- for the real repaint once the pen lifts)
-        if not self:supernoteDriven() then self:liveDirty(self._live_mode or "fast", rr, 1) end
+        -- repaint here would only race and flicker against it (see
+        -- finalizeStroke for the real repaint once the pen lifts)
+        if not self:supernoteDriven() then
+            self:liveDirty(self._live_mode or "fast", rr, 1)
+        end
     end
 end
 
@@ -235,9 +237,11 @@ function InkAwayView:stampLive(cx, cy, fresh, p)
                 local rr = rects[i]
                 self:renderViewRect(rr.x0 - 1, rr.y0 - 1, rr.x1 + 1, rr.y1 + 1)
             end
-            -- a Supernote: the firmware overlay already shows this live (see
-            -- stampEraseRestore above for the same reasoning)
-            if not self:supernoteDriven() then self:liveDirty(self._live_mode or "fast", rects[i], 1) end
+            -- a Supernote: the firmware overlay already shows this live
+            -- (see stampEraseRestore above for the same reasoning)
+            if not self:supernoteDriven() then
+                self:liveDirty(self._live_mode or "fast", rects[i], 1)
+            end
         end
     end
 end
@@ -317,16 +321,22 @@ function InkAwayView:beginStroke(sx, sy)
     self:elipsaStroke(true)
     -- in a layered drawing: the active layer shown, what lies above it at hand
     self:layerStrokeBegin(self.tool == "erase")
-    if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
     local is_erase = self.tool == "erase"
-    self.live_seed = math.random(1, 1000000)
     local style = nil
     if not is_erase then style = self.pen_style end
-    -- a Supernote: hand the firmware overlay a pen roughly matching this one,
-    -- in on-screen px (it draws at the panel's real size, not the canvas's)
+    -- a Supernote: hand the firmware overlay a pen (or eraser) roughly
+    -- matching this one, in on-screen px -- including for the whole-stroke
+    -- eraser below (a selection gesture that draws no ink of its own): its
+    -- ownership is claimed for the whole view, not per-stroke, so it shows
+    -- live ink for *any* physical pen contact regardless of what KOReader
+    -- makes of the gesture, and left unconfigured it kept drawing whatever
+    -- pen was last set along that gesture's path, which nothing ever
+    -- cleared (see wipeEnd for the matching clear)
     if self:supernoteDriven() then
         SupernoteDrive.setPen(is_erase, style, self:liveWidth() * self.view.zoom, self.pen_color)
     end
+    if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
+    self.live_seed = math.random(1, 1000000)
     -- The live refresh waveform, chosen once per stroke. The fast (A2/DU) waveform
     -- is black and white only: it shows solid opaque black ink at once but cannot
     -- render grey, colour or partial opacity, which would only appear at the lift.
