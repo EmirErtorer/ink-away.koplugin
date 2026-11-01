@@ -35,6 +35,7 @@ local Penset = require("ink/penset")
 local Raster = require("ink/raster")
 local SliderRow = require("ink/ui/controls").SliderRow
 local Strip = require("ink/ui/strip")
+local SupernoteDrive = require("ink/supernotedrive")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 local Theme = require("ink/ui/theme")
 
@@ -575,6 +576,17 @@ function InkAwayView:openPenInput()
                 end })
             add(vspan(4))
             add(self:sheetHint(_("Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."), content_w))
+        end
+        -- a Supernote: its own firmware draws pen strokes (see ink/supernotedrive.lua)
+        if self:onAndroid() and SupernoteDrive.detect() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Low-latency Supernote ink"), is_on = self:getSetting("inkaway_supernote_fast", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_supernote_fast", on)
+                    if on then self:startSupernoteDrive() else self:stopSupernoteDrive() end
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("Ink shows at once from the Supernote's own pen engine as you write, in its nearest grey, and settles into your actual pen once it rests. Turn it off if a firmware update ever makes it misbehave."), content_w))
         end
         add(vspan(12))
         add(SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,

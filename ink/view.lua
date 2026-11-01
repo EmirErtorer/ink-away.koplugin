@@ -394,6 +394,7 @@ function InkAwayView:onShow()
     self:installRawFinger()
     self:startEinkDrive()
     self:startElipsaDrive()
+    self:startSupernoteDrive()
     UIManager:setDirty(self, "full")
     -- opened here rather than a tick later, so its refresh joins the canvas's and
     -- the screen flashes once, not twice
@@ -441,6 +442,7 @@ function InkAwayView:onCloseWidget()
     self:uninstallRawFinger()
     self:stopEinkDrive()
     self:stopElipsaDrive()
+    self:stopSupernoteDrive()
     self:removePenBridge()
     self:releaseStylus()   -- the pen goes back to the view under this one, if any
     UIManager:unschedule(self._pen_clear)

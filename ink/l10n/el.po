@@ -1918,6 +1918,10 @@ msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: σημειώσεις βιβλίου (Ink Away εκτός βιβλίου)"
 
 #: ink/view/pencase.lua
+msgid "Ink shows at once from the Supernote's own pen engine as you write, in its nearest grey, and settles into your actual pen once it rests. Turn it off if a firmware update ever makes it misbehave."
+msgstr "Το μελάνι εμφανίζεται αμέσως από τη δική του μηχανή γραφής του Supernote καθώς γράφετε, στην πλησιέστερη απόχρωση του γκρι, και μετατρέπεται στο πραγματικό σας στυλό μόλις αυτό ησυχάζει. Απενεργοποιήστε το αν κάποια ενημέρωση υλικολογισμικού το κάνει ποτέ να συμπεριφέρεται παράξενα."
+
+#: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
 msgstr "Το μελάνι εμφανίζεται με τη γρήγορη ασπρόμαυρη ανανέωση του Boox καθώς γράφετε και σταθεροποιείται σε γκρι και χρώμα όταν το στυλό ησυχάζει."
 
@@ -2210,6 +2214,10 @@ msgstr "Χαλαρό"
 #: ink/framecover.lua
 msgid "Louis XVI"
 msgstr "Λουδοβίκος ΙΣΤ΄"
+
+#: ink/view/pencase.lua
+msgid "Low-latency Supernote ink"
+msgstr "Μελάνι χαμηλής καθυστέρησης σε Supernote"
 
 #: ink/framecover.lua
 msgid "Mahogany"
