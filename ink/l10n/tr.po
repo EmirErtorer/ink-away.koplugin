@@ -1918,6 +1918,10 @@ msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: kitap notları (kitap dışında Ink Away)"
 
 #: ink/view/pencase.lua
+msgid "Ink shows at once from the Supernote's own pen engine as you write, in its nearest grey, and settles into your actual pen once it rests. Turn it off if a firmware update ever makes it misbehave."
+msgstr "Mürekkep, siz yazarken Supernote'un kendi kalem motoruyla anında, en yakın grisinde görünür; kalem durunca gerçek kaleminize oturur. Bir firmware güncellemesi onu yanlış davranmaya başlatırsa kapatın."
+
+#: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
 msgstr "Siz yazarken mürekkep Boox'un hızlı siyah-beyaz yenilemesiyle görünür, kalem durunca gri ve renge oturur."
 
@@ -2210,6 +2214,10 @@ msgstr "Gevşek"
 #: ink/framecover.lua
 msgid "Louis XVI"
 msgstr "XVI. Louis"
+
+#: ink/view/pencase.lua
+msgid "Low-latency Supernote ink"
+msgstr "Düşük gecikmeli Supernote mürekkebi"
 
 #: ink/framecover.lua
 msgid "Mahogany"

@@ -12,6 +12,7 @@ local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local EinkDrive = require("ink/einkdrive")
 local ElipsaDrive = require("ink/elipsadrive")
+local SupernoteDrive = require("ink/supernotedrive")
 local InkGeom = require("ink/geom")
 local Paint = require("ink/paint")
 local Stylus = require("ink/stylus")
@@ -372,6 +373,32 @@ function InkAwayView:stopElipsaDrive()
     ElipsaDrive.release()
 end
 
+-- On a Supernote, claim the firmware's own ink overlay so pen strokes show at
+-- its latency instead of waiting on an Android refresh (see
+-- ink/supernotedrive.lua), unless the reader turned it off. Each view holds
+-- the claim while it is open.
+function InkAwayView:startSupernoteDrive()
+    if self._supernote_drive or self.closing or not self:onAndroid() then return end
+    if self:getSetting("inkaway_supernote_fast", true) == false then return end
+    if SupernoteDrive.acquire(nil, function(...) logger.warn(...) end) then
+        self._supernote_drive = true
+    end
+end
+
+-- Disable the firmware's ink anywhere on screen and give it back, sized to the
+-- current screen (so no stray ink from it can show once Ink Away isn't open to
+-- reconcile it).
+function InkAwayView:stopSupernoteDrive()
+    if not self._supernote_drive then return end
+    self._supernote_drive = nil
+    SupernoteDrive.release(Screen:getWidth(), Screen:getHeight())
+end
+
+-- Is the Supernote firmware overlay claimed and showing live ink?
+function InkAwayView:supernoteDriven()
+    return self._supernote_drive == true and SupernoteDrive.active()
+end
+
 -- A Kobo with a pen and a grey screen (Elipsa, Elipsa 2E, Sage). There the
 -- grey update each eraser point asked for over paper, a book or a picture held
 -- the eraser up (#47, and the Elipsa's helper only takes fast updates, #50), so
@@ -413,9 +440,11 @@ end
 
 -- Is live ink shown with the fast black-and-white waveform whatever the pen,
 -- with one refresh settling grey and colour once the pen rests? On a colour panel,
--- a Boox Ink Away drives, or the original Elipsa's handwriting worker.
+-- a Boox Ink Away drives, the original Elipsa's handwriting worker, or a
+-- Supernote whose firmware overlay shows its own rough preview meanwhile.
 function InkAwayView:fastLive()
     return self:colourPanel() or self:einkDriven() or self:elipsaDriven()
+        or self:supernoteDriven()
 end
 
 
@@ -644,6 +673,9 @@ function InkAwayView:runReconcile()
             self:dirtyAreaRect("ui", q, 0)
         end
         self:einkAsk("ui", q, 0)        -- a Boox: the grey waveform, whatever its mode
+        -- a Supernote: the real stroke has just been handed to UIManager above;
+        -- clear the firmware's rough preview once that reaches the panel
+        if self:supernoteDriven() then SupernoteDrive.clearSoon(UIManager) end
     end
 end
 

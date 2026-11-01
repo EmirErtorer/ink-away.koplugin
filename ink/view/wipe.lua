@@ -7,6 +7,8 @@ Part of InkAwayView (see ink/view.lua).
 local Canvas = require("ink/canvas")
 local InkGeom = require("ink/geom")
 local Symmetry = require("ink/symmetry")
+local SupernoteDrive = require("ink/supernotedrive")
+local UIManager = require("ui/uimanager")
 local Wipe = require("ink/wipe")
 
 local InkAwayView = {}
@@ -84,6 +86,12 @@ function InkAwayView:wipeEnd()
         end
     end
     self._wipe = nil
+    -- a Supernote: the firmware overlay drew live ink along this gesture's
+    -- whole path regardless of what it removed (its ownership isn't scoped
+    -- to a managed stroke the way beginStroke's own pen push is), so clear
+    -- it whether or not anything was actually erased, or dragging the
+    -- eraser across empty space would leave it uncleaned
+    if self:supernoteDriven() then SupernoteDrive.clearSoon(UIManager) end
     if w.removed == 0 then return end
     self:resetLasso()   -- removing ops moves the indices a selection holds
     if self:colourPanel() then

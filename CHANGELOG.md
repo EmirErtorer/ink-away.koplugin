@@ -8,6 +8,16 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+
+- On a Supernote (Nomad, Manta), Ink Away can claim the firmware's own pen
+  engine while you write: strokes show at its latency instead of waiting on
+  an Android refresh, in their nearest grey, and settle into your actual pen,
+  colour and brush once it rests, the same way a Boox's or the original
+  Elipsa's live ink settles. Low-latency Supernote ink in Pen and input turns
+  it off if a firmware update ever misbehaves; it's otherwise on by default
+  and a no-op everywhere else.
+
 ## [4.4.0] - 2026-10-31
 
 Your annotations leave the reader: any book can be exported with its ink and

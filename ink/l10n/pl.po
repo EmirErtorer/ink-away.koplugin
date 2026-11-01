@@ -1918,6 +1918,10 @@ msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: notatki do książki (Ink Away poza książką)"
 
 #: ink/view/pencase.lua
+msgid "Ink shows at once from the Supernote's own pen engine as you write, in its nearest grey, and settles into your actual pen once it rests. Turn it off if a firmware update ever makes it misbehave."
+msgstr "Tusz pojawia się od razu dzięki własnemu silnikowi pióra Supernote podczas pisania, w najbliższym odcieniu szarości, a gdy pióro odpoczywa, ustala się w Twoim rzeczywistym piórze. Wyłącz to, jeśli aktualizacja oprogramowania sprzętowego kiedykolwiek sprawi, że zacznie się źle zachowywać."
+
+#: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
 msgstr "Tusz pojawia się dzięki szybkiemu czarno-białemu odświeżaniu Boox podczas pisania, a gdy pióro odpoczywa, ustala się w szarości i kolorze."
 
@@ -2210,6 +2214,10 @@ msgstr "Luźno"
 #: ink/framecover.lua
 msgid "Louis XVI"
 msgstr "Ludwik XVI"
+
+#: ink/view/pencase.lua
+msgid "Low-latency Supernote ink"
+msgstr "Tusz Supernote o niskim opóźnieniu"
 
 #: ink/framecover.lua
 msgid "Mahogany"
