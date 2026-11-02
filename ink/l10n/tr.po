@@ -197,6 +197,10 @@ msgstr "PNG, gösterilen sayfayı, yani %d. sayfayı içerir."
 msgid "A blank page. Hold to start from a picture."
 msgstr "Boş bir sayfa. Bir resimden başlamak için basılı tutun."
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr "Bir sayfaya yapıştırdığın veya eklediğin kırpıntı önce oraya kopyalanır, böylece kalır. Yalnızca bu klasörde kalan kırpıntılar silinir."
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr "İçindekiler sayfası"
@@ -646,6 +650,10 @@ msgstr "Kâğıdını, bir PDF'yi veya şablonu seçin"
 msgid "Clip the page"
 msgstr "Sayfadan kırp"
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr "Zaten bir sayfada olan kırpıntılar orada kalır."
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1027,9 +1035,21 @@ msgstr "Bu kitaptaki tüm notları sil…"
 msgid "Delete all annotations?"
 msgstr "Tüm notlar silinsin mi?"
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr "Tüm kırpıntıları şimdi sil…"
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr "Tüm kırpıntılar silinsin mi?"
+
 #: ink/view/trash.lua
 msgid "Delete for good"
 msgstr "Kalıcı olarak sil"
+
+#: ink/view/library.lua
+msgid "Delete old clips"
+msgstr "Eski kırpıntıları sil"
 
 #: ink/view/notebook.lua
 msgid "Delete page"
@@ -2019,6 +2039,10 @@ msgstr "“Resim olarak tut”, bunların bulunduğu %d sayfanın üzerine müre
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Gece modunda renkleri koru"
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
+msgstr "Saklama süresi (gün)"
 
 #: ink/view/dialogs.lua
 msgid "Keep going"
@@ -3442,6 +3466,10 @@ msgstr "Aynı Wi-Fi'daki bir telefon veya bilgisayarla tarayın ya da şunu aç�
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Telefonunuzla tarayın"
+
+#: ink/view/library.lua
+msgid "Screen clips"
+msgstr "Ekran kırpıntıları"
 
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua

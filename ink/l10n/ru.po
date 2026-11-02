@@ -197,6 +197,10 @@ msgstr "PNG содержит показанную страницу, страни
 msgid "A blank page. Hold to start from a picture."
 msgstr "Пустая страница. Удерживайте, чтобы начать с картинки."
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr "Фрагмент, который вы вставляете или добавляете на страницу, сначала копируется в неё, поэтому остаётся. Удаляются только фрагменты, оставшиеся в этой папке."
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr "Страница оглавления"
@@ -646,6 +650,10 @@ msgstr "Выберите бумагу, PDF или шаблон"
 msgid "Clip the page"
 msgstr "Вырезать со страницы"
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr "Фрагменты, уже находящиеся на странице, остаются там."
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1027,9 +1035,21 @@ msgstr "Удалить все аннотации этой книги…"
 msgid "Delete all annotations?"
 msgstr "Удалить все аннотации?"
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr "Удалить все фрагменты сейчас…"
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr "Удалить все фрагменты?"
+
 #: ink/view/trash.lua
 msgid "Delete for good"
 msgstr "Удалить навсегда"
+
+#: ink/view/library.lua
+msgid "Delete old clips"
+msgstr "Удалять старые фрагменты"
 
 #: ink/view/notebook.lua
 msgid "Delete page"
@@ -2019,6 +2039,10 @@ msgstr "«Оставить как изображения» накладывае�
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Сохранять цвета в ночном режиме"
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
+msgstr "Хранить (дней)"
 
 #: ink/view/dialogs.lua
 msgid "Keep going"
@@ -3442,6 +3466,10 @@ msgstr "Отсканируйте телефоном или компьютеро�
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Отсканируйте телефоном"
+
+#: ink/view/library.lua
+msgid "Screen clips"
+msgstr "Фрагменты экрана"
 
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua

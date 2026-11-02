@@ -21,6 +21,7 @@ local _ = require("ink/l10n")
 local ImageProc = require("ink/imageproc")
 local Layers = require("ink/layers")
 local BookNotes = require("ink/reader/booknotes")
+local Clips = require("ink/clips")
 local Folder = require("ink/folder")
 local FolderLook = require("ink/folderlook")
 local Library = require("ink/library")
@@ -56,6 +57,8 @@ end
 
 -- The cards for library folder `dir`: its folders, then its documents.
 function InkAwayView:libraryItems(dir)
+    -- (the clips folder shows only the clips still to be kept)
+    if Clips.isClipsDir(dir) then pcall(Clips.sweepAuto, function(k) return self:getSetting(k) end) end
     local folders, docs, pics = Library.list(dir, self:libraryDir(), self:getSetting("inkaway_library_sort"))
     local looks = self:folderLooks(dir, folders)
     local items = {}
@@ -179,7 +182,7 @@ function InkAwayView:libraryMenu()
     local field = "_library_menu"
     local content_w = self:sheetWidth()
     local closeSelf = function() self:closeSheet(field) end
-    local build = function()
+    local build = function(menu)
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         local function option(label, hint, cb, dark, icon)
@@ -195,6 +198,7 @@ function InkAwayView:libraryMenu()
         option(_("Write on a PDF from this reader\u{2026}"),
             _("Pick a PDF that is already on this reader. It becomes a notebook in this folder."),
             function() self:openPdfAsNotebook(self._lib_dir) end, nil, "pdfpen")
+        if Clips.isClipsDir(self._lib_dir) then self:clipsMenuRows(content, content_w, menu, field) end
         add(VerticalSpan:new{ width = S(16) })
         add(self:sheetLabel(_("Order"), true))
         add(VerticalSpan:new{ width = S(6) })
@@ -209,6 +213,48 @@ function InkAwayView:libraryMenu()
         return content
     end
     self:showSheet(field, build)
+end
+
+-- In the screen clips folder, the library's menu also holds what to do with the
+-- clips (see ink/clips.lua): delete the old ones by themselves, after how many
+-- days, or all of them now. `content` is the menu's column, `field` its sheet.
+function InkAwayView:clipsMenuRows(content, content_w, menu, field)
+    local ToggleRow = require("ink/ui/controls").ToggleRow
+    local function add(w) table.insert(content, w) end
+    local function get(k) return self:getSetting(k) end
+    local o = Clips.options(get)
+    add(VerticalSpan:new{ width = S(16) })
+    add(self:sheetLabel(_("Screen clips"), true))
+    add(VerticalSpan:new{ width = S(6) })
+    add(ToggleRow:new{ label = _("Delete old clips"), is_on = o.auto, width = content_w, parent = menu,
+        callback = function(on)
+            self:setSetting(Clips.AUTO, on)
+            if on then Clips.sweepAuto(get) end
+            self:refreshLibrary()
+            self:rebuildSheet(field)
+        end })
+    if o.auto then
+        add(VerticalSpan:new{ width = S(10) })
+        add(self:sheetLabel(_("Keep for (days)")))
+        add(VerticalSpan:new{ width = S(6) })
+        local choices = {}
+        for _i, d in ipairs(Clips.CHOICES) do choices[#choices + 1] = { d, tostring(d) } end
+        add(self:segmentedRow(choices, o.days, content_w, function(d)
+            self:setSetting(Clips.DAYS, d)
+            Clips.sweepAuto(get)
+            self:refreshLibrary()
+            self:rebuildSheet(field)
+        end))
+    end
+    add(VerticalSpan:new{ width = S(6) })
+    add(self:sheetHint(_("A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."), content_w))
+    add(VerticalSpan:new{ width = S(12) })
+    add(self:actionButton(_("Delete all clips now\u{2026}"), content_w, function()
+        self:closeSheet(field)
+        self:ask{ title = _("Delete all clips?"), text = _("Clips already on a page stay there."),
+            ok_text = _("Delete"), ok_icon = "trash",
+            on_ok = function() Clips.deleteAll(Clips.dir()); self:refreshLibrary() end }
+    end, nil, nil, "trash"))
 end
 
 -- The menu of one card, from a hold: a sheet of its actions, each with its icon.

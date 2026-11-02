@@ -197,6 +197,10 @@ msgstr "Ένα PNG περιέχει τη σελίδα που εμφανίζετ�
 msgid "A blank page. Hold to start from a picture."
 msgstr "Μια κενή σελίδα. Κρατήστε πατημένο για να ξεκινήσετε από μια εικόνα."
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr "Ένα απόσπασμα που επικολλάς ή προσθέτεις σε μια σελίδα αντιγράφεται πρώτα εκεί, ώστε να μένει. Αφαιρούνται μόνο τα αποσπάσματα που μένουν σε αυτόν τον φάκελο."
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr "Μια σελίδα περιεχομένων"
@@ -646,6 +650,10 @@ msgstr "Επιλέξτε το χαρτί του, ένα PDF ή ένα πρότυ
 msgid "Clip the page"
 msgstr "Αποκοπή σελίδας"
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr "Τα αποσπάσματα που βρίσκονται ήδη σε μια σελίδα μένουν εκεί."
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1027,9 +1035,21 @@ msgstr "Διαγραφή όλων των σημειώσεων αυτού του 
 msgid "Delete all annotations?"
 msgstr "Διαγραφή όλων των σημειώσεων;"
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr "Διαγραφή όλων των αποσπασμάτων τώρα…"
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr "Διαγραφή όλων των αποσπασμάτων;"
+
 #: ink/view/trash.lua
 msgid "Delete for good"
 msgstr "Διαγραφή οριστικά"
+
+#: ink/view/library.lua
+msgid "Delete old clips"
+msgstr "Διαγραφή παλιών αποσπασμάτων"
 
 #: ink/view/notebook.lua
 msgid "Delete page"
@@ -2019,6 +2039,10 @@ msgstr "Η «Διατήρηση ως εικόνες» βάζει μια εικό
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Διατήρηση χρωμάτων στη νυχτερινή λειτουργία"
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
+msgstr "Διατήρηση για (ημέρες)"
 
 #: ink/view/dialogs.lua
 msgid "Keep going"
@@ -3442,6 +3466,10 @@ msgstr "Σαρώστε με τηλέφωνο ή υπολογιστή στο ίδ
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Σαρώστε με το τηλέφωνό σας"
+
+#: ink/view/library.lua
+msgid "Screen clips"
+msgstr "Αποσπάσματα σελίδας"
 
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua

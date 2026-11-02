@@ -12,6 +12,7 @@ local Device = require("device")
 local _ = require("ink/l10n")
 local Canvas = require("ink/canvas")
 local Clipboard = require("ink/clipboard")
+local Clips = require("ink/clips")
 local InkGeom = require("ink/geom")
 
 local opInPoly = Canvas.opInPoly
@@ -77,6 +78,8 @@ function InkAwayView:pasteAt(pos)
     self.canvas:pushHistory()
     local idxs = {}
     for _, op in ipairs(Clipboard.take(cx, cy)) do
+        -- a screen clip goes into the page as a copy of its own, so it outlasts the clips folder
+        if op.kind == "image" then op.path = Clips.keep(op.path) end
         local _op, at = self.canvas:placeOp(op)   -- (onto the active layer)
         idxs[#idxs + 1] = at
     end

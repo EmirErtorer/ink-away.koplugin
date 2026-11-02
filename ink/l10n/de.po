@@ -197,6 +197,10 @@ msgstr "Ein PNG enthält die angezeigte Seite, Seite %d."
 msgid "A blank page. Hold to start from a picture."
 msgstr "Eine leere Seite. Halten Sie gedrückt, um mit einem Bild zu beginnen."
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr "Ein Ausschnitt, den du auf eine Seite einfügst oder hinzufügst, wird zuerst dorthin kopiert und bleibt so erhalten. Nur die Ausschnitte, die in diesem Ordner bleiben, werden entfernt."
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr "Eine Inhaltsseite"
@@ -646,6 +650,10 @@ msgstr "Papier, ein PDF oder eine Vorlage wählen"
 msgid "Clip the page"
 msgstr "Seite ausschneiden"
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr "Ausschnitte, die schon auf einer Seite sind, bleiben dort."
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1027,9 +1035,21 @@ msgstr "Alle Anmerkungen zu diesem Buch löschen …"
 msgid "Delete all annotations?"
 msgstr "Alle Anmerkungen löschen?"
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr "Alle Ausschnitte jetzt löschen…"
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr "Alle Ausschnitte löschen?"
+
 #: ink/view/trash.lua
 msgid "Delete for good"
 msgstr "Endgültig löschen"
+
+#: ink/view/library.lua
+msgid "Delete old clips"
+msgstr "Alte Ausschnitte löschen"
 
 #: ink/view/notebook.lua
 msgid "Delete page"
@@ -2019,6 +2039,10 @@ msgstr "„Als Bilder behalten“ legt ein Bild Ihrer Tinte über die %d Seite(n
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Farben im Nachtmodus beibehalten"
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
+msgstr "Behalten für (Tage)"
 
 #: ink/view/dialogs.lua
 msgid "Keep going"
@@ -3442,6 +3466,10 @@ msgstr "Scannen Sie mit einem Handy oder Computer im selben WLAN oder öffnen Si
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Mit dem Handy scannen"
+
+#: ink/view/library.lua
+msgid "Screen clips"
+msgstr "Seitenausschnitte"
 
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua

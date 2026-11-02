@@ -15,6 +15,10 @@ versions marked *Prerelease* were test builds.
   dragging the pen or tapping two opposite corners. Check the outlined area,
   select it again or cancel before copying, then paste the picture into a
   notebook with the lasso or page menu.
+- Screen clips left in the "screen clips" folder are deleted after a week. In that
+  folder, the ... button of the library sets it: turn it off, keep clips for 1, 3,
+  7, 14 or 30 days, or delete them all now. A clip you paste or add to a page, or
+  use as a background, is copied into it first, so it stays.
   Capture activates immediately, with a small corner symbol instead of an
   instruction dialog.
 - Start a screen clip with a two-finger swipe from the top left to the bottom

@@ -13,6 +13,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("ink/l10n")
 local ImageProc = require("ink/imageproc")
 local Library = require("ink/library")
+local Clips = require("ink/clips")
 local Storage = require("ink/storage")
 local ThumbGrid = require("ink/ui/thumbgrid")
 
@@ -56,6 +57,7 @@ function InkAwayView:placeBackground(img, path)
 end
 
 function InkAwayView:loadBackground(path)
+    path = Clips.keep(path)
     local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
     if not ok or not img then
         self:tell(_("Could not open that image."))
@@ -310,6 +312,7 @@ end
 -- Insert a new image from a file: fit it to ~60% of the visible area (so its
 -- corners show for dragging), centre it in the viewport and select it.
 function InkAwayView:insertImage(path)
+    path = Clips.keep(path)   -- (a screen clip is kept, see ink/clips.lua)
     local tmp = { kind = "image", path = path, x = 0, y = 0, w = 1, h = 1 }
     local src = self:imageSrc(tmp)
     if not src then

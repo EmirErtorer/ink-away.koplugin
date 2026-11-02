@@ -91,6 +91,12 @@ function InkAway:init()
     if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 3 then
         UIManager:nextTick(function() self:setupEntryGestures() end)
     end
+    -- old screen clips go as the settings say, without waiting for the next one
+    UIManager:nextTick(function()
+        pcall(function()
+            require("ink/clips").sweepAuto(function(k) return G_reader_settings:readSetting(k) end)
+        end)
+    end)
     -- the notebooks as a shelf source of the Bookshelf plugin, when it is
     -- installed; plugins load in name order, so it may come up after this one
     local Shelf = require("ink/bookshelf")

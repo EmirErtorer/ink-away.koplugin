@@ -197,6 +197,10 @@ msgstr "Un PNG contiene la pagina mostrata, pagina %d."
 msgid "A blank page. Hold to start from a picture."
 msgstr "Una pagina vuota. Tieni premuto per partire da un’immagine."
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr "Un ritaglio che incolli o aggiungi a una pagina viene prima copiato al suo interno, così resta. Vengono rimossi solo i ritagli che restano in questa cartella."
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr "Una pagina dell’indice"
@@ -646,6 +650,10 @@ msgstr "Scegli la carta, un PDF o un modello"
 msgid "Clip the page"
 msgstr "Ritaglia la pagina"
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr "I ritagli già su una pagina restano lì."
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1027,9 +1035,21 @@ msgstr "Elimina tutte le annotazioni di questo libro…"
 msgid "Delete all annotations?"
 msgstr "Eliminare tutte le annotazioni?"
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr "Elimina ora tutti i ritagli…"
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr "Eliminare tutti i ritagli?"
+
 #: ink/view/trash.lua
 msgid "Delete for good"
 msgstr "Elimina definitivamente"
+
+#: ink/view/library.lua
+msgid "Delete old clips"
+msgstr "Elimina i ritagli vecchi"
 
 #: ink/view/notebook.lua
 msgid "Delete page"
@@ -2019,6 +2039,10 @@ msgstr "«Tieni come immagini» mette un’immagine del tuo inchiostro sulle %d 
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Mantieni i colori in modalità notturna"
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
+msgstr "Conserva per (giorni)"
 
 #: ink/view/dialogs.lua
 msgid "Keep going"
@@ -3442,6 +3466,10 @@ msgstr "Inquadra con un telefono o computer sullo stesso Wi-Fi, oppure apri:"
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Inquadra con il telefono"
+
+#: ink/view/library.lua
+msgid "Screen clips"
+msgstr "Ritagli dello schermo"
 
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua

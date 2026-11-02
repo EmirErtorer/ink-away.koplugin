@@ -11,6 +11,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local UIManager = require("ui/uimanager")
 local Clipboard = require("ink/clipboard")
+local Clips = require("ink/clips")
 local Storage = require("ink/storage")
 local logger = require("logger")
 local _ = require("ink/l10n")
@@ -218,7 +219,7 @@ function Capture:copySelection()
     if not (self.page and self.selection) then return true end
     self:closeConfirmation()
     local x, y, w, h = self.selection.x, self.selection.y, self.selection.w, self.selection.h
-    local dir = Storage.appDir("screen clips")
+    local dir = Clips.dir()
     local path
     if dir then
         local n = 1
@@ -237,6 +238,9 @@ function Capture:copySelection()
     local detail = ok and err or saved
     if ok and saved == nil then saved = pngWritten(path) end
     if ok and saved then
+        -- (old clips go as the person's settings say, with each new one)
+        local G = rawget(_G, "G_reader_settings")
+        pcall(Clips.sweepAuto, function(k) return G and G.readSetting and G:readSetting(k) end)
         Clipboard.put({ { kind = "image", path = path, x = 0, y = 0,
             w = w, h = h, natw = w, nath = h } }, { x0 = 0, y0 = 0, x1 = w, y1 = h })
     elseif path then os.remove(path) end

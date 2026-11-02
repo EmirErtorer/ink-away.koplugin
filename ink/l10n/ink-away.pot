@@ -196,6 +196,10 @@ msgstr ""
 msgid "A blank page. Hold to start from a picture."
 msgstr ""
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr ""
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr ""
@@ -645,6 +649,10 @@ msgstr ""
 msgid "Clip the page"
 msgstr ""
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr ""
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1016,8 +1024,20 @@ msgstr ""
 msgid "Delete all annotations?"
 msgstr ""
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr ""
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr ""
+
 #: ink/view/trash.lua
 msgid "Delete for good"
+msgstr ""
+
+#: ink/view/library.lua
+msgid "Delete old clips"
 msgstr ""
 
 #: ink/view/notebook.lua
@@ -1993,6 +2013,10 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
+msgstr ""
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
 msgstr ""
 
 #: ink/view/dialogs.lua
@@ -3395,6 +3419,10 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "Scan with your phone"
+msgstr ""
+
+#: ink/view/library.lua
+msgid "Screen clips"
 msgstr ""
 
 #: ink/guide.lua

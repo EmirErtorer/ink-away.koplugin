@@ -197,6 +197,10 @@ msgstr "Un PNG guarda la página que se ve, la página %d."
 msgid "A blank page. Hold to start from a picture."
 msgstr "Una página en blanco. Mantén presionado para empezar desde una imagen."
 
+#: ink/view/library.lua
+msgid "A clip you paste or add to a page is copied into it first, so it stays. Only the clips left in this folder are removed."
+msgstr "Un recorte que pegas o añades a una página se copia primero en ella, así que se conserva. Solo se eliminan los recortes que quedan en esta carpeta."
+
 #: ink/guide.lua
 msgid "A contents page"
 msgstr "Una página de índice"
@@ -646,6 +650,10 @@ msgstr "Elige su papel, un PDF o una plantilla"
 msgid "Clip the page"
 msgstr "Recortar la página"
 
+#: ink/view/library.lua
+msgid "Clips already on a page stay there."
+msgstr "Los recortes que ya están en una página se quedan ahí."
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1027,9 +1035,21 @@ msgstr "Eliminar todas las anotaciones de este libro…"
 msgid "Delete all annotations?"
 msgstr "¿Eliminar todas las anotaciones?"
 
+#: ink/view/library.lua
+msgid "Delete all clips now…"
+msgstr "Borrar todos los recortes ahora…"
+
+#: ink/view/library.lua
+msgid "Delete all clips?"
+msgstr "¿Borrar todos los recortes?"
+
 #: ink/view/trash.lua
 msgid "Delete for good"
 msgstr "Eliminar para siempre"
+
+#: ink/view/library.lua
+msgid "Delete old clips"
+msgstr "Borrar recortes antiguos"
 
 #: ink/view/notebook.lua
 msgid "Delete page"
@@ -2019,6 +2039,10 @@ msgstr "«Conservar como imágenes» pone una imagen de tu tinta sobre las %d p�
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Conservar los colores en modo nocturno"
+
+#: ink/view/library.lua
+msgid "Keep for (days)"
+msgstr "Conservar durante (días)"
 
 #: ink/view/dialogs.lua
 msgid "Keep going"
@@ -3442,6 +3466,10 @@ msgstr "Escanea con un teléfono o una computadora en el mismo Wi-Fi, o abre:"
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Escanea con tu teléfono"
+
+#: ink/view/library.lua
+msgid "Screen clips"
+msgstr "Recortes de pantalla"
 
 #: ink/guide.lua
 #: ink/view/imagebrowser.lua
