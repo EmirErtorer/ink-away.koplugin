@@ -374,6 +374,13 @@ function InkAwayView:chooseImage()
         add(self:actionButton(_("Search online"), content_w, function()
             closeSelf(); self:browseOnlineImages() end, nil, nil, "globe"))
         hint(_("Free pictures from Wikimedia and Openverse. Needs Wi-Fi."))
+        -- over a book: a picture of part of its page, to paste with the lasso
+        if self.reader_mode and self.startPageClip then
+            add(vspan(12))
+            add(self:actionButton(_("Clip the page"), content_w, function()
+                closeSelf(); self:startPageClip() end, nil, nil, "crop"))
+            hint(_("Outline part of the page and copy it. Paste it with the lasso."))
+        end
         if not (self.notebook or self.reader_mode) then   -- a notebook's paper, or the book, is the background
             add(vspan(14))
             add(self:actionButton(_("Background\u{2026}"), content_w, function()

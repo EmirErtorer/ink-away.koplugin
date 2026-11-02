@@ -642,6 +642,10 @@ msgstr "Türünü seçin. Sonra boyutunu ve rengini ayarlayabilirsiniz."
 msgid "Choose its paper, a PDF or a template"
 msgstr "Kâğıdını, bir PDF'yi veya şablonu seçin"
 
+#: ink/view/images.lua
+msgid "Clip the page"
+msgstr "Sayfadan kırp"
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -2765,6 +2769,10 @@ msgstr "Yön"
 #: ink/view/export.lua
 msgid "Ornament name"
 msgstr "Süs adı"
+
+#: ink/view/images.lua
+msgid "Outline part of the page and copy it. Paste it with the lasso."
+msgstr "Sayfanın bir bölümünü çerçeveleyip kopyala. Kement ile yapıştır."
 
 #: ink/welcome.lua
 #, lua-format

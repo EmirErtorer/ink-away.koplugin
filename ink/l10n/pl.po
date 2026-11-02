@@ -642,6 +642,10 @@ msgstr "Wybierz rodzaj. Potem ustawisz rozmiar i kolor."
 msgid "Choose its paper, a PDF or a template"
 msgstr "Wybierz papier, plik PDF lub szablon"
 
+#: ink/view/images.lua
+msgid "Clip the page"
+msgstr "Wytnij ze strony"
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -2765,6 +2769,10 @@ msgstr "Orientacja"
 #: ink/view/export.lua
 msgid "Ornament name"
 msgstr "Nazwa ozdoby"
+
+#: ink/view/images.lua
+msgid "Outline part of the page and copy it. Paste it with the lasso."
+msgstr "Zaznacz fragment strony i skopiuj go. Wklej go lassem."
 
 #: ink/welcome.lua
 #, lua-format

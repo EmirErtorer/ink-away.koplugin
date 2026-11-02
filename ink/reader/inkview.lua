@@ -201,6 +201,13 @@ function ReaderInkView:takeStroke(op)
     return true
 end
 
+-- Clip part of the page (ink/reader/capture.lua): outlined, confirmed, then on
+-- the clipboard as a picture, to paste with the lasso.
+function ReaderInkView:startPageClip()
+    local ok, err = pcall(function() require("ink/reader/capture").open(self.book) end)
+    if not ok then logger.warn("Ink Away: could not start the page clip:", err) end
+end
+
 -- A stroke of the eraser (not taking whole strokes): the strokes it crosses are
 -- cut into the parts outside it, each anchored on its own when saved. One undo
 -- step, as the stroke was.

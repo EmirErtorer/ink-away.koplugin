@@ -642,6 +642,10 @@ msgstr "Επιλέξτε το είδος. Μετά μπορείτε να ορί�
 msgid "Choose its paper, a PDF or a template"
 msgstr "Επιλέξτε το χαρτί του, ένα PDF ή ένα πρότυπο"
 
+#: ink/view/images.lua
+msgid "Clip the page"
+msgstr "Αποκοπή σελίδας"
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -2765,6 +2769,10 @@ msgstr "Προσανατολισμός"
 #: ink/view/export.lua
 msgid "Ornament name"
 msgstr "Όνομα στολιδιού"
+
+#: ink/view/images.lua
+msgid "Outline part of the page and copy it. Paste it with the lasso."
+msgstr "Σημείωσε ένα μέρος της σελίδας και αντίγραψέ το. Επικόλλησέ το με το λάσο."
 
 #: ink/welcome.lua
 #, lua-format

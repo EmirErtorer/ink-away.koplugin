@@ -641,6 +641,10 @@ msgstr ""
 msgid "Choose its paper, a PDF or a template"
 msgstr ""
 
+#: ink/view/images.lua
+msgid "Clip the page"
+msgstr ""
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -2734,6 +2738,10 @@ msgstr ""
 
 #: ink/view/export.lua
 msgid "Ornament name"
+msgstr ""
+
+#: ink/view/images.lua
+msgid "Outline part of the page and copy it. Paste it with the lasso."
 msgstr ""
 
 #: ink/welcome.lua

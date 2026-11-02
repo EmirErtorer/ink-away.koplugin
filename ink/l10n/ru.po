@@ -642,6 +642,10 @@ msgstr "Выберите вид. Затем можно задать размер
 msgid "Choose its paper, a PDF or a template"
 msgstr "Выберите бумагу, PDF или шаблон"
 
+#: ink/view/images.lua
+msgid "Clip the page"
+msgstr "Вырезать со страницы"
+
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -2765,6 +2769,10 @@ msgstr "Ориентация"
 #: ink/view/export.lua
 msgid "Ornament name"
 msgstr "Название украшения"
+
+#: ink/view/images.lua
+msgid "Outline part of the page and copy it. Paste it with the lasso."
+msgstr "Выделите часть страницы и скопируйте её. Вставьте лассо."
 
 #: ink/welcome.lua
 #, lua-format

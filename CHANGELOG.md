@@ -10,10 +10,11 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
-- Copy a rectangular part of a book page from Tools, Ink Away, Copy part of the
-  screen, by dragging the pen or tapping two opposite corners. Check the outlined
-  area, select it again or cancel before copying,
-  then paste the picture into a notebook with the lasso or page menu.
+- Copy a rectangular part of a book page, from the Image tool of the annotation
+  mode (Clip the page) or from Tools, Ink Away, Copy part of the screen, by
+  dragging the pen or tapping two opposite corners. Check the outlined area,
+  select it again or cancel before copying, then paste the picture into a
+  notebook with the lasso or page menu.
   Capture activates immediately, with a small corner symbol instead of an
   instruction dialog.
 - Start a screen clip with a two-finger swipe from the top left to the bottom
