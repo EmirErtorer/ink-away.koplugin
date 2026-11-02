@@ -1098,6 +1098,7 @@ msgstr "Να μην ξαναρωτήσει"
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1756,6 +1757,10 @@ msgstr "Απόκρυψη ή εμφάνιση της γραμμής εργαλε�
 msgid "Highlight"
 msgstr "Επισήμανση"
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr "Χρώμα επισήμανσης"
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr "Επισήμανση κατά την ανάγνωση"
@@ -1772,6 +1777,10 @@ msgstr "Υπογραμμιστής"
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
 msgstr "Ο υπογραμμιστής προσαρμόζεται στο κείμενο"
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
+msgstr "Κράτα πατημένο ένα χρώμα για να το βγάλεις από τη λίστα. Ο τροχός χρωμάτων προσθέτει δικά σου χρώματα."
 
 #: ink/view/textformat.lua
 msgid "Hold a colour you added to remove it."
@@ -3219,6 +3228,10 @@ msgstr "Διαγραφή"
 msgid "Remove background"
 msgstr "Αφαίρεση φόντου"
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr "Αφαίρεση επισήμανσης"
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr "Αφαίρεση συνδέσμου"
@@ -3266,6 +3279,10 @@ msgstr "Να αντικατασταθεί;"
 #: ink/notebookcover.lua
 msgid "Reporter pad"
 msgstr "Μπλοκ ρεπόρτερ"
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
+msgstr "Επαναφορά χρωμάτων"
 
 #: ink/view/updates.lua
 msgid "Restart KOReader"
@@ -4093,6 +4110,10 @@ msgstr "Αυτή η συσκευή δεν έχει ακόμη διεύθυνση
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Αυτή η συσκευή δεν χρειάζεται ειδικές ρυθμίσεις για το Ink Away."
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
+msgstr "Αυτή η έκδοση του KOReader δεν μπορεί να κρατήσει δικά σου χρώματα σε μια επισήμανση."
 
 #: ink/view/textformat.lua
 msgid "Tight"

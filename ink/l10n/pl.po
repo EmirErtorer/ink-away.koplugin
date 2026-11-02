@@ -1098,6 +1098,7 @@ msgstr "Nie pytaj ponownie"
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1756,6 +1757,10 @@ msgstr "Ukryj lub pokaż pasek narzędzi"
 msgid "Highlight"
 msgstr "Zaznacz"
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr "Kolor zakreślenia"
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr "Zakreślaj podczas czytania"
@@ -1772,6 +1777,10 @@ msgstr "Zakreślacz"
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
 msgstr "Zakreślacz przyciąga się do tekstu"
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
+msgstr "Przytrzymaj kolor, aby usunąć go z tej listy. Koło kolorów dodaje twoje własne kolory."
 
 #: ink/view/textformat.lua
 msgid "Hold a colour you added to remove it."
@@ -3219,6 +3228,10 @@ msgstr "Usuń"
 msgid "Remove background"
 msgstr "Usuń tło"
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr "Usuń zakreślenie"
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr "Usuń łącze"
@@ -3266,6 +3279,10 @@ msgstr "Zastąpić?"
 #: ink/notebookcover.lua
 msgid "Reporter pad"
 msgstr "Notes reporterski"
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
+msgstr "Przywróć kolory"
 
 #: ink/view/updates.lua
 msgid "Restart KOReader"
@@ -4093,6 +4110,10 @@ msgstr "Ten czytnik nie ma jeszcze adresu w sieci. Połącz go z Wi-Fi i spróbu
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Ten czytnik nie potrzebuje specjalnych ustawień dla Ink Away."
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
+msgstr "Ta wersja KOReadera nie potrafi zachować własnych kolorów na zakreśleniu."
 
 #: ink/view/textformat.lua
 msgid "Tight"

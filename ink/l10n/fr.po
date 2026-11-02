@@ -1098,6 +1098,7 @@ msgstr "Ne plus demander"
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1756,6 +1757,10 @@ msgstr "Masquer ou afficher la barre d’outils"
 msgid "Highlight"
 msgstr "Surligner"
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr "Couleur du surlignage"
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr "Surligner pendant la lecture"
@@ -1772,6 +1777,10 @@ msgstr "Surligneur"
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
 msgstr "Le surligneur s’accroche au texte"
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
+msgstr "Maintiens une couleur pour la retirer de cette liste. La roue ajoute tes propres couleurs."
 
 #: ink/view/textformat.lua
 msgid "Hold a colour you added to remove it."
@@ -3219,6 +3228,10 @@ msgstr "Supprimer"
 msgid "Remove background"
 msgstr "Supprimer l’arrière-plan"
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr "Supprimer le surlignage"
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr "Supprimer le lien"
@@ -3266,6 +3279,10 @@ msgstr "Le remplacer ?"
 #: ink/notebookcover.lua
 msgid "Reporter pad"
 msgstr "Bloc de reporter"
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
+msgstr "Réinitialiser les couleurs"
 
 #: ink/view/updates.lua
 msgid "Restart KOReader"
@@ -4093,6 +4110,10 @@ msgstr "Cette liseuse n’a pas encore d’adresse sur un réseau. Connectez-la 
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Cette liseuse n’a besoin d’aucun réglage particulier pour Ink Away."
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
+msgstr "Cette version de KOReader ne peut pas garder tes propres couleurs sur un surlignage."
 
 #: ink/view/textformat.lua
 msgid "Tight"

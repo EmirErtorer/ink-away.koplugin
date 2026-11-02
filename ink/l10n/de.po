@@ -1098,6 +1098,7 @@ msgstr "Nicht mehr fragen"
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1756,6 +1757,10 @@ msgstr "Werkzeugleiste aus- oder einblenden"
 msgid "Highlight"
 msgstr "Markieren"
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr "Farbe der Markierung"
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr "Beim Lesen markieren"
@@ -1772,6 +1777,10 @@ msgstr "Textmarker"
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
 msgstr "Der Textmarker rastet am Text ein"
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
+msgstr "Halte eine Farbe gedrückt, um sie aus dieser Liste zu nehmen. Mit dem Farbrad fügst du eigene Farben hinzu."
 
 #: ink/view/textformat.lua
 msgid "Hold a colour you added to remove it."
@@ -3219,6 +3228,10 @@ msgstr "Entfernen"
 msgid "Remove background"
 msgstr "Hintergrund entfernen"
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr "Markierung entfernen"
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr "Link entfernen"
@@ -3266,6 +3279,10 @@ msgstr "Ersetzen?"
 #: ink/notebookcover.lua
 msgid "Reporter pad"
 msgstr "Reporterblock"
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
+msgstr "Farben zurücksetzen"
 
 #: ink/view/updates.lua
 msgid "Restart KOReader"
@@ -4093,6 +4110,10 @@ msgstr "Dieses Lesegerät hat noch keine Netzwerkadresse. Verbinden Sie es mit d
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Dieses Lesegerät braucht keine besonderen Einstellungen für Ink Away."
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
+msgstr "Diese KOReader-Version kann eigene Farben nicht an einer Markierung speichern."
 
 #: ink/view/textformat.lua
 msgid "Tight"

@@ -1098,6 +1098,7 @@ msgstr "Больше не спрашивать"
 
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
+#: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
@@ -1756,6 +1757,10 @@ msgstr "Скрыть или показать панель инструменто
 msgid "Highlight"
 msgstr "Выделить"
 
+#: ink/reader/hlcolour.lua
+msgid "Highlight colour"
+msgstr "Цвет выделения"
+
 #: ink/guide.lua
 msgid "Highlight while reading"
 msgstr "Выделять при чтении"
@@ -1772,6 +1777,10 @@ msgstr "Текстовыделитель"
 #: ink/reader/inkview.lua
 msgid "Highlighter snaps to the text"
 msgstr "Текстовыделитель прилипает к тексту"
+
+#: ink/reader/hlcolour.lua
+msgid "Hold a colour to take it off this list. The wheel adds colours of your own."
+msgstr "Нажмите и удерживайте цвет, чтобы убрать его из списка. Цветовой круг добавляет ваши цвета."
 
 #: ink/view/textformat.lua
 msgid "Hold a colour you added to remove it."
@@ -3219,6 +3228,10 @@ msgstr "Удалить"
 msgid "Remove background"
 msgstr "Удалить фон"
 
+#: ink/reader/hlcolour.lua
+msgid "Remove highlight"
+msgstr "Удалить выделение"
+
 #: ink/view/selection.lua
 msgid "Remove link"
 msgstr "Удалить ссылку"
@@ -3266,6 +3279,10 @@ msgstr "Заменить?"
 #: ink/notebookcover.lua
 msgid "Reporter pad"
 msgstr "Блокнот репортёра"
+
+#: ink/reader/hlcolour.lua
+msgid "Reset colours"
+msgstr "Сбросить цвета"
 
 #: ink/view/updates.lua
 msgid "Restart KOReader"
@@ -4093,6 +4110,10 @@ msgstr "У этой читалки пока нет адреса в сети. П�
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Этой читалке не нужны особые настройки для Ink Away."
+
+#: ink/reader/hlcolour.lua
+msgid "This version of KOReader can't keep colours of your own on a highlight."
+msgstr "Эта версия KOReader не может сохранять ваши цвета для выделения."
 
 #: ink/view/textformat.lua
 msgid "Tight"

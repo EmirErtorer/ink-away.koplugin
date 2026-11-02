@@ -29,6 +29,7 @@ local Canvas = require("ink/canvas")
 local InkAwayView = require("ink/view")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 local VBar = require("ink/reader/vbar")
+local HLColour = require("ink/reader/hlcolour")
 
 local Screen = Device.screen
 
@@ -39,6 +40,7 @@ local ReaderInkView = InkAwayView:extend{
     book = nil,          -- ink/reader/book.lua
 }
 VBar.into(ReaderInkView)
+HLColour.into(ReaderInkView)
 
 ------------------------------------------------------------------------------
 -- Start and layout
@@ -177,6 +179,14 @@ end
 function ReaderInkView:takeStroke(op)
     if op.kind == "erase" then return self:cutWithEraser(op) end
     if not (op.kind == "ink" and op.style == "highlighter") then return false end
+    -- a single tap with the highlighter on text already highlighted: its colour
+    -- sheet, not a new mark (the tap goes as if never made)
+    if self:isTapStroke(op) and #self:highlightsUnder({ x = op.pts[1], y = op.pts[2] }) > 0 then
+        self.canvas:undo()
+        self.canvas.redo_stack = {}
+        self:pageChanged()
+        return self:highlightTap({ x = op.pts[1], y = op.pts[2] })
+    end
     if self:getSetting("inkaway_snap_text", true) == false then return false end
     local ok, item = pcall(self.book.highlight, self.book, op)
     if not (ok and item) then
@@ -220,6 +230,7 @@ function ReaderInkView:cutWithEraser(op)
 end
 
 function ReaderInkView:undoMark(mark)
+    if mark.recolour then return self:applyRecolour(mark.recolour, true) end
     if mark.erased then   -- highlights an eraser or a hold took away: back, with the ink
         for i, it in ipairs(mark.erased) do
             local back = self.book:restoreHighlight(it)
@@ -233,6 +244,7 @@ function ReaderInkView:undoMark(mark)
 end
 
 function ReaderInkView:redoMark(mark)
+    if mark.recolour then return self:applyRecolour(mark.recolour, false) end
     if mark.erased then
         for _i, it in ipairs(mark.erased) do self.book:removeHighlight(it) end
         if mark.after then self.canvas.ops = mark.after end
@@ -311,8 +323,10 @@ function ReaderInkView:holdMenuAt(pos)
     self:highlightPromptAt(pos)
 end
 
-function ReaderInkView:selectAt(pos)
+function ReaderInkView:selectAt(pos, tap)
     if InkAwayView.selectAt(self, pos) then return true end
+    -- a tap with the lasso offers the colours, a hold offers to remove it
+    if tap and self:highlightTap(pos) then return true end
     return self:highlightPromptAt(pos)
 end
 

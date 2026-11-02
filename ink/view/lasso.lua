@@ -155,7 +155,7 @@ function InkAwayView:lassoTap(pos)
     local scr = self.lasso_scr
     if self.lassoing and scr and #scr >= 6 then self:lassoFinish(); return true end
     self.lassoing, self.lasso_scr = false, nil   -- a tap, not a loop
-    if pos and self:selectAt(pos) then return true end
+    if pos and self:selectAt(pos, true) then return true end
     if pos and Clipboard.count() > 0 then self:openPasteMenu(pos) end
     return true
 end

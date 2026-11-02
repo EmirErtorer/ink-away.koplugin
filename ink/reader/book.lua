@@ -433,6 +433,51 @@ function Book:removeHighlight(item)
     return false
 end
 
+-- The reader's custom highlight colours (name -> { code }), or nil where the
+-- reader has none (an older one).
+function Book:customColours()
+    local hl = self.ui and self.ui.highlight
+    local t = hl and hl.custom_colors
+    return type(t) == "table" and t or nil
+end
+
+-- Is `item` still one of the book's highlights (it is not once deleted).
+function Book:hasHighlight(item)
+    for _i, it in ipairs(self.ui and self.ui.annotation and self.ui.annotation.annotations or {}) do
+        if it == item then return true end
+    end
+    return false
+end
+
+-- Give a highlight another colour, as the reader's own colour menu does: the
+-- PDF's annotation is written again (a PDF keeps its highlights in the file),
+-- the boxes the reader drew are dropped, and the reader is told the item
+-- changed. `name` is a colour name the reader knows (nil, with `clear`, puts back
+-- a highlight that had none). Returns whether it was set.
+function Book:setHighlightColour(item, name, clear)
+    local ui = self.ui
+    if not (item and (name or clear) and ui and ui.highlight and self:hasHighlight(item)) then return false end
+    local hl = ui.highlight
+    local pdf = ui.paging and hl.writePdfAnnotation
+    local ok, err = pcall(function()
+        if pdf then hl:writePdfAnnotation("delete", item) end
+        item.color = name
+        if pdf then
+            hl:writePdfAnnotation("save", item)
+            if item.note then hl:writePdfAnnotation("content", item, item.note) end
+        end
+    end)
+    if not ok then
+        logger.warn("Ink Away: could not recolour the highlight:", err)
+        return false
+    end
+    -- (each of these is the reader's own, and an older one may not have it)
+    if ui.view and ui.view.resetHighlightBoxesCache then pcall(ui.view.resetHighlightBoxesCache, ui.view) end
+    local Event = require("ui/event")
+    pcall(ui.handleEvent, ui, Event:new("AnnotationsModified", { item }))
+    return true
+end
+
 -- The highlights the path `pts` (flat x, y, ... on the screen, the canvas's own
 -- points in annotation mode) comes within `r` px of: their annotation items,
 -- each once. It uses what KOReader drew on the page shown and its own tap test

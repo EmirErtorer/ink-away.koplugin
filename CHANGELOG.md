@@ -19,6 +19,11 @@ versions marked *Prerelease* were test builds.
 - Start a screen clip with a two-finger swipe from the top left to the bottom
   right while reading. The shortcut is assigned only if free, and the action
   can be assigned to another gesture in KOReader's gesture manager.
+- Change a highlight's colour by tapping it in the annotation mode. A tap with a
+  navigating finger, the lasso or Pan, or a single tap with the highlighter on text
+  already highlighted, opens a sheet of colours (hold still offers to remove it).
+  The list is yours: hold a colour to take it off, add colours of your own from the
+  colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
 
 ### Fixed
 
