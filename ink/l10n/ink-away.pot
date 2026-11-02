@@ -563,6 +563,7 @@ msgstr ""
 msgid "Calligraphy"
 msgstr ""
 
+#: ink/reader/capture.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -719,6 +720,7 @@ msgstr ""
 msgid "Copied"
 msgstr ""
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #, lua-format
 msgid "Copied %d item(s). Tap with the lasso to paste."
@@ -729,13 +731,22 @@ msgstr ""
 msgid "Copied to “%s”"
 msgstr ""
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #: ink/view/textformat.lua
 msgid "Copy"
 msgstr ""
 
+#: main.lua
+msgid "Copy part of the screen"
+msgstr ""
+
 #: ink/view/overview.lua
 msgid "Copy the page to"
+msgstr ""
+
+#: ink/reader/capture.lua
+msgid "Copy this area?"
 msgstr ""
 
 #: ink/view/overview.lua
@@ -864,6 +875,7 @@ msgstr ""
 msgid "Couldn't open %s as a notebook"
 msgstr ""
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 msgid "Couldn't prepare a folder for the image."
@@ -884,6 +896,7 @@ msgstr ""
 msgid "Couldn't read that image."
 msgstr ""
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 msgid "Couldn't save the image."
 msgstr ""
@@ -1890,6 +1903,10 @@ msgstr ""
 
 #: main.lua
 msgid "Ink Away: book notes (Ink Away outside a book)"
+msgstr ""
+
+#: main.lua
+msgid "Ink Away: copy part of the screen"
 msgstr ""
 
 #: ink/view/pencase.lua
@@ -3401,6 +3418,10 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "Select a word"
+msgstr ""
+
+#: ink/reader/capture.lua
+msgid "Select again"
 msgstr ""
 
 #: ink/view/textformat.lua

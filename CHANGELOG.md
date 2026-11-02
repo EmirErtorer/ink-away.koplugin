@@ -8,6 +8,23 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+
+- Copy a rectangular part of a book page from Tools, Ink Away, Copy part of the
+  screen, by dragging the pen or tapping two opposite corners. Check the outlined
+  area, select it again or cancel before copying,
+  then paste the picture into a notebook with the lasso or page menu.
+  Capture activates immediately, with a small corner symbol instead of an
+  instruction dialog.
+- Start a screen clip with a two-finger swipe from the top left to the bottom
+  right while reading. The shortcut is assigned only if free, and the action
+  can be assigned to another gesture in KOReader's gesture manager.
+
+### Fixed
+
+- The screen clip confirmation stays above the selected area, and small pen
+  movements no longer cancel the capture.
+
 ## [4.4.0] - 2026-10-31
 
 Your annotations leave the reader: any book can be exported with its ink and

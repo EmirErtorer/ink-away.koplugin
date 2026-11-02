@@ -564,6 +564,7 @@ msgstr "Per nome, oppure spunta Cerca anche dentro le pagine per cercare anche n
 msgid "Calligraphy"
 msgstr "Calligrafia"
 
+#: ink/reader/capture.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -720,6 +721,7 @@ msgstr "La conversione in testo online richiede indirizzo, chiave e modello del 
 msgid "Copied"
 msgstr "Copiato"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #, lua-format
 msgid "Copied %d item(s). Tap with the lasso to paste."
@@ -730,14 +732,23 @@ msgstr "%d elemento/i copiato/i. Tocca con il lazo per incollare."
 msgid "Copied to “%s”"
 msgstr "Copiato in «%s»"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #: ink/view/textformat.lua
 msgid "Copy"
 msgstr "Copia"
 
+#: main.lua
+msgid "Copy part of the screen"
+msgstr "Copia parte dello schermo"
+
 #: ink/view/overview.lua
 msgid "Copy the page to"
 msgstr "Copia la pagina in"
+
+#: ink/reader/capture.lua
+msgid "Copy this area?"
+msgstr "Copiare quest’area?"
 
 #: ink/view/overview.lua
 msgid "Copy to…"
@@ -873,6 +884,7 @@ msgstr "Impossibile scaricare quell’immagine."
 msgid "Couldn't open %s as a notebook"
 msgstr "Impossibile aprire %s come quaderno"
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 msgid "Couldn't prepare a folder for the image."
@@ -895,6 +907,7 @@ msgstr ""
 msgid "Couldn't read that image."
 msgstr "Impossibile leggere quell’immagine."
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 msgid "Couldn't save the image."
 msgstr "Impossibile salvare l’immagine."
@@ -1916,6 +1929,10 @@ msgstr "Ink Away: annota il libro"
 #: main.lua
 msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: note del libro (Ink Away fuori da un libro)"
+
+#: main.lua
+msgid "Ink Away: copy part of the screen"
+msgstr "Ink Away: copia parte dello schermo"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3448,6 +3465,10 @@ msgstr "Secondo pulsante laterale"
 #: ink/guide.lua
 msgid "Select a word"
 msgstr "Seleziona una parola"
+
+#: ink/reader/capture.lua
+msgid "Select again"
+msgstr "Seleziona di nuovo"
 
 #: ink/view/textformat.lua
 msgid "Select all"

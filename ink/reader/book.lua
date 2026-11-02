@@ -572,12 +572,14 @@ end
 -- Close what Ink Away has open over the book (keeping everything): the screen
 -- turned, and they were laid out for the old one.
 function Book:closeViews()
+    if self._capture then self._capture:onCancel() end
     if self._view then pcall(function() self._view:closeCanvas() end) end
     if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
 end
 
 -- The book is closing: close the annotation mode (keeping its ink) and let go.
 function Book:close()
+    if self._capture then self._capture:onCancel() end
     if self._view then pcall(function() self._view:closeCanvas() end) end
     if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
     self._view, self._notes_view = nil, nil
@@ -602,6 +604,7 @@ function Book:snapshot(bb, with_ink)
     local ok, err = pcall(self.ui.view.paintTo, self.ui.view, bb, 0, 0)
     ov.hidden = false
     if not ok then logger.warn("Ink Away: could not draw the page:", err) end
+    return ok
 end
 
 ------------------------------------------------------------------------------

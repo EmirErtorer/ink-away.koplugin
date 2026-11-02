@@ -34,6 +34,11 @@ Open it from Top menu, **Tools** tab, "Ink Away (drawing canvas)". After that it
 
 If your reader already uses the right edge, use a two-finger swipe from the bottom right corner toward the top left (and from the top right toward the bottom left on a book). Every gesture can be changed in Settings, Gestures and pen buttons.
 
+To copy part of a book page, swipe two fingers from the top left toward the bottom
+right, then drag to select an area. This shortcut is assigned only if it is free.
+You can choose another in KOReader's Settings, Taps and gestures, Gesture manager:
+assign **Ink Away: copy part of the screen** to a gesture while reading.
+
 <table>
   <tr>
     <td width="33%" valign="top"><a href="assets/screenshots/book-annotate.gif"><img src="assets/screenshots/book-annotate.gif" alt="Annotating a book"></a><br><sub>Swipe down the right edge and write on the page.</sub></td>

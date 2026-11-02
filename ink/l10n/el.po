@@ -564,6 +564,7 @@ msgstr "Κατά όνομα, ή επιλέξτε Αναζήτηση και μέ�
 msgid "Calligraphy"
 msgstr "Καλλιγραφία"
 
+#: ink/reader/capture.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -720,6 +721,7 @@ msgstr "Η μετατροπή σε κείμενο online χρειάζεται τ
 msgid "Copied"
 msgstr "Αντιγράφηκε"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #, lua-format
 msgid "Copied %d item(s). Tap with the lasso to paste."
@@ -730,14 +732,23 @@ msgstr "Αντιγράφηκαν %d στοιχεία. Πατήστε με το �
 msgid "Copied to “%s”"
 msgstr "Αντιγράφηκε στο «%s»"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #: ink/view/textformat.lua
 msgid "Copy"
 msgstr "Αντιγραφή"
 
+#: main.lua
+msgid "Copy part of the screen"
+msgstr "Αντιγραφή μέρους της οθόνης"
+
 #: ink/view/overview.lua
 msgid "Copy the page to"
 msgstr "Αντιγραφή της σελίδας σε"
+
+#: ink/reader/capture.lua
+msgid "Copy this area?"
+msgstr "Αντιγραφή αυτής της περιοχής;"
 
 #: ink/view/overview.lua
 msgid "Copy to…"
@@ -873,6 +884,7 @@ msgstr "Δεν ήταν δυνατή η λήψη αυτής της εικόνα�
 msgid "Couldn't open %s as a notebook"
 msgstr "Δεν ήταν δυνατό το άνοιγμα του %s ως σημειωματάριο"
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 msgid "Couldn't prepare a folder for the image."
@@ -895,6 +907,7 @@ msgstr ""
 msgid "Couldn't read that image."
 msgstr "Δεν ήταν δυνατή η ανάγνωση αυτής της εικόνας."
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 msgid "Couldn't save the image."
 msgstr "Δεν ήταν δυνατή η αποθήκευση της εικόνας."
@@ -1916,6 +1929,10 @@ msgstr "Ink Away: σχολιασμός του βιβλίου"
 #: main.lua
 msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: σημειώσεις βιβλίου (Ink Away εκτός βιβλίου)"
+
+#: main.lua
+msgid "Ink Away: copy part of the screen"
+msgstr "Ink Away: αντιγραφή μέρους της οθόνης"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3448,6 +3465,10 @@ msgstr "Δεύτερο πλαϊνό κουμπί"
 #: ink/guide.lua
 msgid "Select a word"
 msgstr "Επιλογή λέξης"
+
+#: ink/reader/capture.lua
+msgid "Select again"
+msgstr "Νέα επιλογή"
 
 #: ink/view/textformat.lua
 msgid "Select all"

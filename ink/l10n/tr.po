@@ -564,6 +564,7 @@ msgstr "Ada göre ya da yazılmış ve dönüştürülmüş metinde de aramak i�
 msgid "Calligraphy"
 msgstr "Kaligrafi"
 
+#: ink/reader/capture.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -720,6 +721,7 @@ msgstr "Çevrimiçi metne dönüştürme için hizmetinizin adresi, anahtarı ve
 msgid "Copied"
 msgstr "Kopyalandı"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #, lua-format
 msgid "Copied %d item(s). Tap with the lasso to paste."
@@ -730,14 +732,23 @@ msgstr "%d öğe kopyalandı. Yapıştırmak için kement ile dokunun."
 msgid "Copied to “%s”"
 msgstr "“%s” içine kopyalandı"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #: ink/view/textformat.lua
 msgid "Copy"
 msgstr "Kopyala"
 
+#: main.lua
+msgid "Copy part of the screen"
+msgstr "Ekranın bir bölümünü kopyala"
+
 #: ink/view/overview.lua
 msgid "Copy the page to"
 msgstr "Sayfayı şuraya kopyala"
+
+#: ink/reader/capture.lua
+msgid "Copy this area?"
+msgstr "Bu alan kopyalansın mı?"
 
 #: ink/view/overview.lua
 msgid "Copy to…"
@@ -873,6 +884,7 @@ msgstr "Bu resim indirilemedi."
 msgid "Couldn't open %s as a notebook"
 msgstr "%s bir defter olarak açılamadı"
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 msgid "Couldn't prepare a folder for the image."
@@ -895,6 +907,7 @@ msgstr ""
 msgid "Couldn't read that image."
 msgstr "Bu resim okunamadı."
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 msgid "Couldn't save the image."
 msgstr "Resim kaydedilemedi."
@@ -1916,6 +1929,10 @@ msgstr "Ink Away: kitabı not al"
 #: main.lua
 msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: kitap notları (kitap dışında Ink Away)"
+
+#: main.lua
+msgid "Ink Away: copy part of the screen"
+msgstr "Ink Away: ekranın bir bölümünü kopyala"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3448,6 +3465,10 @@ msgstr "İkinci yan düğme"
 #: ink/guide.lua
 msgid "Select a word"
 msgstr "Bir sözcük seç"
+
+#: ink/reader/capture.lua
+msgid "Select again"
+msgstr "Yeniden seç"
 
 #: ink/view/textformat.lua
 msgid "Select all"

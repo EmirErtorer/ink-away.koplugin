@@ -564,6 +564,7 @@ msgstr "По имени, либо отметьте «Искать и внутр�
 msgid "Calligraphy"
 msgstr "Каллиграфия"
 
+#: ink/reader/capture.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -720,6 +721,7 @@ msgstr "Для онлайн-преобразования в текст нужн�
 msgid "Copied"
 msgstr "Скопировано"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #, lua-format
 msgid "Copied %d item(s). Tap with the lasso to paste."
@@ -730,14 +732,23 @@ msgstr "Скопировано элементов: %d. Нажмите лассо
 msgid "Copied to “%s”"
 msgstr "Скопировано в «%s»"
 
+#: ink/reader/capture.lua
 #: ink/view/selection.lua
 #: ink/view/textformat.lua
 msgid "Copy"
 msgstr "Копировать"
 
+#: main.lua
+msgid "Copy part of the screen"
+msgstr "Копировать часть экрана"
+
 #: ink/view/overview.lua
 msgid "Copy the page to"
 msgstr "Копировать страницу в"
+
+#: ink/reader/capture.lua
+msgid "Copy this area?"
+msgstr "Скопировать эту область?"
 
 #: ink/view/overview.lua
 msgid "Copy to…"
@@ -873,6 +884,7 @@ msgstr "Не удалось скачать это изображение."
 msgid "Couldn't open %s as a notebook"
 msgstr "Не удалось открыть %s как блокнот"
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 msgid "Couldn't prepare a folder for the image."
@@ -895,6 +907,7 @@ msgstr ""
 msgid "Couldn't read that image."
 msgstr "Не удалось прочитать это изображение."
 
+#: ink/reader/capture.lua
 #: ink/view/imagebrowser.lua
 msgid "Couldn't save the image."
 msgstr "Не удалось сохранить изображение."
@@ -1916,6 +1929,10 @@ msgstr "Ink Away: аннотировать книгу"
 #: main.lua
 msgid "Ink Away: book notes (Ink Away outside a book)"
 msgstr "Ink Away: заметки к книге (Ink Away вне книги)"
+
+#: main.lua
+msgid "Ink Away: copy part of the screen"
+msgstr "Ink Away: копировать часть экрана"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3448,6 +3465,10 @@ msgstr "Вторая боковая кнопка"
 #: ink/guide.lua
 msgid "Select a word"
 msgstr "Выбрать слово"
+
+#: ink/reader/capture.lua
+msgid "Select again"
+msgstr "Выбрать заново"
 
 #: ink/view/textformat.lua
 msgid "Select all"

@@ -35,6 +35,12 @@ function InkAway:onDispatcherRegisterActions()
         title = _("Ink Away: annotate the book"),
         reader = true,
     })
+    Dispatcher:registerAction("inkaway_capture", {
+        category = "none",
+        event = "InkAwayCapture",
+        title = _("Ink Away: copy part of the screen"),
+        reader = true,
+    })
     Dispatcher:registerAction("inkaway_booknotes", {
         category = "none",
         event = "InkAwayBookNotes",
@@ -82,7 +88,7 @@ function InkAway:init()
         end)
     end
     -- the book gestures, once, after every plugin (the gesture manager too) is up
-    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 2 then
+    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 3 then
         UIManager:nextTick(function() self:setupEntryGestures() end)
     end
     -- the notebooks as a shelf source of the Bookshelf plugin, when it is
@@ -112,6 +118,9 @@ function InkAway:addToMainMenu(menu_items)
             sub_item_table = {
                 { text = _("Annotate the book"), keep_menu_open = false,
                   callback = function() self:onInkAwayAnnotate() end },
+                { text = _("Copy part of the screen"), keep_menu_open = false,
+                  enabled_func = function() return require("device"):isTouchDevice() end,
+                  callback = function() self:onInkAwayCapture() end },
                 { text = _("Book notes"), keep_menu_open = false,
                   callback = function() self:onInkAwayBookNotes() end },
                 { text = _("Export the book with its annotations\u{2026}"), keep_menu_open = false,
@@ -165,19 +174,33 @@ end
 -- (see ink/view/welcome.lua). With the gesture manager off that is all the
 -- notice can say, and the setup runs again once it is on.
 function InkAway:setupEntryGestures()
-    if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) >= 2 then return end
+    local version = tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0
+    if version >= 3 then return end
     local g = self.ui and self.ui.gestures
     if not (g and type(g.data) == "table") then
-        G_reader_settings:saveSetting("inkaway_entry_gestures", { off = true })
+        if version < 2 then G_reader_settings:saveSetting("inkaway_entry_gestures", { off = true }) end
         return
     end
     local EntryGestures = require("ink/reader/entrygestures")
-    local placed, busy, n = EntryGestures.apply(g.data)
+    -- An upgrade adds only capture: never restore a gesture the reader removed
+    -- or moved after the previous setup, and keep its existing setup record.
+    local placed, busy, n = EntryGestures.apply(g.data, version >= 2 and { EntryGestures.CAPTURE } or nil)
+    local previous = G_reader_settings:readSetting("inkaway_entry_gestures") or {}
+    if version >= 2 then
+        for id, where in pairs(previous.placed or {}) do
+            if not placed[id] then placed[id] = where end
+        end
+    end
     if n > 0 then
         g.updated = true
         pcall(g.onFlushSettings, g)
     end
     local held = {}
+    if version >= 2 then
+        for _i, item in ipairs(previous.held or {}) do
+            if item.feature ~= "capture" then held[#held + 1] = item end
+        end
+    end
     for _i, b in ipairs(busy) do
         local what = ""
         pcall(function() what = Dispatcher:menuTextFunc(b.current) end)
@@ -185,7 +208,15 @@ function InkAway:setupEntryGestures()
         held[#held + 1] = { feature = b.feature, section = b.section, ges = b.ges, what = what }
     end
     G_reader_settings:saveSetting("inkaway_entry_gestures", { placed = placed, held = held })
-    G_reader_settings:saveSetting("inkaway_gestures_setup", 2)
+    G_reader_settings:saveSetting("inkaway_gestures_setup", 3)
+end
+
+-- The reader's gesture action uses the same quiet capture mode as the menu.
+function InkAway:onInkAwayCapture()
+    if self.book and require("device"):isTouchDevice() then
+        require("ink/reader/capture").open(self.book)
+    end
+    return true
 end
 
 -- Draw on the book being read (does nothing outside a book).
