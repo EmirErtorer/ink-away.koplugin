@@ -11,7 +11,7 @@ local Clipboard = require("ink/clipboard")
 local Storage = require("ink/storage")
 local TestEnv = require("testenv")
 Storage.appDir = function() return TestEnv.libraryDir() end
-package.loaded["ink/view"] = { tellAnywhere = function() end }
+require("ink/view").tellAnywhere = function() end   -- (the real view: the decision is its own sheet)
 local Capture = require("ink/reader/capture")
 local checks = 0
 for _, typ in ipairs({ BB.TYPE_BB8, BB.TYPE_BBRGB32 }) do
@@ -53,7 +53,7 @@ for _, typ in ipairs({ BB.TYPE_BB8, BB.TYPE_BBRGB32 }) do
         end
         assert(indicator, "the active capture symbol is visible on screen")
         assert(c._confirmation and c.page, "the rectangle is only a preview before confirmation")
-        c._confirmation.buttons[1][1].callback()
+        c._confirmation.copy()
         local op = Clipboard.take()[1]
         local ok, image = PNG.decodeFromFile(op.path, 4)
         assert(ok and image.width == panel:getWidth() - 21 and image.height == 100)

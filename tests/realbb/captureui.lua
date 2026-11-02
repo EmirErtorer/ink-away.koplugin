@@ -12,7 +12,7 @@ ffi.C.setenv("KO_HOME", tmp, 1)
 ffi.C.setenv("SDL_VIDEODRIVER", "dummy", 1)
 ffi.C.setenv("EMULATE_READER_W", "1860", 1)
 ffi.C.setenv("EMULATE_READER_H", "2480", 1)
-G_defaults = require("luadefaults"):open()
+_G.G_defaults = require("luadefaults"):open()
 G_reader_settings = require("luasettings"):open(tmp .. "/settings.reader.lua")
 G_reader_settings:saveSetting("language", "it_IT")
 G_reader_settings:saveSetting("screen_dpi", 300)
@@ -28,7 +28,7 @@ package.path = REPO .. "/?.lua;" .. package.path
 local Capture = require("ink/reader/capture")
 local Clipboard = require("ink/clipboard")
 local notices = 0
-package.loaded["ink/view"] = { tellAnywhere = function() notices = notices + 1 end }
+require("ink/view").tellAnywhere = function() notices = notices + 1 end   -- (the real view: the decision is its own sheet)
 local book = {}
 -- A clean book snapshot; all widgets, input dispatch and rendering stay real.
 function book:snapshot(bb)
@@ -39,9 +39,28 @@ end
 local function gesture(name, x, y)
     UIManager:sendEvent(Event:new("Gesture", { ges = name, pos = Geom:new{ x = x, y = y } }))
 end
--- Tap real painted buttons, so a hidden dialog cannot pass via direct callbacks.
-local function tapButton(dialog, row, column)
-    local r = assert(dialog.layout[row][column].dimen)
+-- Tap real painted buttons, so a hidden sheet cannot pass via direct callbacks.
+-- The sheet's painted buttons in reading order: the Cancel pill in its title, then
+-- Copy and Select again beside each other.
+local BUTTON = { Cancel = 1, Copy = 2, ["Select again"] = 3 }
+local function buttons(w, out, seen)
+    out, seen = out or {}, seen or {}
+    if type(w) ~= "table" or seen[w] then return out end
+    seen[w] = true
+    if w.dimen and w.dimen.w and w.callback then out[#out + 1] = w end
+    for k, v in pairs(w) do
+        if k ~= "show_parent" and k ~= "parent" and type(v) == "table" then buttons(v, out, seen) end
+    end
+    return out
+end
+local function tapButton(sheet, label)
+    local list = buttons(sheet)
+    table.sort(list, function(a, b)
+        if a.dimen.y ~= b.dimen.y then return a.dimen.y < b.dimen.y end
+        return a.dimen.x < b.dimen.x
+    end)
+    assert(#list == 3, "the sheet has three painted buttons")
+    local r = assert(list[BUTTON[label]]).dimen
     gesture("tap", r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2))
 end
 Capture.open(book)
@@ -56,7 +75,8 @@ gesture("pan", 102, 102)
 gesture("pan_release", 102, 102)
 assert(c.page and c.corner, "pen drift after the first corner keeps the capture open")
 gesture("tap", 400, 400)
-local dialog = assert(c._confirmation)
+local host = assert(c._confirmation)
+local dialog = assert(host._capture_sheet, "the decision is Ink Away's own sheet")
 assert(UIManager._window_stack[#UIManager._window_stack].widget == dialog,
     "confirmation must be above the modal capture, not hidden underneath")
 UIManager:_repaint()
@@ -65,9 +85,9 @@ local preview = os.getenv("INKAWAY_CAPTURE_UI_OUT")
 if preview then assert(Device.screen.bb:writePNG(preview)) end
 for _, name in ipairs({ "pan", "pan_release", "swipe", "hold" }) do
     gesture(name, 200, 200)
-    assert(c.page and c._confirmation == dialog, "late pen events must not close confirmation")
+    assert(c.page and c._confirmation == host, "late pen events must not close confirmation")
 end
-tapButton(dialog, 1, 2)
+tapButton(dialog, "Select again")
 assert(c.page and not c.selection and not c._confirmation, "Select again returns to corner selection")
 assert(UIManager._window_stack[#UIManager._window_stack].widget == c)
 gesture("touch", 200, 300)
@@ -78,7 +98,7 @@ gesture("pan_release", 500, 600)
 assert(c._confirmation and c.selection.w == 300 and c.selection.h == 300,
     "lifting the pen after dragging opens confirmation")
 UIManager:_repaint()
-tapButton(c._confirmation, 1, 1)
+tapButton(c._confirmation._capture_sheet, "Copy")
 assert(not c.page and not book._capture and Clipboard.count() == 1 and notices == 1)
 assert(#UIManager._window_stack == 0, "copy closes both real widgets")
 local op = Clipboard.take()[1]
@@ -88,7 +108,7 @@ UIManager:show(c)
 gesture("tap", 100, 100)
 gesture("tap", 400, 400)
 UIManager:_repaint()
-tapButton(c._confirmation, 2, 1)
+tapButton(c._confirmation._capture_sheet, "Cancel")
 assert(not c.page and #UIManager._window_stack == 0, "Cancel closes both real widgets")
 assert(Clipboard.take()[1].path == op.path, "Cancel preserves the clipboard")
 c = Capture:new{ book = book }; book._capture = c
@@ -101,7 +121,7 @@ gesture("hold_pan_release", 500, 600)
 assert(c.selection and c.selection.w == 400 and c.selection.h == 500,
     "a drag after holding confirms at the original press point")
 UIManager:_repaint()
-tapButton(c._confirmation, 2, 1)
+tapButton(c._confirmation._capture_sheet, "Cancel")
 Clipboard.clear()
 os.execute("rm -rf '" .. tmp:gsub("'", "'\\''") .. "'")
 print("native capture UI: real modal stacking, rendering, pen events, reselect, copy and cancel passed")

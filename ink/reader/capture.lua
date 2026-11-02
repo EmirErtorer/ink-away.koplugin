@@ -4,7 +4,11 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan = require("ui/widget/horizontalspan")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 local UIManager = require("ui/uimanager")
 local Clipboard = require("ink/clipboard")
 local Storage = require("ink/storage")
@@ -12,6 +16,7 @@ local logger = require("logger")
 local _ = require("ink/l10n")
 
 local Screen = Device.screen
+local SHEET = "_capture_sheet"
 local Capture = InputContainer:extend{ modal = true, covers_fullscreen = true }
 
 -- Some KOReader builds return nothing after writing a PNG. Accept that only
@@ -162,11 +167,11 @@ function Capture:onCorner(_arg, ges)
     return true
 end
 
--- Release the decision dialog before resetting or closing its capture owner.
+-- Release the decision sheet before resetting or closing its capture owner.
 function Capture:closeConfirmation()
-    local dialog = self._confirmation
+    local sheet = self._confirmation
     self._confirmation = nil
-    if dialog then UIManager:close(dialog) end
+    if sheet then sheet:closeSheet(SHEET) end
 end
 
 -- Start another rectangle on the same clean page without changing the clipboard.
@@ -177,23 +182,35 @@ function Capture:selectAgain()
 end
 
 -- Keep the outlined rectangle on screen until it is copied, replaced or cancelled.
+-- The decision is Ink Away's own sheet, shown through a stand-in for the view as
+-- ink/view's tellAnywhere does. It is modal, so it stacks above the capture, and
+-- it sits at the bottom when the rectangle is in the upper half of the page (at
+-- the top otherwise), so it never covers what was just outlined. A tap outside it
+-- selects again. `copy`, `again` and `cancel` are what its buttons do.
 function Capture:confirmSelection()
-    local ButtonDialog = require("ui/widget/buttondialog")
-    self._confirmation = ButtonDialog:new{
-        modal = true, -- The capture is modal too: a normal dialog would sit underneath it.
-        title = _("Copy this area?"),
-        anchor = Geom:new(self.selection),
-        tap_close_callback = function()
-            self._confirmation = nil -- ButtonDialog closes itself after this callback.
-            self:selectAgain()
-        end,
-        buttons = {
-            { { text = _("Copy"), callback = function() self:copySelection() end },
-              { text = _("Select again"), callback = function() self:selectAgain() end } },
-            { { text = _("Cancel"), callback = function() self:onCancel() end } },
-        },
-    }
-    UIManager:show(self._confirmation)
+    local host = setmetatable({}, { __index = require("ink/view") })
+    local content_w, gap = host:sheetWidth()
+    host.copy = function() self:copySelection() end
+    host.again = function() self:selectAgain() end
+    host.cancel = function() self:onCancel() end
+    local build = function()
+        local half = math.floor((content_w - gap) / 2)
+        return VerticalGroup:new{ align = "left",
+            host:sheetTitle(_("Copy this area?"), content_w, _("Cancel"), host.cancel),
+            VerticalSpan:new{ width = Screen:scaleBySize(14) },
+            HorizontalGroup:new{ align = "center",
+                host:actionButton(_("Copy"), half, host.copy, true),
+                HorizontalSpan:new{ width = gap },
+                host:actionButton(_("Select again"), half, host.again) } }
+    end
+    local r = self.selection
+    local upper = r.y + r.h / 2 < self.dimen.h / 2
+    self._confirmation = host
+    host:showSheet(SHEET, build, {
+        bottom_y = upper and (Screen:getHeight() - Screen:scaleBySize(6)) or nil,
+        on_close = function()
+            if self._confirmation == host then self._confirmation = nil; self:selectAgain() end
+        end })
 end
 
 -- Save and copy only an explicitly confirmed rectangle, without its outline.

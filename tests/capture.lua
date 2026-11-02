@@ -9,7 +9,23 @@ local Capture = require("ink/reader/capture")
 local TestEnv = require("testenv")
 local dir = TestEnv.libraryDir()
 local notices = {}
-package.loaded["ink/view"] = { tellAnywhere = function(s) notices[#notices + 1] = s end }
+-- The decision sheet is Ink Away's own (see ink/view/sheetkit.lua); here a stand-in
+-- with the same calls, whose sheet is a modal widget kept in the field it is shown in.
+local View = { tellAnywhere = function(s) notices[#notices + 1] = s end }
+function View:sheetWidth() return 400, 10 end
+function View:sheetTitle(title, _w, pill, cb) return { text = title, pill = pill, callback = cb } end
+function View:actionButton(label, _w, cb) return { text = label, callback = cb } end
+function View:showSheet(field, build, opts)
+    build()
+    local sheet = { modal = true, bottom_y = opts.bottom_y }
+    sheet.on_close = function() self[field] = nil; if opts.on_close then opts.on_close() end end
+    self[field] = sheet
+    UIManager:show(sheet)
+end
+function View:closeSheet(field)
+    if self[field] then UIManager:close(self[field]); self[field] = nil end
+end
+package.loaded["ink/view"] = View
 local appDir = Storage.appDir
 Storage.appDir = function() return dir end
 local sample = BB.new(1, 1)
@@ -55,7 +71,7 @@ UIManager.shown:onCancel()
 -- Send the same two taps that KOReader dispatches to the selection overlay.
 local function tap(c, x, y) c:onCorner(nil, { pos = { x = x, y = y } }) end
 -- Confirm through the visible Copy button, as the reader does.
-local function confirm(c) c._confirmation.buttons[1][1].callback() end
+local function confirm(c) c._confirmation.copy() end
 for _, wh in ipairs({ {600, 800}, {800, 600} }) do
     Screen:setSize(wh[1], wh[2])
     for _, reverse in ipairs({ false, true }) do
@@ -72,7 +88,8 @@ for _, wh in ipairs({ {600, 800}, {800, 600} }) do
         if reverse then tap(c, 320, 240); tap(c, 20, 40)
         else tap(c, 20, 40); tap(c, 320, 240) end
         ok(c.selection and c._confirmation and c.page, "two corners open a decision without closing capture")
-        ok(c._confirmation.modal, "confirmation must stack above the modal capture in KOReader")
+        ok(c._confirmation._capture_sheet and c._confirmation._capture_sheet.modal, "confirmation must stack above the modal capture in KOReader")
+        ok(c._confirmation._capture_sheet.bottom_y ~= nil, "a rectangle in the upper half puts the sheet at the bottom")
         c:onDrag(nil, { pos = { x = 500, y = 500 } })
         c:onDragEnd(nil, { pos = { x = 500, y = 500 } })
         ok(c.page and c._confirmation, "late movement/release/swipe events do not close a completed selection")
@@ -137,7 +154,7 @@ for _, reason in ipairs({ "cancel", "rotate", "close", "return", "throw", "folde
     tap(c, 50, 50); tap(c, 50, 100)
     ok(c.page ~= nil, "a line does not replace the clipboard")
     tap(c, 150, 150)
-    local dialog = c._confirmation
+    local dialog = c._confirmation and c._confirmation._capture_sheet
     if reason == "cancel" then c:onCancel()
     elseif reason == "rotate" then require("ink/reader/book").closeViews(b)
     elseif reason == "close" then c:onCloseDocument()
@@ -181,23 +198,27 @@ local again = Capture:new{ book = b }; b._capture = again
 UIManager:show(again)
 local before = saved
 tap(again, 10, 20); tap(again, 90, 100)
-again._confirmation.buttons[1][2].callback()
+again._confirmation.again()
 ok(again.page and not again.corner and not again.selection and not again._confirmation,
     "Select again keeps the clean page and clears both corners")
 ok(saved == before, "reselecting writes no file")
 tap(again, 30, 40); tap(again, 180, 240)
-local dismissed = again._confirmation
-dismissed.tap_close_callback()
-UIManager:close(dismissed) -- ButtonDialog's normal dismissal closes itself.
+local dismissed = again._confirmation._capture_sheet
+dismissed.on_close() -- a tap outside the sheet
+UIManager:close(dismissed)
 ok(not again.corner and not again.selection and again.page, "dismissing the decision allows a fresh selection")
 tap(again, 30, 40); tap(again, 180, 240)
 confirm(again)
 ok(saved.w == 150 and saved.h == 200, "only the newly confirmed rectangle is copied")
+local low = Capture:new{ book = book() }
+tap(low, 40, 450); tap(low, 200, 560)
+ok(low._confirmation._capture_sheet.bottom_y == nil, "a rectangle in the lower half leaves the sheet at the top")
+low:onCancel()
 local cancelled = Capture:new{ book = book() }
 before = saved
 local previous_path = Clipboard.take()[1].path
 tap(cancelled, 10, 20); tap(cancelled, 100, 120)
-cancelled._confirmation.buttons[2][1].callback()
+cancelled._confirmation.cancel()
 cancelled:copySelection()
 ok(not cancelled.page and saved == before and Clipboard.take()[1].path == previous_path,
     "Cancel keeps the clipboard and a stale Copy callback cannot write")
