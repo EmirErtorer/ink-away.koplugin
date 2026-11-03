@@ -2174,6 +2174,33 @@ do
     view:onCloseWidget()
 end
 
+-- ---- input.lua replaced by another pen plugin: said on open, once each start ----
+do
+    UIManager.reset()
+    G_reader_settings.data.inkaway_welcome_seen = true
+    local inp = require("device").input
+    local InkAwayView = dofile("ink/view.lua")
+    local function said() return UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("input.lua", 1, true) end
+    inp.routeStylusEvents = function(self) return self.stylus_eraser_active end   -- KOReader's own
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(not said(), "input.lua: KOReader's own says nothing")
+    view:onCloseWidget()
+    inp.routeStylusEvents = function(self) return self.kobo_eraser_active end     -- pencil.koplugin's
+    UIManager.reset()
+    local view2 = InkAwayView:new{}
+    UIManager:show(view2)
+    ok(said(), "input.lua: another plugin's copy is said on open")
+    view2:onCloseWidget()
+    UIManager.reset()
+    local view3 = InkAwayView:new{}
+    UIManager:show(view3)
+    ok(not said(), "input.lua: said once each start, not each time Ink Away opens")
+    view3:onCloseWidget()
+    inp.routeStylusEvents = nil
+    G_reader_settings.data.inkaway_welcome_seen = nil
+end
+
 -- ---- the notice the first time Ink Away opens: once, and the device tip with it ----
 do
     UIManager.reset()

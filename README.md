@@ -274,6 +274,7 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 ## Notes
 
 - Palm rejection needs KOReader 2026.07+.
+- **Other pen plugins:** use Ink Away and other pen plugins (pencil.koplugin, for one) one at a time. They share KOReader's one pen hook; Ink Away hands it back when it closes. Some pen plugins, older pencil.koplugin releases among them, replace KOReader's `frontend/device/input.lua` with their own copy, and turning the plugin off doesn't put the original back, so the pen can act oddly in Ink Away. Ink Away tells you when it finds one. To fix it, update KOReader to 2026.07 or newer, or reinstall it: either puts KOReader's own `input.lua` back. Or download the zip of the KOReader version you have and copy its `koreader/frontend/device/input.lua` over the one on the reader.
 - Drawings and notebooks are kept in an "ink away" folder and saved automatically; exported PNGs and PDFs go to "ink away/exports" unless you pick another folder. Work from older versions' "drawing projects" and "notebook projects" folders moves into the "ink away" folder on the first start.
 - Settings → "When Ink Away opens" picks what you see first: the last document, the library, or Notebooks (the notebook browser on your last notebook, for note-taking).
 - On e-ink, black ink refreshes faster than greys/white and a white pen is invisible on the white canvas, exports are unaffected.

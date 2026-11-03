@@ -16,6 +16,7 @@ local PenTest = require("ink/pentest")
 local Theme = require("ink/ui/theme")
 local Palette = require("ink/palette")
 local Storage = require("ink/storage")
+local Stylus = require("ink/stylus")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -451,6 +452,22 @@ function InkAwayView:deviceTips(again)
     end
     self:setSetting("inkaway_device_tip_shown", true)
     self:tell(_(tip))
+end
+
+-- Said yet, since KOReader started, that input.lua is another plugin's copy?
+local input_file_told = false
+
+-- Is KOReader's input.lua replaced (see Stylus.foreignInput) and not yet said
+-- since KOReader started? Said each start until it is put back, as nothing
+-- else tells the reader why the pen acts oddly.
+function InkAwayView:inputFileDue()
+    return not input_file_told and Stylus.foreignInput(Device.input)
+end
+
+-- Say that input.lua is replaced, and how to put KOReader's own back.
+function InkAwayView:inputFileNotice()
+    input_file_told = true
+    self:tell(_("KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."))
 end
 
 -- The pen and touch test, full screen. The canvas stops drawing from fingers

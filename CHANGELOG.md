@@ -8,6 +8,13 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Ink Away says so when KOReader's input.lua has been replaced, most likely
+  by another pen plugin (#38). Older pencil.koplugin releases install their
+  own copy, and turning the plugin off doesn't undo it, so the pen can act
+  oddly. The note, shown once each time KOReader starts until it is fixed,
+  says how to put KOReader's own back. The README says it too.
+
 ## [4.3.0] - 2026-10-24
 
 Everything from the 4.2.1 and 4.2.2 prereleases, plus the pen's eraser end and
