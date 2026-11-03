@@ -41,6 +41,21 @@ msgstr "%1 ve %2"
 msgid "%1 and everything on it are deleted. Undo brings them back."
 msgstr "%1 ve üzerindeki her şey silinecek. Geri Al bunları geri getirir."
 
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 changed in both places: both versions are kept"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 code"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 h ago"
+msgstr ""
+
 #: ink/welcome.lua
 #, lua-format
 msgid "%1 has no gesture: %2 already do something else."
@@ -55,6 +70,66 @@ msgstr "%1 için hareket yok: hareketleri başka işlere ayrılmış."
 #, lua-format
 msgid "%1 is installed. Restart KOReader to use it."
 msgstr "%1 kuruldu. Kullanmak için KOReader'ı yeniden başlatın."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 is not set up here"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 kept in two versions"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 min ago"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 of %2: %3"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 received"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 removed"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 removed, with a safety copy"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 sent to the cloud"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 to download to this reader"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 to send to the cloud"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 will wait until closed"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1, %2"
+msgstr ""
 
 #: ink/view/share.lua
 #, lua-format
@@ -158,6 +233,10 @@ msgstr "1 dosya alındı"
 msgid "1 file sent"
 msgstr "1 dosya gönderildi"
 
+#: ink/view/sync.lua
+msgid "1 min"
+msgstr ""
+
 #: ink/view/share.lua
 msgid "1 more after it"
 msgstr "Ardından 1 tane daha"
@@ -178,10 +257,56 @@ msgstr "1 resim"
 msgid "1 result"
 msgstr "1 sonuç"
 
+#: ink/view/sync.lua
+msgid "1. Scan this with your phone's camera."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "12h"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "15m"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "1h"
+msgstr ""
+
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
 msgid "2 columns"
 msgstr "2 sütun"
+
+#: ink/view/sync.lua
+msgid "2 min"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "2. Sign in to %1 and tap Allow."
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "3. %1 shows a code. Type it here."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "30 s"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "30m"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "3h"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "5 min"
+msgstr ""
 
 #: ink/view/selection.lua
 msgid "90°"
@@ -214,6 +339,18 @@ msgstr "Bir çizim en çok %1 katman içerebilir."
 msgid "A drawing with layers keeps at least one. To stop using layers, turn them off in File."
 msgstr "Katmanlı bir çizimde en az bir katman kalır. Katmanları kullanmayı bırakmak için Dosya'dan kapatın."
 
+#: ink/sync/errors.lua
+msgid "A file on this reader could not be read."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "A file on this reader could not be written, so nothing was replaced."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "A file used by a notebook is not on this reader and could not be found."
+msgstr ""
+
 #: ink/guide.lua
 msgid "A folder's notebooks are tabs beside their pages. Hold a tab to rename, colour or reorder it; hold a page to star, move or copy it."
 msgstr "Bir klasörün defterleri, sayfalarının yanında sekmeler olarak durur. Bir sekmeyi yeniden adlandırmak, renklendirmek veya sıralamak için basılı tutun; bir sayfayı yıldızlamak, taşımak veya kopyalamak için de basılı tutun."
@@ -225,6 +362,10 @@ msgstr "Metnin üzerindeki vurgulayıcı çizgisi, okuyucunun kendi vurgusu olur
 #: ink/guide.lua
 msgid "A highlighter stroke over text becomes the reader's own highlight, from the first word it touches to the last. Over empty space it stays ink."
 msgstr "Metnin üzerindeki vurgulayıcı çizgisi, dokunduğu ilk sözcükten sonuncuya kadar okuyucunun kendi vurgusu olur. Boş alanda mürekkep olarak kalır."
+
+#: ink/view/sync.lua
+msgid "A large part of your notebooks will be removed in the cloud or on this reader. A safety copy is kept on this reader for 30 days."
+msgstr ""
 
 #: ink/guide.lua
 msgid "A new pen"
@@ -243,6 +384,10 @@ msgstr "Bir defterde en az bir sayfa kalır."
 #: ink/guide.lua
 msgid "A notebook or some of its pages, with bookmarks for titled pages and links that work."
 msgstr "Bir defter ya da sayfalarından bazıları; başlıklı sayfalar için yer imleri ve çalışan bağlantılarla."
+
+#: ink/sync/errors.lua
+msgid "A notebook was being written, so it is skipped for now."
+msgstr ""
 
 #: ink/view/images.lua
 msgid "A picture file on this reader."
@@ -306,6 +451,14 @@ msgstr "Adres"
 msgid "Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them."
 msgstr "Mürekkebinizi ve vurgularınızı özgün PDF'nin bir kopyasına ekler. Metin gerçek metin olarak kalır, dosya küçük kalır ve her PDF görüntüleyici bunları düzenleyebilir veya kaldırabilir."
 
+#: ink/view/sync.lua
+msgid "After I stop drawing"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "After closing a notebook"
+msgstr ""
+
 #: ink/view/textformat.lua
 msgid "Alignment"
 msgstr "Hizalama"
@@ -326,9 +479,17 @@ msgstr "Tüm katmanlar, gizli olanlar da dahil, tek bir çizimde birleştirilir.
 msgid "Allow adding files"
 msgstr "Dosya eklemeye izin ver"
 
+#: ink/view/sync.lua
+msgid "Allow turning on Wi-Fi"
+msgstr ""
+
 #: ink/view/gestures.lua
 msgid "Already in use"
 msgstr "Zaten kullanımda"
+
+#: ink/view/sync.lua
+msgid "Also every"
+msgstr ""
 
 #: ink/view/search.lua
 msgid "Also look inside pages (slower)"
@@ -363,6 +524,10 @@ msgstr "Başka bir defter…"
 #: ink/framecover.lua
 msgid "Antique gold"
 msgstr "Eskitilmiş altın"
+
+#: ink/view/sync.lua
+msgid "App key"
+msgstr ""
 
 #: ink/view/settings.lua
 msgid "Appearance"
@@ -419,6 +584,10 @@ msgstr "Gelen defterleri açmak için sor"
 msgid "Asking GitHub what there is…"
 msgstr "GitHub'a neler olduğu soruluyor…"
 
+#: ink/view/sync.lua
+msgid "Asking the cloud…"
+msgstr ""
+
 #: ink/view/images.lua
 msgid "At save time you can include the picture or export just your drawing. The grid is always left out."
 msgstr "Kaydederken resmi dahil edebilir ya da yalnızca çiziminizi dışa aktarabilirsiniz. Izgara her zaman dışarıda kalır."
@@ -433,6 +602,7 @@ msgstr "Otomatik"
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
+#: ink/view/sync.lua
 #: ink/view/toolbar.lua
 #: ink/view/updates.lua
 msgid "Back"
@@ -540,6 +710,14 @@ msgstr "Alt"
 msgid "Brass"
 msgstr "Pirinç"
 
+#: ink/view/sync.lua
+msgid "Bring back this version?"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Bring it back"
+msgstr ""
+
 #: ink/folderlook.lua
 msgid "Brown"
 msgstr "Kahverengi"
@@ -555,6 +733,10 @@ msgstr "Resimlere gözat"
 #: ink/actions.lua
 msgid "Browse notebooks"
 msgstr "Defterlere gözat"
+
+#: ink/sync/errors.lua
+msgid "Busy"
+msgstr ""
 
 #: ink/view/library.lua
 msgid "By name"
@@ -580,8 +762,17 @@ msgstr "Kaligrafi"
 #: ink/view/notebook.lua
 #: ink/view/overview.lua
 #: ink/view/share.lua
+#: ink/view/sync.lua
 msgid "Cancel"
 msgstr "İptal"
+
+#: ink/sync/errors.lua
+msgid "Cannot read a file"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Cannot write a file"
+msgstr ""
 
 #: ink/framecover.lua
 msgid "Canvas Wrap"
@@ -603,6 +794,19 @@ msgstr "Karatahta"
 msgid "Change link…"
 msgstr "Bağlantıyı değiştir…"
 
+#: ink/sync/errors.lua
+msgid "Changed meanwhile"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Changed on %1 and on another reader. The copy from %1 is called %2."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Changes are waiting to be sent."
+msgstr ""
+
 #: ink/coverpicker.lua
 msgid "Charcoal"
 msgstr "Kömür"
@@ -615,9 +819,25 @@ msgstr "Şimdi denetle"
 msgid "Check once a day"
 msgstr "Günde bir kez denetle"
 
+#: ink/sync/errors.lua
+msgid "Check that the reader's storage and the library folder are in place. Nothing was deleted."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Check that the reader's storage is not full or damaged."
+msgstr ""
+
 #: ink/view/ocrapi.lua
 msgid "Check the address in the Text sheet: it has to be a full address starting with https://."
 msgstr "Metin sayfasındaki adresi denetleyin: https:// ile başlayan tam bir adres olmalı."
+
+#: ink/sync/errors.lua
+msgid "Check the date and time on this reader, then try again."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Checking the cloud…"
+msgstr ""
 
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
@@ -646,6 +866,10 @@ msgstr "Türünü seçin. Sonra boyutunu ve rengini ayarlayabilirsiniz."
 msgid "Choose its paper, a PDF or a template"
 msgstr "Kâğıdını, bir PDF'yi veya şablonu seçin"
 
+#: ink/sync/errors.lua
+msgid "Choose the old folder again, or start syncing this folder as a new library."
+msgstr ""
+
 #: ink/view/images.lua
 msgid "Clip the page"
 msgstr "Sayfadan kırp"
@@ -662,9 +886,23 @@ msgstr "Zaten bir sayfada olan kırpıntılar orada kalır."
 #: ink/view/notebook.lua
 #: ink/view/search.lua
 #: ink/view/sheetkit.lua
+#: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Close"
 msgstr "Kapat"
+
+#: ink/view/sync.lua
+msgid "Cloud sync"
+msgstr ""
+
+#: ink/view/library.lua
+msgid "Cloud sync…"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Code %1"
+msgstr ""
 
 #: ink/coverpicker.lua
 #: ink/guide.lua
@@ -697,6 +935,37 @@ msgstr "Renk…"
 #: ink/notebookcover.lua
 msgid "Composition book"
 msgstr "Okul defteri"
+
+#: ink/view/sync.lua
+msgid "Conflicts"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Conflicts (%1)"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Connect"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Connect %1"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Connect again"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Connect to Wi-Fi, or allow Ink Away to turn it on in the sync settings."
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Connecting to %1…"
+msgstr ""
 
 #: ink/view/links.lua
 msgid "Contents"
@@ -984,6 +1253,10 @@ msgstr "Kesin veya kopyalayın, sonra herhangi bir defterin herhangi bir sayfas�
 msgid "Daily"
 msgstr "Günlük"
 
+#: ink/sync/errors.lua
+msgid "Damaged download"
+msgstr ""
+
 #: ink/view/settings.lua
 msgid "Dark"
 msgstr "Koyu"
@@ -1004,6 +1277,10 @@ msgstr "Koyu, Ink Away'in araç çubuklarını ve menülerini koyu yapar; sayfa 
 msgid "Date"
 msgstr "Tarih"
 
+#: ink/view/sync.lua
+msgid "Day"
+msgstr ""
+
 #: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Default"
@@ -1019,6 +1296,7 @@ msgstr "Varsayılan (içerik yazı tipi)"
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/selection.lua
+#: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Delete"
 msgstr "Sil"
@@ -1042,6 +1320,14 @@ msgstr "Tüm kırpıntıları şimdi sil…"
 #: ink/view/library.lua
 msgid "Delete all clips?"
 msgstr "Tüm kırpıntılar silinsin mi?"
+
+#: ink/view/sync.lua
+msgid "Delete anyway?"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Delete anyway…"
+msgstr ""
 
 #: ink/view/trash.lua
 msgid "Delete for good"
@@ -1112,9 +1398,26 @@ msgstr "Silinenler, bir kitabın notları da, 30 gün bekler ve eski yerlerine g
 msgid "Delete…"
 msgstr "Sil…"
 
+#: ink/view/sync.lua
+msgid "Details"
+msgstr ""
+
 #: ink/view/textformat.lua
 msgid "Direction"
 msgstr "Yön"
+
+#: ink/view/sync.lua
+msgid "Disconnect"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Disconnect %1?"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Disconnect and connect again, and tap Allow when asked."
+msgstr ""
 
 #: ink/view/receive.lua
 msgid "Don't ask again"
@@ -1138,6 +1441,7 @@ msgstr "Bir daha sorma"
 #: ink/view/selection.lua
 #: ink/view/settings.lua
 #: ink/view/sheetkit.lua
+#: ink/view/sync.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
 #: ink/view/updates.lua
@@ -1232,6 +1536,22 @@ msgstr "Hollanda dalgası"
 msgid "Each document keeps its paper; a new one starts on the last you picked. On a dark paper black ink and text show white. Dark mode never changes the paper."
 msgstr "Her belge kâğıdını korur; yeni bir belge en son seçtiğiniz kâğıtla başlar. Koyu bir kâğıtta siyah mürekkep ve metin beyaz görünür. Koyu mod kâğıdı asla değiştirmez."
 
+#: ink/view/sync.lua
+msgid "Each notebook is copied to your own cloud account, and the latest version comes to a reader when you open it there. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Each one is tried again at the next sync. Tap Details on the sync sheet for what to do."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Earlier versions"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Earlier versions of this notebook"
+msgstr ""
+
 #: ink/framecover.lua
 msgid "Ebonised"
 msgstr "Ebonit"
@@ -1267,6 +1587,10 @@ msgstr "Çöp kutusunu boşalt"
 #: ink/view/trash.lua
 msgid "Empty the trash?"
 msgstr "Çöp kutusu boşaltılsın mı?"
+
+#: ink/view/sync.lua
+msgid "Enter app key"
+msgstr ""
 
 #: ink/view/toolbar.lua
 msgid "Erase"
@@ -1308,6 +1632,14 @@ msgstr "Mürekkep dışındaki her şey"
 #: ink/view/trash.lua
 msgid "Everything in it is deleted for good."
 msgstr "İçindeki her şey kalıcı olarak silinir."
+
+#: ink/view/sync.lua
+msgid "Everything is already in sync."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Everything is already the same here and in the cloud."
+msgstr ""
 
 #: ink/reader/inkview.lua
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
@@ -1486,6 +1818,10 @@ msgstr "Sayfada parmak"
 msgid "Finish"
 msgstr "Bitir"
 
+#: ink/view/sync.lua
+msgid "Finishing…"
+msgstr ""
+
 #: ink/view/pencase.lua
 msgid "Firm"
 msgstr "Sert"
@@ -1593,6 +1929,14 @@ msgstr "Rafta çerçeve…"
 msgid "Free pictures from Wikimedia and Openverse. Needs Wi-Fi."
 msgstr "Wikimedia ve Openverse'ten ücretsiz resimler. Wi-Fi gerekir."
 
+#: ink/sync/errors.lua
+msgid "Free some space in your account or buy more. Nothing was lost on this reader."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Free some space on the reader and try again."
+msgstr ""
+
 #: ink/view/trash.lua
 #, lua-format
 msgid "From %s"
@@ -1648,6 +1992,10 @@ msgstr "Hareketler ve kalem düğmeleri, her birine ve sayfa çevirme düğmeler
 #: ink/view/images.lua
 msgid "Get from your phone or computer"
 msgstr "Telefonunuzdan veya bilgisayarınızdan al"
+
+#: ink/view/sync.lua
+msgid "Get the latest when opening one"
+msgstr ""
 
 #: ink/guide.lua
 msgid "Getting around"
@@ -1955,6 +2303,10 @@ msgstr "Ink Away kitaplığı"
 msgid "Ink Away notebooks"
 msgstr "Ink Away defterleri"
 
+#: ink/view/sync.lua
+msgid "Ink Away only uses its own folder in your account and cannot see anything else in it. Syncing stays off until you connect."
+msgstr ""
+
 #: main.lua
 msgid "Ink Away: annotate the book"
 msgstr "Ink Away: kitabı not al"
@@ -2006,6 +2358,10 @@ msgstr "İzometrik"
 msgid "It can't be brought back."
 msgstr "Geri getirilemez."
 
+#: ink/view/sync.lua
+msgid "It replaces the original. The original is kept in the backup folder."
+msgstr ""
+
 #: ink/guide.lua
 msgid "It saves itself"
 msgstr "Kendiliğinden kaydedilir"
@@ -2014,6 +2370,22 @@ msgstr "Kendiliğinden kaydedilir"
 #, lua-format
 msgid "It stays in the trash for %d days."
 msgstr "Çöp kutusunda %d gün kalır."
+
+#: ink/sync/errors.lua
+msgid "It will be checked again on the next sync."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "It will be downloaded again on the next sync."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "It will be sent again on the next sync."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "It will be synced next time."
+msgstr ""
 
 #: ink/view/textformat.lua
 msgid "Italic"
@@ -2036,6 +2408,10 @@ msgstr "Resim olarak tut"
 msgid "Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."
 msgstr "“Resim olarak tut”, bunların bulunduğu %d sayfanın üzerine mürekkebinizin bir resmini koyar, böylece çizdiğiniz gibi görünürler. Oradaki mürekkep artık çizgi çizgi düzenlenemez; diğer tüm sayfalar düzenlenebilir kalır. “Dışarıda bırak” PDF'yi onlarsız yazar."
 
+#: ink/view/sync.lua
+msgid "Keep both"
+msgstr ""
+
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Gece modunda renkleri koru"
@@ -2047,6 +2423,18 @@ msgstr "Saklama süresi (gün)"
 #: ink/view/dialogs.lua
 msgid "Keep going"
 msgstr "Devam et"
+
+#: ink/view/sync.lua
+msgid "Keep the original"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Keep your notebooks and drawings the same on all your readers."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Keep your notebooks the same on all your readers, through your own cloud account."
+msgstr ""
 
 #: ink/view/ocrapi.lua
 msgid "Key"
@@ -2249,9 +2637,29 @@ msgstr "İki parmakla uzun yukarı kaydırma."
 msgid "Long-press an image to add it."
 msgstr "Eklemek için bir resme uzun basın."
 
+#: ink/view/sync.lua
+msgid "Look at the conflicts"
+msgstr ""
+
 #: ink/view/search.lua
 msgid "Look inside pages too"
 msgstr "Sayfaların içine de bak"
+
+#: ink/view/sync.lua
+msgid "Looking at this reader…"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Looking at what there is to sync…"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Looking for a newer version…"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Looking for changes…"
+msgstr ""
 
 #: ink/guide.lua
 msgid "Loop writing, shapes, pictures or text for its menu: cut, copy, duplicate, turn, flip, colour, size, opacity, to front, delete."
@@ -2285,6 +2693,10 @@ msgstr "İçindekiler sayfası oluştur"
 msgid "Make a copy"
 msgstr "Kopya oluştur"
 
+#: ink/sync/errors.lua
+msgid "Make the notebook smaller, for example by splitting it. It stays on this reader."
+msgstr ""
+
 #: ink/guide.lua
 msgid "Make them yours"
 msgstr "Kendinize göre yapın"
@@ -2292,6 +2704,10 @@ msgstr "Kendinize göre yapın"
 #: ink/view/share.lua
 msgid "Making a notebook in Library › Imported › PDFs…"
 msgstr "Kitaplık › Alınanlar › PDF'ler içinde defter hazırlanıyor…"
+
+#: ink/sync/errors.lua
+msgid "Many files seem to be missing"
+msgstr ""
 
 #: ink/view/notebook.lua
 msgid "Margin ruled"
@@ -2359,6 +2775,10 @@ msgstr "Taşı"
 #: ink/guide.lua
 msgid "Move around"
 msgstr "Dolaşın"
+
+#: ink/sync/errors.lua
+msgid "Move closer to the router and try again. Syncing carries on where it stopped."
+msgstr ""
 
 #: ink/view/layers.lua
 #: ink/view/overview.lua
@@ -2436,9 +2856,18 @@ msgstr "Müzik"
 msgid "Mustard"
 msgstr "Hardal"
 
+#: ink/view/sync.lua
+msgid "Name of this reader"
+msgstr ""
+
 #: ink/ui/brushmaker.lua
 msgid "Name this brush"
 msgstr "Bu fırçaya ad verin"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Name: %1"
+msgstr ""
 
 #: ink/view/pencase.lua
 msgid "Navigate"
@@ -2491,6 +2920,10 @@ msgstr "Yeni arama"
 msgid "New shelf"
 msgstr "Yeni raf"
 
+#: ink/sync/errors.lua
+msgid "Newer version needed"
+msgstr ""
+
 #: ink/view/library.lua
 msgid "Newest first"
 msgstr "Önce en yeni"
@@ -2511,9 +2944,21 @@ msgstr "Uç açısı"
 msgid "No PDFs or folders here."
 msgstr "Burada PDF veya klasör yok."
 
+#: ink/view/sync.lua
+msgid "No camera? Open this address in any browser:"
+msgstr ""
+
 #: ink/view/overview.lua
 msgid "No colour"
 msgstr "Renk yok"
+
+#: ink/view/sync.lua
+msgid "No conflicts."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "No connection"
+msgstr ""
 
 #: ink/view/dialogs.lua
 msgid "No files or folders here."
@@ -2605,17 +3050,37 @@ msgstr "Hiçbir sayfada mürekkep yok."
 msgid "Normal"
 msgstr "Normal"
 
+#: ink/sync/errors.lua
+msgid "Not allowed"
+msgstr ""
+
 #: ink/view/updates.lua
 msgid "Not checked yet."
 msgstr "Henüz denetlenmedi."
+
+#: ink/sync/errors.lua
+msgid "Not found in the cloud"
+msgstr ""
 
 #: ink/view/updates.lua
 msgid "Not installed"
 msgstr "Kurulu değil"
 
+#: ink/view/sync.lua
+msgid "Not now"
+msgstr ""
+
 #: ink/view/welcome.lua
 msgid "Not set up"
 msgstr "Kurulmadı"
+
+#: ink/sync/errors.lua
+msgid "Not signed in"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Not synced yet."
+msgstr ""
 
 #: ink/view/textformat.lua
 msgid "Note font"
@@ -2645,10 +3110,22 @@ msgstr "Defter kâğıdı"
 msgid "Notebooks"
 msgstr "Defterler"
 
+#: ink/view/sync.lua
+msgid "Notebooks changed on two readers. Both versions are kept."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Notebooks on this reader and in the cloud stay as they are. This reader stops syncing. You can connect again at any time."
+msgstr ""
+
 #: ink/actions.lua
 #: ink/view/pencase.lua
 msgid "Nothing"
 msgstr "Hiçbir şey"
+
+#: ink/view/sync.lua
+msgid "Nothing changes. The copy stays as a notebook of its own."
+msgstr ""
 
 #: ink/view/search.lua
 msgid "Nothing found."
@@ -2662,6 +3139,10 @@ msgstr "Henüz burada bir şey yok. + Yeni ile bir çizim, defter veya klasör o
 msgid "Nothing inside the loop."
 msgstr "Kementin içinde bir şey yok."
 
+#: ink/view/sync.lua
+msgid "Nothing on this reader is replaced or removed without a safety copy first."
+msgstr ""
+
 #: ink/view/images.lua
 msgid "Nothing sent yet."
 msgstr "Henüz bir şey gönderilmedi."
@@ -2673,6 +3154,10 @@ msgstr "Yinelenecek bir şey yok."
 #: ink/view.lua
 msgid "Nothing to undo."
 msgstr "Geri alınacak bir şey yok."
+
+#: ink/view/sync.lua
+msgid "Nothing yet."
+msgstr ""
 
 #: ink/view/document.lua
 #, lua-format
@@ -2693,6 +3178,7 @@ msgid "Oak"
 msgstr "Meşe"
 
 #: ink/view/settings.lua
+#: ink/view/sync.lua
 msgid "Off"
 msgstr "Kapalı"
 
@@ -2748,6 +3234,14 @@ msgstr "Aç"
 #, lua-format
 msgid "Open %s"
 msgstr "%s aç"
+
+#: ink/sync/errors.lua
+msgid "Open Cloud sync and connect again. Your notebooks stay as they are."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Open Cloud sync and connect your account."
+msgstr ""
 
 #: main.lua
 msgid "Open Ink Away"
@@ -3092,6 +3586,10 @@ msgstr "Resim"
 msgid "Picture on the sides"
 msgstr "Kenarlarda resim"
 
+#: ink/sync/errors.lua
+msgid "Picture or PDF is missing"
+msgstr ""
+
 #: ink/guide.lua
 #: ink/view/export.lua
 msgid "Pictures"
@@ -3152,6 +3650,10 @@ msgstr "Önceki sayfa"
 #: ink/actions.lua
 msgid "Previous pen"
 msgstr "Önceki kalem"
+
+#: ink/view/sync.lua
+msgid "Problems"
+msgstr ""
 
 #: ink/view/menus.lua
 msgid "Protect text from eraser"
@@ -3215,6 +3717,10 @@ msgstr "Aşağı okunur"
 #: ink/view/textformat.lua
 msgid "Reads up"
 msgstr "Yukarı okunur"
+
+#: ink/view/sync.lua
+msgid "Ready to sync"
+msgstr ""
 
 #: ink/view/share.lua
 #, lua-format
@@ -3292,6 +3798,10 @@ msgstr "Yeniden adlandır"
 msgid "Rename layer"
 msgstr "Katmanı yeniden adlandır"
 
+#: ink/sync/errors.lua
+msgid "Rename one of them."
+msgstr ""
+
 #: ink/view/document.lua
 #: ink/view/layers.lua
 #: ink/view/library.lua
@@ -3352,6 +3862,7 @@ msgstr "Zımpara kâğıdı"
 #: ink/view/export.lua
 #: ink/view/notebook.lua
 #: ink/view/ocrapi.lua
+#: ink/view/sync.lua
 msgid "Save"
 msgstr "Kaydet"
 
@@ -3515,6 +4026,10 @@ msgstr "Ara…"
 msgid "Second side button"
 msgstr "İkinci yan düğme"
 
+#: ink/sync/errors.lua
+msgid "Secure connection failed"
+msgstr ""
+
 #: ink/guide.lua
 msgid "Select a word"
 msgstr "Bir sözcük seç"
@@ -3636,6 +4151,10 @@ msgstr "Silerken silgiyi göster"
 msgid "Show them in the library"
 msgstr "Kitaplıkta göster"
 
+#: ink/view/sync.lua
+msgid "Shown in the names of conflict copies, so you can tell which reader a version came from."
+msgstr ""
+
 #: ink/guide.lua
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
 msgstr "Kaleminizin, düğmelerinin ve elinizin nasıl geldiğini gösterir. Hata raporunda işe yarar."
@@ -3643,6 +4162,10 @@ msgstr "Kaleminizin, düğmelerinin ve elinizin nasıl geldiğini gösterir. Hat
 #: ink/actions.lua
 msgid "Side button"
 msgstr "Yan düğme"
+
+#: ink/sync/errors.lua
+msgid "Sign in again"
+msgstr ""
 
 #: ink/framecover.lua
 msgid "Silver"
@@ -3705,6 +4228,10 @@ msgstr "Bazı sayfalar bu PDF'de resim olarak tutulamadı, bu yüzden üzerlerin
 msgid "Something went wrong adding that image. Please try another."
 msgstr "Bu resim eklenirken bir şeyler ters gitti. Lütfen başka bir tane deneyin."
 
+#: ink/sync/errors.lua
+msgid "Something went wrong inside Ink Away. Nothing was overwritten."
+msgstr ""
+
 #: ink/view/toolbar.lua
 msgid "Something went wrong opening that tool. Please report this."
 msgstr "Bu araç açılırken bir şeyler ters gitti. Lütfen bildirin."
@@ -3744,8 +4271,25 @@ msgid "Starred pages"
 msgstr "Yıldızlı sayfalar"
 
 #: ink/guide.lua
+#: ink/view/sync.lua
 msgid "Start again"
 msgstr "Yeniden başla"
+
+#: ink/sync/errors.lua
+msgid "Start again to get a new code, and type it exactly as shown."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Start it again whenever you like."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Start syncing"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Starting…"
+msgstr ""
 
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
@@ -3757,6 +4301,7 @@ msgstr "Nokta dokusu"
 
 #: ink/view/dialogs.lua
 #: ink/view/share.lua
+#: ink/view/sync.lua
 msgid "Stop"
 msgstr "Durdur"
 
@@ -3772,6 +4317,15 @@ msgstr "Dışa aktarma durdurulsun mu? Şimdiye kadar kaydedilen resimler siline
 #: ink/view/dialogs.lua
 msgid "Stop now?"
 msgstr "Şimdi durdurulsun mu?"
+
+#: ink/sync/errors.lua
+msgid "Stopped"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Stopped: %1"
+msgstr ""
 
 #: ink/view/share.lua
 #, lua-format
@@ -3810,6 +4364,56 @@ msgstr "Sağ kenar boyunca yukarı kaydırma"
 #: ink/view/settings.lua
 msgid "Symmetry"
 msgstr "Simetri"
+
+#: ink/view/sync.lua
+msgid "Sync automatically"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Sync log"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Sync now"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Sync this folder as a new library"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Synced"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Synced %1"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Synced %1, with %2 problem(s)"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Synced, with problems"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Syncing waits for Wi-Fi, and Ink Away is set not to turn it on by itself."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Syncing was stopped."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Syncing would delete a large part of your notebooks in the cloud, so it stopped before deleting anything."
+msgstr ""
 
 #: ink/view/settings.lua
 msgid "System"
@@ -3891,6 +4495,10 @@ msgstr "Metin kutuları: %d"
 msgid "That document is no longer there."
 msgstr "O belge artık yok."
 
+#: ink/view/sync.lua
+msgid "That does not look like an app key. It is letters and digits only."
+msgstr ""
+
 #: ink/guide.lua
 msgid "The + and − in the corner zoom in and out, and so does a pinch."
 msgstr "Köşedeki + ve − yakınlaştırır ve uzaklaştırır, sıkıştırma da öyle."
@@ -3907,6 +4515,11 @@ msgstr "Kitaplık"
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
 msgstr "%s notları kitabın olduğu yere geri döndü. Kitap o yere dönünce yeniden görünürler."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The app key of your %1 app."
+msgstr ""
 
 #: ink/guide.lua
 msgid "The arrows in the bar at the bottom, or swipe two fingers sideways."
@@ -3925,6 +4538,58 @@ msgstr ""
 msgid "The clipboard is empty."
 msgstr "Pano boş."
 
+#: ink/sync/errors.lua
+msgid "The cloud answered in a way Ink Away does not understand."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud asked Ink Away to slow down."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud did not answer in time."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud had a problem"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "The cloud has no other versions."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud holds notebooks saved by a newer Ink Away."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud is full"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud no longer accepts this reader's sign-in. It was removed or has expired."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud refused this request. Ink Away may be missing a permission."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The cloud service reported an error on its side."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The code was not accepted"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The code you typed is wrong or has already been used."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The connection timed out"
+msgstr ""
+
 #: ink/view/links.lua
 msgid "The contents lists the pages that have a title. Give pages a title first: tap the page number, then Rename."
 msgstr "İçindekiler, başlığı olan sayfaları listeler. Önce sayfalara başlık verin: sayfa numarasına dokunun, sonra Yeniden adlandır."
@@ -3932,6 +4597,10 @@ msgstr "İçindekiler, başlığı olan sayfaları listeler. Önce sayfalara ba�
 #: ink/view/document.lua
 msgid "The copy is in Library: Imported only holds what you sent"
 msgstr "Kopya Kitaplık içinde: Alınanlar yalnızca gönderdiklerinizi tutar"
+
+#: ink/view/sync.lua
+msgid "The copy is removed. It is kept in the backup folder."
+msgstr ""
 
 #: ink/view/document.lua
 #, lua-format
@@ -3941,6 +4610,14 @@ msgstr "“%s” kopyası Kitaplık içinde: Alınanlar yalnızca gönderdikleri
 #: ink/guide.lua
 msgid "The eraser rubs out what it touches; Erase whole strokes takes each stroke it crosses."
 msgstr "Silgi dokunduğu şeyi siler; Çizgilerin tamamını sil, geçtiği her çizgiyi alır."
+
+#: ink/sync/errors.lua
+msgid "The file is no longer in the cloud."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The file was changed in the cloud while it was being sent, so nothing was overwritten."
+msgstr ""
 
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
@@ -3962,6 +4639,14 @@ msgstr "Vurgulayıcı"
 msgid "The lasso, links and text"
 msgstr "Kement, bağlantılar ve metin"
 
+#: ink/sync/errors.lua
+msgid "The library folder changed"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The library folder is not the one that was last synced."
+msgstr ""
+
 #: ink/view/ocrapi.lua
 msgid "The name of one of the service's models that can read pictures, as its model list writes it, for example gpt-4o-mini or paddleocr-vl."
 msgstr "Hizmetin resim okuyabilen modellerinden birinin adı, model listesinde yazıldığı gibi; örneğin gpt-4o-mini veya paddleocr-vl."
@@ -3969,6 +4654,15 @@ msgstr "Hizmetin resim okuyabilen modellerinden birinin adı, model listesinde y
 #: ink/view/document.lua
 msgid "The new document is in Library: Imported only holds what you sent"
 msgstr "Yeni belge Kitaplık içinde: Alınanlar yalnızca gönderdiklerinizi tutar"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The notebook becomes the version from %1. What is on this reader now is saved in the backup folder first."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The notebook is synced anyway. The picture shows when its file arrives."
+msgstr ""
 
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
@@ -4009,6 +4703,14 @@ msgstr "Kalemin silgi ucu, dokunduğu sürece."
 #: ink/guide.lua
 msgid "The pen's eraser end."
 msgstr "Kalemin silgi ucu."
+
+#: ink/sync/errors.lua
+msgid "The reader could not make a secure connection to the cloud. Its clock may be wrong."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The reader could not reach the cloud."
+msgstr ""
 
 #: ink/view/ocrapi.lua
 msgid "The recognition preview could not be opened. Your handwriting was kept."
@@ -4094,6 +4796,10 @@ msgstr "Seçimde el yazısı yok."
 msgid "There is no layer under this one."
 msgstr "Bunun altında katman yok."
 
+#: ink/sync/errors.lua
+msgid "There is no room left in the cloud account."
+msgstr ""
+
 #: ink/view/document.lua
 msgid "There is nothing to copy yet."
 msgstr "Henüz kopyalanacak bir şey yok."
@@ -4107,6 +4813,10 @@ msgstr "Bu klasörde dışa aktarılacak bir şey yok."
 msgid "There is nothing to export yet."
 msgstr "Henüz dışa aktarılacak bir şey yok."
 
+#: ink/view/sync.lua
+msgid "These notebooks were changed on two readers. Both versions were kept: the one already in the cloud under its own name, and the one from this reader as a copy."
+msgstr ""
+
 #: ink/view/settings.lua
 msgid "Thirds"
 msgstr "Üçte bir"
@@ -4118,6 +4828,19 @@ msgstr "Bu kitabın notları Ink Away'in çöp kutusunda 30 gün bekler. Geri ko
 #: ink/reader/book.lua
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr "Bu kitabın mürekkebi daha yeni bir Ink Away tarafından kaydedildi. Değiştirmek için Ink Away'i güncelleyin."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "This copy of Ink Away has no %1 app key. Make an app at the %1 developer site (App folder access), and enter its app key to continue."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "This file is larger than the cloud sync can send."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "This is the version you have."
+msgstr ""
 
 #: ink/view/layers.lua
 msgid "This layer is already at the bottom."
@@ -4135,6 +4858,10 @@ msgstr "Bu defterin henüz içindekiler sayfası yok: sayfa menüsü bir tane ya
 msgid "This page"
 msgstr "Bu sayfa"
 
+#: ink/view/sync.lua
+msgid "This reader"
+msgstr ""
+
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."
 msgstr "Bu okuyucu Wi-Fi üzerinden paylaşım yapamaz."
@@ -4142,6 +4869,10 @@ msgstr "Bu okuyucu Wi-Fi üzerinden paylaşım yapamaz."
 #: ink/view/share.lua
 msgid "This reader has no address on a network yet. Connect it to Wi-Fi and try again."
 msgstr "Bu okuyucunun henüz bir ağ adresi yok. Wi-Fi'a bağlanıp yeniden deneyin."
+
+#: ink/sync/errors.lua
+msgid "This reader is not connected to a cloud account."
+msgstr ""
 
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
@@ -4166,6 +4897,14 @@ msgstr "Öne getir"
 #: ink/view/library.lua
 msgid "To keep notebooks and drawings together"
 msgstr "Defterleri ve çizimleri bir arada tutmak için"
+
+#: ink/sync/errors.lua
+msgid "Too large"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Too many requests"
+msgstr ""
 
 #: ink/reader/inkview.lua
 msgid "Toolbar"
@@ -4227,6 +4966,22 @@ msgstr "Gerçekten saydam resimler burada az bulunur. Herhangi bir resim ekleyin
 msgid "Try %1?"
 msgstr "%1 denensin mi?"
 
+#: ink/view/sync.lua
+msgid "Try again"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Try again later. Your notebooks are safe."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Try again. If it keeps happening, report the code and the sync log."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Try again. If it keeps happening, update Ink Away."
+msgstr ""
+
 #: ink/view/updates.lua
 msgid "Try it"
 msgstr "Dene"
@@ -4234,6 +4989,10 @@ msgstr "Dene"
 #: ink/view/layers.lua
 msgid "Turn layers off?"
 msgstr "Katmanlar kapatılsın mı?"
+
+#: ink/sync/errors.lua
+msgid "Turn on Wi-Fi and try again. Your notebooks are safe and nothing was lost."
+msgstr ""
 
 #: ink/view/ocrapi.lua
 msgid "Turn on Wi-Fi to convert online."
@@ -4250,6 +5009,14 @@ msgstr "Sayfaları çevir"
 #: ink/guide.lua
 msgid "Turn text"
 msgstr "Metni döndür"
+
+#: ink/sync/errors.lua
+msgid "Two files differ only in capital letters, which the cloud treats as one."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Two names look the same"
+msgstr ""
 
 #: ink/actions.lua
 msgid "Two-finger double tap"
@@ -4295,6 +5062,15 @@ msgstr "İki parmakla dokunma."
 msgid "Type a page number…"
 msgstr "Sayfa numarası yazın…"
 
+#: ink/view/sync.lua
+msgid "Type the code"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Type the code %1 showed after you tapped Allow."
+msgstr ""
+
 #: ink/view/textformat.lua
 msgid "Underline"
 msgstr "Altı çizili"
@@ -4303,6 +5079,14 @@ msgstr "Altı çizili"
 #: ink/view/toolbar.lua
 msgid "Undo"
 msgstr "Geri al"
+
+#: ink/sync/errors.lua
+msgid "Unexpected answer"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Unexpected problem"
+msgstr ""
 
 #: ink/view/notebook.lua
 #: ink/view/overview.lua
@@ -4317,6 +5101,10 @@ msgstr "Adsız"
 #: ink/view/links.lua
 msgid "Up"
 msgstr "Yukarı"
+
+#: ink/sync/errors.lua
+msgid "Update Ink Away on this reader, then sync again. Nothing was changed."
+msgstr ""
 
 #: ink/view/updates.lua
 #, lua-format
@@ -4341,6 +5129,10 @@ msgstr "Kullan"
 msgid "Use for new notebooks"
 msgstr "Yeni defterler için kullan"
 
+#: ink/view/sync.lua
+msgid "Use the copy"
+msgstr ""
+
 #: ink/view/dialogs.lua
 msgid "Use this folder"
 msgstr "Bu klasörü kullan"
@@ -4352,6 +5144,10 @@ msgstr "Dikey"
 #: ink/view/library.lua
 msgid "View"
 msgstr "Görüntüle"
+
+#: ink/sync/errors.lua
+msgid "Wait a few minutes. Syncing will carry on by itself."
+msgstr ""
 
 #: ink/view/share.lua
 msgid "Waiting for your phone or computer…"
@@ -4379,6 +5175,14 @@ msgstr "Haftalık"
 msgid "What Ink Away can do that a glance doesn't show."
 msgstr "Ink Away'in bir bakışta görünmeyen yapabildikleri."
 
+#: ink/sync/errors.lua
+msgid "What arrived was incomplete or damaged, so it was thrown away."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "What to do"
+msgstr ""
+
 #: ink/guide.lua
 msgid "What to set on this reader for quicker ink."
 msgstr "Daha hızlı mürekkep için bu okuyucuda neyi ayarlamalı."
@@ -4394,6 +5198,10 @@ msgstr "Ink Away açılınca"
 #: ink/actions.lua
 msgid "When the page is zoomed in wider than the screen, sideways swipes move the page instead."
 msgstr "Sayfa ekrandan geniş yakınlaştırılmışsa yana kaydırmalar sayfayı taşır."
+
+#: ink/view/sync.lua
+msgid "When the reader goes to sleep"
+msgstr ""
 
 #: ink/guide.lua
 msgid "Where to start"
@@ -4412,6 +5220,10 @@ msgstr "Beyaz ve altın"
 #: ink/framecover.lua
 msgid "White sides"
 msgstr "Beyaz kenarlar"
+
+#: ink/sync/errors.lua
+msgid "Wi-Fi is off"
+msgstr ""
 
 #: ink/view/imagebrowser.lua
 msgid "Wikimedia"
@@ -4525,6 +5337,11 @@ msgstr "bir sürüm"
 msgid "a test build"
 msgstr "bir deneme sürümü"
 
+#: ink/view/sync.lua
+#, lua-format
+msgid "and %1 more, see the sync log"
+msgstr ""
+
 #: ink/view/settings.lua
 msgid "blank"
 msgstr "boş"
@@ -4565,6 +5382,10 @@ msgstr "renk seçmek için basılı tutun"
 msgid "isometric"
 msgstr "izometrik"
 
+#: ink/view/sync.lua
+msgid "just now"
+msgstr ""
+
 #: ink/view/settings.lua
 msgid "lined"
 msgstr "çizgili"
@@ -4584,6 +5405,10 @@ msgstr "aylık"
 #: ink/view/settings.lua
 msgid "music"
 msgstr "müzik"
+
+#: ink/view/sync.lua
+msgid "now"
+msgstr ""
 
 #: ink/view/settings.lua
 msgid "off"

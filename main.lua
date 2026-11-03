@@ -56,6 +56,9 @@ function InkAway:init()
     -- file browser (a home screen plugin): KOReader gives such windows' unused
     -- events to the modules listed here, as it does for screenshots
     if type(self.ui.active_widgets) == "table" then table.insert(self.ui.active_widgets, self) end
+    -- cloud sync: set up once for the whole session (nothing happens unless the person connected)
+    local sok, SyncManager = pcall(require, "ink/sync/manager")
+    if sok and not SyncManager.started then pcall(SyncManager.start) end
     -- book ink follows its book when KOReader moves, copies or deletes it
     local bok, BookInk = pcall(require, "ink/reader/bookink")
     if bok then BookInk.installFollow() end
@@ -251,6 +254,12 @@ function InkAway:onInkAwayBookNotes()
         self.book:openNotes()
     else self:openCanvas() end
     return true
+end
+
+-- The reader is going to sleep: cloud sync sends what is waiting, if the person asked for that.
+function InkAway:onSuspend()
+    local ok, SyncManager = pcall(require, "ink/sync/manager")
+    if ok then pcall(SyncManager.noteSleep) end
 end
 
 -- The screen turned (or was resized) under the book: what Ink Away had open

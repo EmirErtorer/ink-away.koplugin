@@ -140,6 +140,8 @@ function InkAwayView:libraryPick(it)
     if it.folder then return self:libraryGo(it.path) end
     if it.picture then return self:viewPicture(it.path) end
     if self._library then self._library:close() end
+    -- (with cloud sync on, a newer version of the notebook is looked for first)
+    if self:syncPreOpen(it.path, function() self:openDocument(it.path) end) then return end
     self:openDocument(it.path)
 end
 
@@ -198,6 +200,7 @@ function InkAwayView:libraryMenu()
         option(_("Write on a PDF from this reader\u{2026}"),
             _("Pick a PDF that is already on this reader. It becomes a notebook in this folder."),
             function() self:openPdfAsNotebook(self._lib_dir) end, nil, "pdfpen")
+        option(_("Cloud sync\u{2026}"), self:syncMenuHint(), function() self:openSync() end, nil, "cloud")
         if Clips.isClipsDir(self._lib_dir) then self:clipsMenuRows(content, content_w, menu, field) end
         add(VerticalSpan:new{ width = S(16) })
         add(self:sheetLabel(_("Order"), true))

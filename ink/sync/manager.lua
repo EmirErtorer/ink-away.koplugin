@@ -45,7 +45,7 @@ end
 
 -- The sync's own folder (outside the library, so it is never synced).
 function Manager.dir()
-    local d = Storage.join(Storage.dataDir(), "inkaway-sync")
+    local d = Storage.join(Storage.dataDir() or Storage.settingsDir(), "inkaway-sync")
     Storage.ensureDir(d)
     return d
 end
@@ -71,8 +71,8 @@ function Manager.deviceName()
     return Account.defaultDeviceName()
 end
 
--- Tell the screens something changed.
-function Manager.onChange(fn) now_state.listeners[#now_state.listeners + 1] = fn end
+-- Tell the screen something changed: the one screen that is open listens.
+function Manager.onChange(fn) now_state.listeners = { fn } end
 local function changed()
     for _i, fn in ipairs(now_state.listeners) do pcall(fn) end
 end
@@ -381,6 +381,21 @@ end
 function Manager._intervalTick()
     Manager.run("interval")
     Manager.armInterval()
+end
+
+-- Set the sync up for this session (once): notebooks from other readers find their
+-- pictures here, the timer for "every so often" starts, and a run that is overdue
+-- happens a little after start-up. Nothing at all happens until the person has
+-- connected an account.
+function Manager.start()
+    if Manager.started then return end
+    Manager.started = true
+    require("ink/sync/portable").root = function() return Manager.root() end
+    if not Manager.connected() then return end
+    Manager.setOpen({})
+    Manager.armInterval()
+    local ok, UIManager = pcall(require, "ui/uimanager")
+    if ok then UIManager:scheduleIn(20, function() Manager.run("start") end) end
 end
 
 ------------------------------------------------------------------------------

@@ -189,6 +189,7 @@ function InkAwayView:saveDocument(force)
     self._page_rev = self.canvas.rev
     self._save_waited = 0
     self:rememberDoc(path)
+    self:syncNoteSaved()   -- (cloud sync: a change is waiting to be sent)
     return true
 end
 
@@ -220,6 +221,7 @@ function InkAwayView:leaveDocument()
     self:saveDocument()
     self:shelfSnapshot()
     self:layerCachesDrop()   -- a layered drawing's caches go with it
+    self:syncNoteLeft()      -- (cloud sync: no notebook is open now)
 end
 
 -- Keep the snapshot its Bookshelf cover shows: a notebook's first page, if the
@@ -305,6 +307,7 @@ function InkAwayView:openDocument(path)
     self.doc_path, self.doc_written = path, true
     self:resetSaveState()
     self:rememberDoc(path)
+    self:syncNoteOpened(path)   -- (cloud sync: it must not be replaced while it is open)
     return true
 end
 

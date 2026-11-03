@@ -166,6 +166,8 @@ local function walk(root, clashes)
             local rel = prefix .. e.name
             if e.mode == "directory" then
                 if e.name:sub(1, 1) ~= "." and not e.name:match("%.sdr$") then go(e.path, rel .. "/", depth + 1) end
+            elseif e.mode == "file" and e.name:sub(-#Engine.TMP) == Engine.TMP and os.time() - (e.mtime or 0) > 86400 then
+                os.remove(e.path)   -- (left by a run that was cut short)
             elseif e.mode == "file" and not reserved(rel)
                     and (e.name:match("%.inkaway$") or e.name == ".inkaway-folder") then
                 local k = lower(rel)
