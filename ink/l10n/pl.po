@@ -289,8 +289,17 @@ msgstr "2. Zaloguj się do %1 i dotknij Zezwól."
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "2. Sign in to %1 and type this code:"
+msgstr "2. Zaloguj się do %1 i wpisz ten kod:"
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "3. %1 shows a code. Type it here."
 msgstr "3. %1 pokaże kod. Wpisz go tutaj."
+
+#: ink/view/sync.lua
+msgid "3. Tap Allow. This screen carries on by itself."
+msgstr "3. Dotknij Zezwól. Ten ekran przejdzie dalej sam."
 
 #: ink/view/sync.lua
 msgid "30 s"
@@ -525,13 +534,17 @@ msgstr "Inny notatnik…"
 msgid "Antique gold"
 msgstr "Stare złoto"
 
-#: ink/view/sync.lua
+#: ink/sync/config.lua
 msgid "App key"
 msgstr "Klucz aplikacji"
 
 #: ink/view/settings.lua
 msgid "Appearance"
 msgstr "Wygląd"
+
+#: ink/sync/config.lua
+msgid "Application (client) ID"
+msgstr "Identyfikator aplikacji (client ID)"
 
 #: ink/view/textformat.lua
 msgid "Applies to the selected word or text"
@@ -869,6 +882,14 @@ msgstr "Wybierz papier, plik PDF lub szablon"
 #: ink/sync/errors.lua
 msgid "Choose the old folder again, or start syncing this folder as a new library."
 msgstr "Wybierz ponownie stary folder albo zacznij synchronizować ten folder jako nową bibliotekę."
+
+#: ink/sync/config.lua
+msgid "Client ID"
+msgstr "Identyfikator klienta"
+
+#: ink/sync/config.lua
+msgid "Client secret"
+msgstr "Sekret klienta"
 
 #: ink/view/images.lua
 msgid "Clip the page"
@@ -1589,8 +1610,12 @@ msgid "Empty the trash?"
 msgstr "Opróżnić kosz?"
 
 #: ink/view/sync.lua
-msgid "Enter app key"
-msgstr "Wpisz klucz aplikacji"
+msgid "Enter details"
+msgstr "Wpisz dane"
+
+#: ink/sync/errors.lua
+msgid "Enter the code on your phone and tap Allow. This screen carries on by itself."
+msgstr "Wpisz kod w telefonie i dotknij Zezwól. Ten ekran przejdzie dalej sam."
 
 #: ink/view/toolbar.lua
 msgid "Erase"
@@ -1628,6 +1653,10 @@ msgstr "Każdy rysunek i notatnik to plik, który zapisuje się na bieżąco. Pl
 #: ink/guide.lua
 msgid "Everything besides ink"
 msgstr "Wszystko poza tuszem"
+
+#: ink/sync/errors.lua
+msgid "Everything else works as usual."
+msgstr "Wszystko inne działa jak zwykle."
 
 #: ink/view/trash.lua
 msgid "Everything in it is deleted for good."
@@ -2929,6 +2958,7 @@ msgid "Newest first"
 msgstr "Najpierw najnowsze"
 
 #: ink/view/imagebrowser.lua
+#: ink/view/sync.lua
 msgid "Next"
 msgstr "Dalej"
 
@@ -3042,6 +3072,10 @@ msgstr "Nie ma jeszcze szablonów. Zapisz stronę jako szablon z tego menu: Zapi
 msgid "No writing could be read there."
 msgstr "Nie dało się tam odczytać pisma."
 
+#: ink/sync/errors.lua
+msgid "Nobody allowed the sign-in in time, or it was refused."
+msgstr "Nikt nie zezwolił na logowanie na czas albo zostało odrzucone."
+
 #: ink/view/export.lua
 msgid "None of the pages has ink."
 msgstr "Żadna ze stron nie ma tuszu."
@@ -3053,6 +3087,10 @@ msgstr "Normalny"
 #: ink/sync/errors.lua
 msgid "Not allowed"
 msgstr "Niedozwolone"
+
+#: ink/sync/errors.lua
+msgid "Not available here"
+msgstr "Niedostępne tutaj"
 
 #: ink/view/updates.lua
 msgid "Not checked yet."
@@ -4280,6 +4318,10 @@ msgid "Start again to get a new code, and type it exactly as shown."
 msgstr "Zacznij od nowa, aby otrzymać nowy kod, i wpisz go dokładnie tak, jak jest pokazany."
 
 #: ink/sync/errors.lua
+msgid "Start again to get a new code."
+msgstr "Zacznij od nowa, aby dostać nowy kod."
+
+#: ink/sync/errors.lua
 msgid "Start it again whenever you like."
 msgstr "Uruchom ją ponownie, kiedy chcesz."
 
@@ -4496,8 +4538,14 @@ msgid "That document is no longer there."
 msgstr "Tego dokumentu już nie ma."
 
 #: ink/view/sync.lua
-msgid "That does not look like an app key. It is letters and digits only."
-msgstr "To nie wygląda na klucz aplikacji. Składa się tylko z liter i cyfr."
+#, lua-format
+msgid "That does not look right. Copy it exactly as the %1 developer site shows it."
+msgstr "To nie wygląda poprawnie. Skopiuj to dokładnie tak, jak pokazuje strona dla deweloperów %1."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The %1 of your %2 app."
+msgstr "%1 Twojej aplikacji %2."
 
 #: ink/guide.lua
 msgid "The + and − in the corner zoom in and out, and so does a pinch."
@@ -4515,11 +4563,6 @@ msgstr "Biblioteka"
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
 msgstr "Adnotacje %s wróciły tam, gdzie była książka. Pojawią się znowu, gdy książka wróci w to miejsce."
-
-#: ink/view/sync.lua
-#, lua-format
-msgid "The app key of your %1 app."
-msgstr "Klucz twojej aplikacji %1."
 
 #: ink/guide.lua
 msgid "The arrows in the bar at the bottom, or swipe two fingers sideways."
@@ -4724,6 +4767,14 @@ msgstr "Nie udało się zakończyć wyszukiwania."
 msgid "The selection changed. Please read the writing again."
 msgstr "Zaznaczenie się zmieniło. Odczytaj pismo ponownie."
 
+#: ink/sync/errors.lua
+msgid "The sign-in has not been allowed yet."
+msgstr "Logowanie nie zostało jeszcze zatwierdzone."
+
+#: ink/sync/errors.lua
+msgid "The sign-in timed out"
+msgstr "Logowanie wygasło"
+
 #: ink/guide.lua
 msgid "The small tab at the end of the toolbar folds it away, and brings it back."
 msgstr "Mała zakładka na końcu paska narzędzi składa go i przywraca."
@@ -4829,10 +4880,14 @@ msgstr "Adnotacje tej książki czekają 30 dni w koszu Ink Away. Aby je przywr�
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr "Tusz tej książki zapisała nowsza wersja Ink Away. Zaktualizuj Ink Away, aby go zmienić."
 
+#: ink/sync/errors.lua
+msgid "This cloud service does not offer that."
+msgstr "Ta usługa chmurowa tego nie oferuje."
+
 #: ink/view/sync.lua
 #, lua-format
-msgid "This copy of Ink Away has no %1 app key. Make an app at the %1 developer site (App folder access), and enter its app key to continue."
-msgstr "Ta kopia Ink Away nie ma klucza aplikacji %1. Utwórz aplikację w serwisie dla programistów %1 (dostęp do folderu aplikacji) i wpisz jej klucz, aby kontynuować."
+msgid "This copy of Ink Away is not registered with %1 yet. If you made an app of your own at the %1 developer site, enter its details to continue."
+msgstr "Ta kopia Ink Away nie jest jeszcze zarejestrowana w %1. Jeśli stworzyłeś własną aplikację na stronie dla deweloperów %1, wpisz jej dane, aby kontynuować."
 
 #: ink/sync/errors.lua
 msgid "This file is larger than the cloud sync can send."
@@ -5148,6 +5203,10 @@ msgstr "Podgląd"
 #: ink/sync/errors.lua
 msgid "Wait a few minutes. Syncing will carry on by itself."
 msgstr "Poczekaj kilka minut. Synchronizacja będzie kontynuowana sama."
+
+#: ink/sync/errors.lua
+msgid "Waiting for you"
+msgstr "Czekam na Ciebie"
 
 #: ink/view/share.lua
 msgid "Waiting for your phone or computer…"

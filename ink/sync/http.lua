@@ -98,6 +98,15 @@ end
 
 Http.transport = realTransport
 
+-- Is `host` one of `hosts`? An entry "*.example.com" stands for any host below it.
+function Http.hostAllowed(hosts, host)
+    for _i, h in ipairs(hosts or {}) do
+        if h == host then return true end
+        if h:sub(1, 2) == "*." and #host > #h - 1 and host:sub(-(#h - 1)) == h:sub(2) then return true end
+    end
+    return false
+end
+
 -- Make a request: spec as for the transport, plus `hosts`, the hosts allowed.
 -- Returns the reply, or nil and an error. A reply of any status is returned as
 -- it is; the caller decides what a 409 or 429 means.
@@ -105,9 +114,7 @@ function Http.request(spec)
     local host = spec.url:match("^https://([^/:]+)")
     if not host then return nil, Errors.make("IA-S503", "not an https address") end
     host = host:lower()
-    local allowed = false
-    for _i, h in ipairs(spec.hosts or {}) do if h == host then allowed = true end end
-    if not allowed then return nil, Errors.make("IA-S503", "host not allowed: " .. host) end
+    if not Http.hostAllowed(spec.hosts, host) then return nil, Errors.make("IA-S503", "host not allowed: " .. host) end
     spec.host = host
     return Http.transport(spec)
 end

@@ -1,15 +1,23 @@
 --[[
 The cloud services the sync can use. A provider is a module with these
-members (see ink/sync/providers/dropbox.lua, and tests/sync/mockcloud.lua for
-a pretend one the tests use). Adding Google Drive or OneDrive means writing one
-more module like it and listing it here; the engine, the settings and the
-screens do not change.
+members (see ink/sync/providers/dropbox.lua, gdrive.lua and onedrive.lua, and
+tests/sync/mockcloud.lua for a pretend one the tests use). Adding another service
+means writing one more module like them and listing it here; the engine, the
+settings and the screens do not change.
 
     id, name                     "dropbox", "Dropbox"
-    HOSTS                        the hosts it may speak to
-    beginAuth(app_key)           -> { url, verifier }   (an address to open on a phone)
-    finishAuth(app_key, code, verifier) -> account record   (what to keep)
-    new(account, opts)           -> an instance, which has:
+    AUTH                         "code": the person types a code from the phone into
+                                 the reader; "device": the reader shows a code, the
+                                 person types it on the phone, the reader waits
+    HOSTS                        the hosts it may speak to ("*.example.com" for any below)
+    beginAuth(app_key, app_secret) -> pending: { url, verifier } for "code" (an address
+                                 to open on a phone), or { kind = "device", url,
+                                 user_code, device_code, interval, expires_at }
+    finishAuth(app_key, code, verifier) -> account record   ("code" only; what to keep)
+    pollAuth(app_key, pending, app_secret) -> account record ("device" only), or
+                                 nil and IA-S206 while the person has not allowed it yet
+    new(account, opts)           -> an instance (opts: app_key, app_secret, now, save,
+                                 dir for files of its own), which has:
       :accountInfo()             -> { id, name, email }
       :list(cursor)              -> { entries, cursor, reset }; an entry is
                                     { rel, rev, size, hash } or { rel, deleted = true }
@@ -20,6 +28,9 @@ screens do not change.
       :delete(rel, rev)
       :revisions(rel)            -> { { rev, size, mtime, current } }
       :restore(rel, rev)         -> { rev, size, hash }
+      :hashFile(path, like)      -> (optional) the hash of a local file in the kind the
+                                    service gives, `like` being one of its hashes;
+                                    without it the file's Dropbox content hash is used
 
 Every call returns its result, or nil and an error from ink/sync/errors.lua.
 ]]
@@ -28,6 +39,8 @@ local Providers = {}
 
 local LIST = {
     { id = "dropbox", name = "Dropbox", module = "ink/sync/providers/dropbox" },
+    { id = "gdrive", name = "Google Drive", module = "ink/sync/providers/gdrive" },
+    { id = "onedrive", name = "OneDrive", module = "ink/sync/providers/onedrive" },
 }
 
 -- The services that can be chosen: { { id, name } }.

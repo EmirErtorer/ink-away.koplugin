@@ -19,6 +19,7 @@ local CenterContainer = require("ui/widget/container/centercontainer")
 local Geom = require("ui/geometry")
 local Blitbuffer = require("ffi/blitbuffer")
 local _ = require("ink/l10n")
+local Config = require("ink/sync/config")
 local Errors = require("ink/sync/errors")
 local Manager = require("ink/sync/manager")
 local Providers = require("ink/sync/providers")
@@ -228,13 +229,26 @@ end
 -- Signing in
 ------------------------------------------------------------------------------
 
--- Connect to service `id`: a QR code to open on a phone, then the code to type.
+-- The QR code of `url`, centred, as wide as fits.
+local function qrCode(url, content_w)
+    local side = math.floor(math.min(content_w * 0.7, math.min(Screen:getWidth(), Screen:getHeight()) * 0.55))
+    local okq, QRWidget = pcall(require, "ui/widget/qrwidget")
+    if not (okq and QRWidget) then return nil end
+    return CenterContainer:new{ dimen = Geom:new{ w = content_w, h = side },
+        QRWidget:new{ text = url, width = side, height = side } }
+end
+
+-- Connect to service `id`: a QR code to open on a phone, then the code to type (or,
+-- for a service that shows a code, the code to type on the phone).
 function InkAwayView:syncSignIn(id)
     local pending, err = Manager.beginSignIn(id)
     if not pending then
-        if err and err.code == "IA-S204" then return self:syncAskAppKey(id) end
-        return self:syncErrorSheet(err and err.code or "IA-S503")
+        if err and err.code == "IA-S204" and #Config.fields(id) > 0 and not Config.appKey(id, Manager.get) then
+            return self:syncAskAppKey(id)
+        end
+        return self:syncErrorSheet(err and err.code or "IA-S503", { again = function() self:syncSignIn(id) end })
     end
+    if pending.kind == "device" then return self:syncSignInDevice(pending) end
     local name = Providers.name(id)
     local field = "_sync_signin"
     self:closeSheet(field)
@@ -246,12 +260,7 @@ function InkAwayView:syncSignIn(id)
         add(vspan(10))
         add(para(self, T(_("1. Scan this with your phone's camera."), name), content_w, 16))
         add(vspan(10))
-        local side = math.floor(math.min(content_w * 0.7, math.min(Screen:getWidth(), Screen:getHeight()) * 0.55))
-        local okq, QRWidget = pcall(require, "ui/widget/qrwidget")
-        if okq and QRWidget then
-            add(CenterContainer:new{ dimen = Geom:new{ w = content_w, h = side },
-                QRWidget:new{ text = pending.url, width = side, height = side } })
-        end
+        add(qrCode(pending.url, content_w) or vspan(0))
         add(vspan(10))
         add(para(self, T(_("2. Sign in to %1 and tap Allow."), name), content_w, 16))
         add(vspan(6))
@@ -266,6 +275,53 @@ function InkAwayView:syncSignIn(id)
         return g
     end
     self:showSheet(field, build)
+end
+
+-- The sign-in where the reader shows a code: the person types it on the phone, and
+-- the reader asks every few seconds whether that has been done.
+function InkAwayView:syncSignInDevice(pending)
+    local name = Providers.name(pending.provider)
+    local field = "_sync_signin"
+    self:closeSheet(field)
+    local content_w = self:sheetWidth()
+    local token = {}
+    self._sync_pending = token
+    local function stop() if self._sync_pending == token then self._sync_pending = nil end end
+    local function close() stop(); self:closeSheet(field) end
+    local build = function()
+        local g = VerticalGroup:new{ align = "center", self:sheetTitle(T(_("Connect %1"), name), content_w, _("Cancel"), close) }
+        local function add(w) table.insert(g, w) end
+        add(vspan(10))
+        add(para(self, _("1. Scan this with your phone's camera."), content_w, 16))
+        add(vspan(10))
+        add(qrCode(pending.url, content_w) or vspan(0))
+        add(vspan(10))
+        add(para(self, T(_("2. Sign in to %1 and type this code:"), name), content_w, 16))
+        add(vspan(8))
+        add(TextBoxWidget:new{ text = pending.user_code, width = content_w, face = Font:getFace("cfont", 34),
+            alignment = "center", bold = true })
+        add(vspan(8))
+        add(para(self, _("3. Tap Allow. This screen carries on by itself."), content_w, 16))
+        add(vspan(8))
+        add(self:sheetHint(_("No camera? Open this address in any browser:") .. "\n" .. pending.url, content_w, 11))
+        return g
+    end
+    self:showSheet(field, build)
+    local function poll()
+        if self._sync_pending ~= token or self.closing or not self[field] then return stop() end
+        local who, perr = Manager.pollSignIn(pending)
+        if self._sync_pending ~= token then return end
+        if who then
+            close()
+            return self:syncPreview()
+        end
+        if perr and perr.code == "IA-S206" then
+            return UIManager:scheduleIn(math.max(pending.interval or 5, perr.retry_after or 0), poll)
+        end
+        close()
+        self:syncErrorSheet(perr and perr.code or "IA-S503", { again = function() self:syncSignIn(pending.provider) end })
+    end
+    UIManager:scheduleIn(pending.interval or 5, poll)
 end
 
 -- The code from the cloud service, typed on the reader's keyboard.
@@ -290,26 +346,32 @@ function InkAwayView:syncAskCode(pending)
     }
 end
 
--- This copy of Ink Away has no app key for the service: the person can enter their own.
+-- This copy of Ink Away is not registered with the service: the person can enter
+-- their own registration (one or two values), one after the other.
 function InkAwayView:syncAskAppKey(id)
     local name = Providers.name(id)
+    local fields, got = Config.fields(id), {}
+    local function ask(i)
+        local f = fields[i]
+        self:promptText{
+            title = f.label, description = T(_("The %1 of your %2 app."), f.label, name), ok_text = i < #fields and _("Next") or _("Save"),
+            on_ok = function(text)
+                text = (text or ""):gsub("%s", "")
+                if not f.valid(text) then
+                    return self:tell(T(_("That does not look right. Copy it exactly as the %1 developer site shows it."), name))
+                end
+                got[i] = text
+                if i < #fields then return ask(i + 1) end
+                for n, fld in ipairs(fields) do Manager.set(fld.setting, got[n]) end
+                self:syncSignIn(id)
+            end,
+        }
+    end
     self:ask{
         title = T(_("%1 is not set up here"), name), field = "_sync_key",
-        text = T(_("This copy of Ink Away has no %1 app key. Make an app at the %1 developer site (App folder access), and enter its app key to continue."), name),
-        ok_text = _("Enter app key"),
-        on_ok = function()
-            self:promptText{
-                title = _("App key"), description = T(_("The app key of your %1 app."), name), ok_text = _("Save"),
-                on_ok = function(text)
-                    text = (text or ""):gsub("%s", "")
-                    if not text:match("^%w+$") or #text < 8 then
-                        return self:tell(_("That does not look like an app key. It is letters and digits only."))
-                    end
-                    Manager.set(require("ink/sync/config").KEY_SETTING, text)
-                    self:syncSignIn(id)
-                end,
-            }
-        end,
+        text = T(_("This copy of Ink Away is not registered with %1 yet. If you made an app of your own at the %1 developer site, enter its details to continue."), name),
+        ok_text = _("Enter details"),
+        on_ok = function() ask(1) end,
     }
 end
 

@@ -10,6 +10,12 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Cloud sync also works with Google Drive and OneDrive (a personal Microsoft
+  account). These show a short code on the reader: scan the QR code, type the
+  code on the phone, tap Allow, and the reader carries on by itself. Ink Away
+  asks only for access to its own folder, and files it removes go to the
+  service's bin. Everything else, the safety rules included, is the same as with
+  Dropbox.
 - Cloud sync, with Dropbox first (Library, ..., Cloud sync). Connect on the
   reader itself: scan a QR code with a phone, tap Allow, type the short code
   Dropbox shows. Notebooks and drawings are kept the same on all your readers,

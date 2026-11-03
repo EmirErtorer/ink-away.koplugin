@@ -35,6 +35,10 @@ def("IA-S203", _("The code was not accepted"), _("The code you typed is wrong or
     _("Start again to get a new code, and type it exactly as shown."), false, true)
 def("IA-S204", _("Not allowed"), _("The cloud refused this request. Ink Away may be missing a permission."),
     _("Disconnect and connect again, and tap Allow when asked."), false, true)
+def("IA-S206", _("Waiting for you"), _("The sign-in has not been allowed yet."),
+    _("Enter the code on your phone and tap Allow. This screen carries on by itself."), true, false)
+def("IA-S207", _("The sign-in timed out"), _("Nobody allowed the sign-in in time, or it was refused."),
+    _("Start again to get a new code."), false, true)
 def("IA-S301", _("The cloud is full"), _("There is no room left in the cloud account."),
     _("Free some space in your account or buy more. Nothing was lost on this reader."), false, true)
 def("IA-S302", _("Too many requests"), _("The cloud asked Ink Away to slow down."),
@@ -49,6 +53,8 @@ def("IA-S306", _("Too large"), _("This file is larger than the cloud sync can se
     _("Make the notebook smaller, for example by splitting it. It stays on this reader."), false, false)
 def("IA-S307", _("Not found in the cloud"), _("The file is no longer in the cloud."),
     _("It will be sent again on the next sync."), true, false)
+def("IA-S308", _("Not available here"), _("This cloud service does not offer that."),
+    _("Everything else works as usual."), false, false)
 def("IA-S401", _("Cannot read a file"), _("A file on this reader could not be read."),
     _("Check that the reader's storage is not full or damaged."), false, false)
 def("IA-S402", _("Cannot write a file"), _("A file on this reader could not be written, so nothing was replaced."),

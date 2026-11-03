@@ -288,7 +288,16 @@ msgstr ""
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "2. Sign in to %1 and type this code:"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "3. %1 shows a code. Type it here."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "3. Tap Allow. This screen carries on by itself."
 msgstr ""
 
 #: ink/view/sync.lua
@@ -524,12 +533,16 @@ msgstr ""
 msgid "Antique gold"
 msgstr ""
 
-#: ink/view/sync.lua
+#: ink/sync/config.lua
 msgid "App key"
 msgstr ""
 
 #: ink/view/settings.lua
 msgid "Appearance"
+msgstr ""
+
+#: ink/sync/config.lua
+msgid "Application (client) ID"
 msgstr ""
 
 #: ink/view/textformat.lua
@@ -867,6 +880,14 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "Choose the old folder again, or start syncing this folder as a new library."
+msgstr ""
+
+#: ink/sync/config.lua
+msgid "Client ID"
+msgstr ""
+
+#: ink/sync/config.lua
+msgid "Client secret"
 msgstr ""
 
 #: ink/view/images.lua
@@ -1571,7 +1592,11 @@ msgid "Empty the trash?"
 msgstr ""
 
 #: ink/view/sync.lua
-msgid "Enter app key"
+msgid "Enter details"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Enter the code on your phone and tap Allow. This screen carries on by itself."
 msgstr ""
 
 #: ink/view/toolbar.lua
@@ -1609,6 +1634,10 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "Everything besides ink"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Everything else works as usual."
 msgstr ""
 
 #: ink/view/trash.lua
@@ -2904,6 +2933,7 @@ msgid "Newest first"
 msgstr ""
 
 #: ink/view/imagebrowser.lua
+#: ink/view/sync.lua
 msgid "Next"
 msgstr ""
 
@@ -3012,6 +3042,10 @@ msgstr ""
 msgid "No writing could be read there."
 msgstr ""
 
+#: ink/sync/errors.lua
+msgid "Nobody allowed the sign-in in time, or it was refused."
+msgstr ""
+
 #: ink/view/export.lua
 msgid "None of the pages has ink."
 msgstr ""
@@ -3022,6 +3056,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "Not allowed"
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Not available here"
 msgstr ""
 
 #: ink/view/updates.lua
@@ -4234,6 +4272,10 @@ msgid "Start again to get a new code, and type it exactly as shown."
 msgstr ""
 
 #: ink/sync/errors.lua
+msgid "Start again to get a new code."
+msgstr ""
+
+#: ink/sync/errors.lua
 msgid "Start it again whenever you like."
 msgstr ""
 
@@ -4450,7 +4492,13 @@ msgid "That document is no longer there."
 msgstr ""
 
 #: ink/view/sync.lua
-msgid "That does not look like an app key. It is letters and digits only."
+#, lua-format
+msgid "That does not look right. Copy it exactly as the %1 developer site shows it."
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The %1 of your %2 app."
 msgstr ""
 
 #: ink/guide.lua
@@ -4468,11 +4516,6 @@ msgstr ""
 #: ink/view/trash.lua
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
-msgstr ""
-
-#: ink/view/sync.lua
-#, lua-format
-msgid "The app key of your %1 app."
 msgstr ""
 
 #: ink/guide.lua
@@ -4676,6 +4719,14 @@ msgstr ""
 msgid "The selection changed. Please read the writing again."
 msgstr ""
 
+#: ink/sync/errors.lua
+msgid "The sign-in has not been allowed yet."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "The sign-in timed out"
+msgstr ""
+
 #: ink/guide.lua
 msgid "The small tab at the end of the toolbar folds it away, and brings it back."
 msgstr ""
@@ -4774,9 +4825,13 @@ msgstr ""
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr ""
 
+#: ink/sync/errors.lua
+msgid "This cloud service does not offer that."
+msgstr ""
+
 #: ink/view/sync.lua
 #, lua-format
-msgid "This copy of Ink Away has no %1 app key. Make an app at the %1 developer site (App folder access), and enter its app key to continue."
+msgid "This copy of Ink Away is not registered with %1 yet. If you made an app of your own at the %1 developer site, enter its details to continue."
 msgstr ""
 
 #: ink/sync/errors.lua
@@ -5092,6 +5147,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "Wait a few minutes. Syncing will carry on by itself."
+msgstr ""
+
+#: ink/sync/errors.lua
+msgid "Waiting for you"
 msgstr ""
 
 #: ink/view/share.lua

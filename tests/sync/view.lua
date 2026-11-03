@@ -77,7 +77,7 @@ ok(not findButton(sheet, "Sync now"), "no sync button before connecting")
 -- connecting with no app key: asks for one instead of a broken QR code
 press(sheet, "Connect Dropbox")
 ok(view._sync_key ~= nil, "without an app key it explains and offers to enter one")
-ok(textIn(view._sync_key):find("app key", 1, true), "in words")
+ok(textIn(view._sync_key):find("not registered with Dropbox yet", 1, true), "in words")
 view:closeSheet("_sync_key")
 
 -- with a key, the QR sheet
@@ -96,6 +96,64 @@ ok(textIn(view._prompt):find("Type the code Dropbox showed", 1, true), "with its
 view:closeSheet("_prompt")
 view:closeSheet("_sync_signin")
 G_reader_settings.data.inkaway_sync_dropbox_key = nil
+
+-- the other services are offered too, and sign in by showing a code on the reader
+ok(findButton(sheet, "Connect Google Drive") and findButton(sheet, "Connect OneDrive"), "Google Drive and OneDrive are offered")
+press(sheet, "Connect Google Drive")
+ok(view._sync_key ~= nil and textIn(view._sync_key):find("not registered with Google Drive yet", 1, true), "Google Drive without a registration asks for one")
+press(view._sync_key, "Enter details")
+ok(view._prompt ~= nil and textIn(view._prompt):find("The Client ID of your Google Drive app", 1, true), "first the client id")
+view:closeSheet("_prompt")
+view:closeSheet("_sync_key")
+G_reader_settings.data.inkaway_sync_gdrive_key = "1234567890-abcdefgh.apps.googleusercontent.com"
+G_reader_settings.data.inkaway_sync_gdrive_secret = "GOCSPX-abcdefgh"
+local Http = require("ink/sync/http")
+local Json = require("ink/sync/json")
+local real_transport, sent = Http.transport, {}
+Http.transport = function(spec)
+    sent[#sent + 1] = spec
+    if spec.url:find("/device/code", 1, true) then
+        return { code = 200, headers = {}, body = Json.encode({ device_code = "DC", user_code = "ABCD-EFGH",
+            verification_url = "https://www.google.com/device", interval = 5, expires_in = 900 }) }
+    end
+    if spec.url:find("/token", 1, true) then
+        if #sent < 4 then return { code = 428, headers = {}, body = Json.encode({ error = "authorization_pending" }) } end
+        return { code = 200, headers = {}, body = Json.encode({ access_token = "A", refresh_token = "R", expires_in = 3600 }) }
+    end
+    if spec.url:find("/about", 1, true) then
+        return { code = 200, headers = {}, body = Json.encode({ user = { displayName = "Grace", emailAddress = "g@x.org", permissionId = "p1" } }) }
+    end
+    return { code = 404, headers = {}, body = "{}" }
+end
+press(view._sync, "Connect Google Drive")
+local gi = view._sync_signin
+ok(gi ~= nil, "with a registration the Google Drive sign-in sheet opens")
+local gt = textIn(gi)
+ok(gt:find("ABCD-EFGH", 1, true), "the code to type on the phone is shown")
+ok(gt:find("2. Sign in to Google Drive and type this code", 1, true) and gt:find("3. Tap Allow. This screen carries on by itself", 1, true), "the steps say what to do")
+ok(gt:find("https://www.google.com/device", 1, true), "with the address for a reader with no camera")
+ok(not findButton(gi, "Type the code"), "no code to type on the reader")
+ok(view._sync_pending ~= nil, "the reader waits for the phone")
+UIManager.fireScheduled()
+ok(view._sync_signin ~= nil and view._sync_pending ~= nil, "not allowed yet: it keeps waiting")
+UIManager.fireScheduled()
+ok(view._sync_signin ~= nil, "still waiting on the second ask")
+UIManager.fireScheduled()
+ok(Account.load(Manager.dir()) ~= nil and Account.load(Manager.dir()).provider == "gdrive", "once allowed, the account is kept")
+ok(view._sync_signin == nil and view._sync_pending == nil, "the waiting sheet closes by itself")
+Manager.signOut()
+Manager.live.result, Manager.live.running = nil, false
+-- cancelling stops the asking
+sent = {}
+press(view._sync, "Connect Google Drive")
+press(view._sync_signin, "Cancel")
+ok(view._sync_pending == nil and view._sync_signin == nil, "Cancel stops waiting")
+local before = #sent
+UIManager.fireScheduled()
+ok(#sent == before, "nothing is asked after Cancel")
+G_reader_settings.data.inkaway_sync_gdrive_key = nil
+G_reader_settings.data.inkaway_sync_gdrive_secret = nil
+Http.transport = real_transport
 
 ------------------------------------------------------------------------------
 -- connected

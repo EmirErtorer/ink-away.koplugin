@@ -289,8 +289,17 @@ msgstr "2. Συνδεθείτε στο %1 και πατήστε Να επιτρ�
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "2. Sign in to %1 and type this code:"
+msgstr "2. Συνδεθείτε στο %1 και πληκτρολογήστε αυτόν τον κωδικό:"
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "3. %1 shows a code. Type it here."
 msgstr "3. Το %1 δείχνει έναν κωδικό. Πληκτρολογήστε τον εδώ."
+
+#: ink/view/sync.lua
+msgid "3. Tap Allow. This screen carries on by itself."
+msgstr "3. Πατήστε Να επιτρέπεται. Αυτή η οθόνη συνεχίζει μόνη της."
 
 #: ink/view/sync.lua
 msgid "30 s"
@@ -525,13 +534,17 @@ msgstr "Άλλο σημειωματάριο…"
 msgid "Antique gold"
 msgstr "Παλαιό χρυσό"
 
-#: ink/view/sync.lua
+#: ink/sync/config.lua
 msgid "App key"
 msgstr "Κλειδί εφαρμογής"
 
 #: ink/view/settings.lua
 msgid "Appearance"
 msgstr "Εμφάνιση"
+
+#: ink/sync/config.lua
+msgid "Application (client) ID"
+msgstr "Αναγνωριστικό εφαρμογής (client ID)"
 
 #: ink/view/textformat.lua
 msgid "Applies to the selected word or text"
@@ -869,6 +882,14 @@ msgstr "Επιλέξτε το χαρτί του, ένα PDF ή ένα πρότυ
 #: ink/sync/errors.lua
 msgid "Choose the old folder again, or start syncing this folder as a new library."
 msgstr "Επιλέξτε ξανά τον παλιό φάκελο ή ξεκινήστε τον συγχρονισμό αυτού του φακέλου ως νέα βιβλιοθήκη."
+
+#: ink/sync/config.lua
+msgid "Client ID"
+msgstr "Αναγνωριστικό πελάτη"
+
+#: ink/sync/config.lua
+msgid "Client secret"
+msgstr "Μυστικό πελάτη"
 
 #: ink/view/images.lua
 msgid "Clip the page"
@@ -1589,8 +1610,12 @@ msgid "Empty the trash?"
 msgstr "Να αδειάσει ο κάδος;"
 
 #: ink/view/sync.lua
-msgid "Enter app key"
-msgstr "Εισαγωγή κλειδιού εφαρμογής"
+msgid "Enter details"
+msgstr "Εισαγωγή στοιχείων"
+
+#: ink/sync/errors.lua
+msgid "Enter the code on your phone and tap Allow. This screen carries on by itself."
+msgstr "Πληκτρολογήστε τον κωδικό στο κινητό σας και πατήστε Να επιτρέπεται. Αυτή η οθόνη συνεχίζει μόνη της."
 
 #: ink/view/toolbar.lua
 msgid "Erase"
@@ -1628,6 +1653,10 @@ msgstr "Κάθε σχέδιο και σημειωματάριο είναι έν�
 #: ink/guide.lua
 msgid "Everything besides ink"
 msgstr "Τα πάντα εκτός από το μελάνι"
+
+#: ink/sync/errors.lua
+msgid "Everything else works as usual."
+msgstr "Όλα τα υπόλοιπα λειτουργούν κανονικά."
 
 #: ink/view/trash.lua
 msgid "Everything in it is deleted for good."
@@ -2929,6 +2958,7 @@ msgid "Newest first"
 msgstr "Πρώτα τα νεότερα"
 
 #: ink/view/imagebrowser.lua
+#: ink/view/sync.lua
 msgid "Next"
 msgstr "Επόμενο"
 
@@ -3042,6 +3072,10 @@ msgstr "Δεν υπάρχουν ακόμη πρότυπα. Αποθηκεύστ�
 msgid "No writing could be read there."
 msgstr "Δεν διαβάστηκε γράψιμο εκεί."
 
+#: ink/sync/errors.lua
+msgid "Nobody allowed the sign-in in time, or it was refused."
+msgstr "Κανείς δεν επέτρεψε τη σύνδεση εγκαίρως, ή απορρίφθηκε."
+
 #: ink/view/export.lua
 msgid "None of the pages has ink."
 msgstr "Καμία σελίδα δεν έχει μελάνι."
@@ -3053,6 +3087,10 @@ msgstr "Κανονικό"
 #: ink/sync/errors.lua
 msgid "Not allowed"
 msgstr "Δεν επιτρέπεται"
+
+#: ink/sync/errors.lua
+msgid "Not available here"
+msgstr "Μη διαθέσιμο εδώ"
 
 #: ink/view/updates.lua
 msgid "Not checked yet."
@@ -4280,6 +4318,10 @@ msgid "Start again to get a new code, and type it exactly as shown."
 msgstr "Ξεκινήστε από την αρχή για να πάρετε νέο κωδικό και πληκτρολογήστε τον ακριβώς όπως εμφανίζεται."
 
 #: ink/sync/errors.lua
+msgid "Start again to get a new code."
+msgstr "Ξεκινήστε ξανά για να πάρετε νέο κωδικό."
+
+#: ink/sync/errors.lua
 msgid "Start it again whenever you like."
 msgstr "Ξεκινήστε την ξανά όποτε θέλετε."
 
@@ -4496,8 +4538,14 @@ msgid "That document is no longer there."
 msgstr "Αυτό το έγγραφο δεν υπάρχει πια."
 
 #: ink/view/sync.lua
-msgid "That does not look like an app key. It is letters and digits only."
-msgstr "Αυτό δεν μοιάζει με κλειδί εφαρμογής. Αποτελείται μόνο από γράμματα και ψηφία."
+#, lua-format
+msgid "That does not look right. Copy it exactly as the %1 developer site shows it."
+msgstr "Αυτό δεν φαίνεται σωστό. Αντιγράψτε το ακριβώς όπως το δείχνει ο ιστότοπος προγραμματιστών του %1."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The %1 of your %2 app."
+msgstr "%1 της εφαρμογής σας %2."
 
 #: ink/guide.lua
 msgid "The + and − in the corner zoom in and out, and so does a pinch."
@@ -4515,11 +4563,6 @@ msgstr "Η Βιβλιοθήκη"
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
 msgstr "Οι σημειώσεις του %s επέστρεψαν εκεί που ήταν το βιβλίο. Θα εμφανιστούν ξανά όταν το βιβλίο επιστρέψει σε εκείνο το σημείο."
-
-#: ink/view/sync.lua
-#, lua-format
-msgid "The app key of your %1 app."
-msgstr "Το κλειδί εφαρμογής της εφαρμογής σας %1."
 
 #: ink/guide.lua
 msgid "The arrows in the bar at the bottom, or swipe two fingers sideways."
@@ -4724,6 +4767,14 @@ msgstr "Η αναζήτηση δεν μπόρεσε να ολοκληρωθεί.
 msgid "The selection changed. Please read the writing again."
 msgstr "Η επιλογή άλλαξε. Διαβάστε ξανά το γράψιμο."
 
+#: ink/sync/errors.lua
+msgid "The sign-in has not been allowed yet."
+msgstr "Η σύνδεση δεν έχει επιτραπεί ακόμη."
+
+#: ink/sync/errors.lua
+msgid "The sign-in timed out"
+msgstr "Η σύνδεση έληξε"
+
 #: ink/guide.lua
 msgid "The small tab at the end of the toolbar folds it away, and brings it back."
 msgstr "Η μικρή καρτέλα στο τέλος της γραμμής εργαλείων τη διπλώνει και την επαναφέρει."
@@ -4829,10 +4880,14 @@ msgstr "Οι σημειώσεις αυτού του βιβλίου περιμέ�
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr "Το μελάνι αυτού του βιβλίου αποθηκεύτηκε από νεότερο Ink Away. Ενημερώστε το Ink Away για να το αλλάξετε."
 
+#: ink/sync/errors.lua
+msgid "This cloud service does not offer that."
+msgstr "Αυτή η υπηρεσία cloud δεν το προσφέρει."
+
 #: ink/view/sync.lua
 #, lua-format
-msgid "This copy of Ink Away has no %1 app key. Make an app at the %1 developer site (App folder access), and enter its app key to continue."
-msgstr "Αυτό το αντίγραφο του Ink Away δεν έχει κλειδί εφαρμογής για το %1. Δημιουργήστε μια εφαρμογή στον ιστότοπο προγραμματιστών του %1 (πρόσβαση φακέλου εφαρμογής) και εισαγάγετε το κλειδί της για να συνεχίσετε."
+msgid "This copy of Ink Away is not registered with %1 yet. If you made an app of your own at the %1 developer site, enter its details to continue."
+msgstr "Αυτό το αντίγραφο του Ink Away δεν είναι ακόμη καταχωρισμένο στο %1. Αν δημιουργήσατε δική σας εφαρμογή στον ιστότοπο προγραμματιστών του %1, εισαγάγετε τα στοιχεία της για να συνεχίσετε."
 
 #: ink/sync/errors.lua
 msgid "This file is larger than the cloud sync can send."
@@ -5148,6 +5203,10 @@ msgstr "Προβολή"
 #: ink/sync/errors.lua
 msgid "Wait a few minutes. Syncing will carry on by itself."
 msgstr "Περιμένετε λίγα λεπτά. Ο συγχρονισμός θα συνεχιστεί μόνος του."
+
+#: ink/sync/errors.lua
+msgid "Waiting for you"
+msgstr "Αναμονή για εσάς"
 
 #: ink/view/share.lua
 msgid "Waiting for your phone or computer…"

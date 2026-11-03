@@ -284,6 +284,13 @@ local function doUpload(ctx, key, rel)
     return true
 end
 
+-- `path`'s hash in the kind the cloud gave `like`: the provider's own, else Dropbox's.
+local function remoteKind(ctx, path, like)
+    local f = ctx.provider.hashFile
+    if f then return f(ctx.provider, path, like) end
+    return (Hash.dropbox(path))
+end
+
 -- Fetch the cloud's version into a temporary file beside `rel` and check it.
 local function fetch(ctx, rel, rem)
     local target = abs(ctx, rel)
@@ -298,8 +305,8 @@ local function fetch(ctx, rel, rem)
         return nil, Errors.make("IA-S403", "size " .. tostring(st and st.size) .. " of " .. tostring(rem.size))
     end
     if rem.hash and st.size <= ctx.limits.hash_max then
-        local h = Hash.dropbox(tmp)
-        if h ~= rem.hash then os.remove(tmp); return nil, Errors.make("IA-S403", "hash differs") end
+        local h = remoteKind(ctx, tmp, rem.hash)
+        if h and h ~= rem.hash then os.remove(tmp); return nil, Errors.make("IA-S403", "hash differs") end
     end
     if ctx.validate then
         local good, why = ctx.validate(rel, tmp)
@@ -504,7 +511,7 @@ function Engine.run(ctx)
         local action = Plan.decide(b, loc, rms, function()
             if not (st and rem) or st.size ~= rem.size then return false end
             if st.size > ctx.limits.hash_max or not rem.hash then return false end
-            return Hash.dropbox(abs(ctx, rel)) == rem.hash
+            return remoteKind(ctx, abs(ctx, rel), rem.hash) == rem.hash
         end)
         if action ~= "none" and (not ctx.only or ctx.only[key]) then
             plan[#plan + 1] = { key = key, rel = rel, action = action }

@@ -12,6 +12,7 @@ Everything goes through Http.request (ink/sync/http.lua), so the tests replace
 the network with a pretend Dropbox.
 ]]
 
+local Common = require("ink/sync/providers/common")
 local Errors = require("ink/sync/errors")
 local Hash = require("ink/sync/hash")
 local Http = require("ink/sync/http")
@@ -22,10 +23,12 @@ Dropbox.__index = Dropbox
 
 Dropbox.id = "dropbox"
 Dropbox.name = "Dropbox"
+Dropbox.AUTH = "code"      -- the person types a code from the phone into the reader
 Dropbox.HOSTS = { "api.dropboxapi.com", "content.dropboxapi.com" }
 Dropbox.AUTH_URL = "https://www.dropbox.com/oauth2/authorize"
 Dropbox.API = "https://api.dropboxapi.com"
 Dropbox.CONTENT = "https://content.dropboxapi.com"
+Dropbox.TOKEN_URL = "https://api.dropboxapi.com/oauth2/token"
 Dropbox.SINGLE_MAX = 8 * 1024 * 1024      -- a bigger file goes up in pieces
 Dropbox.CHUNK = 4 * 1024 * 1024
 
@@ -33,59 +36,11 @@ Dropbox.CHUNK = 4 * 1024 * 1024
 -- Small helpers
 ------------------------------------------------------------------------------
 
-local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+local form, randomBytes = Common.form, Common.randomBytes
 
--- Bytes as URL-safe base64 without padding.
-function Dropbox.base64url(s)
-    local out = {}
-    for i = 1, #s, 3 do
-        local a, b, c = s:byte(i, i + 2)
-        local n = a * 65536 + (b or 0) * 256 + (c or 0)
-        local c1, c2, c3, c4 = math.floor(n / 262144) % 64, math.floor(n / 4096) % 64, math.floor(n / 64) % 64, n % 64
-        out[#out + 1] = B64:sub(c1 + 1, c1 + 1) .. B64:sub(c2 + 1, c2 + 1)
-        if b then out[#out + 1] = B64:sub(c3 + 1, c3 + 1) end
-        if c then out[#out + 1] = B64:sub(c4 + 1, c4 + 1) end
-    end
-    return table.concat(out)
-end
-
--- Random bytes: the system's source if there is one.
-local function randomBytes(n)
-    local f = io.open("/dev/urandom", "rb")
-    if f then
-        local s = f:read(n)
-        f:close()
-        if s and #s == n then return s end
-    end
-    math.randomseed(os.time() + math.floor((os.clock() * 1e6) % 1e6))
-    local t = {}
-    for i = 1, n do t[i] = string.char(math.random(0, 255)) end
-    return table.concat(t)
-end
-
-local function urlencode(s)
-    return (tostring(s):gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end))
-end
-
-local function form(t)
-    local keys = {}
-    for k in pairs(t) do keys[#keys + 1] = k end
-    table.sort(keys)
-    local parts = {}
-    for _i, k in ipairs(keys) do parts[#parts + 1] = urlencode(k) .. "=" .. urlencode(t[k]) end
-    return table.concat(parts, "&")
-end
-
--- "2026-11-03T12:30:00Z" as seconds since 1970 (UTC).
-function Dropbox.parseTime(s)
-    local y, mo, d, h, mi, se = tostring(s or ""):match("^(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-    if not y then return nil end
-    y, mo, d = tonumber(y), tonumber(mo), tonumber(d)
-    local a = math.floor((14 - mo) / 12)
-    local yy, mm = y + 4800 - a, mo + 12 * a - 3
-    local jdn = d + math.floor((153 * mm + 2) / 5) + 365 * yy + math.floor(yy / 4) - math.floor(yy / 100) + math.floor(yy / 400) - 32045
-    return (jdn - 2440588) * 86400 + tonumber(h) * 3600 + tonumber(mi) * 60 + tonumber(se)
-end
+-- (kept here for the tests and callers that had them)
+Dropbox.base64url = Common.base64url
+Dropbox.parseTime = Common.parseTime
 
 ------------------------------------------------------------------------------
 -- Signing in
@@ -168,47 +123,12 @@ function Dropbox.new(account, opts)
         save = opts.save }, Dropbox)
 end
 
-function Dropbox:refresh()
-    local a = self.account
-    if not (a and a.refresh_token) then return nil, Errors.make("IA-S201") end
-    local reply, err = Http.request({
-        url = Dropbox.API .. "/oauth2/token", method = "POST", hosts = Dropbox.HOSTS,
-        headers = { ["Content-Type"] = "application/x-www-form-urlencoded" },
-        body = form({ grant_type = "refresh_token", refresh_token = a.refresh_token, client_id = self.app_key }),
-    })
-    if not reply then return nil, err end
-    if reply.code ~= 200 then return nil, replyError(reply, "refresh") end
-    local t = Json.decode(reply.body)
-    if type(t) ~= "table" or not t.access_token then return nil, Errors.make("IA-S304", "token reply") end
-    a.access_token = t.access_token
-    a.expires_at = self.now() + (tonumber(t.expires_in) or 14400)
-    if self.save then pcall(self.save, a) end
-    return true
+-- The fields that renew the access token.
+function Dropbox:refreshForm()
+    return { grant_type = "refresh_token", refresh_token = self.account.refresh_token, client_id = self.app_key }
 end
 
--- Make a request with the access token; renew it first if it ran out, and once
--- more if the service says it did.
-function Dropbox:call(spec)
-    local a = self.account
-    if not a then return nil, Errors.make("IA-S201") end
-    if not a.access_token or (a.expires_at or 0) <= self.now() + 60 then
-        local ok, err = self:refresh()
-        if not ok then return nil, err end
-    end
-    for attempt = 1, 2 do
-        spec.hosts = Dropbox.HOSTS
-        spec.headers = spec.headers or {}
-        spec.headers["Authorization"] = "Bearer " .. a.access_token
-        local reply, err = Http.request(spec)
-        if not reply then return nil, err end
-        if reply.code == 401 and attempt == 1 then
-            local ok, rerr = self:refresh()
-            if not ok then return nil, rerr end
-        else
-            return reply
-        end
-    end
-end
+Common.client(Dropbox)
 
 -- A call whose reply is JSON.
 function Dropbox:rpc(path, arg)

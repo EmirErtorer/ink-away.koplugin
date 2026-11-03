@@ -115,28 +115,26 @@ end
 -- Signing in
 ------------------------------------------------------------------------------
 
--- Start signing in to service `id`. Returns { url, verifier, provider }, or nil
--- and an error (no app key set up).
+-- Start signing in to service `id`. Returns { url, provider, ... } (for a service
+-- where the person types a code into the reader: a verifier; for one where the
+-- reader shows a code: kind = "device", user_code, interval), or nil and an error
+-- (no app key set up).
 function Manager.beginSignIn(id)
     local mod = Providers.get(id)
     if not mod then return nil, Errors.make("IA-S503", "no such service") end
-    local key = Config.appKey(id, Manager.get)
+    local key, secret = Config.appKey(id, Manager.get)
     if not key then return nil, Errors.make("IA-S204", "no app key") end
-    local a, err = mod.beginAuth(key)
+    local a, err = mod.beginAuth(key, secret)
     if not a then return nil, err end
     a.provider = id
     return a
 end
 
--- Finish signing in with the code the person typed. Blocks for a moment (two
--- requests). Returns { name, email } of the account, or nil and an error.
-function Manager.finishSignIn(pending, code)
-    local mod = Providers.get(pending.provider)
-    local key = Config.appKey(pending.provider, Manager.get)
-    local acct, err = mod.finishAuth(key, code, pending.verifier)
-    if not acct then return nil, err end
+-- A sign-in that worked: keep the account, and start afresh if it is a different
+-- one than before. Returns { name, email }, or nil and an error.
+local function signedIn(mod, acct, key, secret)
     local dir = Manager.dir()
-    local inst = mod.new(acct, { app_key = key })
+    local inst = mod.new(acct, { app_key = key, app_secret = secret, dir = dir })
     local who = inst:accountInfo()
     acct.name = who and who.name or ""
     acct.email = who and who.email or ""
@@ -154,6 +152,26 @@ function Manager.finishSignIn(pending, code)
     return { name = acct.name, email = acct.email }
 end
 
+-- Finish signing in with the code the person typed. Blocks for a moment (two
+-- requests). Returns { name, email } of the account, or nil and an error.
+function Manager.finishSignIn(pending, code)
+    local mod = Providers.get(pending.provider)
+    local key, secret = Config.appKey(pending.provider, Manager.get)
+    local acct, err = mod.finishAuth(key, code, pending.verifier)
+    if not acct then return nil, err end
+    return signedIn(mod, acct, key, secret)
+end
+
+-- Ask whether the person has allowed a sign-in that shows a code on the reader.
+-- Returns { name, email } when it has, or nil and an error; IA-S206 means not yet.
+function Manager.pollSignIn(pending)
+    local mod = Providers.get(pending.provider)
+    local key, secret = Config.appKey(pending.provider, Manager.get)
+    local acct, err = mod.pollAuth(key, pending, secret)
+    if not acct then return nil, err end
+    return signedIn(mod, acct, key, secret)
+end
+
 -- Disconnect: forget the account and what was agreed. The notebooks on this reader
 -- and in the cloud stay as they are.
 function Manager.signOut()
@@ -161,6 +179,7 @@ function Manager.signOut()
     Account.clear(dir)
     State.load(dir):clear()
     os.remove(Storage.join(dir, State.FILE))
+    for _i, id in ipairs({ "gdrive", "onedrive" }) do os.remove(Storage.join(dir, id .. "-index.json")) end
     Manager.set("inkaway_sync_enabled", false)
     now_state.dirty, now_state.failures = false, 0
     Manager.log("signed out")
@@ -223,13 +242,13 @@ local function makeWork(o)
     local dir, root, device = Manager.dir(), Manager.root(), Manager.deviceName()
     local backup = Manager.backupDir()
     local Project = require("ink/project")
-    local key = Config.appKey(o.provider, Manager.get)
+    local key, secret = Config.appKey(o.provider, Manager.get)
     return function(report, stop)
         local acct = Account.load(dir)
         if not acct then return { fatal = { code = "IA-S201" }, errors = {}, warnings = {}, plan = {} } end
         local mod = Providers.get(acct.provider)
         if not mod then return { fatal = { code = "IA-S503", detail = "no such service" }, errors = {}, warnings = {}, plan = {} } end
-        local inst = mod.new(acct, { app_key = key, save = function(a) Account.save(dir, a) end })
+        local inst = mod.new(acct, { app_key = key, app_secret = secret, dir = dir, save = function(a) Account.save(dir, a) end })
         local st = State.load(dir)
         local res = Engine.run({
             root = root, provider = inst, state = st, backup_dir = backup, device = device,
@@ -491,7 +510,8 @@ local function instance()
     if not acct then return nil, Errors.make("IA-S201") end
     local mod = Providers.get(acct.provider)
     if not mod then return nil, Errors.make("IA-S503") end
-    return mod.new(acct, { app_key = Config.appKey(acct.provider, Manager.get),
+    local key, secret = Config.appKey(acct.provider, Manager.get)
+    return mod.new(acct, { app_key = key, app_secret = secret, dir = Manager.dir(),
         save = function(a) Account.save(Manager.dir(), a) end })
 end
 
