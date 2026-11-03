@@ -18,6 +18,16 @@ letter widths, so a selection tracks the line closely, not to the pixel.
 
 local Pdf = {}
 
+-- MuPDF also opens image archives and other fixed-page formats. A provider's
+-- is_pdf flag does not mean its source can be copied and edited as a PDF.
+function Pdf.isPDF(path)
+    local f = path and io.open(path, "rb")
+    if not f then return false end
+    local header = f:read(1024) or ""
+    f:close()
+    return header:match("^%%PDF%-%d%.%d") ~= nil
+end
+
 local Stream = {}
 Stream.__index = Stream
 

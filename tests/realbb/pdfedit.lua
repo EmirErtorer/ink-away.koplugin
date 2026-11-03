@@ -80,9 +80,8 @@ job2.cancel()
 ok(not io.open(dst, "rb"), "stopping removes the partial file")
 
 -- a source that is not there fails cleanly
-local job3 = assert(Pdfedit.job(tmp .. "/nope.pdf", dst, work))
-local s, e = job3.step()
-ok(s == nil and e, "a missing source ends the job with an error")
+local job3, err3 = Pdfedit.job(tmp .. "/nope.pdf", dst, work)
+ok(job3 == nil and err3, "a missing source is rejected before making an output file")
 
 if os.getenv("KEEP") then print("kept", src, dst) else os.remove(src); os.remove(dst) end
 print(("pdfedit: %d checks, %d failures"):format(checks, failures))

@@ -14,6 +14,7 @@ local logger = require("logger")
 local _ = require("ink/l10n")
 local RenderImage = require("ui/renderimage")
 local Export = require("ink/export")
+local BookExport = require("ink/reader/bookexport")
 local ImageProc = require("ink/imageproc")
 local Layers = require("ink/layers")
 local Links = require("ink/links")
@@ -179,7 +180,7 @@ function InkAwayView:openExport()
     local can_edit = pdf_src and o.fmt == "pdf" and self:exportEditable() or false
     local editable = can_edit and o.pdf_type ~= "pictures"
     -- a book that reflows is saved as pictures laid out as it is now
-    local reflow = book and not pdf_src
+    local reflow = book and not BookExport.paged(book)
     self:closeSheet("_save_dialog")
     self:ensureUserIcons()
     local content_w = self:sheetWidth()
@@ -270,6 +271,18 @@ function InkAwayView:openExport()
             end
         end
         if not editable then
+            if book and BookExport.paged(book) then
+                add(vspan(12))
+                add(self:sheetLabel(_("Page quality"), true))
+                add(vspan(6))
+                add(self:segmentedRow({ { "compact", _("Compact") }, { "detailed", _("Detailed") } },
+                    o.page_quality == "detailed" and "detailed" or "compact", content_w,
+                    function(v) o.page_quality = v; reopen() end))
+                add(vspan(4))
+                add(self:sheetHint(o.page_quality == "detailed"
+                    and _("Up to 2400 pixels on the long edge. More detail, larger files and slower export.")
+                    or _("Up to 1600 pixels on the long edge. Smaller files and faster export."), content_w))
+            end
             if nb then
                 toggle(pdf_src and _("Include the PDF page") or _("Include the paper"), "include_bg")
             elseif book then

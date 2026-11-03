@@ -89,6 +89,9 @@ do
         }
     end
     local b = book(true)
+    local pdf = os.tmpname()
+    local f = assert(io.open(pdf, "wb")); f:write("%PDF-1.7\n"); f:close()
+    b.ui.document.file = pdf
     local function list(t) return table.concat(t, ",") end
     ok(list(BookExport.pages(b, "page")) == "4", "this page: the one shown")
     ok(list(BookExport.pages(b, "all")) == "1,2,3,4,5,6,7,8,9,10", "all pages")
@@ -96,7 +99,8 @@ do
     ok(list(BookExport.pages(b, "range", { from = 2, to = 4 })) == "2,3,4", "a range")
     ok(list(BookExport.pages(b, "range", { from = 8, to = 99 })) == "8,9,10", "a range stops at the last page")
     ok(list(BookExport.pages(b, "all", nil, 2)) == "1,3,5,7,9", "two pages on the screen: every second")
-    ok(BookExport.pdfPath(b) == "/books/x.pdf" and BookExport.pdfPath(book(false)) == nil, "only a PDF book has a PDF to edit")
+    ok(BookExport.pdfPath(b) == pdf and BookExport.pdfPath(book(false)) == nil, "only a PDF book has a PDF to edit")
+    os.remove(pdf)
     ok(#BookExport.highlights(b) == 1, "a bookmark is not a highlight")
 
     local ops = BookExport.pageOps(items, nil, 2)

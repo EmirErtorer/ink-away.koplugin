@@ -376,33 +376,40 @@ function InkAwayView:notebookSpec(o)
     return spec
 end
 
--- A PDF book's pages (the chosen ones) as a spec, each at its own size: the
--- ink and highlights as ops at the size the page is drawn at, the page itself
--- rendered as it is written. The PDF is opened a second time for it, and
--- closed when the export ends.
-function InkAwayView:pdfBookSpec(o)
+-- All fixed-page books use their original pages and native ink coordinates.
+-- Resolution is bounded independently of the editor, so a zoomed panel never
+-- determines the quality of a full-page export. Only this step's geometry and
+-- raster buffers are retained; the existing writer streams each page to disk.
+function InkAwayView:fixedBookSpec(o)
     local book = self.book
     local pages = self:exportPageList()
     local items, marks = BookExport.inkByPage(book), BookExport.marksByPage(book)
     local picture = function(path) return BookInk.picturePath(book.sidecar, path) end
-    local W, H = self.view.canvas_w, self.view.canvas_h
-    local doc
-    local ok, d = pcall(function() return require("document/documentregistry"):openDocument(BookExport.pdfPath(book)) end)
-    if ok then doc = d end
+    local detailed = o.page_quality == "detailed"
+    local edge, pixels = detailed and 2400 or 1600, detailed and 4000000 or 2000000
+    local doc, open_error
+    local ok, d = pcall(function()
+        return require("document/documentregistry"):openDocument(book.ui.document.file)
+    end)
+    if ok then doc = d else open_error = d end
     local Document = require("document/document")
-    local geo = {}   -- per step: the page's drawn size and zoom
+    local geo = {}   -- only the page in hand
     local function geom(i)
         local g = geo[i]
         if g then return g end
-        local native = doc and Document.getNativePageDimensions(doc, pages[i])
-        if not (native and native.w and native.h) then native = { w = W, h = H } end
-        local z = math.min(W / native.w, H / native.h)
-        g = { w = math.max(1, math.floor(native.w * z + 0.5)), h = math.max(1, math.floor(native.h * z + 0.5)),
+        if not doc then error("Could not open the book for export: " .. tostring(open_error or "unsupported document")) end
+        local native = Document.getNativePageDimensions(doc, pages[i])
+        if not (native and native.w and native.h and native.w > 0 and native.h > 0) then
+            error("Could not read dimensions for page " .. pages[i])
+        end
+        local z = math.min(edge / math.max(native.w, native.h), math.sqrt(pixels / (native.w * native.h)))
+        g = { w = math.max(1, math.floor(native.w * z)), h = math.max(1, math.floor(native.h * z)),
             z = z, pw = native.w, ph = native.h }
-        geo = { [i] = g }   -- (only the page in hand is kept)
+        geo = { [i] = g }
         return g
     end
-    local spec = { n = #pages, quality = 80, numbers = o.numbers, template = self:exportDress({ style = "blank" }),
+    local spec = { n = #pages, quality = detailed and 90 or 80, numbers = o.numbers,
+        template = self:exportDress({ style = "blank" }),
         size = function(i) local g = geom(i); return g.w, g.h end,
         box = function(i) local g = geom(i); return g.pw, g.ph end,
         pages = function(i)
@@ -410,13 +417,15 @@ function InkAwayView:pdfBookSpec(o)
             return BookExport.pageOps(items[pages[i]], marks[pages[i]], g.z, picture)
         end,
         done = function() if doc then pcall(function() doc:close() end); doc = nil end end }
-    if o.include_bg and doc then
+    if o.include_bg then
         spec.bg = function(i, s)
             local g = geom(i)
-            local img = self:renderPdfPage(doc, pages[i], g.w * (s or 1), g.h * (s or 1))
-            if not img then return nil end
-            local rgba = bbToRGBA(img, g.w * (s or 1), g.h * (s or 1))
+            local w, h = g.w * (s or 1), g.h * (s or 1)
+            local img = self:renderPdfPage(doc, pages[i], w, h)
+            if not img then error("Could not render page " .. pages[i]) end
+            local converted, rgba = pcall(bbToRGBA, img, w, h)
             img:free()
+            if not converted or not rgba then error(rgba or "Could not convert page " .. pages[i]) end
             return rgba
         end
         spec.bg_opaque = true
@@ -494,7 +503,7 @@ end
 function InkAwayView:exportSpec()
     local o = self:exportOptions()
     if self.book then
-        return BookExport.pdfPath(self.book) and self:pdfBookSpec(o) or self:reflowBookSpec(o)
+        return BookExport.paged(self.book) and self:fixedBookSpec(o) or self:reflowBookSpec(o)
     end
     return self:notebookSpec(o)
 end

@@ -11,6 +11,7 @@ call reads what the book holds now, so a long export builds nothing up.
 ]]
 
 local Place = require("ink/reader/place")
+local Pdf = require("ink/pdf")
 
 local BookExport = {}
 
@@ -23,7 +24,7 @@ end
 -- The book's PDF file, or nil (a reflowing book, a comic, a DjVu).
 function BookExport.pdfPath(book)
     local d = book.ui.document
-    if book.ui.paging and d and d.is_pdf and d.file then return d.file end
+    if BookExport.paged(book) and d and Pdf.isPDF(d.file) then return d.file end
     return nil
 end
 
