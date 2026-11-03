@@ -363,6 +363,7 @@ msgstr ""
 msgid "Antique gold"
 msgstr ""
 
+#: ink/reader/inkview.lua
 #: ink/view/settings.lua
 msgid "Appearance"
 msgstr ""
@@ -459,6 +460,7 @@ msgstr ""
 
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Black"
 msgstr ""
 
@@ -477,6 +479,7 @@ msgstr ""
 #: ink/folderlook.lua
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Blue"
 msgstr ""
 
@@ -571,7 +574,6 @@ msgstr ""
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
-#: ink/view/export.lua
 #: ink/view/exportbook.lua
 #: ink/view/images.lua
 #: ink/view/library.lua
@@ -655,11 +657,12 @@ msgstr ""
 
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
-#: ink/view/dialogs.lua
 #: ink/view/guide.lua
 #: ink/view/library.lua
+#: ink/view/nativemenu.lua
 #: ink/view/notebook.lua
 #: ink/view/search.lua
+#: ink/view/settings.lua
 #: ink/view/sheetkit.lua
 #: ink/view/trash.lua
 msgid "Close"
@@ -668,6 +671,7 @@ msgstr ""
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr ""
@@ -677,16 +681,12 @@ msgid "Colour and icon…"
 msgstr ""
 
 #: ink/coverpicker.lua
+#: ink/view/settings.lua
 msgid "Colour wheel"
 msgstr ""
 
 #: ink/view/settings.lua
 msgid "Colour while drawing"
-msgstr ""
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Colour: %s"
 msgstr ""
 
 #: ink/view/overview.lua
@@ -1112,7 +1112,6 @@ msgstr ""
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
 #: ink/reader/hlcolour.lua
-#: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
 #: ink/view/gestures.lua
@@ -1309,6 +1308,7 @@ msgstr ""
 
 #: ink/guide.lua
 #: ink/view/export.lua
+#: ink/view/settings.lua
 msgid "Export"
 msgstr ""
 
@@ -1373,11 +1373,6 @@ msgstr ""
 msgid "Exporting %d page(s) to PDF"
 msgstr ""
 
-#: ink/view/settings.lua
-#, lua-format
-msgid "Exports: %s"
-msgstr ""
-
 #: ink/reader/inkview.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -1426,10 +1421,6 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "File, Layers splits a drawing into layers. The strip at the right adds one or picks where you draw; tap that one for its menu."
-msgstr ""
-
-#: ink/view/settings.lua
-msgid "Files"
 msgstr ""
 
 #: ink/view/share.lua
@@ -1709,11 +1700,6 @@ msgstr ""
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
 msgid "Grid"
-msgstr ""
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Grid: %s"
 msgstr ""
 
 #: ink/reader/inkview.lua
@@ -2121,11 +2107,6 @@ msgid "Library folder: %s"
 msgstr ""
 
 #: ink/view/settings.lua
-#, lua-format
-msgid "Library: %s"
-msgstr ""
-
-#: ink/view/settings.lua
 msgid "Light"
 msgstr ""
 
@@ -2315,7 +2296,9 @@ msgstr ""
 msgid "Monthly"
 msgstr ""
 
+#: ink/reader/inkview.lua
 #: ink/ui/thumbgrid.lua
+#: ink/view/settings.lua
 msgid "More"
 msgstr ""
 
@@ -2490,16 +2473,8 @@ msgstr ""
 msgid "No colour"
 msgstr ""
 
-#: ink/view/dialogs.lua
-msgid "No files or folders here."
-msgstr ""
-
 #: ink/view/library.lua
 msgid "No folders here."
-msgstr ""
-
-#: ink/view/dialogs.lua
-msgid "No folders in here."
 msgstr ""
 
 #: ink/view/library.lua
@@ -2654,10 +2629,6 @@ msgstr ""
 msgid "Now page %d"
 msgstr ""
 
-#: ink/view/dialogs.lua
-msgid "OK"
-msgstr ""
-
 #: ink/framecover.lua
 msgid "Oak"
 msgstr ""
@@ -2749,6 +2720,7 @@ msgstr ""
 
 #: ink/folderlook.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Orange"
 msgstr ""
 
@@ -2914,21 +2886,18 @@ msgid "Pan, above the zoom, moves the page; tap it again to go back to your tool
 msgstr ""
 
 #: ink/view/export.lua
+#: ink/view/settings.lua
 msgid "Paper"
 msgstr ""
 
 #: ink/guide.lua
 #: ink/view/paper.lua
+#: ink/view/settings.lua
 msgid "Paper colour"
 msgstr ""
 
 #: ink/view/notebook.lua
 msgid "Paper for this page"
-msgstr ""
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Paper: %s"
 msgstr ""
 
 #: ink/guide.lua
@@ -3127,6 +3096,7 @@ msgstr ""
 
 #: ink/folderlook.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Purple"
 msgstr ""
 
@@ -3197,6 +3167,7 @@ msgstr ""
 #: ink/folderlook.lua
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Red"
 msgstr ""
 
@@ -3808,6 +3779,7 @@ msgstr ""
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
+#: ink/view/settings.lua
 msgid "Teal"
 msgstr ""
 
@@ -4113,11 +4085,11 @@ msgid "To keep notebooks and drawings together"
 msgstr ""
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Toolbar"
 msgstr ""
 
 #: ink/guide.lua
-#: ink/view/settings.lua
 msgid "Toolbar side"
 msgstr ""
 
@@ -4284,10 +4256,6 @@ msgstr ""
 
 #: ink/coverpicker.lua
 msgid "Use for new notebooks"
-msgstr ""
-
-#: ink/view/dialogs.lua
-msgid "Use this folder"
 msgstr ""
 
 #: ink/view/settings.lua

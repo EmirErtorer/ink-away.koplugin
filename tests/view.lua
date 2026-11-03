@@ -51,6 +51,13 @@ local function findButton(w, text)
     return find(w, {})
 end
 
+-- Show tab `label` of the settings panel open in view[field].
+local function tabOf(view, field, label)
+    local b = view[field] and findButton(view[field], label)
+    if b then b.callback() end
+    return view[field]
+end
+
 -- Press the button labelled `text` in sheet `w`: true when there was one.
 local function pressIn(w, text)
     local b = w and findButton(w, text)
@@ -65,6 +72,9 @@ local function textIn(w)
         if type(t) ~= "table" or seen[t] then return end
         seen[t] = true
         if type(t.text) == "string" then out[#out + 1] = t.text end
+        -- (a native dialog keeps its title and description under their own names)
+        if type(t.description) == "string" then out[#out + 1] = t.description end
+        if type(t.title) == "string" then out[#out + 1] = t.title end
         for k, v in pairs(t) do if k ~= "show_parent" and k ~= "parent" then walk(v) end end
     end
     walk(w)
@@ -73,21 +83,15 @@ end
 
 -- Type `text` into the text sheet open now, then press Enter, as on the keyboard.
 local function answer(text)
-    local field = require("ui/widget/inputtext").last
-    field.text = text
-    field.enter_callback()
+    local dialog = require("ui/widget/inputdialog").last
+    dialog.input = text
+    dialog.enter_callback()
 end
 
--- In the file or folder grid open now (ink/view/dialogs.lua's browseFiles):
--- pick the file at `path`, or with `folder` go into that folder and use it.
-local function pickPath(path, folder)
-    local grid = UIManager.shown
-    if folder then
-        grid.on_pick({ folder = true, path = path })
-        grid.actions[1][2]()
-    else
-        grid.on_pick({ path = path })
-    end
+-- In the file or folder chooser open now (KOReader's PathChooser, see
+-- ink/view/dialogs.lua): pick the file or folder at `path`.
+local function pickPath(path)
+    UIManager.shown.onConfirm(path)
 end
 
 local SIZES = { { 1072, 1448 }, { 758, 1024 }, { 600, 800 } }
@@ -558,19 +562,19 @@ for _, wh in ipairs(SIZES) do
     end
 
     -- export sheet wiring (no native encoders are called)
-    local InputText = require("ui/widget/inputtext")
+    local InputDialog = require("ui/widget/inputdialog")
     view:setTool("pen")
     view:openExport()
     ok(view._save_dialog ~= nil, tag .. ": Export opens the export sheet")
-    view._save_dialog:onCloseMenu()
+    view:closeSheet("_save_dialog")
     ok(view:exportOptions().fmt == "png", tag .. ": a drawing exports a PNG by default")
     -- the sheet's Export button asks for a name, with a button to pick a folder
     view:promptExportName()
-    ok(view._prompt ~= nil and InputText.last.text == view:docName(), tag .. ": the name starts as the document's")
+    ok(view._prompt ~= nil and InputDialog.last.input == view:docName(), tag .. ": the name starts as the document's")
     ok(pressIn(view._prompt, "Folder\u{2026}"), tag .. ": the prompt has a Folder button")
-    ok(UIManager.shown and UIManager.shown.actions and UIManager.shown.actions[1][1] == "Use this folder",
+    ok(UIManager.shown and UIManager.shown.select_directory,
         tag .. ": Folder opens a folder chooser")
-    pickPath("/tmp", true)
+    pickPath("/tmp")
     ok(view:exportOptions().dir == "/tmp" and textIn(view._prompt):find("/tmp", 1, true),
         tag .. ": the picked folder is kept for this document and the prompt comes back")
     view:exportOptions().dir = nil
@@ -1459,22 +1463,21 @@ do
     grid:onTgKeyBack()
     ok(grid.gpage == 1, "grid keys: back shows the page before")
     grid:onCloseWidget()
-    -- a sheet with pages (a list a page at a time, the guide, search, trash...)
+    -- a choice from a list is KOReader's own Menu: it pages and takes the page
+    -- turn keys itself, and a pick closes it before running
     local view = dofile("ink/view.lua"):new{}
+    local picked
     local list = {}
-    for i = 1, 20 do list[i] = { label = "Choice " .. i, cb = function() end } end
-    view:chooseFromList{ title = "Pick", items = list }
-    local sheet = view._list
-    ok(sheet.key_events.MenuPageFwd and sheet.key_events.MenuPageBack, "sheet keys: a sheet listens for the page turn buttons")
-    ok(shows(sheet, "1 / 3") and sheet.on_page ~= nil, "sheet keys: a sheet with pages takes their turn")
-    ok(sheet:onMenuPageFwd() and shows(view._list, "2 / 3") and shows(view._list, "Choice 8"),
-        "sheet keys: forward shows its next page")
-    ok(view._list:onMenuPageBack() and shows(view._list, "1 / 3"), "sheet keys: back shows the page before")
+    for i = 1, 20 do list[i] = { label = "Choice " .. i, cb = function() picked = i end } end
+    view:chooseFromList{ title = "Pick", items = list, footer = { { label = "More", cb = function() picked = "more" end } } }
+    local menu = view._list
+    ok(menu and menu == require("ui/widget/menu").last and menu.title == "Pick", "list: a choice is KOReader's own menu")
+    ok(#menu.item_table == 21, "list: every choice and the footer are entries")
+    ok(menu:pick("Choice 8") and picked == 8 and view._list == nil, "list: a pick runs its choice and closes the menu")
+    view:chooseFromList{ title = "Pick", items = {}, empty = "Nothing here" }
+    ok(#view._list.item_table == 1 and view._list.item_table[1].dim, "list: no choices says so")
     view:closeSheet("_list")
-    view:chooseFromList{ title = "Pick", items = { list[1], list[2] } }
-    ok(view._list.on_page == nil and view._list:onMenuPageFwd() == false,
-        "sheet keys: a sheet without pages leaves the buttons alone")
-    view:closeSheet("_list")
+    ok(view._list == nil, "list: closeSheet closes it")
     view:onCloseWidget()
     Device.hasKeys, Device.input.group = hasKeys, group
 end
@@ -1566,6 +1569,7 @@ do
     ok(view:runAction("refresh") and full == 2, "refresh: and from the action itself")
     -- and from Settings, which closes first
     view:openSettings()
+    tabOf(view, "_settings_dialog", "More")
     local rb = findButton(view._settings_dialog, "Refresh the screen")
     ok(rb ~= nil, "refresh: Settings has a Refresh the screen button")
     if rb then rb.callback() end
@@ -2236,6 +2240,7 @@ do
                 and not walkFind(t, function(x) return x ~= t and type(x.callback) == "function" end)
         end)
     end
+    tabOf(view, "_settings_dialog", "More")
     local g = button(view._settings_dialog, "Guide")
     ok(g ~= nil, "guide: a Guide button beside Done in Settings")
     ok(walkFind(view._settings_dialog, function(x) return x.text == "Device tips" end) == nil,
@@ -2280,7 +2285,6 @@ do
         if (view._guide_pages or 1) > 1 then view._guide_page = 1; view:rebuildSheet("_guide"); check("_guide") end
     end
     view:closeSheet("_guide")
-    view:openSettings(); check("_settings_dialog"); view:closeSheet("_settings_dialog")
     view:showWelcome(); check("_welcome_sheet"); view:closeSheet("_welcome_sheet")
     -- the device tip at the foot of the notice is translated like the rest of it
     do
@@ -2308,7 +2312,7 @@ do
     view:promptText{ field = "_c", title = "T", ok_text = "OK", extra = { text = "More", callback = function() end },
         on_ok = function() end }
     check("_c"); view:closeSheet("_c")
-    ok(n > 40 and bad == 0, ("guide: every button can be tapped (%d of %d not)"):format(bad, n))
+    ok(n > 30 and bad == 0, ("guide: every button can be tapped (%d of %d not)"):format(bad, n))
     view:closeSheet("_guide")
     -- closing the view closes every sheet it opened, the new ones too: one left
     -- over the reader would take the gestures meant for it
@@ -2648,7 +2652,7 @@ do
     UIManager.shown = nil
     if undo_btn then undo_btn.callback() end
     local box = UIManager.shown
-    ok(box and findButton(box, "Only this one") and findButton(box, "Both"),
+    ok(box and box.ok_text == "Only this one" and box.cancel_text == "Both",
         "gestures: an overlap asks: only this one, or both")
     if box and box.ok_callback then box.ok_callback() end
     ok(b.two_swipe_down == "undo" and b.two_tap == "nothing", "gestures: only this one moves it")
@@ -3272,28 +3276,35 @@ do
 end
 
 -- ---- the shared dialogs (ink/view/dialogs.lua) ------------------------------
+-- They are KOReader's own widgets: InfoMessage, ConfirmBox, InputDialog, Menu,
+-- SpinWidget, ButtonDialog and PathChooser, shown above the view.
 do
     local TestEnv = require("testenv")
-    local Storage = require("ink/storage")
-    local InputText = require("ui/widget/inputtext")
+    local InputDialog = require("ui/widget/inputdialog")
     Screen:setRotationMode(0); Screen:setSize(1072, 1448)
     UIManager.reset()
     local InkAwayView = dofile("ink/view.lua")
     local view = InkAwayView:new{}
     UIManager:show(view)
-    -- a message: OK closes it; one with a timeout closes by itself, and lets touches by
-    view:tell("Hello")
-    ok(view._message and view._message.text == "Hello" and pressIn(view._message, "OK") and view._message == nil,
-        "dialogs: a message closes on OK")
+    -- a message is an InfoMessage: with a title it leads the text, one with a
+    -- timeout closes by itself and lets touches by, a working note ignores taps
+    view:tell("Hello", { title = "Hi" })
+    ok(view._message and view._message.text == "Hi\n\nHello", "dialogs: a message is an InfoMessage, its title above it")
+    view:closeSheet("_message")
+    ok(view._message == nil, "dialogs: closeSheet closes it")
     view:tell("Soon gone", { timeout = 2 })
     ok(view._message and view:touchTarget() == view, "dialogs: a message that closes by itself takes no touch")
-    UIManager.fireScheduled()
-    ok(view._message == nil, "dialogs: and it closes by itself")
+    UIManager:close(view._message)
+    ok(view._message == nil, "dialogs: and closing it clears the field")
     local close = view:tell("Working", { wait = true })
-    ok(view._message and not findButton(view._message, "OK"), "dialogs: a working note has no OK")
+    ok(view._message and view._message.dismissable == false, "dialogs: a working note ignores taps")
     close()
     ok(view._message == nil, "dialogs: its caller closes it")
-    -- a question: the action, Cancel, or a tap beside it
+    -- closing a dialog tells the view its next paint must be a whole one
+    view._paint_all = false
+    view:tell("x"); UIManager:close(view._message)
+    ok(view._paint_all == true, "dialogs: closing one repaints the toolbar and bars too")
+    -- a question is a ConfirmBox: the action, or Cancel
     local said = {}
     local function asking(extra)
         local o = { title = "Go?", text = "Really", ok_text = "Go",
@@ -3302,94 +3313,260 @@ do
         view:ask(o)
         return view._ask
     end
-    pressIn(asking(), "Go")
-    pressIn(asking(), "Cancel")
-    asking():onCloseMenu()
-    asking({ on_dismiss = function() said[#said + 1] = "dismiss" end }):onCloseMenu()
-    ok(table.concat(said, ",") == "ok,cancel,cancel,dismiss" and view._ask == nil,
-        "dialogs: a question's answers, and a tap beside it (" .. table.concat(said, ",") .. ")")
+    local box = asking()
+    ok(box.text == "Go?\n\nReally" and box.ok_text == "Go" and box.cancel_text == "Cancel", "dialogs: a question is a ConfirmBox")
+    box.ok_callback()
+    asking().cancel_callback()
+    ok(table.concat(said, ",") == "ok,cancel" and view._ask == nil,
+        "dialogs: a question's answers (" .. table.concat(said, ",") .. ")")
     -- text: Enter, the second button and the switch
     local got
     view:promptText{ title = "Name", input = "Old", ok_text = "Save", default = "Untitled",
         toggle = { label = "Inside", is_on = true },
         on_ok = function(t, on) got = { t, on } end }
-    ok(view._prompt and InputText.last.text == "Old" and InputText.last.parent == view._prompt,
-        "dialogs: a text sheet starts with its text")
-    ok(view._prompt.is_always_active, "dialogs: and takes what the keyboard on top leaves (typed text, keys)")
-    UIManager.fireScheduled()
-    ok(InputText.last.keyboard_shown, "dialogs: and brings up the keyboard")
-    local field = InputText.last
+    local dialog = InputDialog.last
+    ok(view._prompt == dialog and dialog.input == "Old" and dialog.title == "Name", "dialogs: a text prompt is an InputDialog with its text")
+    ok(dialog.keyboard_shown, "dialogs: and brings up the keyboard")
+    ok(pressIn(dialog, "\u{2611} Inside") and findButton(dialog, "\u{2610} Inside"), "dialogs: the switch is a button that flips")
+    pressIn(dialog, "\u{2610} Inside")
     answer("")
-    ok(got and got[1] == "Untitled" and got[2] == true and view._prompt == nil and field.closed,
-        "dialogs: Enter gives the text (the default when empty) and the switch, and the keyboard goes")
-    local extra
-    view:promptText{ title = "Name", ok_text = "Save", on_ok = function() end,
+    ok(got and got[1] == "Untitled" and got[2] == true and view._prompt == nil,
+        "dialogs: Enter gives the text (the default when empty) and the switch")
+    local extra, cancelled
+    view:promptText{ title = "Name", ok_text = "Save", on_ok = function() end, on_cancel = function() cancelled = true end,
         extra = { text = "More", callback = function(t) extra = t end } }
-    InputText.last.text = "typed"
+    InputDialog.last.input = "typed"
     pressIn(view._prompt, "More")
     ok(extra == "typed" and view._prompt == nil, "dialogs: the second button gets what was typed")
-    -- a list, a page at a time
-    local items, picked = {}, nil
-    for i = 1, 9 do items[i] = { label = "Item " .. i, cb = function() picked = i end } end
-    view:chooseFromList{ title = "Pick", items = items }
-    ok(findButton(view._list, "Item 7") and not findButton(view._list, "Item 8"), "dialogs: a list shows a page at a time")
-    pressIn(view._list, "\u{203A}")
-    ok(findButton(view._list, "Item 9") and not findButton(view._list, "Item 1"), "dialogs: and turns to the next")
-    pressIn(view._list, "Item 9")
-    ok(picked == 9 and view._list == nil, "dialogs: a tap picks and closes")
-    -- a number
+    view:promptText{ title = "Name", ok_text = "Save", on_ok = function() end, on_cancel = function() cancelled = true end }
+    pressIn(view._prompt, "Cancel")
+    ok(cancelled and view._prompt == nil, "dialogs: Cancel closes the prompt")
+    -- a list is KOReader's Menu, which pages itself: see "list:" above
+    -- a number is a SpinWidget
     local num
-    view:askNumber{ title = "Size", value = 10, min = 0, max = 20, step = 2, on_done = function(v) num = v end }
-    pressIn(view._number, "Done")
-    ok(num == 10 and view._number == nil, "dialogs: a number sheet gives its value on Done")
-    -- files and folders, browsed as a grid
+    view:askNumber{ title = "Size", value = 10, min = 0, max = 20, step = 2, format = function(v) return v .. " px" end,
+        on_done = function(v) num = v end }
+    local spin = view._number
+    ok(spin == require("ui/widget/spinwidget").last and spin.value_min == 0 and spin.value_max == 20
+        and spin.value_step == 2 and spin.unit == "px" and spin.ok_text == "Done", "dialogs: a number is a SpinWidget")
+    spin.callback({ value = 14 })
+    ok(num == 14 and view._number == nil, "dialogs: a number gives its value on Done")
+    -- files and folders are KOReader's own file list
     local D = TestEnv.libraryDir() .. "/browsetest"
     os.execute("rm -rf '" .. D .. "'; mkdir -p '" .. D .. "/Sub/Deeper' '" .. D .. "/.hidden'")
     for _, n in ipairs({ "b.png", "a.PDF", "notes.txt" }) do local f = io.open(D .. "/" .. n, "w"); f:write("x"); f:close() end
     local file
     view:pickFile(D, function(p) file = p end, view.isPictureName)
-    local grid = UIManager.shown
-    local names = {}
-    for _, it in ipairs(grid.items) do names[#names + 1] = (it.folder and "/" or "") .. it.label end
-    ok(table.concat(names, ",") == "/Sub,b.png" and grid.items[2].picture,
-        "dialogs: a picture picker shows folders, then the pictures (" .. table.concat(names, ",") .. ")")
-    grid.on_pick(grid.items[1])
-    ok(grid.title == "Sub" and #grid.items == 1 and grid.on_back ~= nil, "dialogs: a tap goes into a folder")
-    grid.on_back()
-    ok(grid.title == "browsetest", "dialogs: the arrow goes back up")
-    pickPath(D .. "/b.png")
-    ok(file == D .. "/b.png", "dialogs: a tap on a picture picks it")
-    -- anything else, a PDF, is chosen from KOReader's own file list
+    local kc = UIManager.shown
+    ok(kc.select_file and not kc.select_directory and kc.path == D, "dialogs: a picture is chosen from KOReader's file list")
+    ok(kc.file_filter(D .. "/b.png") and not kc.file_filter(D .. "/a.PDF"), "dialogs: that list shows only pictures")
     file = nil
     view:pickFile(D, function(p) file = p end, function(n) return n:lower():match("%.pdf$") ~= nil end, "pdfpen", nil, "From a PDF")
-    local kc = UIManager.shown
-    ok(kc.select_file and not kc.select_directory and kc.title == "From a PDF" and kc.path == D,
-        "dialogs: a PDF is chosen from KOReader's file list")
-    ok(kc.file_filter(D .. "/a.PDF") and not kc.file_filter(D .. "/notes.txt"), "dialogs: that list shows only PDFs")
+    kc = UIManager.shown
+    ok(kc.title == "From a PDF", "dialogs: a title is shown above the list")
+    ok(kc.file_filter(D .. "/a.PDF") and not kc.file_filter(D .. "/notes.txt"), "dialogs: a PDF list shows only PDFs")
     ok(kc:onMenuSelect({ path = D .. "/Sub" }) == false and file == nil, "dialogs: a folder is left to KOReader's list")
     kc:onMenuSelect({ path = D .. "/a.PDF" })
     ok(file == D .. "/a.PDF", "dialogs: a tap on a file picks it")
     local folder
+    view._paint_all = false
     view:pickFolder(D, function(p) folder = p end)
-    grid = UIManager.shown
-    ok(#grid.items == 1 and grid.items[1].label == "Sub", "dialogs: a folder picker shows only folders")
-    pickPath(D .. "/Sub", true)
-    ok(folder == D .. "/Sub", "dialogs: Use this folder picks the folder shown")
-    view:pickFolder("/", function() end)
-    ok(UIManager.shown.on_back == nil and UIManager.shown.title == "/", "dialogs: nothing above the top folder")
-    UIManager.shown:close()
+    kc = UIManager.shown
+    ok(kc.select_directory and not kc.select_file and kc.show_files == false, "dialogs: a folder picker is for folders only")
+    pickPath(D .. "/Sub")
+    ok(folder == D .. "/Sub", "dialogs: Choose picks the folder")
+    UIManager:close(kc)
+    ok(view._paint_all == true, "dialogs: closing a picker repaints the view too")
     -- a job's progress, and Stop after asking
     local stopped = false
     local prog = view:showProgress{ title = "Exporting", max = 10, stop_ask = "Lose it?",
         on_stop = function() stopped = true end }
+    ok(view._progress and view._progress.dismissable == false and view._progress.title:find("0%%"),
+        "dialogs: a progress window starts at nothing and ignores taps beside it")
     prog.report(5)
-    ok(view._progress and view._progress.keep_open, "dialogs: a progress sheet stays through taps beside it")
+    ok(view._progress.title:find("50%%"), "dialogs: and shows how far the job got")
     pressIn(view._progress, "Stop")
-    ok(view._progress_ask and not stopped, "dialogs: Stop asks first")
-    pressIn(view._progress_ask, "Keep going")
+    ok(view._progress_ask and not stopped and view._progress == nil, "dialogs: Stop asks first")
+    view._progress_ask.cancel_callback()
     ok(not stopped and view._progress, "dialogs: Keep going goes on")
-    pressIn(view._progress, "Stop"); pressIn(view._progress_ask, "Stop")
+    pressIn(view._progress, "Stop"); view._progress_ask.ok_callback()
     ok(stopped and view._progress == nil, "dialogs: Stop stops")
+    -- closing the view closes whatever it still has open
+    view:tell("left open")
+    local left = view._message
+    UIManager:close(view)
+    local stray = false
+    for _, e in ipairs(UIManager._window_stack) do if e.widget == left then stray = true end end
+    ok(left and not stray, "dialogs: closing the view closes what it opened")
+end
+
+-- ---- native settings lists (ink/view/nativemenu.lua) -------------------------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local st, ran, back = { on = false, pick = "a", n = 3 }, false, false
+    local menu = view:openNativeMenu{ field = "_t", title = "T", style = "list", back = function() back = true end,
+        items = function()
+            return {
+                { text = "Flag", toggle = { get = function() return st.on end, set = function(v) st.on = v end } },
+                { text = "Mode", choice = { options = { { "a", "Alpha" }, { "b", "Beta" } },
+                    get = function() return st.pick end, set = function(v) st.pick = v end } },
+                { text = "Count", number = { min = 0, max = 9, step = 1, format = function(v) return v .. " x" end,
+                    get = function() return st.n end, set = function(v) st.n = v end } },
+                { text = "Go", value = "now", close = true, action = function() ran = true end },
+                { text = "Note", help = "A long note", action = function() end },
+            }
+        end }
+    local function row(text)
+        for _, it in ipairs(menu.item_table) do if it.text == text then return it end end
+    end
+    ok(view._t == menu and menu.title == "T" and menu.covers_fullscreen, "native menu: a list is KOReader's own Menu")
+    ok(row("Flag").mandatory == "\u{2610}" and row("Mode").mandatory == "Alpha" and row("Count").mandatory == "3 x"
+        and row("Go").mandatory == "now", "native menu: rows show what is set")
+    row("Flag").callback()
+    ok(st.on and row("Flag").mandatory == "\u{2611}" and menu.switched == 1, "native menu: a toggle flips and the list redraws")
+    row("Mode").callback()
+    local pick = view._t_choice
+    ok(pick and pick.item_table[1].text:find("\u{2713}", 1, true) and pick.item_table[2].text == "Beta",
+        "native menu: a choice lists its options with the current one ticked")
+    pick:pick("Beta")
+    ok(st.pick == "b" and row("Mode").mandatory == "Beta" and view._t_choice == nil, "native menu: picking sets it and shows it")
+    row("Count").callback()
+    local spin = view._t_number
+    ok(spin and spin.value == 3 and spin.value_max == 9 and spin.unit == "x", "native menu: a number asks with a spin widget")
+    spin.callback({ value = 7 })
+    ok(st.n == 7 and row("Count").mandatory == "7 x", "native menu: the number is set and shown")
+    row("Note").hold_callback()
+    ok(view._t_help and view._t_help.text == "A long note", "native menu: a long press shows the row's help")
+    view:closeSheet("_t_help")
+    row("Go").callback()
+    ok(ran and view._t == nil and not back, "native menu: an action with close shuts the list first")
+    menu = view:openNativeMenu{ field = "_t", title = "T", style = "list", back = function() back = true end, items = function() return {} end }
+    menu.close_callback()
+    ok(back and view._t == nil, "native menu: closing from the title bar goes back")
+    back = false
+    menu = view:openNativeMenu{ field = "_t", title = "T", style = "list", back = function() back = true end, items = function() return {} end }
+    view:closeSheet("_t")
+    ok(not back, "native menu: closing it from code does not go back")
+    view:onCloseWidget()
+end
+
+-- ---- native settings panels (ink/view/nativemenu.lua) ------------------------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local st, ran, back = { on = false, pick = "a", n = 6, big = "x" }, false, false
+    local function panel() return view._p end
+    -- the cell labelled `text` in the open panel (or one of its rows)
+    local function cell(text)
+        for _, row in ipairs(panel().buttons) do
+            for _, c in ipairs(row) do if c.text == text then return c end end
+        end
+    end
+    local function labels()
+        local out = {}
+        for _, row in ipairs(panel().buttons) do
+            local r = {}
+            for _, c in ipairs(row) do r[#r + 1] = c.text end
+            out[#out + 1] = table.concat(r, "|")
+        end
+        return out
+    end
+    view:openNativeMenu{ field = "_p", title = "P", back = function() back = true end,
+        tabs = { { "one", "First" }, { "two", "Second" } },
+        items = function()
+            return {
+                { tab = "one", text = "Flag", help = "About flag", toggle = { get = function() return st.on end, set = function(v) st.on = v end } },
+                { tab = "one", text = "Mode", choice = { options = { { "a", "Alpha" }, { "b", "Beta" } },
+                    get = function() return st.pick end, set = function(v) st.pick = v end } },
+                { tab = "one", text = "Big", choice = { options = { { "x", "Option one" }, { "y", "Option two" },
+                    { "z", "Option three" }, { "w", "Option four" }, { "v", "Option five" } },
+                    get = function() return st.big end, set = function(v) st.big = v end } },
+                { tab = "two", text = "Size", number = { min = 0, max = 10, step = 2, format = function(v) return v .. " px" end,
+                    get = function() return st.n end, set = function(v) st.n = v end } },
+                { tab = "two", text = "Go", value = "now", close = true, action = function() ran = true end },
+            }
+        end }
+    local rows = labels()
+    ok(panel().title == "P" and rows[1] == "First|Second" and rows[#rows] == "Close", "panel: tabs on top, Close at the foot")
+    ok(rows[2] == "\u{2610}  Flag" and rows[3] == "Mode|Alpha|Beta" and rows[4] == "Big: Option one  \u{203A}",
+        "panel: a toggle, a choice as a row of buttons with its caption, a long choice as one button (" .. table.concat(rows, " / ") .. ")")
+    ok(cell("First").bold and not cell("Second").bold and cell("Alpha").bold and not cell("Beta").bold,
+        "panel: the tab and the option in use are bold")
+    ok(cell("Mode").enabled == false, "panel: a caption is not a button")
+    cell("\u{2610}  Flag").callback()
+    ok(st.on and cell("\u{2611}  Flag") ~= nil and view._p ~= nil, "panel: a toggle flips and the panel shows it")
+    cell("\u{2611}  Flag").hold_callback()
+    ok(view._p_help and view._p_help.text == "About flag", "panel: a long press shows the help")
+    view:closeSheet("_p_help")
+    cell("Beta").callback()
+    ok(st.pick == "b" and cell("Beta").bold, "panel: a button of the row sets the choice")
+    cell("Big: Option one  \u{203A}").callback()
+    ok(view._p_choice and #view._p_choice.item_table == 5, "panel: a long choice opens its list")
+    view._p_choice:pick("Option three")
+    ok(st.big == "z" and cell("Big: Option three  \u{203A}"), "panel: and a pick from it is kept")
+    cell("Second").callback()
+    ok(panel() and labels()[2] == "\u{2212}|Size: 6 px|+", "panel: another tab shows its rows, a number as − value +")
+    cell("+").callback()
+    ok(st.n == 8 and cell("Size: 8 px"), "panel: + steps the number up")
+    cell("+").callback(); cell("+").callback()
+    ok(st.n == 10 and cell("+").enabled == false, "panel: and stops at the top")
+    cell("Size: 10 px").callback()
+    local spin = view._p_number
+    ok(spin and spin.value == 10 and spin.value_max == 10 and spin.unit == "px", "panel: a tap on the value asks with a spin widget")
+    spin.callback({ value = 4 })
+    ok(st.n == 4 and cell("Size: 4 px"), "panel: the number asked for is set")
+    cell("\u{2212}").callback()
+    ok(st.n == 2, "panel: − steps it down")
+    cell("Go: now").callback()
+    ok(ran and view._p == nil and not back, "panel: an action with close shuts the panel first")
+    view:openNativeMenu{ field = "_p", title = "P", back = function() back = true end, items = function() return {} end }
+    cell("Close").callback()
+    ok(back and view._p == nil, "panel: Close goes back")
+    back = false
+    view:openNativeMenu{ field = "_p", title = "P", back = function() back = true end, items = function() return {} end }
+    panel().tap_close_callback()
+    ok(back and view._p == nil, "panel: a tap outside goes back")
+    back = false
+    view:openNativeMenu{ field = "_p", title = "P", back = function() back = true end, items = function() return {} end }
+    view:closeSheet("_p")
+    ok(not back, "panel: closing it from code does not go back")
+    -- a refresh replaces the panel without leaving the old one on the stack
+    view:openNativeMenu{ field = "_p", title = "P", items = function() return { { text = "Flag",
+        toggle = { get = function() return st.on end, set = function(v) st.on = v end } } } end }
+    local before = #UIManager._window_stack
+    cell("\u{2611}  Flag").callback()
+    ok(#UIManager._window_stack == before, "panel: a change replaces the panel rather than stacking another")
+    view:closeSheet("_p")
+    -- the settings are such a panel, and a change in them sticks
+    view:openSettings()
+    ok(view._settings_dialog.buttons[1][1].text == "Toolbar"
+        and view._settings_dialog.buttons[1][4].text == "More", "settings: tabs for the toolbar, appearance, paper and more")
+    local sp = view._settings_dialog
+    local function scell(text)
+        for _, row in ipairs(view._settings_dialog.buttons) do
+            for _, c in ipairs(row) do if c.text == text then return c end end
+        end
+    end
+    ok(scell("Top") and scell("Left") and scell("Right") and scell("Hidden"), "settings: the Toolbar tab has the toolbar and zoom button choices")
+    scell("Paper").callback()
+    ok(scell("Vertical") and scell("Four-way") and scell("Off") and scell("Grid: Off  \u{203A}"),
+        "settings: the Paper tab has the grid and symmetry")
+    scell("Vertical").callback()
+    ok(view.symmetry == "vert" and scell("Vertical").bold, "settings: symmetry is set from its row and shown")
+    view.symmetry = "off"; view:setSetting("inkaway_symmetry", "off")   -- (settings outlive the view)
+    scell("More").callback()
+    ok(scell("Refresh the screen") and scell("Gestures and pen buttons") and scell("Ghosting: off"), "settings: the More tab has ghosting, refresh and the other sheets")
+    scell("+").callback()
+    ok(view.ghost_clean == 5, "settings: the ghosting stepper sets it")
+    view.ghost_clean = 0; view:setSetting("inkaway_ghost", 0)
+    view:closeSheet("_settings_dialog")
     view:onCloseWidget()
 end
 
@@ -4017,12 +4194,26 @@ do
     view:renameDocument("Cover")
     view:openExport()
     ok(view._save_dialog ~= nil, "export: the sheet opens once there is ink")
+    do
+        local function cell(text)
+            for _, row in ipairs(view._save_dialog.buttons) do
+                for _, c in ipairs(row) do if c.text == text then return c end end
+            end
+        end
+        ok(view._save_dialog.buttons[1][1].text == "Export PNG" and cell("PNG images").bold and cell("Transparent") == nil
+            and cell("\u{2611}  Transparent") and not cell("Page numbers") and not cell("\u{2610}  Page numbers"),
+            "export: the panel starts with Export, then the PNG's options")
+        cell("PDF").callback()
+        ok(cell("Export PDF") and cell("\u{2610}  Page numbers") and not cell("\u{2611}  Transparent"),
+            "export: choosing PDF changes the rows to the PDF's options")
+        view:exportOptions().fmt = "png"
+    end
     view:closeSheet("_save_dialog")
     ok(view:exportDir() == LIB .. "/out", "export: files go to the export folder from the settings")
 
     -- a PNG: transparent by default, white when asked, and named after the document
     view:promptExportName()
-    ok(require("ui/widget/inputtext").last.text == "Cover", "export: the name starts as the document's")
+    ok(require("ui/widget/inputdialog").last.input == "Cover", "export: the name starts as the document's")
     answer("Cover")
     ok(png and png.path == LIB .. "/out/Cover.png" and png.opts.white == nil, "export: a transparent PNG is written")
     view:exportOptions().transparent = false
@@ -4061,7 +4252,8 @@ do
         local function walk(w, seen)
             if type(w) ~= "table" or seen[w] then return false end
             seen[w] = true
-            if w.label == label then return true end
+            -- (a toggle's button starts with its check box)
+            if w.label == label or (type(w.text) == "string" and w.text:find(label, 1, true)) then return true end
             for k, val in pairs(w) do
                 if k ~= "show_parent" and k ~= "parent" and walk(val, seen) then return true end
             end
@@ -5104,7 +5296,7 @@ do
     local found = findButton(view._item_menu, "Export as PDF\u{2026}")
     ok(found ~= nil, "folder: a folder's menu offers Export as PDF")
     found.callback()
-    ok(view._prompt and require("ui/widget/inputtext").last.text == "Physics", "folder: the PDF is named after the folder")
+    ok(view._prompt and require("ui/widget/inputdialog").last.input == "Physics", "folder: the PDF is named after the folder")
     answer("Physics")
     UIManager.fireScheduled(); UIManager.fireScheduled()
     ok(job and #job.pages == 5, "folder: every page of every document is in it (3 + 1 + 1)")
@@ -5244,7 +5436,7 @@ do
     local pic = LIB .. "/School/beach.png"
     local f = io.open(pic, "wb"); f:write("png"); f:close()
     view:newFromImage(LIB)
-    ok(UIManager.shown and UIManager.shown.on_pick and not UIManager.shown.actions,
+    ok(UIManager.shown and UIManager.shown.select_file and UIManager.shown.file_filter,
         "new: a drawing from a picture asks for the picture")
     pickPath(pic)
     ok(view.doc_path == LIB .. "/beach.inkaway" and view.doc_written and view.bg_path == pic,
@@ -5303,7 +5495,6 @@ do
     sweep("New notebook", "_new_dialog", function() view:openNotebookPaper() end)
     sweep("page paper", "_chooser_dialog", function() view:nbPagePaper() end)
     sweep("page", "_page_dialog", function() view:openPageMenu() end)
-    sweep("settings", "_settings_dialog", function() view:openSettings() end)
     sweep("paper colour", "_paper_colour", function() view:openPaperColour() end)
     -- the paper colour sheet: the papers this screen offers, a tap puts the page on one
     do
@@ -5332,6 +5523,7 @@ do
         ok(view._paper_colour ~= nil, "paper: the sheet stays to try another")
         view:closeSheet("_paper_colour")
         view:openSettings()
+        tabOf(view, "_settings_dialog", "Paper")
         local seen, label = {}, nil
         local function find(w)
             if type(w) ~= "table" or seen[w] then return end
@@ -5340,7 +5532,7 @@ do
             for k, v in pairs(w) do if k ~= "show_parent" and k ~= "parent" then find(v) end end
         end
         find(view._settings_dialog)
-        ok(label == "Colour: Black", "paper: Settings names it beside the paper (" .. tostring(label) .. ")")
+        ok(label and label:find("^Colour: Black"), "paper: Settings names it beside the paper (" .. tostring(label) .. ")")
         view:closeSheet("_settings_dialog")
         view:setPaper(nil)
         ok(view:paperRGB() == nil, "paper: and back to white")
@@ -5377,10 +5569,8 @@ do
     sweep("image", "_img_src_dialog", function() view:chooseImage() end)
     sweep("go to page", "_goto_dialog", function() view:nbJumpPrompt() end)
     view.canvas.ops[1] = { kind = "ink", width = 3, pts = { 1, 1, 9, 9 } }
-    sweep("export", "_save_dialog", function() view:openExport() end)
     view:newDrawing(LIB)
     sweep("background", "_bg_dialog", function() view:openBackground() end)
-    sweep("grid", "_grid_dialog", function() view:openGridSettings() end)
     UIManager:close(view)
     G_reader_settings.data.inkaway_library_dir = TestEnv.libraryDir()
     UIManager.reset()
@@ -5402,7 +5592,7 @@ do
         seen = seen or {}
         if type(w) ~= "table" or seen[w] then return false end
         seen[w] = true
-        if w.text == text then return true end
+        if w.text == text or (type(w.text) == "string" and w.text:find(text .. ": ", 1, true) == 1) then return true end
         for k, val in pairs(w) do
             if k ~= "show_parent" and k ~= "parent" and says(val, text, seen) then return true end
         end
@@ -5439,6 +5629,7 @@ do
     ok(Accent.get().key == "159,214,101" and Accent.get().chromatic and Accent.get().text == BB.COLOR_BLACK,
         "accent: Ink Away green until another is chosen, with black text on it")
     view:openSettings()
+    tabOf(view, "_settings_dialog", "Appearance")
     ok(says(view._settings_dialog, "Theme Color"), "accent: a colour screen's settings offer it")
     view:chooseAccent()
     local picker = UIManager.shown
@@ -5493,34 +5684,30 @@ do
     ok(BB.out_of_bounds == 0 and view._active_btn_idx ~= nil, "accent: the active tool's pill paints in bounds")
     UIManager:close(view)
 
-    -- the row: Ink Away green, black, presets, the last two wheel picks, the
-    -- wheel, in boxes of one size spread across the sheet
-    local Paint = require("ink/paint")
+    -- the list: Ink Away green, black, the presets, the last two wheel picks and
+    -- the wheel
     view:setAccent({ 0, 0, 0 })
     ok(not Accent.get().custom and G_reader_settings.data.inkaway_accent[1] == 0,
         "accent: black is a choice of its own, kept as such")
     G_reader_settings.data.inkaway_accent_recent = nil
-    local content_w = view:sheetWidth()
-    local row = view:accentRow(content_w)
-    local tiles, gaps = {}, {}
-    for _, w in ipairs(row) do
-        if w.width and not w[1] then gaps[#gaps + 1] = w.width else tiles[#tiles + 1] = w end
+    local function colourList()
+        view:openThemeColour()
+        local texts = {}
+        for _, it in ipairs(view._theme_colour.item_table) do texts[#texts + 1] = it.text end
+        return texts, view._theme_colour
     end
-    local sw = Screen:scaleBySize(56)
-    -- (KOReader scales sizes by the screen's short side, so eight fit on every
-    -- reader; the test screen scales differently, and fits all five presets)
-    ok(#tiles >= 8 and #tiles <= 10 and #tiles * sw + (gaps[1] or 0) * #gaps <= content_w,
-        ("accent: green, black, three to five presets, two boxes and the wheel fit the row (%d)"):format(#tiles))
-    local function frameOf(t) return t.bordersize and t or t[1] end
-    ok(says(tiles[1], "Default") and frameOf(tiles[1]).bordersize == Screen:scaleBySize(1),
-        "accent: Ink Away green comes first, captioned as the default")
-    ok(tiles[2].bordersize == Screen:scaleBySize(3), "accent: black is framed while it is in use")
+    local texts, menu = colourList()
+    ok(#texts == 2 + #Accent.PRESETS + 1 and texts[1] == "Default" and texts[2]:find("Black", 1, true)
+        and texts[#texts]:find("Colour wheel", 1, true), "accent: green, black, the presets and the wheel are offered")
+    ok(texts[2]:find("\u{2713}", 1, true) and not texts[1]:find("\u{2713}", 1, true), "accent: the colour in use is ticked")
     view:setAccent(nil)
-    row = view:accentRow(content_w)
+    texts, menu = colourList()
     ok(Accent.get().key == "159,214,101" and G_reader_settings.data.inkaway_accent == nil
-        and row[1][1].bordersize == Screen:scaleBySize(3), "accent: going back to the default frames the green")
-    ok(tiles[#tiles - 2].color == Paint.HAIRLINE and tiles[#tiles - 1].color == Paint.HAIRLINE,
-        "accent: the two boxes for picked colours start empty, before the wheel")
+        and texts[1]:find("\u{2713}", 1, true), "accent: going back to the default ticks the green")
+    menu:pick(texts[3])
+    ok(Accent.get().rgb and Accent.same(Accent.get().rgb, Accent.PRESETS[1]) and view._settings_dialog ~= nil,
+        "accent: a preset is used at once and the settings come back")
+    view:closeSheet("_settings_dialog")
     -- picks on the wheel fill them, newest first; presets do not
     local function pick(rgb)
         view:chooseAccent()
@@ -5748,17 +5935,17 @@ do
     local convert = sheetButton("Convert to text")
     ok(convert ~= nil, "hwr: the lasso menu offers Convert to text for handwriting")
     local n_before = view.canvas:opCount()
-    local InputText = require("ui/widget/inputtext")
+    local InputText = require("ui/widget/inputdialog")
     convert.callback()
     local review = view._hwr_review
-    ok(review and InputText.last.text == "milk" and InputText.last.allow_newline and not InputText.last.enter_callback
+    ok(review and InputText.last.input == "milk" and InputText.last.allow_newline and not InputText.last.enter_callback
         and view.canvas:opCount() == n_before,
         "hwr: recognition opens an editable multiline review in Ink Away's sheet without replacing ink")
     ok(review and review.ok_callback and review.cancel_callback, "hwr: the review has Convert and Cancel")
     review.cancel_callback()
     ok(not view._hwr_review and view.canvas:opCount() == n_before, "hwr: cancelling the review leaves ink untouched")
     convert.callback()
-    InputText.last.text = "milk edited"
+    InputText.last.input = "milk edited"
     view._hwr_review.ok_callback()
     local text_op
     for _, op in ipairs(view.canvas.ops) do if op.kind == "text" then text_op = op end end
@@ -6756,9 +6943,10 @@ do
     UIManager:show(view)
     ok(view.live_colour == true, "live colour: on by default")
     view:openSettings()
-    local t = find(view._settings_dialog, labelled("Colour while drawing"))
+    tabOf(view, "_settings_dialog", "Appearance")
+    local t = findButton(view._settings_dialog, "\u{2611}  Colour while drawing")
     ok(t ~= nil and t.callback ~= nil, "live colour: offered on a colour screen")
-    if t then t.callback(false) end
+    if t then t.callback() end
     ok(view.live_colour == false and G_reader_settings.data.inkaway_live_colour == false, "live colour: the toggle is kept")
     view:closeSheet("_settings_dialog")
     UIManager:close(view)

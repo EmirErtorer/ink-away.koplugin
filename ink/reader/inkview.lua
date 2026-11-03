@@ -627,58 +627,41 @@ end
 -- The book's settings
 ------------------------------------------------------------------------------
 
-function ReaderInkView:openReaderSettings()
-    if self:rebuildSheet("_settings_dialog") then return end
+function ReaderInkView:openReaderSettings(tab)
     self:ensureUserIcons()
-    local content_w = self:sheetWidth()
-    local function closeSelf() self:closeSheet("_settings_dialog") end
-    local build = function(menu)
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Book ink"), content_w, _("Done"), closeSelf, nil, {
-            { icon = "appearance", cb = function() closeSelf(); self:openAppearance() end },
-            { label = _("Guide"), cb = function() self:openGuide() end } }))
-        add(VerticalSpan:new{ width = Screen:scaleBySize(12) })
-        add(ToggleRow:new{ label = _("Show ink while reading"), is_on = self:getSetting("inkaway_book_ink", true) ~= false,
-            width = content_w, parent = menu,
-            callback = function(on) self:setSetting("inkaway_book_ink", on) end })
-        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
-        add(ToggleRow:new{ label = _("Highlighter snaps to the text"),
-            is_on = self:getSetting("inkaway_snap_text", true) ~= false,
-            width = content_w, parent = menu,
-            callback = function(on) self:setSetting("inkaway_snap_text", on) end })
-        add(VerticalSpan:new{ width = Screen:scaleBySize(4) })
-        add(self:sheetHint(_("A highlighter stroke over text becomes the reader's own highlight of it, in the pen's colour: in your highlights list, and with the text at any font size. Over empty space it stays ink."), content_w))
-        add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
-        add(self:sheetLabel(_("Toolbar")))
-        add(VerticalSpan:new{ width = Screen:scaleBySize(6) })
-        add(self:segmentedRow({ { "left", _("Left") }, { "right", _("Right") }, { "top", _("Top") },
-                { "bottom", _("Bottom") } }, self._bar_side, content_w,
-            function(side) closeSelf(); self:setToolbarSide(side); self:openReaderSettings() end))
-        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
-        add(ToggleRow:new{ label = _("Fit the toolbar in the margin"), is_on = self:fitsMargin(),
-            width = content_w, parent = menu,
-            callback = function(on) self:setToolbarFit(on) end })
-        add(VerticalSpan:new{ width = Screen:scaleBySize(4) })
-        add(self:sheetHint(_("The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."), content_w))
+    self:openNativeMenu{ field = "_settings_dialog", title = _("Book ink"), tab = tab,
+        tabs = { { "ink", _("Toolbar") }, { "more", _("More") } },
+        items = function()
+        local rows = {}
+        local function add(tab_id, r) r.tab = tab_id; rows[#rows + 1] = r end
+        add("ink", { text = _("Show ink while reading"), toggle = {
+            get = function() return self:getSetting("inkaway_book_ink", true) ~= false end,
+            set = function(on) self:setSetting("inkaway_book_ink", on) end } })
+        add("ink", { text = _("Highlighter snaps to the text"),
+            help = _("A highlighter stroke over text becomes the reader's own highlight of it, in the pen's colour: in your highlights list, and with the text at any font size. Over empty space it stays ink."),
+            toggle = {
+                get = function() return self:getSetting("inkaway_snap_text", true) ~= false end,
+                set = function(on) self:setSetting("inkaway_snap_text", on) end } })
+        add("ink", { text = _("Toolbar"), choice = { options = { { "left", _("Left") }, { "right", _("Right") },
+                { "top", _("Top") }, { "bottom", _("Bottom") } },
+            get = function() return self._bar_side end,
+            set = function(side) self:closeSheet("_settings_dialog"); self:setToolbarSide(side); self:openReaderSettings("ink") end } })
+        add("ink", { text = _("Fit the toolbar in the margin"),
+            help = _("The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."),
+            toggle = { get = function() return self:fitsMargin() end,
+                set = function(on) self:setToolbarFit(on) end } })
         -- (Pen and input is in the Pen sheet, where the pen is)
-        add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
-        add(self:actionButton(_("Export\u{2026}"), content_w, function()
-            closeSelf(); self:openExport() end, nil, nil, "export"))
-        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
-        add(self:actionButton(_("Gestures and pen buttons"), content_w, function()
-            closeSelf(); self:openGestureSettings() end))
-        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
-        add(self:actionButton(_("Refresh the screen"), content_w, function()
-            closeSelf(); self:refreshScreen() end))
+        add("more", { text = _("Export\u{2026}"), close = true, action = function() self:openExport() end })
+        add("more", { text = _("Gestures and pen buttons"), close = true, action = function() self:openGestureSettings() end })
+        add("more", { text = _("Refresh the screen"), close = true, action = function() self:refreshScreen() end })
+        add("more", { text = _("Appearance"), close = true, action = function() self:openAppearance() end })
+        add("more", { text = _("Guide"), close = true, action = function() self:openGuide() end })
         if self.book and self.book:hasInk() then
-            add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
-            add(self:actionButton(_("Delete all annotations on this book\u{2026}"), content_w, function()
-                closeSelf(); self:confirmDeleteBookInk() end))
+            add("more", { text = _("Delete all annotations on this book\u{2026}"), close = true,
+                action = function() self:confirmDeleteBookInk() end })
         end
-        return content
-    end
-    self:showSheet("_settings_dialog", build)
+        return rows
+    end }
 end
 
 -- Deleting every annotation on the book takes two confirmations; they then

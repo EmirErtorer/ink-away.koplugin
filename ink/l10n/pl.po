@@ -364,6 +364,7 @@ msgstr "Inny notatnik…"
 msgid "Antique gold"
 msgstr "Stare złoto"
 
+#: ink/reader/inkview.lua
 #: ink/view/settings.lua
 msgid "Appearance"
 msgstr "Wygląd"
@@ -460,6 +461,7 @@ msgstr "Długopis, pióro wieczne, kaligrafia i ołówek mogą reagować na sił
 
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Black"
 msgstr "Czarny"
 
@@ -478,6 +480,7 @@ msgstr "Pusta"
 #: ink/folderlook.lua
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Blue"
 msgstr "Niebieski"
 
@@ -572,7 +575,6 @@ msgstr "Kaligrafia"
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
-#: ink/view/export.lua
 #: ink/view/exportbook.lua
 #: ink/view/images.lua
 #: ink/view/library.lua
@@ -656,11 +658,12 @@ msgstr "Wycinki, które już są na stronie, tam zostają."
 
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
-#: ink/view/dialogs.lua
 #: ink/view/guide.lua
 #: ink/view/library.lua
+#: ink/view/nativemenu.lua
 #: ink/view/notebook.lua
 #: ink/view/search.lua
+#: ink/view/settings.lua
 #: ink/view/sheetkit.lua
 #: ink/view/trash.lua
 msgid "Close"
@@ -669,6 +672,7 @@ msgstr "Zamknij"
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr "Kolor"
@@ -678,17 +682,13 @@ msgid "Colour and icon…"
 msgstr "Kolor i ikona…"
 
 #: ink/coverpicker.lua
+#: ink/view/settings.lua
 msgid "Colour wheel"
 msgstr "Koło kolorów"
 
 #: ink/view/settings.lua
 msgid "Colour while drawing"
 msgstr "Kolor podczas rysowania"
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Colour: %s"
-msgstr "Kolor: %s"
 
 #: ink/view/overview.lua
 msgid "Colour…"
@@ -1123,7 +1123,6 @@ msgstr "Nie pytaj ponownie"
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
 #: ink/reader/hlcolour.lua
-#: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
 #: ink/view/gestures.lua
@@ -1327,6 +1326,7 @@ msgstr "Eksperymentalne. Zamień na tekst wysyła obraz pisma otoczonego lassem 
 
 #: ink/guide.lua
 #: ink/view/export.lua
+#: ink/view/settings.lua
 msgid "Export"
 msgstr "Eksportuj"
 
@@ -1391,11 +1391,6 @@ msgstr "Eksportuj folder jako PDF"
 msgid "Exporting %d page(s) to PDF"
 msgstr "Eksport stron do PDF: %d"
 
-#: ink/view/settings.lua
-#, lua-format
-msgid "Exports: %s"
-msgstr "Eksporty: %s"
-
 #: ink/reader/inkview.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -1452,10 +1447,6 @@ msgstr "Plik, Eksportuj: przezroczysty lub biały, cała strona albo wybrany obs
 #: ink/guide.lua
 msgid "File, Layers splits a drawing into layers. The strip at the right adds one or picks where you draw; tap that one for its menu."
 msgstr "Plik, Warstwy dzieli rysunek na warstwy. Pasek po prawej dodaje warstwę lub wybiera, gdzie rysujesz; dotknij warstwy, aby zobaczyć jej menu."
-
-#: ink/view/settings.lua
-msgid "Files"
-msgstr "Pliki"
 
 #: ink/view/share.lua
 msgid "Files arrive in Library › Imported. Reload the page if it was open."
@@ -1735,11 +1726,6 @@ msgstr "Szary"
 #: ink/view/settings.lua
 msgid "Grid"
 msgstr "Siatka"
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Grid: %s"
-msgstr "Siatka: %s"
 
 #: ink/reader/inkview.lua
 #: ink/view/guide.lua
@@ -2146,11 +2132,6 @@ msgid "Library folder: %s"
 msgstr "Folder biblioteki: %s"
 
 #: ink/view/settings.lua
-#, lua-format
-msgid "Library: %s"
-msgstr "Biblioteka: %s"
-
-#: ink/view/settings.lua
 msgid "Light"
 msgstr "Jasny"
 
@@ -2340,7 +2321,9 @@ msgstr "Model"
 msgid "Monthly"
 msgstr "Miesięczny"
 
+#: ink/reader/inkview.lua
 #: ink/ui/thumbgrid.lua
+#: ink/view/settings.lua
 msgid "More"
 msgstr "Więcej"
 
@@ -2515,17 +2498,9 @@ msgstr "Brak tu plików PDF i folderów."
 msgid "No colour"
 msgstr "Bez koloru"
 
-#: ink/view/dialogs.lua
-msgid "No files or folders here."
-msgstr "Brak tu plików i folderów."
-
 #: ink/view/library.lua
 msgid "No folders here."
 msgstr "Brak tu folderów."
-
-#: ink/view/dialogs.lua
-msgid "No folders in here."
-msgstr "Brak w środku folderów."
 
 #: ink/view/library.lua
 msgid "No icon"
@@ -2684,10 +2659,6 @@ msgstr "Teraz jesteś w kopii „%s”"
 msgid "Now page %d"
 msgstr "Teraz strona %d"
 
-#: ink/view/dialogs.lua
-msgid "OK"
-msgstr "OK"
-
 #: ink/framecover.lua
 msgid "Oak"
 msgstr "Dąb"
@@ -2779,6 +2750,7 @@ msgstr "Albo obróć pole pod dowolnym kątem pierścieniem nad nim."
 
 #: ink/folderlook.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Orange"
 msgstr "Pomarańczowy"
 
@@ -2950,22 +2922,19 @@ msgid "Pan, above the zoom, moves the page; tap it again to go back to your tool
 msgstr "Przesuwanie nad powiększeniem przesuwa stronę; dotknij ponownie, aby wrócić do swojego narzędzia. Dwa palce przesuwają stronę przy każdym narzędziu."
 
 #: ink/view/export.lua
+#: ink/view/settings.lua
 msgid "Paper"
 msgstr "Papier"
 
 #: ink/guide.lua
 #: ink/view/paper.lua
+#: ink/view/settings.lua
 msgid "Paper colour"
 msgstr "Kolor papieru"
 
 #: ink/view/notebook.lua
 msgid "Paper for this page"
 msgstr "Papier tej strony"
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Paper: %s"
-msgstr "Papier: %s"
 
 #: ink/guide.lua
 msgid "Papers and planners"
@@ -3163,6 +3132,7 @@ msgstr "Chroń tekst przed gumką i Wymazuj obrazy, w menu gumki, decydują, co 
 
 #: ink/folderlook.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Purple"
 msgstr "Fioletowy"
 
@@ -3233,6 +3203,7 @@ msgstr "Odzyskano"
 #: ink/folderlook.lua
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Red"
 msgstr "Czerwony"
 
@@ -3854,6 +3825,7 @@ msgstr "Dotknij miejsca, gdzie ma trafić. Format pozostaje otwarty, gdy wybiera
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
+#: ink/view/settings.lua
 msgid "Teal"
 msgstr "Morski"
 
@@ -4168,11 +4140,11 @@ msgid "To keep notebooks and drawings together"
 msgstr "Aby trzymać notatniki i rysunki razem"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Toolbar"
 msgstr "Pasek narzędzi"
 
 #: ink/guide.lua
-#: ink/view/settings.lua
 msgid "Toolbar side"
 msgstr "Strona paska narzędzi"
 
@@ -4340,10 +4312,6 @@ msgstr "Użyj"
 #: ink/coverpicker.lua
 msgid "Use for new notebooks"
 msgstr "Używaj dla nowych notatników"
-
-#: ink/view/dialogs.lua
-msgid "Use this folder"
-msgstr "Użyj tego folderu"
 
 #: ink/view/settings.lua
 msgid "Vertical"
