@@ -128,6 +128,9 @@ function InkAwayView:promptText(o)
         height = o.lines and S(28) * o.lines or nil, allow_newline = o.lines ~= nil,
         enter_callback = not o.lines and ok or nil }
     local build = function(menu)
+        -- InputText asks its parent to restore focus after taps on DPad devices
+        -- (including the desktop emulator). The sheet owns that focus layout.
+        menu.layout = { { input } }
         local g = VerticalGroup:new{ align = "left", self:sheetTitle(o.title, content_w, _("Cancel"), cancel) }
         if o.description then
             table.insert(g, vspan(4))

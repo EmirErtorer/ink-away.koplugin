@@ -9,7 +9,7 @@ local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local GeomUI = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
-local InputContainer = require("ui/widget/container/inputcontainer")
+local FocusManager = require("ui/widget/focusmanager")
 local MovableContainer = require("ui/widget/container/movablecontainer")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
@@ -30,7 +30,7 @@ end
 -- It is deliberately not covers_fullscreen: the canvas must keep painting under
 -- the sheet, or closing or reopening a smaller sheet would leave stale panel
 -- pixels around it.
-local IconMenu = InputContainer:extend{
+local IconMenu = FocusManager:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath
     build = nil,               -- function(menu) -> the sheet's content
@@ -103,7 +103,7 @@ function IconMenu:init()
     end
     if Device:hasKeys() then
         local g = Device.input.group
-        self.key_events = { CloseMenu = { { g.Back } } }
+        self.key_events.CloseMenu = { { g.Back } }
         -- the page turn buttons turn a sheet's pages, when it has them (#53)
         if g.PgFwd then self.key_events.MenuPageFwd = { { g.PgFwd } } end
         if g.PgBack then self.key_events.MenuPageBack = { { g.PgBack } } end
