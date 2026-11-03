@@ -53,6 +53,11 @@ msgstr "Κωδικός %1"
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "%1 combined from two readers"
+msgstr "%1 συνδυάστηκαν από δύο συσκευές"
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "%1 h ago"
 msgstr "πριν από %1 ώ."
 
@@ -694,6 +699,7 @@ msgstr "Μελάνι βιβλίου, γραμμή εργαλείων: αριστ
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
+#: ink/sync/areas.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Book notes"
@@ -1662,6 +1668,10 @@ msgstr "Όλα τα υπόλοιπα λειτουργούν κανονικά."
 msgid "Everything in it is deleted for good."
 msgstr "Ό,τι υπάρχει μέσα του διαγράφεται οριστικά."
 
+#: ink/sync/areas.lua
+msgid "Everything in your library except the notes kept for books."
+msgstr "Όλα στη βιβλιοθήκη σας εκτός από τις σημειώσεις των βιβλίων."
+
 #: ink/view/sync.lua
 msgid "Everything is already in sync."
 msgstr "Όλα είναι ήδη συγχρονισμένα."
@@ -1751,6 +1761,10 @@ msgstr "Εξαγωγή του φακέλου ως PDF"
 #, lua-format
 msgid "Exporting %d page(s) to PDF"
 msgstr "Εξαγωγή %d σελίδων σε PDF"
+
+#: ink/sync/areas.lua
+msgid "Exports"
+msgstr "Εξαγωγές"
 
 #: ink/view/settings.lua
 #, lua-format
@@ -2248,6 +2262,10 @@ msgstr "Εικόνα, Φόντο βάζει μια εικόνα πίσω από 
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Εισαγάγετε ένα PDF για να γράψετε στις σελίδες του και μετά εξαγάγετέ το πάλι σε PDF."
 
+#: ink/sync/areas.lua
+msgid "Imported PDFs and pictures"
+msgstr "Εισαγμένα PDF και εικόνες"
+
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "Στη νυχτερινή λειτουργία του KOReader το μελάνι κρατά το χρώμα του: το μπλε μένει μπλε και το σκούρο μελάνι ανοίγει ώστε να διαβάζεται στη σκούρα σελίδα."
@@ -2347,6 +2365,10 @@ msgstr "Ink Away: σημειώσεις βιβλίου (Ink Away εκτός βι�
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away: αντιγραφή μέρους της οθόνης"
+
+#: ink/sync/areas.lua
+msgid "Ink on book pages"
+msgstr "Μελάνι σε σελίδες βιβλίων"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3148,6 +3170,10 @@ msgstr "Χαρτί σημειωματαρίου"
 msgid "Notebooks"
 msgstr "Σημειωματάρια"
 
+#: ink/sync/areas.lua
+msgid "Notebooks and drawings"
+msgstr "Σημειωματάρια και σχέδια"
+
 #: ink/view/sync.lua
 msgid "Notebooks changed on two readers. Both versions are kept."
 msgstr "Σημειωματάρια που άλλαξαν σε δύο συσκευές. Διατηρούνται και οι δύο εκδόσεις."
@@ -3355,6 +3381,10 @@ msgstr "Τύπος PDF"
 #: ink/guide.lua
 msgid "PDFs"
 msgstr "PDF"
+
+#: ink/sync/areas.lua
+msgid "PDFs and pictures made from your notebooks."
+msgstr "PDF και εικόνες που δημιουργήθηκαν από τα σημειωματάριά σας."
 
 #: ink/guide.lua
 msgid "PNG"
@@ -3632,6 +3662,10 @@ msgstr "Λείπει εικόνα ή PDF"
 #: ink/view/export.lua
 msgid "Pictures"
 msgstr "Εικόνες"
+
+#: ink/sync/areas.lua
+msgid "Pictures taken of part of a page."
+msgstr "Εικόνες από ένα τμήμα μιας σελίδας."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -4016,6 +4050,7 @@ msgstr "Σαρώστε με τηλέφωνο ή υπολογιστή στο ίδ
 msgid "Scan with your phone"
 msgstr "Σαρώστε με το τηλέφωνό σας"
 
+#: ink/sync/areas.lua
 #: ink/view/library.lua
 msgid "Screen clips"
 msgstr "Αποσπάσματα σελίδας"
@@ -4559,6 +4594,10 @@ msgstr "Το κλειδί API από τον λογαριασμό σας στην
 msgid "The Library"
 msgstr "Η Βιβλιοθήκη"
 
+#: ink/sync/areas.lua
+msgid "The PDFs and pictures you brought into Ink Away."
+msgstr "Τα PDF και οι εικόνες που φέρατε στο Ink Away."
+
 #: ink/view/trash.lua
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
@@ -4706,6 +4745,10 @@ msgstr "Το σημειωματάριο γίνεται η έκδοση της %1
 #: ink/sync/errors.lua
 msgid "The notebook is synced anyway. The picture shows when its file arrives."
 msgstr "Το σημειωματάριο συγχρονίζεται ούτως ή άλλως. Η εικόνα εμφανίζεται όταν φτάσει το αρχείο της."
+
+#: ink/sync/areas.lua
+msgid "The notebook kept for each book you read."
+msgstr "Το σημειωματάριο που αντιστοιχεί σε κάθε βιβλίο που διαβάζετε."
 
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
@@ -5245,6 +5288,14 @@ msgstr "Τι να κάνετε"
 #: ink/guide.lua
 msgid "What to set on this reader for quicker ink."
 msgstr "Τι να ρυθμίσετε σε αυτή τη συσκευή για πιο γρήγορο μελάνι."
+
+#: ink/view/sync.lua
+msgid "What to sync"
+msgstr "Τι θα συγχρονίζεται"
+
+#: ink/sync/areas.lua
+msgid "What you draw or write on the pages of a book. KOReader's own highlights are not included."
+msgstr "Ό,τι σχεδιάζετε ή γράφετε στις σελίδες ενός βιβλίου. Οι δικές του επισημάνσεις του KOReader δεν περιλαμβάνονται."
 
 #: ink/view/updates.lua
 msgid "What's new"

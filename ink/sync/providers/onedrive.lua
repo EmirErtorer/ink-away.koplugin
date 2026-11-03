@@ -203,7 +203,7 @@ end
 -- changed). `full` says this feed is the whole folder.
 function Onedrive:feed(idx, url, full)
     if not url:find("^https://graph%.microsoft%.com/") then return nil, Errors.make("IA-S304", "cursor") end
-    local files, deleted, folders_changed, final = {}, {}, false, nil
+    local files, at, deleted, folders_changed, final = {}, {}, {}, false, nil
     while url do
         local v, err, reply = self:json("GET", url)
         if not v then
@@ -226,7 +226,12 @@ function Onedrive:feed(idx, url, full)
                     if known and (known.name ~= it.name or known.parent ~= parent) then folders_changed = true end
                     idx:put(id, it.name, parent, true)
                 elseif it.file then
-                    files[#files + 1] = { it = it, old = known and idx:relOf(id) }
+                    -- (an item seen twice in the feed: the later one counts)
+                    if at[id] then files[at[id]].it = it
+                    else
+                        files[#files + 1] = { it = it, old = known and idx:relOf(id) }
+                        at[id] = #files
+                    end
                     idx:put(id, it.name, parent, false)
                 end
             end

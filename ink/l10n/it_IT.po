@@ -53,6 +53,11 @@ msgstr "Codice %1"
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "%1 combined from two readers"
+msgstr "%1 combinati da due lettori"
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "%1 h ago"
 msgstr "%1 h fa"
 
@@ -694,6 +699,7 @@ msgstr "Inchiostro del libro, barra degli strumenti: a sinistra, a destra, in al
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
+#: ink/sync/areas.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Book notes"
@@ -1662,6 +1668,10 @@ msgstr "Tutto il resto funziona come al solito."
 msgid "Everything in it is deleted for good."
 msgstr "Tutto ciò che contiene viene eliminato definitivamente."
 
+#: ink/sync/areas.lua
+msgid "Everything in your library except the notes kept for books."
+msgstr "Tutto nella tua libreria tranne le note dei libri."
+
 #: ink/view/sync.lua
 msgid "Everything is already in sync."
 msgstr "È già tutto sincronizzato."
@@ -1751,6 +1761,10 @@ msgstr "Esporta la cartella come PDF"
 #, lua-format
 msgid "Exporting %d page(s) to PDF"
 msgstr "Esportazione di %d pagina/e in PDF"
+
+#: ink/sync/areas.lua
+msgid "Exports"
+msgstr "Esportazioni"
 
 #: ink/view/settings.lua
 #, lua-format
@@ -2248,6 +2262,10 @@ msgstr "Immagine, Sfondo mette un’immagine dietro la pagina. Tieni premuto Nuo
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importa un PDF per scrivere sulle sue pagine, poi esportalo di nuovo in PDF."
 
+#: ink/sync/areas.lua
+msgid "Imported PDFs and pictures"
+msgstr "PDF e immagini importati"
+
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "Nella modalità notturna di KOReader l’inchiostro mantiene il colore: il blu resta blu, e l’inchiostro scuro si schiarisce per leggersi sulla pagina scura."
@@ -2347,6 +2365,10 @@ msgstr "Ink Away: note del libro (Ink Away fuori da un libro)"
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away: copia parte dello schermo"
+
+#: ink/sync/areas.lua
+msgid "Ink on book pages"
+msgstr "Inchiostro sulle pagine dei libri"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3148,6 +3170,10 @@ msgstr "Carta del quaderno"
 msgid "Notebooks"
 msgstr "Quaderni"
 
+#: ink/sync/areas.lua
+msgid "Notebooks and drawings"
+msgstr "Quaderni e disegni"
+
 #: ink/view/sync.lua
 msgid "Notebooks changed on two readers. Both versions are kept."
 msgstr "Quaderni modificati su due lettori. Entrambe le versioni vengono conservate."
@@ -3355,6 +3381,10 @@ msgstr "Tipo di PDF"
 #: ink/guide.lua
 msgid "PDFs"
 msgstr "PDF"
+
+#: ink/sync/areas.lua
+msgid "PDFs and pictures made from your notebooks."
+msgstr "PDF e immagini creati dai tuoi quaderni."
 
 #: ink/guide.lua
 msgid "PNG"
@@ -3632,6 +3662,10 @@ msgstr "Immagine o PDF mancante"
 #: ink/view/export.lua
 msgid "Pictures"
 msgstr "Immagini"
+
+#: ink/sync/areas.lua
+msgid "Pictures taken of part of a page."
+msgstr "Immagini di una parte di pagina."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -4016,6 +4050,7 @@ msgstr "Inquadra con un telefono o computer sullo stesso Wi-Fi, oppure apri:"
 msgid "Scan with your phone"
 msgstr "Inquadra con il telefono"
 
+#: ink/sync/areas.lua
 #: ink/view/library.lua
 msgid "Screen clips"
 msgstr "Ritagli dello schermo"
@@ -4559,6 +4594,10 @@ msgstr "La chiave API del tuo account sul servizio, di solito sotto Chiavi API. 
 msgid "The Library"
 msgstr "La Libreria"
 
+#: ink/sync/areas.lua
+msgid "The PDFs and pictures you brought into Ink Away."
+msgstr "I PDF e le immagini che hai portato in Ink Away."
+
 #: ink/view/trash.lua
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
@@ -4706,6 +4745,10 @@ msgstr "Il quaderno diventa la versione del %1. Ciò che c'è ora su questo lett
 #: ink/sync/errors.lua
 msgid "The notebook is synced anyway. The picture shows when its file arrives."
 msgstr "Il quaderno viene comunque sincronizzato. L'immagine appare quando arriva il suo file."
+
+#: ink/sync/areas.lua
+msgid "The notebook kept for each book you read."
+msgstr "Il quaderno associato a ogni libro che leggi."
 
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
@@ -5245,6 +5288,14 @@ msgstr "Cosa fare"
 #: ink/guide.lua
 msgid "What to set on this reader for quicker ink."
 msgstr "Cosa impostare su questo lettore per un inchiostro più rapido."
+
+#: ink/view/sync.lua
+msgid "What to sync"
+msgstr "Cosa sincronizzare"
+
+#: ink/sync/areas.lua
+msgid "What you draw or write on the pages of a book. KOReader's own highlights are not included."
+msgstr "Ciò che disegni o scrivi sulle pagine di un libro. Le evidenziazioni proprie di KOReader non sono incluse."
 
 #: ink/view/updates.lua
 msgid "What's new"

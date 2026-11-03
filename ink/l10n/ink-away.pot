@@ -52,6 +52,11 @@ msgstr ""
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "%1 combined from two readers"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "%1 h ago"
 msgstr ""
 
@@ -693,6 +698,7 @@ msgstr ""
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
+#: ink/sync/areas.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Book notes"
@@ -1644,6 +1650,10 @@ msgstr ""
 msgid "Everything in it is deleted for good."
 msgstr ""
 
+#: ink/sync/areas.lua
+msgid "Everything in your library except the notes kept for books."
+msgstr ""
+
 #: ink/view/sync.lua
 msgid "Everything is already in sync."
 msgstr ""
@@ -1732,6 +1742,10 @@ msgstr ""
 #: ink/view/export.lua
 #, lua-format
 msgid "Exporting %d page(s) to PDF"
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "Exports"
 msgstr ""
 
 #: ink/view/settings.lua
@@ -2223,6 +2237,10 @@ msgstr ""
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr ""
 
+#: ink/sync/areas.lua
+msgid "Imported PDFs and pictures"
+msgstr ""
+
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr ""
@@ -2321,6 +2339,10 @@ msgstr ""
 
 #: main.lua
 msgid "Ink Away: copy part of the screen"
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "Ink on book pages"
 msgstr ""
 
 #: ink/view/pencase.lua
@@ -3118,6 +3140,10 @@ msgstr ""
 msgid "Notebooks"
 msgstr ""
 
+#: ink/sync/areas.lua
+msgid "Notebooks and drawings"
+msgstr ""
+
 #: ink/view/sync.lua
 msgid "Notebooks changed on two readers. Both versions are kept."
 msgstr ""
@@ -3324,6 +3350,10 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "PDFs"
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "PDFs and pictures made from your notebooks."
 msgstr ""
 
 #: ink/guide.lua
@@ -3595,6 +3625,10 @@ msgstr ""
 #: ink/guide.lua
 #: ink/view/export.lua
 msgid "Pictures"
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "Pictures taken of part of a page."
 msgstr ""
 
 #: ink/view/exportbook.lua
@@ -3970,6 +4004,7 @@ msgstr ""
 msgid "Scan with your phone"
 msgstr ""
 
+#: ink/sync/areas.lua
 #: ink/view/library.lua
 msgid "Screen clips"
 msgstr ""
@@ -4513,6 +4548,10 @@ msgstr ""
 msgid "The Library"
 msgstr ""
 
+#: ink/sync/areas.lua
+msgid "The PDFs and pictures you brought into Ink Away."
+msgstr ""
+
 #: ink/view/trash.lua
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
@@ -4657,6 +4696,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "The notebook is synced anyway. The picture shows when its file arrives."
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "The notebook kept for each book you read."
 msgstr ""
 
 #: ink/view/links.lua
@@ -5189,6 +5232,14 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "What to set on this reader for quicker ink."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "What to sync"
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "What you draw or write on the pages of a book. KOReader's own highlights are not included."
 msgstr ""
 
 #: ink/view/updates.lua

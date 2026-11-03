@@ -201,6 +201,17 @@ function InkAwayView:openSync()
             callback = function(on) Manager.set("inkaway_sync_wifi_on", on) end })
         add(vspan(6))
         add(self:sheetHint(_("Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."), content_w, 13))
+        -- what is carried: each part on its own
+        add(vspan(16))
+        add(self:sheetLabel(_("What to sync"), true))
+        add(vspan(6))
+        for _i, a in ipairs(Manager.areas()) do
+            add(ToggleRow:new{ label = a.label, is_on = a.on, width = content_w, parent = menu,
+                callback = function(on) Manager.setArea(a.id, on) end })
+            add(vspan(2))
+            add(self:sheetHint(a.hint, content_w, 12))
+            add(vspan(6))
+        end
         -- this reader, conflicts, versions, log, disconnect
         add(vspan(16))
         add(self:sheetLabel(_("This reader"), true))
@@ -445,7 +456,8 @@ function InkAwayView:syncShowResult(res)
         local any = false
         local function line(n, text) if n and n > 0 then any = true; add(para(self, T(text, n), content_w, 17)); add(vspan(4)) end end
         line(res.uploaded, _("%1 sent to the cloud"))
-        line((res.downloaded or 0) - (res.conflicts or 0), _("%1 received"))
+        line((res.downloaded or 0) - (res.conflicts or 0) - (res.merged or 0), _("%1 received"))
+        line(res.merged, _("%1 combined from two readers"))
         line(res.conflicts, _("%1 kept in two versions"))
         line(res.deleted, _("%1 removed"))
         line(res.waiting, _("%1 will wait until closed"))

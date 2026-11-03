@@ -69,6 +69,7 @@ function InkAway:init()
         if ok then
             self.book = Book.new(self.ui)
             self.book.plugin = self
+            UIManager:nextTick(function() self:syncBook() end)   -- (cloud sync: match its ink with the other readers')
             self.ui.view:registerViewModule("inkaway", self.book:overlay())
             -- highlighting with the pen's button while reading (see there)
             local hok, PenHighlight = pcall(require, "ink/reader/penhighlight")
@@ -268,8 +269,32 @@ function InkAway:onSetDimensions()
     if self.book then self.book:closeViews() end
 end
 
+-- Cloud sync, for a book: newer ink from the other readers (a few seconds at most,
+-- only if the person turned it on), then keep the sync's hands off the ink while
+-- the book is open. The book is matched with the other readers' by its checksum.
+function InkAway:syncBook()
+    local ok, SyncManager = pcall(require, "ink/sync/manager")
+    local book, ui = self.book, self.ui
+    if not (ok and book and ui.document and book.sidecar) then return end
+    local md5
+    pcall(function() md5 = ui.doc_settings:readSetting("partial_md5_checksum") end)
+    if not md5 then pcall(function() md5 = require("util").partialMD5(ui.document.file) end) end
+    if not md5 then return end
+    self.sync_md5 = md5
+    pcall(SyncManager.preOpenBook, md5, book.sidecar, ui.document.file, function(fetched)
+        if self.book ~= book then return end
+        if fetched then pcall(book.reload, book) end
+        pcall(SyncManager.bookOpened, md5, book.sidecar, ui.document.file)
+    end)
+end
+
 -- The book is closing: leave nothing of ours open over it.
 function InkAway:onCloseDocument()
+    if self.sync_md5 then
+        local ok, SyncManager = pcall(require, "ink/sync/manager")
+        if ok then pcall(SyncManager.bookClosed) end
+        self.sync_md5 = nil
+    end
     if self.book then self.book:close() end
     -- (after the views over the book, which give the pen back as they close)
     if self.pen_highlight then self.pen_highlight:detach() end

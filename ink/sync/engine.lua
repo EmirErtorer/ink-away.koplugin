@@ -69,7 +69,24 @@ local function reserved(rel)
     return rel == Engine.SCHEMA_FILE or rel:sub(-#Engine.TMP) == Engine.TMP or rel:sub(-4) == ".tmp"
 end
 
-local function abs(ctx, rel) return Storage.join(ctx.root, rel) end
+-- The part (area) of the sync a cloud path belongs to (see ink/sync/areas.lua).
+local function areaOf(ctx, rel)
+    for _i, a in ipairs(ctx.areas) do
+        if a.owns(rel) then return a end
+    end
+end
+
+-- Where the cloud path `rel` is on this reader.
+local function abs(ctx, rel)
+    local a = areaOf(ctx, rel)
+    return a and a.locate(rel) or Storage.join(ctx.root, rel)
+end
+
+-- Is `rel` in a part that is on, and does it have a place on this reader?
+local function isTracked(ctx, rel)
+    local a = areaOf(ctx, rel)
+    return a ~= nil and a.enabled() and a.locate(rel) ~= nil
+end
 
 local function mkdirs(path)
     local acc = path:sub(1, 1) == "/" and "" or nil
@@ -338,12 +355,40 @@ local function doDownload(ctx, key, rel, rem, seen)
     return true
 end
 
+-- Both sides changed a file that can be combined (the ink on a book): the two are
+-- merged into this reader's file, which is then sent as the next version of the
+-- cloud's. Nothing is left out. Returns true and "" (the caller sends it).
+local function doMerge(ctx, key, rel, rem, tmp, area)
+    local merged = area.merge(abs(ctx, rel), tmp)
+    if not merged then os.remove(tmp); return nil, Errors.make("IA-S503", "cannot merge " .. rel) end
+    local bok, berr = backupOf(ctx, rel)
+    if not bok then os.remove(tmp); return nil, berr end
+    local rst = stat(tmp)
+    local rhash = localHash(ctx, tmp, rst.size)
+    local target = abs(ctx, rel)
+    local out = io.open(target .. Engine.TMP, "wb")
+    if not out then os.remove(tmp); return nil, Errors.make("IA-S402", "merge " .. rel) end
+    out:write(merged)
+    out:close()
+    if not replace(target .. Engine.TMP, target) then
+        os.remove(target .. Engine.TMP); os.remove(tmp)
+        return nil, Errors.make("IA-S402", "replace " .. rel)
+    end
+    os.remove(tmp)
+    -- the base is the cloud's version, so the merged file counts as changed and goes up
+    ctx.state.data.files[key] = { rel = rel, rev = rem.rev, rsize = rem.size, rhash = rem.hash,
+        lsize = rst.size, lmtime = 0, lhash = rhash, synced = ctx.now() }
+    return true, ""
+end
+
 -- Both sides changed: the cloud's version keeps the name, this reader's goes to
 -- a copy beside it; both end up in the cloud. Returns true, the copy's rel.
 local function doConflict(ctx, key, rel, rem, seen)
     local tmp, err = fetch(ctx, rel, rem)
     if not tmp then return nil, err end
     if changedSince(ctx, rel, seen) then os.remove(tmp); return nil, Errors.make("IA-S504", rel) end
+    local area = areaOf(ctx, rel)
+    if area and area.merge then return doMerge(ctx, key, rel, rem, tmp, area) end
     local crel = conflictRel(ctx, rel)
     local ok, cerr = copyStream(abs(ctx, rel), abs(ctx, crel))
     if not ok then os.remove(tmp); os.remove(abs(ctx, crel)); return nil, Errors.make("IA-S402", cerr) end
@@ -424,9 +469,11 @@ function Engine.run(ctx)
     ctx.report = ctx.report or function() end
     ctx.log = ctx.log or function() end
     ctx.limits = setmetatable(ctx.limits or {}, { __index = Engine.LIMITS })
+    ctx.areas = ctx.areas or { { id = "notebooks", enabled = function() return true end, library = true,
+        owns = function() return true end, locate = function(rel) return Storage.join(ctx.root, rel) end } }
     local S = ctx.state
     local res = { items = {}, errors = {}, warnings = {}, uploaded = 0, downloaded = 0, conflicts = 0,
-        deleted = 0, waiting = 0, started = ctx.now(), dry = ctx.dry or false }
+        deleted = 0, merged = 0, waiting = 0, started = ctx.now(), dry = ctx.dry or false }
 
     local function finish(fatal)
         res.fatal = fatal
@@ -480,13 +527,30 @@ function Engine.run(ctx)
     ctx.report({ phase = "reader" })
     local clashes = {}
     local docs = walk(ctx.root, clashes)
+    for k, rel in pairs(docs) do
+        if not isTracked(ctx, rel) then docs[k] = nil end
+    end
+    -- the parts that are folders of their own, and the books
+    local walked = {}
+    for _i, a in ipairs(ctx.areas) do
+        if a.walk and a.enabled() then
+            a.walk(function(rel)
+                local k = lower(rel)
+                if walked[k] and walked[k] ~= rel then clashes[#clashes + 1] = { walked[k], rel } end
+                if not walked[k] or rel < walked[k] then walked[k] = rel end
+            end)
+        end
+    end
     for _i, c in ipairs(clashes) do
         res.warnings[#res.warnings + 1] = { rel = c[2], err = Errors.make("IA-S404", c[1] .. " / " .. c[2]) }
     end
     local used = usedFiles(ctx, docs, res)
     local keys, rels = {}, {}
-    local function track(key, rel) if not rels[key] then rels[key] = rel; keys[#keys + 1] = key end end
+    local function track(key, rel)
+        if not rels[key] and isTracked(ctx, rel) then rels[key] = rel; keys[#keys + 1] = key end
+    end
     for k, rel in pairs(docs) do track(k, rel) end
+    for k, rel in pairs(walked) do track(k, rel) end
     for k, rel in pairs(used) do track(k, rel) end
     for k, b in pairs(S.data.files) do track(k, b.rel) end
     for k, r in pairs(S.data.remote) do track(k, r.rel) end
@@ -524,7 +588,9 @@ function Engine.run(ctx)
         if p.action == "delete_remote" or p.action == "delete_local" then deletes = deletes + 1 end
     end
     local tracked = 0
-    for _k in pairs(S.data.files) do tracked = tracked + 1 end
+    for _k, b in pairs(S.data.files) do
+        if isTracked(ctx, b.rel) then tracked = tracked + 1 end
+    end
     if deletes >= ctx.limits.min_delete_guard and deletes > ctx.limits.max_delete_fraction * tracked
             and not ctx.allow_mass_delete then
         local kept = {}
@@ -586,13 +652,18 @@ function Engine.run(ctx)
                     return true
                 end
             end)
-            if okc then good, ferr, extra = a, b2, nil; if action == "conflict" then extra = b2; ferr = nil end
+            if okc then good, ferr, extra = a, b2, nil; if action == "conflict" and good then extra = b2; ferr = nil end
             else good, ferr = nil, Errors.make("IA-S503", a) end
         end
         if good then
             if action == "upload" then res.uploaded = res.uploaded + 1
             elseif action == "download" then res.downloaded = res.downloaded + 1
             elseif action == "delete_remote" or action == "delete_local" then res.deleted = res.deleted + 1
+            elseif action == "conflict" and extra == "" then
+                -- merged: the combined file goes up as the next version
+                res.merged = res.merged + 1; res.downloaded = res.downloaded + 1
+                seen_stat[key] = stat(abs(ctx, rel))
+                queue[#queue + 1] = { key = key, rel = rel, action = "upload" }
             elseif action == "conflict" then
                 res.conflicts = res.conflicts + 1; res.downloaded = res.downloaded + 1
                 -- the copy is a new file: send it too, in this run

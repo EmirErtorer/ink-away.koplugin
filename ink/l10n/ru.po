@@ -53,6 +53,11 @@ msgstr "Код %1"
 
 #: ink/view/sync.lua
 #, lua-format
+msgid "%1 combined from two readers"
+msgstr "%1 объединено с двух устройств"
+
+#: ink/view/sync.lua
+#, lua-format
 msgid "%1 h ago"
 msgstr "%1 ч назад"
 
@@ -694,6 +699,7 @@ msgstr "Чернила книги, панель инструментов: сле
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
+#: ink/sync/areas.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Book notes"
@@ -1662,6 +1668,10 @@ msgstr "Всё остальное работает как обычно."
 msgid "Everything in it is deleted for good."
 msgstr "Всё в ней удаляется навсегда."
 
+#: ink/sync/areas.lua
+msgid "Everything in your library except the notes kept for books."
+msgstr "Всё в вашей библиотеке, кроме заметок к книгам."
+
 #: ink/view/sync.lua
 msgid "Everything is already in sync."
 msgstr "Всё уже синхронизировано."
@@ -1751,6 +1761,10 @@ msgstr "Экспортировать папку как PDF"
 #, lua-format
 msgid "Exporting %d page(s) to PDF"
 msgstr "Экспорт страниц в PDF: %d"
+
+#: ink/sync/areas.lua
+msgid "Exports"
+msgstr "Экспорт"
 
 #: ink/view/settings.lua
 #, lua-format
@@ -2248,6 +2262,10 @@ msgstr "«Изображение», «Фон» помещает картинку
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Импортируйте PDF, чтобы писать на его страницах, затем экспортируйте обратно в PDF."
 
+#: ink/sync/areas.lua
+msgid "Imported PDFs and pictures"
+msgstr "Импортированные PDF и изображения"
+
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "В ночном режиме KOReader чернила сохраняют цвет: синий остаётся синим, а тёмные чернила светлеют, чтобы читаться на тёмной странице."
@@ -2347,6 +2365,10 @@ msgstr "Ink Away: заметки к книге (Ink Away вне книги)"
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away: копировать часть экрана"
+
+#: ink/sync/areas.lua
+msgid "Ink on book pages"
+msgstr "Чернила на страницах книг"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -3148,6 +3170,10 @@ msgstr "Бумага блокнота"
 msgid "Notebooks"
 msgstr "Блокноты"
 
+#: ink/sync/areas.lua
+msgid "Notebooks and drawings"
+msgstr "Блокноты и рисунки"
+
 #: ink/view/sync.lua
 msgid "Notebooks changed on two readers. Both versions are kept."
 msgstr "Блокноты, изменённые на двух устройствах. Обе версии сохранены."
@@ -3355,6 +3381,10 @@ msgstr "Тип PDF"
 #: ink/guide.lua
 msgid "PDFs"
 msgstr "PDF"
+
+#: ink/sync/areas.lua
+msgid "PDFs and pictures made from your notebooks."
+msgstr "PDF и изображения, созданные из ваших блокнотов."
 
 #: ink/guide.lua
 msgid "PNG"
@@ -3632,6 +3662,10 @@ msgstr "Нет изображения или PDF"
 #: ink/view/export.lua
 msgid "Pictures"
 msgstr "Изображения"
+
+#: ink/sync/areas.lua
+msgid "Pictures taken of part of a page."
+msgstr "Изображения части страницы."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -4016,6 +4050,7 @@ msgstr "Отсканируйте телефоном или компьютеро�
 msgid "Scan with your phone"
 msgstr "Отсканируйте телефоном"
 
+#: ink/sync/areas.lua
 #: ink/view/library.lua
 msgid "Screen clips"
 msgstr "Фрагменты экрана"
@@ -4559,6 +4594,10 @@ msgstr "Ключ API из вашей учётной записи в сервис
 msgid "The Library"
 msgstr "Библиотека"
 
+#: ink/sync/areas.lua
+msgid "The PDFs and pictures you brought into Ink Away."
+msgstr "PDF и изображения, которые вы добавили в Ink Away."
+
 #: ink/view/trash.lua
 #, lua-format
 msgid "The annotations of %s are back where the book was. They show again when the book is back in that place."
@@ -4706,6 +4745,10 @@ msgstr "Блокнот станет версией от %1. То, что сей�
 #: ink/sync/errors.lua
 msgid "The notebook is synced anyway. The picture shows when its file arrives."
 msgstr "Блокнот всё равно синхронизируется. Картинка появится, когда придёт её файл."
+
+#: ink/sync/areas.lua
+msgid "The notebook kept for each book you read."
+msgstr "Блокнот, который ведётся для каждой читаемой книги."
 
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
@@ -5245,6 +5288,14 @@ msgstr "Что делать"
 #: ink/guide.lua
 msgid "What to set on this reader for quicker ink."
 msgstr "Что настроить на этой читалке для более быстрых чернил."
+
+#: ink/view/sync.lua
+msgid "What to sync"
+msgstr "Что синхронизировать"
+
+#: ink/sync/areas.lua
+msgid "What you draw or write on the pages of a book. KOReader's own highlights are not included."
+msgstr "То, что вы рисуете или пишете на страницах книги. Собственные выделения KOReader не включены."
 
 #: ink/view/updates.lua
 msgid "What's new"

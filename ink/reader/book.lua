@@ -64,6 +64,10 @@ function Book:save()
         end
     end
     self.has_file = kept ~= nil and (#data.items > 0 or data.notes ~= nil)
+    if kept then
+        local ok, Sync = pcall(require, "ink/sync/manager")   -- (cloud sync: a change is waiting to be sent)
+        if ok then pcall(Sync.bookSaved) end
+    end
     return kept ~= nil
 end
 
@@ -682,7 +686,12 @@ end
 
 -- The book's notebook, as last saved (nil before it has one).
 function Book:notesPath()
-    return self:data().notes
+    local path = self:data().notes
+    -- a notebook path from another reader (the ink came with the cloud sync) is found again
+    local ok, Portable = pcall(require, "ink/sync/portable")
+    local root = ok and Portable.root and Portable.root()
+    if path and root then return Portable.resolve(path, root) end
+    return path
 end
 
 function Book:setNotesPath(path)

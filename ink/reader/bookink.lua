@@ -127,6 +127,40 @@ local function encode(data)
 end
 BookInk.encode = encode
 
+-- Is the file at `path` a book's ink this version can read (for the cloud sync)?
+function BookInk.valid(path)
+    local s = readFile(path)
+    local data = s and decode(s)
+    if not data then return false, "not a book's ink" end
+    return true
+end
+
+-- Two copies of a book's ink in one (for the cloud sync, when two readers drew on
+-- the same book while apart): the items of the first file, then those only the
+-- second has. Nothing is left out; a stroke erased on one reader and not on the
+-- other comes back. Returns the file's text, or nil if either cannot be read or
+-- is from a newer Ink Away.
+function BookInk.merge(first_path, second_path)
+    local a_text, b_text = readFile(first_path), readFile(second_path)
+    local a, b = a_text and decode(a_text), b_text and decode(b_text)
+    if not (a and b) or (tonumber(a.version) or 1) > BookInk.VERSION or (tonumber(b.version) or 1) > BookInk.VERSION then
+        return nil
+    end
+    local seen, items = {}, {}
+    for _i, it in ipairs(b.items) do
+        items[#items + 1] = it
+        seen[itemText(it)] = true
+    end
+    for _i, it in ipairs(a.items) do
+        local t = itemText(it)
+        if not seen[t] then
+            items[#items + 1] = it
+            seen[t] = true
+        end
+    end
+    return encode({ items = items, notes = b.notes or a.notes })
+end
+
 -- Keep it. One with no ink and no book notes removes the files, so such a book
 -- leaves none. Returns whether it is kept.
 function BookInk.save(sidecar_dir, data)

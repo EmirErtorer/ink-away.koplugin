@@ -15,6 +15,8 @@ local Backup = require("ink/sync/backup")
 local Config = require("ink/sync/config")
 local Engine = require("ink/sync/engine")
 local Errors = require("ink/sync/errors")
+local Areas = require("ink/sync/areas")
+local BookIndex = require("ink/sync/bookindex")
 local Providers = require("ink/sync/providers")
 local Runner = require("ink/sync/runner")
 local Schedule = require("ink/sync/schedule")
@@ -192,9 +194,13 @@ end
 
 -- Which notebooks are open in the editor (lower-case paths in the library), kept
 -- in a file the background process reads before replacing anything.
-function Manager.setOpen(rels)
+local open_slots = {}
+function Manager.setOpen(rels, slot)
+    open_slots[slot or "notebook"] = rels or {}
     local lines = {}
-    for _i, r in ipairs(rels or {}) do lines[#lines + 1] = r:lower() end
+    for _name, list in pairs(open_slots) do
+        for _i, r in ipairs(list) do lines[#lines + 1] = r:lower() end
+    end
     Storage.writeAtomic(Storage.join(Manager.dir(), "open.txt"), table.concat(lines, "\n"))
 end
 
@@ -216,7 +222,7 @@ end
 
 -- What a run hands back: small enough to pass between processes.
 local function summarize(res)
-    local out = { uploaded = res.uploaded, downloaded = res.downloaded, conflicts = res.conflicts,
+    local out = { uploaded = res.uploaded, downloaded = res.downloaded, conflicts = res.conflicts, merged = res.merged,
         deleted = res.deleted, waiting = res.waiting, started = res.started, finished = res.finished,
         dry = res.dry, blocked_deletes = res.blocked_deletes, errors = {}, warnings = {}, plan = {} }
     if res.fatal then out.fatal = { code = res.fatal.code, detail = res.fatal.detail, retry_after = res.fatal.retry_after } end
@@ -237,6 +243,114 @@ local function summarize(res)
     return out
 end
 
+------------------------------------------------------------------------------
+-- The parts of the sync
+------------------------------------------------------------------------------
+
+-- The parts, each { id, label, hint, on }, in the order they are shown.
+function Manager.areas()
+    local out = {}
+    for _i, d in ipairs(Areas.DEFS) do
+        out[#out + 1] = { id = d.id, label = d.label, hint = d.hint, on = Areas.enabled(d.id, Manager.get) }
+    end
+    return out
+end
+
+-- Turn a part on or off. What is waiting is sent the next time.
+function Manager.setArea(id, on)
+    Areas.setEnabled(id, on, Manager.set)
+    now_state.dirty = true
+    changed()
+end
+
+-- The books in the reading history (their files), newest first.
+local function historyFiles()
+    local ok, ReadHistory = pcall(require, "readhistory")
+    local out = {}
+    if ok and ReadHistory and type(ReadHistory.hist) == "table" then
+        for _i, item in ipairs(ReadHistory.hist) do
+            if item.file then out[#out + 1] = item.file end
+        end
+    end
+    return out
+end
+
+-- A book's checksum, as KOReader keeps it.
+local function bookChecksum(file)
+    local ok, DocSettings = pcall(require, "docsettings")
+    if ok and DocSettings then
+        local good, md5 = pcall(function()
+            if not DocSettings:hasSidecarFile(file) then return nil end
+            return DocSettings:open(file):readSetting("partial_md5_checksum")
+        end)
+        if good and md5 then return md5 end
+    end
+    local uok, util = pcall(require, "util")
+    if uok and util and util.partialMD5 then return util.partialMD5(file) end
+end
+
+-- The folder that holds (or will hold) a book's ink.
+local function bookFolder(file)
+    local BookInk = require("ink/reader/bookink")
+    return BookInk.find(file) or BookInk.dirsFor(file)[1]
+end
+
+-- The parts as the engine takes them, for the library at `root`, with the sync's
+-- own folder `dir`. Looks through the reading history for books when their ink is on.
+function Manager.buildAreas(root, dir)
+    if Areas.enabled("bookink", Manager.get) then
+        pcall(BookIndex.scan, dir, historyFiles(), bookChecksum, bookFolder, os.time())
+    end
+    return Areas.build({
+        get = Manager.get, root = root,
+        appPath = function(name) return Storage.join(Storage.appRootPath() or Storage.join(Storage.dataDir() or "/tmp", "ink away"), name) end,
+        books = function() return BookIndex.list(dir) end,
+        merge = function(first, second) return require("ink/reader/bookink").merge(first, second) end,
+    })
+end
+
+------------------------------------------------------------------------------
+-- Books
+------------------------------------------------------------------------------
+
+local function bookKey(md5) return Areas.PREFIX .. "/books/" .. md5:lower() .. "/inkaway.lua" end
+
+-- A book was opened: list it (so its ink can be matched with the other readers'),
+-- and keep the sync's hands off its ink while it is open.
+function Manager.bookOpened(md5, sidecar, file)
+    if not (md5 and Areas.enabled("bookink", Manager.get)) then return end
+    BookIndex.note(Manager.dir(), md5, sidecar, file)
+    Manager.setOpen({ bookKey(md5) }, "book")
+end
+
+-- The book was closed (its ink was saved just before).
+function Manager.bookClosed()
+    Manager.setOpen({}, "book")
+    if Areas.enabled("bookink", Manager.get) then Manager.noteClosed() end
+end
+
+-- A book's ink was saved.
+function Manager.bookSaved()
+    if Areas.enabled("bookink", Manager.get) then Manager.noteChanged() end
+end
+
+-- Before a book is shown: look for newer ink for it in the cloud (a few seconds at
+-- most). `proceed(fetched)` is called once, with whether newer ink came.
+function Manager.preOpenBook(md5, sidecar, file, proceed)
+    local opts = Manager.options()
+    if not (md5 and Areas.enabled("bookink", Manager.get) and opts.enabled and opts.on_open and Manager.connected()) then
+        return proceed(false)
+    end
+    BookIndex.note(Manager.dir(), md5, sidecar, file)
+    if now_state.last_started and os.time() - now_state.last_started < 60 then return proceed(false) end
+    local done = false
+    local function go(res) if not done then done = true; proceed(res and (res.downloaded or 0) + (res.merged or 0) > 0 or false) end end
+    local started = Manager.run("open", { only = { [bookKey(md5)] = true }, on_done = go })
+    if not started then return go() end
+    local ok, UIManager = pcall(require, "ui/uimanager")
+    if ok then UIManager:scheduleIn(6, function() go() end) end
+end
+
 -- The work of one run, as it is done in the background process.
 local function makeWork(o)
     local dir, root, device = Manager.dir(), Manager.root(), Manager.deviceName()
@@ -250,13 +364,15 @@ local function makeWork(o)
         if not mod then return { fatal = { code = "IA-S503", detail = "no such service" }, errors = {}, warnings = {}, plan = {} } end
         local inst = mod.new(acct, { app_key = key, app_secret = secret, dir = dir, save = function(a) Account.save(dir, a) end })
         local st = State.load(dir)
+        local areas = Manager.buildAreas(root, dir)
         local res = Engine.run({
-            root = root, provider = inst, state = st, backup_dir = backup, device = device,
+            root = root, provider = inst, state = st, backup_dir = backup, device = device, areas = areas,
             now = os.time, sleep = function(s) os.execute("sleep " .. math.floor(s)) end,
             stop = stop, report = report, dry = o.dry, rebase = o.rebase, allow_mass_delete = o.allow_mass_delete,
             only = o.only,
             skip = function(k) return openSet(dir)[k] == true end,
             validate = function(rel, path)
+                if rel:match("/inkaway%.lua$") then return require("ink/reader/bookink").valid(path) end
                 if not rel:match("%.inkaway$") then return true end
                 local data, err = Project.load(path)
                 if data then return true end

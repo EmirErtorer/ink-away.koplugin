@@ -10,6 +10,14 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Cloud sync can carry more than notebooks, and each part is turned on or off on
+  its own under "What to sync": notebooks and drawings, book notes, ink on book
+  pages, imported PDFs and pictures, exports, and screen clips. Notebooks and
+  book notes stay on as before; the rest start off. A part that is off is left
+  alone on both sides. The ink on a book is matched across readers by the book's
+  checksum, whatever the file is called; if two readers drew on the same book
+  while apart, the ink from both is combined (a stroke erased on only one of them
+  can come back). KOReader's own highlights are not included.
 - Cloud sync also works with Google Drive and OneDrive (a personal Microsoft
   account). These show a short code on the reader: scan the QR code, type the
   code on the phone, tap Allow, and the reader carries on by itself. Ink Away
