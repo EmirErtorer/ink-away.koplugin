@@ -82,11 +82,40 @@ function ReaderInkView:placeToolbar()
         else v.area_h = H - t; self._bar_y = H - t end
     end
     v.pan_x, v.pan_y = v.area_x, v.area_y
+    local surface = self.book and self.book.surface
+    local changed
+    if surface and surface.setViewport then
+        changed = surface:setViewport({ x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h }, function(reflow)
+            if self.closing or self.book._view ~= self then return end
+            self:flushPending()
+            self:prepareSurfaceLayout()
+            reflow()
+            self._surface_layout_changed = true
+            self:loadBookPage()
+            self:composeCanvas()
+            self:renderView()
+            UIManager:setDirty(self, "ui")
+        end)
+        self._surface_layout_changed = self._surface_layout_changed or changed
+    end
+    -- A reflow creates new widgets whose screen bounds are primed by snapshot.
+    local clip = surface and not self._surface_layout_changed and surface:clip()
+    if clip then
+        local right = math.min(v.area_x + v.area_w, clip.x + clip.w)
+        local bottom = math.min(v.area_y + v.area_h, clip.y + clip.h)
+        v.area_x, v.area_y = math.max(v.area_x, clip.x), math.max(v.area_y, clip.y)
+        v.area_w, v.area_h = math.max(1, right - v.area_x), math.max(1, bottom - v.area_y)
+        v.pan_x, v.pan_y = v.area_x, v.area_y
+    end
     if self._toolbar_hidden then self[1] = nil else self[1] = self.toolbar end
 end
 
 -- After the toolbar moved or hid: a new on-screen buffer for the area, drawn.
 function ReaderInkView:areaChanged()
+    if self._surface_layout_changed then
+        self:loadBookPage()
+        self:composeCanvas()
+    end
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
     self:renderView()
@@ -95,10 +124,21 @@ function ReaderInkView:areaChanged()
     UIManager:setDirty(self, "ui")
 end
 
+-- Anchor edits before a provider changes the screen-to-page mapping.
+function ReaderInkView:prepareSurfaceLayout()
+    local surface = self.book and self.book.surface
+    if not (surface and surface.setViewport) then return end
+    self:cancelShape()
+    if self.editing_text then self:finishTextEdit(true) end
+    self:resetLasso()
+    self:saveDocument()
+end
+
 -- Move the toolbar to another side (from the book's settings).
 function ReaderInkView:setToolbarSide(side)
     if not SIDES[side] or side == self._bar_side then return end
     self:flushPending()
+    self:prepareSurfaceLayout()
     self:setSetting("inkaway_book_toolbar_side", side)
     self._bar_side = side
     self:buildToolbar()
@@ -119,8 +159,21 @@ end
 -- The page shown by the reader, and its ink.
 function ReaderInkView:loadBookPage()
     local W, H = self.view.canvas_w, self.view.canvas_h
+    if self.book.surface and self.book.surface.setViewport then
+        -- Navigation may replace the provider's widget even when the toolbar
+        -- rectangle is unchanged. Snapshot it before reading any content clip.
+        self._surface_layout_changed = true
+        self:placeToolbar()
+    end
     if not self.bg_bb then self.bg_bb = Blitbuffer.new(W, H, Screen.bb:getType()) end
     self.book:snapshot(self.bg_bb)
+    self._surface_layout_changed = nil
+    if self.book.surface then
+        -- Snapshot primes a newly navigated viewer's layout before asking for
+        -- its content clip. The canvas still uses absolute screen coordinates.
+        self:placeToolbar()
+        if self.area_bb then self.area_bb:free(); self.area_bb = self:newAreaBuffer() end
+    end
     local placed = self.book:pageOps()
     local ops, from = {}, {}
     for i, op in ipairs(placed and placed.ops or {}) do
@@ -132,6 +185,8 @@ function ReaderInkView:loadBookPage()
     self._shown = placed and placed.items or {}
     self.canvas:setOps(ops)
     self._committed_rev = self.canvas.rev
+    self._anchored_rev = self.canvas.rev
+    self._surface_layout_changed = nil
     self.dirty = false
 end
 
@@ -330,21 +385,72 @@ end
 ------------------------------------------------------------------------------
 
 function ReaderInkView:turnPage(dir)
+    if self._surface_navigating then return end
     self:flushPending()
     self:cancelShape()
     if self.editing_text then self:finishTextEdit(true) end
     self:resetLasso()
     self:saveDocument()
-    self.book:turn(dir)
-    self:loadBookPage()
-    self:composeCanvas()
-    self:renderView()
-    UIManager:setDirty(self, "partial")
+    local function loaded()
+        if self.closing then return end
+        self._surface_navigating = nil
+        self:loadBookPage()
+        self:composeCanvas()
+        self:renderView()
+        UIManager:setDirty(self, "partial")
+    end
+    self._surface_navigating = true
+    local ok, err = pcall(self.book.turn, self.book, dir, loaded, function()
+        if not self.closing and self._surface_navigating then UIManager:setDirty(self, "partial") end
+    end)
+    if not ok then
+        logger.warn("Ink Away: could not navigate the document surface:", err)
+        loaded()
+    end
+end
+
+-- Physical arrows follow reading flow; semantic next/previous actions retain
+-- their document meaning, including configured gestures and page-turn keys.
+function ReaderInkView:turnArrow(side)
+    local rtl = self.book.readingDirection and self.book:readingDirection() == "rtl"
+    local forward = (side == "left") == (rtl == true)
+    self:turnPage(forward and 1 or -1)
+end
+
+-- Show an asynchronous surface's live page and saved ink, with our stationary
+-- toolbar. Editable ops are reloaded only once the camera reaches its target.
+function ReaderInkView:paintTo(bb, x, y)
+    if not self._surface_navigating then return InkAwayView.paintTo(self, bb, x, y) end
+    self.book:snapshot(bb, true, true)
+    if not self._toolbar_hidden then
+        local tx, ty = x + (self._bar_x or 0), y + (self._bar_y or 0)
+        -- Cells are transparent. Restore the bar's backing after the live page,
+        -- without masking animation pixels to the old drawing area's bounds.
+        local size = self.toolbar:getSize()
+        bb:paintRect(tx, ty, size.w, size.h, Blitbuffer.COLOR_WHITE)
+        self:paintBarMarks(bb, tx, ty)
+        self.toolbar:paintTo(bb, tx, ty)
+        self:paintBarIcons(bb, tx, ty)
+        self:darkToolbar(bb, tx, ty)
+    end
+    self:drawFabs(bb)
+end
+
+function ReaderInkView:handleEvent(event)
+    if self._surface_navigating and (event.handler == "onGesture" or event.handler == "onKeyPress") then return true end
+    return InkAwayView.handleEvent(self, event)
+end
+
+function ReaderInkView:inArea(x, y)
+    return not self._surface_navigating and InkAwayView.inArea(self, x, y)
 end
 
 -- The canvas's page turns (a finger swipe with Finger on the page set to
 -- Navigate, a two-finger swipe, the gestures) turn the book's pages.
-function ReaderInkView:nbGo(dir) self:turnPage(dir) end
+function ReaderInkView:nbGo(dir)
+    local rtl = self.book.readingDirection and self.book:readingDirection() == "rtl"
+    self:turnPage(rtl and -dir or dir)
+end
 function ReaderInkView:pageSwipes() return true end
 function ReaderInkView:sidewaysRoom() return false end
 
@@ -430,12 +536,16 @@ function ReaderInkView:onSetDimensions()
 end
 
 function ReaderInkView:onCloseWidget()
+    self._surface_navigating = nil
     -- the book lets go of this view first, so nothing that fails while closing
     -- can leave it thinking annotation mode is still open
     local book = self.book
-    if book and book._view == self then book._view = nil end
-    InkAwayView.onCloseWidget(self)
+    local owns_session = book and book._view == self
+    if owns_session then book._view = nil end
+    local ok, err = pcall(InkAwayView.onCloseWidget, self)
+    if owns_session and book.finishAnnotation then book:finishAnnotation() end
     if book then book:repaint() end
+    if not ok then error(err) end
 end
 
 ------------------------------------------------------------------------------
@@ -477,8 +587,8 @@ function ReaderInkView:buildToolbar()
         { id = "image", icon = "image", cb = function() self:chooseImage() end },
         { id = "undo", icon = "undo", cb = function() self:undo() end },
         { id = "redo", icon = "redo", cb = function() self:redo() end },
-        { id = "prev", icon = "nav_prev", cb = function() self:turnPage(-1) end },
-        { id = "next", icon = "nav_next", cb = function() self:turnPage(1) end },
+        { id = "prev", icon = "nav_prev", cb = function() self:turnArrow("left") end },
+        { id = "next", icon = "nav_next", cb = function() self:turnArrow("right") end },
         { id = "notes", icon = "booknotes", cb = function() self:openBookNotes() end },
         { id = "menu", icon = "menu", cb = function() self:openReaderSettings() end },
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
@@ -522,6 +632,7 @@ end
 -- Turn the margin fit on or off (from the book's settings).
 function ReaderInkView:setToolbarFit(on)
     self:flushPending()
+    self:prepareSurfaceLayout()
     self:setSetting("inkaway_book_toolbar_fit", on and true or false)
     self:buildToolbar()
     self:placeToolbar()
@@ -596,6 +707,7 @@ end
 function ReaderInkView:setToolbarHidden(hidden)
     if (self._toolbar_hidden or false) == hidden then return end
     self:flushPending()
+    self:prepareSurfaceLayout()
     self._toolbar_hidden = hidden
     self:setSetting("inkaway_book_toolbar_hidden", hidden)
     self:placeToolbar()

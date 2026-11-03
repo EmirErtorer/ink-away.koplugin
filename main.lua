@@ -58,7 +58,7 @@ function InkAway:init()
     if self.ui.document and self.ui.view and self.ui.view.registerViewModule then
         local ok, Book = pcall(require, "ink/reader/book")
         if ok then
-            self.book = Book.new(self.ui)
+            self.book = Book.new(self.ui, self:_integrationAPI())
             self.book.plugin = self
             self.ui.view:registerViewModule("inkaway", self.book:overlay())
             -- highlighting with the pen's button while reading (see there)
@@ -102,6 +102,7 @@ function InkAway:init()
         InkAway._autoopened = true
         UIManager:scheduleIn(1.2, function() self:openCanvas() end)
     end
+    if self.book then self:_integrationAPI():publish(self.ui, self) end
 end
 
 function InkAway:addToMainMenu(menu_items)
@@ -194,6 +195,49 @@ function InkAway:onInkAwayAnnotate()
     return true
 end
 
+-- Public surface API, versioned independently of plugin releases. Viewers
+-- supply geometry; Ink Away retains ownership of tools, ink and persistence.
+InkAway.document_surface_version = 1
+
+InkAway.integration_api_version = 1
+
+-- Lazy construction permits registration before init, and does not require it.
+function InkAway:_integrationAPI()
+    if self.book then return self.book.extensions end
+    if not self._integration then self._integration = require("ink/integration").new() end
+    return self._integration
+end
+
+function InkAway:installPluginIntegration(widget, surface, options)
+    return self:_integrationAPI():install(self, widget, surface, options)
+end
+
+function InkAway:registerRenderingView(widget, factory, on_error)
+    return self:_integrationAPI():registerRenderingView(widget, factory, on_error)
+end
+
+function InkAway:onAnnotationOpened(callback)
+    return self:_integrationAPI():onAnnotationOpened(callback)
+end
+
+function InkAway:onAnnotationClosed(callback)
+    return self:_integrationAPI():onAnnotationClosed(callback)
+end
+
+function InkAway:paintDocumentSurface(surface, bb)
+    if self.book and surface.document == self.ui.document then
+        local ok, err = pcall(self.book.paintSurface, self.book, surface, bb)
+        if not ok then self.book.extensions:report(surface, err) end
+    end
+end
+
+function InkAway:releaseDocumentSurface(surface)
+    if self.book and self.book.surface == surface then
+        self.book:closeViews()
+        self.book:setSurface(nil)
+    end
+end
+
 -- The export sheet of the book being read, over the annotation mode (the one
 -- place a book is exported from, see ink/view/export.lua).
 function InkAway:onInkAwayExportBook()
@@ -224,9 +268,15 @@ end
 
 -- The book is closing: leave nothing of ours open over it.
 function InkAway:onCloseDocument()
-    if self.book then self.book:close() end
-    -- (after the views over the book, which give the pen back as they close)
-    if self.pen_highlight then self.pen_highlight:detach() end
+    local integration = self:_integrationAPI()
+    integration:unpublish(self.ui, self)
+    local ok, err = pcall(function()
+        if self.book then self.book:close() end
+        -- Give the pen back after the views over the book have closed.
+        if self.pen_highlight then self.pen_highlight:detach() end
+    end)
+    integration:dispose()
+    if not ok then error(err) end
 end
 
 -- The gesture actions, when a gesture is mapped to Ink Away or its library.

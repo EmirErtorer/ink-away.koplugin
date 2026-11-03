@@ -81,7 +81,7 @@ local function standInBook()
         return map, keep
     end
     function book:save() self.saved = self.saved + 1 end
-    function book:turn() end
+    function book:turn(_, done) if done then done() end end
     function book:repaint() self.repainted = true end
     function book:hasInk() return not self.trashed end
     function book:trashInk(root)
@@ -704,7 +704,7 @@ do
     local ReaderInkView = require("ink/reader/inkview")
     local book = standInBook()
     local turns = {}
-    function book:turn(dir) turns[#turns + 1] = dir end
+    function book:turn(dir, done) turns[#turns + 1] = dir; if done then done() end end
     local view = ReaderInkView:new{ book = book }
     ok(view.key_events and view.key_events.IaKeyFwd and view.key_events.IaKeyBack, "keys: annotation mode listens for the page turn buttons")
     ok(view:onIaKeyFwd() and turns[1] == 1, "keys: forward turns the book's page")

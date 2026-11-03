@@ -60,6 +60,7 @@ end
 
 -- Anchor a screen op. Returns the item, or nil for an op that draws nothing.
 function Place.anchor(op, doc)
+    if doc.anchorOp then return doc:anchorOp(op) end
     local bx0, by0, x1, y1 = Canvas.opBox(op)
     if not bx0 then return nil end
     local x0, y0 = floor(bx0), floor(by0)
@@ -135,6 +136,7 @@ end
 
 -- An item as a screen op on the page now shown, or nil if it is not on it.
 function Place.place(item, doc)
+    if item.a.page and doc.placeOp then return doc:placeOp(item) end
     local a = item.a
     if a.page then
         local sx, sy, zoom = doc:toScreen(a.page, a.x, a.y)

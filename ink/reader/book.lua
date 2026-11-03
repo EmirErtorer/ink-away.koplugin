@@ -18,14 +18,17 @@ local BookInk = require("ink/reader/bookink")
 local Canvas = require("ink/canvas")
 local Place = require("ink/reader/place")
 local Snap = require("ink/reader/snap")
+local Extensions = require("ink/integration")
+local Native = require("ink/reader/native")
 
 local Screen = Device.screen
 
 local Book = {}
 Book.__index = Book
 
-function Book.new(ui)
-    local self = setmetatable({ ui = ui, rev = 0 }, Book)
+function Book.new(ui, extensions)
+    local self = setmetatable({ ui = ui, rev = 0, _native = Native.new(ui),
+        extensions = extensions or Extensions.new() }, Book)
     -- the book's KOReader folder (see ink/reader/bookink.lua for where)
     local file = ui.document and ui.document.file
     local ok, where = pcall(BookInk.locate, file)
@@ -71,134 +74,21 @@ end
 -- The book, as place.lua asks about it
 ------------------------------------------------------------------------------
 
--- The adapter between place.lua and KOReader's document and view.
-function Book:doc()
-    if self._doc then return self._doc end
-    local ui = self.ui
-    local document, view = ui.document, ui.view
-    local d = {}
-    if ui.paging then
-        d.kind = "paging"
-        function d.toPage(_, x, y)
-            local pos = view:screenToPageTransform({ x = x, y = y })
-            if not (pos and pos.page) then return nil end
-            local zoom = view.state and view.state.zoom or 1
-            return pos.page, pos.x, pos.y, zoom
+-- Both the default reader and external viewers implement this contract.
+function Book:viewer()
+    if self.surface then
+        if not self._external or self._external.surface ~= self.surface then
+            self._external = require("ink/reader/external").new(self.surface, self._native)
         end
-        -- the page's place on the screen, as the reader draws it (its own
-        -- transform gives nothing for a point just off the screen, which
-        -- would hide a stroke that starts above the visible part)
-        function d.toScreen(_, page, px, py)
-            if view.page_scroll then
-                local y = 0
-                for _i, st in ipairs(view.page_states or {}) do
-                    if st.page == page then
-                        return st.offset.x + px * st.zoom - st.visible_area.x,
-                            y + st.offset.y + py * st.zoom - st.visible_area.y, st.zoom
-                    end
-                    y = y + st.visible_area.h + (view.page_gap and view.page_gap.height or 0)
-                end
-                return nil
-            end
-            local st = view.state
-            if not (st and st.page == page and view.visible_area) then return nil end
-            return st.offset.x + px * st.zoom - view.visible_area.x,
-                st.offset.y + py * st.zoom - view.visible_area.y, st.zoom
-        end
-    else
-        d.kind = "rolling"
-        function d.width() return Screen:getWidth() end
-        function d.wordAt(_, x, y)
-            local ok, w = pcall(document.getWordFromPosition, document, { x = x, y = y }, true)
-            if ok and w and w.sbox and w.pos0 then return { xp0 = w.pos0, xp1 = w.pos1, box = w.sbox } end
-        end
-        function d.nearestWord(_, x, y)
-            if not document.getNearestWordAndBoxFromPosition then return nil end
-            local ok, w = pcall(document.getNearestWordAndBoxFromPosition, document, { x = x, y = y })
-            if ok and w and w.sbox and w.pos0 then return { xp0 = w.pos0, xp1 = w.pos1, box = w.sbox } end
-        end
-        function d.pageTop() return document:getXPointer() end
-        function d.pageOf(_, xp)
-            local ok, p = pcall(document.getPageFromXPointer, document, xp)
-            return ok and p or nil
-        end
-        -- a word a hyphen splits over two lines comes with the box of both
-        -- lines together: the part nearest (x, y) instead, and which it is
-        function d.partOf(_, w, x, y)
-            local ok, boxes = pcall(document.getScreenBoxesFromPositions, document, w.xp0, w.xp1, true)
-            if not (ok and boxes and #boxes > 1) then return w end
-            local best, bd
-            for k, b in ipairs(boxes) do
-                local dx = math.max(b.x - x, 0, x - (b.x + b.w))
-                local dy = math.max(b.y - y, 0, y - (b.y + b.h))
-                local dd = dx * dx + dy * dy
-                if not bd or dd < bd then best, bd = k, dd end
-            end
-            return { xp0 = w.xp0, xp1 = w.xp1, box = boxes[best], seg = best }
-        end
-        -- the word's box (part `seg` of a split word; the whole word, or what
-        -- of it is on the screen, when it is not split now)
-        function d.boxOf(_, xp0, xp1, seg)
-            local ok, boxes = pcall(document.getScreenBoxesFromPositions, document, xp0, xp1, true)
-            if not (ok and boxes and #boxes > 0) then return nil end
-            return boxes[math.min(seg or 1, #boxes)]
-        end
+        return self._external
     end
-    self._doc = d
-    return d
+    return self._native
 end
 
--- The page shown now (the first, when more than one is).
-function Book:currentPage()
-    local ui = self.ui
-    if ui.paging then return ui.view.state and ui.view.state.page or ui.paging.current_page end
-    local ok, p = pcall(ui.document.getCurrentPage, ui.document)
-    return ok and p or nil
-end
-
--- Every page on the screen: one, or two side by side, or the pages a
--- continuous scroll shows.
-function Book:visiblePages()
-    local ui = self.ui
-    if ui.paging then
-        local view = ui.view
-        if view.page_scroll and view.page_states and #view.page_states > 0 then
-            local pages = {}
-            for _i, st in ipairs(view.page_states) do pages[#pages + 1] = st.page end
-            return pages
-        end
-        return { self:currentPage() }
-    end
-    local p = self:currentPage()
-    if not p then return {} end
-    local doc = ui.document
-    local two = (ui.view and ui.view.view_mode == "scroll")
-        or (doc.getVisiblePageCount and doc:getVisiblePageCount() == 2)
-    if two and p < (doc:getPageCount() or p) then return { p, p + 1 } end
-    return { p }
-end
-
--- What changes where a page's ink goes: for a reflowing book its layout (font,
--- margins, size...), for a fixed-page one its zoom and position on the screen.
-function Book:layoutKey()
-    local ui = self.ui
-    if ui.paging then
-        local view = ui.view
-        local parts = { "p", Screen:getWidth(), Screen:getHeight() }
-        local states = view.page_scroll and view.page_states or { view.state or {} }
-        for _i, st in ipairs(states) do
-            local va = view.page_scroll and st.visible_area or view.visible_area or {}
-            local off = st.offset or {}
-            parts[#parts + 1] = table.concat({ st.page or 0, st.zoom or 0, st.rotation or 0,
-                va.x or 0, va.y or 0, off.x or 0, off.y or 0 }, ",")
-        end
-        return table.concat(parts, "|")
-    end
-    local ok, hash = pcall(ui.document.getDocumentRenderingHash, ui.document, false)
-    local top = ui.view and ui.view.view_mode == "scroll" and ui.document:getCurrentPos() or ""
-    return table.concat({ "r", ok and tostring(hash) or "", ui.document:getPageCount() or 0,
-        Screen:getWidth(), Screen:getHeight(), top }, "|")
-end
+function Book:doc() return self:viewer():doc() end
+function Book:currentPage() return self:viewer():currentPage() end
+function Book:visiblePages() return self:viewer():visiblePages() end
+function Book:layoutKey() return self:viewer():layoutKey() end
 
 -- The items on the pages shown, as screen ops with the item each came from:
 -- { ops = {...}, items = {...} }. Cached until the page, the layout or the ink
@@ -377,10 +267,10 @@ end
 -- page most of the stroke's words are on, or nil. The reader gives the nearest
 -- word to any point, so a word only counts where the stroke is on it.
 function Book:pageSelection(op, reach)
-    local document, view = self.ui.document, self.ui.view
+    local document = self.ui.document
     local doc = self:doc()
     local function wordAt(x, y)
-        local pos = view:screenToPageTransform({ x = x, y = y })
+        local pos = self:viewer():pagePosition(x, y)
         if not (pos and pos.page) then return nil end
         local ok, w = pcall(document.getWordFromPosition, document, pos)
         local pb = ok and w and w.pbox
@@ -442,6 +332,9 @@ function Book:highlightsAt(pts, r)
     local out = {}
     local ui = self.ui
     local view = ui and ui.view
+    -- The normal reader's hit boxes describe its own viewport. Never erase
+    -- an unrelated native highlight through stale boxes in an external view.
+    if not self:viewer().nativeHighlights then return out end
     local vis = view and view.highlight and view.highlight.visible_boxes
     local anns = ui and ui.annotation and ui.annotation.annotations
     if not (vis and anns and #vis > 0 and view.screenToPageTransform and pts and #pts >= 2) then return out end
@@ -533,7 +426,7 @@ function Book:overlay()
             if this.hidden or not book:hasInk() then return end
             local G = rawget(_G, "G_reader_settings")
             if G and G.readSetting and G:readSetting("inkaway_book_ink") == false then return end
-            local ok, err = pcall(book.paintInk, book, bb, x, y)
+            local ok, err = pcall(book.paintOnSurface, book, nil, bb, x, y)
             if not ok then logger.warn("Ink Away: could not paint the book's ink:", err) end
         end,
     }
@@ -544,6 +437,43 @@ function Book:paintInk(bb, x, y)
     local placed = self:pageOps()
     if not (placed and #placed.ops > 0) then return end
     require("ink/reader/paint").ops(bb, placed.ops, x, y, self)
+end
+
+function Book:setSurface(surface)
+    if self.surface == surface then return end
+    self.surface = surface
+    self._native._doc = nil
+    self._placed, self._external, self._layout_last = nil, nil, nil
+end
+
+-- A render must not change the context of an open annotation session.
+function Book:paintOnSurface(surface, bb, x, y)
+    local previous = self.surface
+    self:setSurface(surface)
+    local ok, err = pcall(self.paintInk, self, bb, x, y)
+    self:setSurface(previous)
+    if not ok then error(err) end
+end
+
+function Book:paintSurface(surface, bb, force_ink)
+    local G = rawget(_G, "G_reader_settings")
+    if not self:hasInk() or (not force_ink and G and G:readSetting("inkaway_book_ink") == false) then return end
+    if self._snapshotting then return end
+    -- Paint in screen coordinates, then copy only the surface's content area:
+    -- ink outside a crop must not cover its viewer's controls or letterboxing.
+    for _, region in ipairs(surface.regions and surface:regions() or { surface }) do
+        local clip = region:clip()
+        if clip and clip.w > 0 and clip.h > 0 then
+            local work = bb:copy()
+            local ok, err = pcall(self.paintOnSurface, self, region, work, 0, 0)
+            if ok then bb:blitFrom(work, clip.x, clip.y, clip.x, clip.y, clip.w, clip.h) end
+            work:free()
+            if not ok then
+                self.extensions:report(surface, err)
+                logger.warn("Ink Away: could not paint the document surface:", err)
+            end
+        end
+    end
 end
 
 -- Open the annotation mode over the page shown (once: a second call while it is
@@ -564,9 +494,37 @@ function Book:annotate()
     end
     local ok, ReaderInkView = pcall(require, "ink/reader/inkview")
     if not ok then logger.warn("Ink Away: annotation mode unavailable:", ReaderInkView); return end
-    local view = ReaderInkView:new{ book = self }
+    local surface = self.extensions:select(self.ui)
+    if surface and surface.begin then
+        local begun, err = pcall(surface.begin, surface)
+        if not begun then
+            self.extensions:report(surface, err)
+            if surface.finish then pcall(surface.finish, surface) end
+            surface = nil
+        end
+    end
+    self:setSurface(surface)
+    local created, view = pcall(ReaderInkView.new, ReaderInkView, { book = self, modal = surface and true or nil })
+    if not created then
+        self:setSurface(nil)
+        if surface and surface.finish then pcall(surface.finish, surface) end
+        self.extensions:report(surface, view)
+        logger.warn("Ink Away: annotation mode unavailable:", view)
+        return
+    end
     self._view = view
-    UIManager:show(view)
+    local shown_ok, err = pcall(UIManager.show, UIManager, view)
+    if not shown_ok then
+        pcall(view.closeCanvas, view)
+        self._view = nil
+        self:finishAnnotation()
+        self.extensions:report(surface, err)
+        return
+    end
+    if self._view == view then
+        self._annotation_session = true
+        self.extensions:emit("opened", self.ui.document, self.surface)
+    end
 end
 
 -- Close what Ink Away has open over the book (keeping everything): the screen
@@ -589,19 +547,51 @@ function Book:close()
 end
 
 -- Turn the book's page (dir 1 forward, -1 back), as KOReader does.
-function Book:turn(dir)
-    local Event = require("ui/event")
-    self.ui:handleEvent(Event:new("GotoViewRel", dir))
+function Book:readingDirection() return self:viewer():readingDirection() end
+
+function Book:turn(dir, done, frame)
+    local view, source, completed = self._view, self.surface, false
+    local viewer = self:viewer()
+    local ok, err = pcall(viewer.turn, viewer, dir, function(surface)
+        if completed or self._view ~= view or (view and view.closing) then return end
+        completed = true
+        surface = self.extensions:handoff(source, surface, self.ui.document)
+        self:setSurface(surface)
+        if surface and surface.begin then surface:begin() end
+        if done then done() end
+    end, frame)
+    if not ok then self.extensions:report(source, err); error(err) end
+end
+
+-- Called after editor saving/cleanup, including native-reader sessions.
+function Book:finishAnnotation()
+    local surface = self.surface
+    self:setSurface(nil)
+    if surface and surface.finish then
+        local ok, err = pcall(surface.finish, surface)
+        if not ok then self.extensions:report(surface, err) end
+    end
+    if self._annotation_session then
+        self._annotation_session = nil
+        self.extensions:emit("closed", self.ui.document, surface)
+    end
 end
 
 -- Paint the page shown into `bb` (screen-sized), without the ink unless
 -- `with_ink`.
-function Book:snapshot(bb, with_ink)
+function Book:snapshot(bb, with_ink, force_ink)
     local ov = self:overlay()
     ov.hidden = not with_ink
-    local ok, err = pcall(self.ui.view.paintTo, self.ui.view, bb, 0, 0)
+    self._snapshotting = true
+    local viewer = self:viewer()
+    local ok, err = pcall(viewer.snapshot, viewer, bb)
+    self._snapshotting = nil
     ov.hidden = false
-    if not ok then logger.warn("Ink Away: could not draw the page:", err) end
+    if ok and with_ink and self.surface then self:paintSurface(self.surface, bb, force_ink) end
+    if not ok then
+        self.extensions:report(self.surface, err)
+        logger.warn("Ink Away: could not draw the page:", err)
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -702,7 +692,7 @@ end
 
 -- Repaint the reader (after the ink changed).
 function Book:repaint()
-    UIManager:setDirty(self.ui.dialog or "all", "ui")
+    self:viewer():repaint()
 end
 
 return Book

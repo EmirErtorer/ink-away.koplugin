@@ -306,8 +306,9 @@ do
     function doc:toScreen(page, px, py) if page == 5 then return px, py, 1 end if page == 6 then return px, py + 400, 1 end end
     local states = { { page = 5 }, { page = 6 } }
     local ui = { paging = true, view = { page_scroll = true, page_states = states, state = { page = 5 } } }
-    local b = setmetatable({ ui = ui, rev = 0, has_file = true }, Book)
-    b._doc = doc
+    local b = Book.new(ui)
+    b.has_file = true
+    b._native._doc = doc
     b.layoutKey = function() return "L" end
     local function ink(x, y) return { kind = "ink", width = 2, alpha = 255, pts = { x, y, x + 20, y } } end
     local a5, a6 = Place.anchor(ink(10, 100), doc), Place.anchor(ink(10, 500), doc)
@@ -355,8 +356,9 @@ do
     function view:screenToPageTransform(pos) return { x = pos.x, y = pos.y, page = 5 } end
     local ui = { paging = true, view = view, annotation = { annotations = anns },
         highlight = { deleteHighlight = function(_, i) table.remove(anns, i) end } }
-    local b = setmetatable({ ui = ui, rev = 0, has_file = true }, Book)
-    b._doc = doc
+    local b = Book.new(ui)
+    b.has_file = true
+    b._native._doc = doc
     b.layoutKey = function() return "L" end
     local saved = 0
     b.save = function() saved = saved + 1 end
@@ -737,7 +739,7 @@ do
     } } }
     function view:screenToPageTransform(pos) pos.page = 1; return pos end
     local ui = { rolling = true, view = view, annotation = { annotations = { h1, h2, note } } }
-    local b = setmetatable({ ui = ui }, Book)
+    local b = Book.new(ui)
     local hits = b:highlightsAt({ 50, 115, 350, 115 }, 4)
     ok(#hits == 1 and hits[1] == h1, "highlights: a stroke across the first highlights it, once for its two lines")
     hits = b:highlightsAt({ 300, 315, 600, 315 }, 4)
@@ -754,7 +756,7 @@ do
     local pview = { state = { zoom = 2 }, highlight = { visible_boxes = {
         { index = 1, rect = { x = 50, y = 50, w = 100, h = 15 } } } } }
     function pview:screenToPageTransform(pos) return { x = pos.x / 2, y = pos.y / 2, page = 1 } end
-    local pb = setmetatable({ ui = { paging = true, view = pview, annotation = { annotations = { h1 } } } }, Book)
+    local pb = Book.new({ paging = true, view = pview, annotation = { annotations = { h1 } } })
     ok(#pb:highlightsAt({ 120, 130 }, 4) == 1, "highlights (PDF): inside the box on the zoomed page")
     ok(#pb:highlightsAt({ 120, 175 }, 4) == 0, "highlights (PDF): the reach is in page coordinates, not more")
 end
