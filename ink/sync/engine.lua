@@ -128,7 +128,7 @@ local function conflictRel(ctx, rel)
     if not stem then stem, ext = name, "" end
     local who = (ctx.device or "reader"):gsub("[/\\:%c]", ""):sub(1, 24)
     local base = string.format("%s (conflict %s %s)", stem, who, os.date("%Y-%m-%d", ctx.now()))
-    local n, cand = 1, nil
+    local n, cand = 1
     repeat
         cand = (dir and dir .. "/" or "") .. base .. (n > 1 and (" " .. n) or "") .. ext
         n = n + 1
@@ -534,7 +534,6 @@ function Engine.run(ctx)
     end
 
     -- do
-    local total = #plan
     local i = 0
     local queue = plan
     local fatal

@@ -134,8 +134,8 @@ function Project.deserialize(str)
     -- (see ink/sync/portable.lua): the ones missing here are looked for in this library
     local portable = package.loaded["ink/sync/portable"]
     if portable and portable.root then
-        local ok, root = pcall(portable.root)
-        if ok and root then pcall(portable.apply, data, root) end
+        local rooted, root = pcall(portable.root)
+        if rooted and root then pcall(portable.apply, data, root) end
     end
     return data
 end

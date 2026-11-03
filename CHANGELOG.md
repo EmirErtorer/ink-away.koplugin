@@ -10,6 +10,27 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Cloud sync, with Dropbox first (Library, ..., Cloud sync). Connect on the
+  reader itself: scan a QR code with a phone, tap Allow, type the short code
+  Dropbox shows. Notebooks and drawings are kept the same on all your readers,
+  each through your own account and only in Ink Away's own folder. A newer
+  version is fetched when you open a notebook, and changes are sent after closing
+  a notebook, after a pause in drawing, on a timer, when the reader sleeps, or
+  with Sync now; all of those are yours to choose, and Wi-Fi is turned on by
+  itself only if you allow it. Syncing runs in the background, and a notebook
+  open in the editor is never replaced.
+- Cloud sync never loses work. The version on this reader is copied to a backup
+  folder (kept 30 days) before anything replaces or removes it, a file changed on
+  two readers is kept twice (the cloud's under its own name, this reader's as
+  "Name (conflict Reader date)") to settle from the Conflicts list, a deletion
+  never wins over an edit, a run that would delete much of the library stops, and
+  earlier versions of a notebook can be brought back. Every problem has a code
+  (IA-S101 and so on) with what happened and what to do, and a sync log.
+- A notebook made on another reader keeps its own page size and is fitted to the
+  screen, instead of taking the screen's size and cropping what was written
+  beyond it. Notebooks made for the same screen are unchanged. The pictures and
+  PDF a notebook uses are found on the other reader, and those outside the
+  library are brought along by the sync.
 - Copy a rectangular part of a book page, from the Image tool of the annotation
   mode (Clip the page) or from Tools, Ink Away, Copy part of the screen, by
   dragging the pen or tapping two opposite corners. Check the outlined area,

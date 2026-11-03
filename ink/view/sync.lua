@@ -22,7 +22,6 @@ local _ = require("ink/l10n")
 local Errors = require("ink/sync/errors")
 local Manager = require("ink/sync/manager")
 local Providers = require("ink/sync/providers")
-local Schedule = require("ink/sync/schedule")
 local Storage = require("ink/storage")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -53,7 +52,7 @@ end
 -- A line for an error: "IA-S101  No connection".
 local function codeLine(code) return Errors.line(code) end
 
-local function para(self, text, width, size, grey)
+local function para(_self, text, width, size, grey)
     return TextBoxWidget:new{ text = text, width = width, face = Font:getFace("cfont", size or 16),
         fgcolor = grey and GREY or nil }
 end
@@ -337,7 +336,7 @@ function InkAwayView:syncPreview()
         local n = { upload = 0, download = 0, conflict = 0, delete_remote = 0, delete_local = 0 }
         for _i, p in ipairs(res.plan or {}) do if n[p.action] then n[p.action] = n[p.action] + 1 end end
         local field = "_sync_preview"
-        local content_w, gap = self:sheetWidth()
+        local content_w = self:sheetWidth()
         local function close() self:closeSheet(field) end
         local total = n.upload + n.download + n.conflict + n.delete_remote + n.delete_local
         self:showSheet(field, function()
@@ -374,7 +373,7 @@ function InkAwayView:syncShowResult(res)
     self:closeSheet("_sync_wait")
     if res.fatal then return self:syncErrorSheet(res.fatal.code, { detail = res.fatal.detail }) end
     local field = "_sync_result"
-    local content_w, gap = self:sheetWidth()
+    local content_w = self:sheetWidth()
     local function close() self:closeSheet(field); if self[SHEET] then self:rebuildSheet(SHEET) end end
     local errs = res.errors or {}
     self:showSheet(field, function()
@@ -421,7 +420,7 @@ function InkAwayView:syncErrorSheet(code, o)
     local info = Errors.info(code)
     local field = "_sync_error"
     self:closeSheet(field)
-    local content_w, gap = self:sheetWidth()
+    local content_w = self:sheetWidth()
     local function close() self:closeSheet(field); if self[SHEET] then self:rebuildSheet(SHEET) end end
     self:showSheet(field, function()
         local g = VerticalGroup:new{ align = "left", self:sheetTitle(info.title, content_w, _("Close"), close) }

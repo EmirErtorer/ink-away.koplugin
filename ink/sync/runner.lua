@@ -110,7 +110,7 @@ function Runner.start(o)
         end)
         return handle
     end
-    local started, seen, stalled = os.time(), nil, os.time()
+    local seen, stalled = nil, os.time()
     local function poll()
         if handle.done then return end
         local prog = Runner.readProgress(dir)

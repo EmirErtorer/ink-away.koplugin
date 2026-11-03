@@ -245,7 +245,7 @@ function Dropbox:list(cursor)
     if cursor then
         v, err, reply = self:rpc("/2/files/list_folder/continue", { cursor = cursor })
         if not v and reply and reply.code == 409 and tostring(reply.body):find("reset", 1, true) then
-            reset, cursor, v, err = true, nil, nil, nil
+            reset, cursor, v = true, nil, nil
         elseif not v then
             return nil, err
         end
