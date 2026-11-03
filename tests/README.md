@@ -19,6 +19,29 @@ GitHub runs `luacheck` and every suite that needs no KOReader build on each push
 Most suites only need LuaJIT. They run the plugin against small stand-ins for
 KOReader's modules, which live in `tests/mock/`.
 
+`luajit tests/bookexport.lua` checks fixed-page book export routing and native ink
+placement. With a built runtime, `realbb/comicexport.lua` additionally tests real
+CBZ/CBR decoding and PDF output. Run from a built KOReader runtime:
+
+    ./luajit REPO/tests/realbb/comicexport.lua REPO
+
+For the optional 144 MB synthetic-archive measurement, generate fixtures with
+`python3 REPO/tests/realbb/comic_fixtures.py /tmp/inkaway-comics --large`, then
+pass `/tmp/inkaway-comics` as the final argument to the native suite. This is a
+desktop/native-library check, not physical-reader validation.
+
+`luajit tests/loading_order.lua` exercises the actual plugin init plus both
+readiness orders, queue cancellation/failures and composite installation cleanup.
+Host menus, pen/shelf attachment and UI are fixtures.
+
+`luajit tests/integration.lua` exercises public provider registration, lifecycle
+subscriptions, failures and cleanup through the actual Book/editor with host
+fixtures. `annotation_surface.lua` and `surface_viewport.lua` cover real canvas
+editing and toolbar reflow through a generic provider. The consumer contract is
+in `docs/Plugin-integration.md`. Native `realbb/surface_toolbar.lua` and
+`realbb/promptfocus.lua` check actual toolbar pixels and host focus behavior;
+run them from a built runtime as `./luajit REPO/tests/realbb/NAME.lua REPO`.
+
 ## Suites that need the KOReader emulator
 
 A few suites use KOReader's own code, so they need a KOReader checkout with the
