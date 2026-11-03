@@ -3625,6 +3625,10 @@ msgstr "Matita"
 msgid "Pens"
 msgstr "Penne"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Penne, colori e preferenze"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Telefono o computer (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "I tuoi pennelli"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Le tue penne sulla pagina"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Le tue scelte di penne, colori, carta, testo e aggancio. Non le cartelle, lo schermo o le impostazioni della penna che appartengono a un solo lettore."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

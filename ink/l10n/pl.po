@@ -3625,6 +3625,10 @@ msgstr "Ołówek"
 msgid "Pens"
 msgstr "Pióra"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Pisaki, kolory i preferencje"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Telefon lub komputer (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Twoje własne pędzle"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Twoje pióra na stronie"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Twoje wybory dotyczące pisaków, kolorów, papieru, tekstu i przyciągania. Bez folderów, ekranu i ustawień rysika, które należą do jednego czytnika."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

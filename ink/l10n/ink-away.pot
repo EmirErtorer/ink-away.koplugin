@@ -3589,6 +3589,10 @@ msgstr ""
 msgid "Pens"
 msgstr ""
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr ""
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr ""
@@ -5350,6 +5354,10 @@ msgstr ""
 #: ink/guide.lua
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
+msgstr ""
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
 msgstr ""
 
 #: ink/guide.lua

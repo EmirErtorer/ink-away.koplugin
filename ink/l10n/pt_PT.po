@@ -3625,6 +3625,10 @@ msgstr "Lápis"
 msgid "Pens"
 msgstr "Canetas"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Canetas, cores e preferências"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Telemóvel ou computador (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Os seus próprios pincéis"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "As suas canetas na página"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "As suas escolhas de canetas, cores, papel, texto e ajuste. Não as pastas, o ecrã ou as definições da caneta que pertencem a um só leitor."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

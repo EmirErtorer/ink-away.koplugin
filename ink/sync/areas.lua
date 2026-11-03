@@ -9,6 +9,7 @@ place they have in the cloud.
                                                       moves nothing)
     bookink     what is drawn on book pages           .areas/books/<book>/
     imports     imported PDFs and pictures            .areas/imports/...
+    settings    pens, colours and preferences         .areas/settings/
     exports     what was exported                     .areas/exports/
     clips       screen clips                          .areas/clips/, .areas/clipped/
 
@@ -45,6 +46,8 @@ Areas.DEFS = {
       hint = _("PDFs and pictures made from your notebooks.") },
     { id = "clips", label = _("Screen clips"), default = false,
       hint = _("Pictures taken of part of a page.") },
+    { id = "settings", label = _("Pens, colours and preferences"), default = false,
+      hint = _("Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader.") },
 }
 
 local BY_ID = {}
@@ -161,6 +164,19 @@ function Areas.build(env)
                     end
                 end
             end
+        end
+        list[#list + 1] = a
+    end
+
+    -- the preferences: one small file, made from the settings before a run
+    do
+        local rel = Areas.PREFIX .. "/settings/preferences.json"
+        local a = { id = "settings", prefix = Areas.PREFIX, merge = env.mergePrefs }
+        function a.enabled() return on("settings") and env.prefsPath ~= nil end
+        function a.owns(r) return under(r, Areas.PREFIX .. "/settings") ~= nil end
+        function a.locate(r) if r == rel then return env.prefsPath end end
+        function a.walk(add)
+            if env.prefsPath and Storage.exists(env.prefsPath) then add(rel, env.prefsPath, Storage.mtime(env.prefsPath) or 0) end
         end
         list[#list + 1] = a
     end

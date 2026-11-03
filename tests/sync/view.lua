@@ -173,12 +173,12 @@ ok(findButton(sheet, "Sync now"), "Sync now")
 ok(findButton(sheet, "After closing a notebook"), "the automatic choices are labelled")
 ok(findButton(sheet, "Get the latest when opening one") and findButton(sheet, "When the reader goes to sleep"), "all of them")
 ok(findButton(sheet, "Allow turning on Wi-Fi"), "Wi-Fi is the person's choice")
-for _i, label in ipairs({ "Notebooks and drawings", "Book notes", "Ink on book pages", "Imported PDFs and pictures", "Exports", "Screen clips" }) do
+for _i, label in ipairs({ "Notebooks and drawings", "Book notes", "Ink on book pages", "Imported PDFs and pictures", "Exports", "Screen clips", "Pens, colours and preferences" }) do
     ok(findButton(sheet, label), label .. " can be turned on or off on its own")
 end
 ok(t:find("What to sync", 1, true) and t:find("KOReader's own highlights are not included", 1, true), "each part says what it holds")
 local parts = Manager.areas()
-ok(#parts == 6 and parts[1].on and parts[2].on and not parts[3].on, "the parts start as they always were, the new ones off")
+ok(#parts == 7 and parts[1].on and parts[2].on and not parts[3].on, "the parts start as they always were, the new ones off")
 Manager.setArea("exports", true)
 ok(Manager.areas()[5].on == true, "turning a part on is remembered")
 Manager.setArea("exports", false)

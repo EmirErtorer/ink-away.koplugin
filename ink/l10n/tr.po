@@ -3625,6 +3625,10 @@ msgstr "Kurşun kalem"
 msgid "Pens"
 msgstr "Kalemler"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Kalemler, renkler ve tercihler"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Telefon veya bilgisayar (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Kendi fırçalarınız"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Sayfadaki kalemleriniz"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Kalem, renk, kâğıt, metin ve hizalama seçimleriniz. Tek bir okuyucuya ait klasörler, ekran veya kalem ayarları dahil değildir."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

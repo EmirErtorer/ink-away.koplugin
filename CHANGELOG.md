@@ -12,7 +12,9 @@ versions marked *Prerelease* were test builds.
 
 - Cloud sync can carry more than notebooks, and each part is turned on or off on
   its own under "What to sync": notebooks and drawings, book notes, ink on book
-  pages, imported PDFs and pictures, exports, and screen clips. Notebooks and
+  pages, imported PDFs and pictures, exports, screen clips, and your pens, colours
+  and preferences (only the choices that suit every reader, not folders or
+  screen and pen settings). Notebooks and
   book notes stay on as before; the rest start off. A part that is off is left
   alone on both sides. The ink on a book is matched across readers by the book's
   checksum, whatever the file is called; if two readers drew on the same book

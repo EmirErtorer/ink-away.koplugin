@@ -3625,6 +3625,10 @@ msgstr "Bleistift"
 msgid "Pens"
 msgstr "Stifte"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Stifte, Farben und Einstellungen"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Handy oder Computer (WLAN)"
@@ -5406,6 +5410,10 @@ msgstr "Ihre eigenen Pinsel"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Ihre Stifte auf der Seite"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Deine Stifte, Farben, Papier-, Text- und Einrast-Einstellungen. Nicht die Ordner-, Bildschirm- oder Stifteinstellungen, die zu einem Lesegerät gehören."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

@@ -3625,6 +3625,10 @@ msgstr "Crayon"
 msgid "Pens"
 msgstr "Stylos"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Stylos, couleurs et préférences"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Téléphone ou ordinateur (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Vos propres pinceaux"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Vos stylos sur la page"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Vos choix de stylos, couleurs, papier, texte et magnétisme. Pas les dossiers, l'écran ni les réglages du stylet propres à une liseuse."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

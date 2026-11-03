@@ -3625,6 +3625,10 @@ msgstr "Lápiz"
 msgid "Pens"
 msgstr "Plumas"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Bolígrafos, colores y preferencias"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Teléfono o computadora (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Tus propios pinceles"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Mostrar plumas en la página"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Tus bolígrafos, colores, papel, texto y opciones de ajuste. No las carpetas, la pantalla ni los ajustes del lápiz que son de un solo lector."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

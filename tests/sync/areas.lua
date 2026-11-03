@@ -9,6 +9,7 @@ local Areas = require("ink/sync/areas")
 local BookIndex = require("ink/sync/bookindex")
 local BookInk = require("ink/reader/bookink")
 local Engine = require("ink/sync/engine")
+local Prefs = require("ink/sync/prefs")
 local Project = require("ink/project")
 local State = require("ink/sync/state")
 local Mock = require("sync/mockcloud")
@@ -52,7 +53,7 @@ local store = {}
 Areas.setEnabled("exports", true, function(k, v) store[k] = v end)
 eq(store.inkaway_sync_area_exports, true, "turning a part on is kept in a setting")
 ok(Areas.enabled("exports", function(k) return store[k] end), "and read back")
-eq(#Areas.DEFS, 6, "six parts")
+eq(#Areas.DEFS, 7, "seven parts")
 for _i, d in ipairs(Areas.DEFS) do ok(d.label ~= "" and d.hint ~= "", d.id .. " has a name and a line of explanation") end
 
 ------------------------------------------------------------------------------
@@ -73,11 +74,13 @@ local function run(r, o)
         get = function(k) return r.settings[k] end, root = r.root,
         appPath = function(name) return r.app .. "/" .. name end,
         books = function() return BookIndex.list(r.sync) end, merge = BookInk.merge,
+        prefsPath = r.sync .. "/preferences.json", mergePrefs = Prefs.merge,
     })
     return Engine.run({ root = r.root, provider = r.provider, state = r.state, backup_dir = r.backup, device = r.name,
         areas = areas, now = function() return clock end, sleep = function() end, stop = function() return false end,
         skip = o.skip,
         validate = function(rel, path)
+            if rel == Prefs.REL then return Prefs.valid(path) end
             if rel:match("/inkaway%.lua$") then return BookInk.valid(path) end
             if not rel:match("%.inkaway$") then return true end
             return Project.load(path) and true or false, "not a notebook"
@@ -217,6 +220,34 @@ cloud.changes[#cloud.changes + 1] = evil
 r = run(B)
 ok(r.downloaded == 0 and #r.errors == 0, "it is not even asked for")
 ok(read(bBook .. "/evil.lua") == nil, "a file the cloud lists in a book's folder, other than its ink, is ignored")
+
+-- 10b. preferences: only the listed keys, in one small file
+local mine = Prefs.export(function(k)
+    return ({ inkaway_accent = "green", inkaway_library_dir = "/mnt/us/x", inkaway_ocr_api = { key = "SECRET" },
+        inkaway_pens = { red = { w = 3 } }, inkaway_paper = 2 })[k]
+end)
+ok(mine.inkaway_accent == "green" and mine.inkaway_paper == 2 and mine.inkaway_pens.red.w == 3, "chosen preferences are exported")
+ok(mine.inkaway_library_dir == nil and mine.inkaway_ocr_api == nil, "folders and keys that belong to one reader never are")
+eq(Prefs.decode('{"inkaway_accent":"blue","inkaway_library_dir":"/x","bogus":1}').inkaway_library_dir, nil, "a file cannot set a setting outside the list")
+eq(Prefs.decode("not json"), nil, "a damaged file is refused")
+local set = {}
+eq(Prefs.apply({ inkaway_accent = "blue", inkaway_paper = 3 }, function(k, v) set[k] = v end), 2, "preferences from a file are put into the settings")
+eq(set.inkaway_paper, 3, "with their values")
+write(A.sync .. "/preferences.json", Prefs.encode({ inkaway_accent = "green", inkaway_paper = 1 }))
+r = run(A)
+eq(r.uploaded, 0, "preferences stay home while that part is off")
+enable(A, "settings", true)
+r = run(A)
+eq(r.uploaded, 1, "turned on, they go as one file")
+ok(cloud.files[".areas/settings/preferences.json"], "in the cloud's settings folder")
+write(B.sync .. "/preferences.json", Prefs.encode({ inkaway_accent = "red", inkaway_grid_size = 40 }))
+enable(B, "settings", true)
+r = run(B)
+eq(r.merged, 1, "a reader with its own choices combines them with the cloud's")
+local got = Prefs.decode(read(B.sync .. "/preferences.json"))
+ok(got.inkaway_accent == "green" and got.inkaway_grid_size == 40 and got.inkaway_paper == 1, "all keys kept, the cloud's value where both set one")
+r = run(A)
+eq(Prefs.decode(read(A.sync .. "/preferences.json")).inkaway_grid_size, 40, "and the first reader gets the combined set")
 
 -- 11. the index
 local idx = BookIndex.load(A.sync)

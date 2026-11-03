@@ -16,6 +16,7 @@ local Config = require("ink/sync/config")
 local Engine = require("ink/sync/engine")
 local Errors = require("ink/sync/errors")
 local Areas = require("ink/sync/areas")
+local Prefs = require("ink/sync/prefs")
 local BookIndex = require("ink/sync/bookindex")
 local Providers = require("ink/sync/providers")
 local Runner = require("ink/sync/runner")
@@ -306,7 +307,56 @@ function Manager.buildAreas(root, dir)
         appPath = function(name) return Storage.join(Storage.appRootPath() or Storage.join(Storage.dataDir() or "/tmp", "ink away"), name) end,
         books = function() return BookIndex.list(dir) end,
         merge = function(first, second) return require("ink/reader/bookink").merge(first, second) end,
+        prefsPath = Manager.prefsPath(), mergePrefs = Prefs.merge,
     })
+end
+
+------------------------------------------------------------------------------
+-- Preferences
+------------------------------------------------------------------------------
+
+-- The file the preferences are written to for a run (and come back in).
+function Manager.prefsPath()
+    local d = Storage.join(Manager.dir(), "prefs")
+    Storage.ensureDir(d)
+    return Storage.join(d, "preferences.json")
+end
+
+local function readText(p)
+    local f = io.open(p, "rb")
+    if not f then return nil end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+-- Before a run: the chosen preferences into their file (nothing is written for
+-- none, or when the file already says the same). Returns the text now in the file.
+function Manager.writePrefs()
+    if not Areas.enabled("settings", Manager.get) then return nil end
+    local path = Manager.prefsPath()
+    local have = readText(path)
+    local mine = Prefs.export(Manager.get)
+    if next(mine) == nil and not have then return nil end
+    -- a file that came from another reader and was not applied yet is not written over
+    local current = have and Prefs.decode(have)
+    local text = Prefs.encode(mine)
+    if current and next(mine) == nil then return have end
+    if have ~= text then Storage.writeAtomic(path, text) end
+    return text
+end
+
+-- After a run: preferences that came from another reader go into the settings.
+-- `before` is the text written before the run.
+function Manager.readPrefs(before)
+    if not Areas.enabled("settings", Manager.get) then return end
+    local text = readText(Manager.prefsPath())
+    if not text or text == before then return end
+    local tbl = Prefs.decode(text)
+    if tbl then
+        local n = Prefs.apply(tbl, Manager.set)
+        Manager.log("preferences from another reader: " .. n)
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -372,6 +422,7 @@ local function makeWork(o)
             only = o.only,
             skip = function(k) return openSet(dir)[k] == true end,
             validate = function(rel, path)
+                if rel == Prefs.REL then return Prefs.valid(path) end
                 if rel:match("/inkaway%.lua$") then return require("ink/reader/bookink").valid(path) end
                 if not rel:match("%.inkaway$") then return true end
                 local data, err = Project.load(path)
@@ -422,6 +473,7 @@ function Manager.run(event, o)
     changed()
     local started_dirty_mark = now_state.change_serial or 0
     local function begin()
+        local wrote = Manager.writePrefs()
         local handle = Runner.start({
             dir = Manager.dir(), work = makeWork(o),
             on_progress = function(info) now_state.progress = info; changed() end,
@@ -438,6 +490,7 @@ function Manager.run(event, o)
                 Manager.log(string.format("%s: up %s down %s conflicts %s deleted %s errors %s%s", event,
                     tostring(res.uploaded), tostring(res.downloaded), tostring(res.conflicts), tostring(res.deleted),
                     tostring(res.errors and #res.errors or 0), res.fatal and (" FATAL " .. tostring(res.fatal.code)) or ""))
+                if not res.dry and not res.fatal then pcall(Manager.readPrefs, wrote) end
                 changed()
                 if o.on_done then o.on_done(res) end
             end,

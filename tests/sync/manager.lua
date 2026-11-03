@@ -175,6 +175,21 @@ local s = Manager.status()
 eq(s.connected, false, "not connected")
 eq(s.running, false, "not running")
 
+-- preferences: settings into a file before a run, a file from another reader back into settings after
+eq(Manager.writePrefs(), nil, "with the part off nothing is written")
+SETTINGS.inkaway_sync_area_settings = true
+SETTINGS.inkaway_accent = "green"
+SETTINGS.inkaway_library_dir = "/mine"
+local wrote = Manager.writePrefs()
+ok(wrote and wrote:find("green", 1, true) and not wrote:find("/mine", 1, true), "the chosen preferences are written, not the reader's own folders")
+local pf = io.open(Manager.prefsPath(), "wb"); pf:write('{"inkaway_accent":"blue","inkaway_library_dir":"/theirs"}'); pf:close()
+Manager.readPrefs(wrote)
+eq(SETTINGS.inkaway_accent, "blue", "a preference that came from another reader is applied")
+eq(SETTINGS.inkaway_library_dir, "/mine", "a setting outside the list is never changed by a file")
+local again = Manager.writePrefs()
+ok(again and again:find("blue", 1, true), "and the next run writes what the settings now say")
+SETTINGS.inkaway_sync_area_settings = nil
+
 print(string.format("manager: %d checks, %d failed", checks, fails))
 os.execute("rm -rf '" .. BASE .. "'")
 os.exit(fails == 0 and 0 or 1)

@@ -3625,6 +3625,10 @@ msgstr "Карандаш"
 msgid "Pens"
 msgstr "Ручки"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Перья, цвета и настройки"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Телефон или компьютер (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Ваши собственные кисти"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Ваши ручки на странице"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Ваш выбор перьев, цветов, бумаги, текста и привязки. Без папок, экрана и настроек стилуса, которые относятся к одному устройству."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"

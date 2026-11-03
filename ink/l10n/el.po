@@ -3625,6 +3625,10 @@ msgstr "Μολύβι"
 msgid "Pens"
 msgstr "Στυλό"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Στυλό, χρώματα και προτιμήσεις"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Τηλέφωνο ή υπολογιστής (Wi-Fi)"
@@ -5406,6 +5410,10 @@ msgstr "Τα δικά σας πινέλα"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Τα στυλό σας στη σελίδα"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Οι επιλογές σας για στυλό, χρώματα, χαρτί, κείμενο και κούμπωμα. Όχι οι φάκελοι, η οθόνη ή οι ρυθμίσεις γραφίδας που ανήκουν σε μία συσκευή."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"
