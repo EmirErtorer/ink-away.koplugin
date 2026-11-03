@@ -17,6 +17,7 @@ local Hash = nil
 local Portable = {}
 
 Portable.ATTACH = ".attachments"
+Portable.root = nil   -- set by Ink Away at start: function() return the library folder end
 
 local function exists(path)
     local f = io.open(path, "rb")

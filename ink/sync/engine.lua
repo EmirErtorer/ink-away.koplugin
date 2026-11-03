@@ -404,7 +404,8 @@ end
 --   root, provider, state, backup_dir, device (this reader's name), now(), sleep(s),
 --   stop() -> bool, skip(key) -> bool (open in the editor), report(info),
 --   validate(rel, path) -> ok, why, dry (only decide), limits (see Engine.LIMITS),
---   allow_mass_delete, log(line).
+--   allow_mass_delete, rebase (the library folder changed: start afresh), only (a set
+--   of keys: decide just those, for a quick check of the notebook being opened), log(line).
 -- Returns the result: { items, errors, warnings, counts..., fatal }.
 function Engine.run(ctx)
     ctx.now = ctx.now or os.time
@@ -503,7 +504,9 @@ function Engine.run(ctx)
             if st.size > ctx.limits.hash_max or not rem.hash then return false end
             return Hash.dropbox(abs(ctx, rel)) == rem.hash
         end)
-        if action ~= "none" then plan[#plan + 1] = { key = key, rel = rel, action = action } end
+        if action ~= "none" and (not ctx.only or ctx.only[key]) then
+            plan[#plan + 1] = { key = key, rel = rel, action = action }
+        end
     end
 
     -- stop short of deleting much of the library

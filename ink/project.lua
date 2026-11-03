@@ -130,6 +130,13 @@ function Project.deserialize(str)
         or (type(data.ops) ~= "table" and type(data.pages) ~= "table") then
         return nil, "missing fields"
     end
+    -- a notebook from another reader names its pictures and PDF by that reader's paths
+    -- (see ink/sync/portable.lua): the ones missing here are looked for in this library
+    local portable = package.loaded["ink/sync/portable"]
+    if portable and portable.root then
+        local ok, root = pcall(portable.root)
+        if ok and root then pcall(portable.apply, data, root) end
+    end
     return data
 end
 
