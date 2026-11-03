@@ -409,6 +409,8 @@ function InkAwayView:onShow()
         self._note_on_show = nil
     elseif self:welcomeDue() then
         self:showWelcome()       -- once: the book features and their gestures
+    elseif self:inputFileDue() then
+        self:inputFileNotice()   -- once each start: input.lua is another plugin's copy
     elseif self:onAndroid() then
         self:deviceTips(false)   -- once, on readers that still need it
     end

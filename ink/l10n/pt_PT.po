@@ -2027,6 +2027,10 @@ msgstr "Marfim e prata"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "O gestor de gestos do KOReader está desligado, por isso o Ink Away não lhes pôde dar um gesto."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "O input.lua do KOReader foi substituído, muito provavelmente por outro plugin de caneta, e a caneta pode comportar-se de forma estranha no Ink Away. Atualizar ou reinstalar o KOReader repõe o original, ou copie frontend/device/input.lua da transferência da sua versão do KOReader. Use o Ink Away e outros plugins de caneta um de cada vez."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Manter como imagens"

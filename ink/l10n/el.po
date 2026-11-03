@@ -2027,6 +2027,10 @@ msgstr "Ελεφαντόδοντο και ασήμι"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Ο διαχειριστής χειρονομιών του KOReader είναι ανενεργός, οπότε το Ink Away δεν μπόρεσε να τους δώσει χειρονομία."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "Το input.lua του KOReader έχει αντικατασταθεί, πιθανότατα από άλλο πρόσθετο στυλό, οπότε το στυλό μπορεί να συμπεριφέρεται παράξενα στο Ink Away. Αν ενημερώσετε ή επανεγκαταστήσετε το KOReader, επανέρχεται το δικό του αρχείο, ή αντιγράψτε το frontend/device/input.lua από τη λήψη της έκδοσης του KOReader που έχετε. Χρησιμοποιείτε το Ink Away και τα άλλα πρόσθετα στυλό ένα κάθε φορά."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Διατήρηση ως εικόνες"

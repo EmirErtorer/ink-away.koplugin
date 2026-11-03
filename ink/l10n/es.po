@@ -2027,6 +2027,10 @@ msgstr "Marfil y plata"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "El configurador de gestos de KOReader está desactivado, así que Ink Away no pudo darles un gesto."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "El input.lua de KOReader ha sido reemplazado, lo más probable por otro plugin del stylus, así que el stylus puede comportarse de forma extraña en Ink Away. Al actualizar o reinstalar KOReader vuelve el suyo, o copia frontend/device/input.lua de la descarga de tu versión de KOReader. Usa Ink Away y otros plugins del stylus de uno en uno."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Conservar como imágenes"

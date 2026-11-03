@@ -2027,6 +2027,10 @@ msgstr "Kość słoniowa i srebro"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Menedżer gestów KOReadera jest wyłączony, więc Ink Away nie mógł im nadać gestu."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "Plik input.lua KOReadera został zastąpiony, najpewniej przez inną wtyczkę pióra, więc pióro może dziwnie się zachowywać w Ink Away. Aktualizacja lub ponowna instalacja KOReadera przywraca jego własny plik, albo skopiuj frontend/device/input.lua z pobranej wersji KOReadera, którą masz. Używaj Ink Away i innych wtyczek pióra pojedynczo."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Zachowaj jako obrazy"

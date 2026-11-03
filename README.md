@@ -65,6 +65,7 @@ The full list, with every setting and gesture, is in [docs/FEATURES.md](docs/FEA
 ## Notes
 
 - Palm rejection needs KOReader 2026.07+.
+- **Other pen plugins:** use Ink Away and other pen plugins (pencil.koplugin, for one) one at a time. They share KOReader's one pen hook; Ink Away hands it back when it closes. Some pen plugins, older pencil.koplugin releases among them, replace KOReader's `frontend/device/input.lua` with their own copy, and turning the plugin off doesn't put the original back, so the pen can act oddly in Ink Away. Ink Away tells you when it finds one. To fix it, update KOReader to 2026.07 or newer, or reinstall it: either puts KOReader's own `input.lua` back. Or download the zip of the KOReader version you have and copy its `koreader/frontend/device/input.lua` over the one on the reader.
 - Drawings and notebooks are saved automatically in an "ink away" folder. Exports go to "ink away/exports" unless you pick another folder.
 
 ## How it's made
