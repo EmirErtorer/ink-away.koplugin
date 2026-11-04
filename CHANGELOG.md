@@ -70,7 +70,7 @@ versions marked *Prerelease* were test builds.
 - Cloud sync: tapping Sync now while a sync was already going (the one a closing
   book starts) no longer says "Not signed in"; the sheet just shows it going. A stop
   request now belongs to one run, so an old one can never stop a later run. The
-  sync log says what went wrong, not only the code. Ink on a book is joined by a
+  sync log and the list of problems say what went wrong, not only the code (the system's own reason when a file cannot be written). Ink on a book is joined by a
   small file named after the book, so its folder in the cloud says which book it is.
 
 ### Fixed

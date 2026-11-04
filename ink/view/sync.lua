@@ -472,7 +472,8 @@ function InkAwayView:syncShowResult(res)
             add(vspan(4))
             for i, e in ipairs(errs) do
                 if i > 6 then add(self:sheetHint(T(_("and %1 more, see the sync log"), #errs - 6), content_w, 13)); break end
-                add(para(self, codeLine(e.code) .. (e.rel ~= "" and ("\n" .. Storage.baseName(e.rel)) or ""), content_w, 14))
+                add(para(self, codeLine(e.code) .. (e.rel ~= "" and ("\n" .. Storage.baseName(e.rel)) or "")
+                    .. (e.detail and e.detail ~= "" and ("\n" .. tostring(e.detail):sub(1, 90)) or ""), content_w, 14))
                 add(vspan(4))
             end
             add(vspan(4))

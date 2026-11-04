@@ -120,19 +120,23 @@ local function stat(path)
     return { size = size, mtime = Storage.mtime(path) or 0 }
 end
 
--- Move `tmp` over `target`, or fail leaving `target` as it was.
+-- Move `tmp` over `target`, or fail leaving `target` as it was. Returns true, or
+-- nil and what the system said (for the log).
 local function replace(tmp, target)
-    local ok = os.rename(tmp, target)
+    local ok, why = os.rename(tmp, target)
     if not ok then
         -- a file system that will not rename over a file: the old one is moved aside first
         local old = target .. ".syncold"
         os.remove(old)
-        if os.rename(target, old) then
-            ok = os.rename(tmp, target)
+        local moved, why2 = os.rename(target, old)
+        if moved then
+            ok, why = os.rename(tmp, target)
             if ok then os.remove(old) else os.rename(old, target) end
+        else
+            why = tostring(why) .. "; aside: " .. tostring(why2)
         end
     end
-    return ok
+    return ok, why
 end
 
 local function lower(rel) return State.key(rel) end
@@ -346,9 +350,10 @@ local function doDownload(ctx, key, rel, rem, seen)
     if changedSince(ctx, rel, seen) then os.remove(tmp); return nil, Errors.make("IA-S504", rel) end
     local bok, berr = backupOf(ctx, rel)
     if not bok then os.remove(tmp); return nil, berr end
-    if not replace(tmp, abs(ctx, rel)) then
+    local replaced, rwhy = replace(tmp, abs(ctx, rel))
+    if not replaced then
         os.remove(tmp)
-        return nil, Errors.make("IA-S402", "replace " .. rel)
+        return nil, Errors.make("IA-S402", "replace " .. rel .. ": " .. tostring(rwhy))
     end
     local st = stat(abs(ctx, rel))
     agree(ctx, key, rel, rem, st, localHash(ctx, abs(ctx, rel), st.size))
@@ -366,13 +371,14 @@ local function doMerge(ctx, key, rel, rem, tmp, area)
     local rst = stat(tmp)
     local rhash = localHash(ctx, tmp, rst.size)
     local target = abs(ctx, rel)
-    local out = io.open(target .. Engine.TMP, "wb")
-    if not out then os.remove(tmp); return nil, Errors.make("IA-S402", "merge " .. rel) end
+    local out, oerr = io.open(target .. Engine.TMP, "wb")
+    if not out then os.remove(tmp); return nil, Errors.make("IA-S402", "merge " .. rel .. ": " .. tostring(oerr)) end
     out:write(merged)
     out:close()
-    if not replace(target .. Engine.TMP, target) then
+    local replaced, rwhy = replace(target .. Engine.TMP, target)
+    if not replaced then
         os.remove(target .. Engine.TMP); os.remove(tmp)
-        return nil, Errors.make("IA-S402", "replace " .. rel)
+        return nil, Errors.make("IA-S402", "replace " .. rel .. ": " .. tostring(rwhy))
     end
     os.remove(tmp)
     -- the base is the cloud's version, so the merged file counts as changed and goes up
@@ -394,9 +400,10 @@ local function doConflict(ctx, key, rel, rem, seen)
     if not ok then os.remove(tmp); os.remove(abs(ctx, crel)); return nil, Errors.make("IA-S402", cerr) end
     local bok, berr = backupOf(ctx, rel)
     if not bok then os.remove(tmp); return nil, berr end
-    if not replace(tmp, abs(ctx, rel)) then
+    local replaced, rwhy = replace(tmp, abs(ctx, rel))
+    if not replaced then
         os.remove(tmp)
-        return nil, Errors.make("IA-S402", "replace " .. rel)
+        return nil, Errors.make("IA-S402", "replace " .. rel .. ": " .. tostring(rwhy))
     end
     local st = stat(abs(ctx, rel))
     agree(ctx, key, rel, rem, st, localHash(ctx, abs(ctx, rel), st.size))
