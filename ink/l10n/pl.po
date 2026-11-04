@@ -428,14 +428,12 @@ msgstr "Przy zapisie możesz dołączyć obraz albo wyeksportować tylko rysunek
 msgid "Automatic"
 msgstr "Automatycznie"
 
-#: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
 #: ink/view/toolbar.lua
-#: ink/view/updates.lua
 msgid "Back"
 msgstr "Powrót"
 
@@ -1125,7 +1123,6 @@ msgstr "Nie pytaj ponownie"
 #: ink/reader/hlcolour.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
-#: ink/view/gestures.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 #: ink/view/layers.lua
@@ -1139,7 +1136,6 @@ msgstr "Nie pytaj ponownie"
 #: ink/view/sheetkit.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
-#: ink/view/updates.lua
 msgid "Done"
 msgstr "Gotowe"
 
@@ -1624,6 +1620,10 @@ msgstr "Pełna rozdzielczość"
 #: ink/framecover.lua
 msgid "Fumed oak"
 msgstr "Dąb wędzony"
+
+#: ink/view/gestures.lua
+msgid "Gestures"
+msgstr "Gesty"
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
@@ -2983,6 +2983,7 @@ msgstr "Wklej tam, gdzie było"
 msgid "Pasted the first %d characters."
 msgstr "Wklejono pierwszych znaków: %d."
 
+#: ink/view/gestures.lua
 #: ink/view/pencase.lua
 #: ink/view/toolbar.lua
 msgid "Pen"
@@ -3003,10 +3004,6 @@ msgstr "Pióro i wejście, Szybkie odświeżanie podczas rysowania: tusz pojawia
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
 msgstr "Pióro i wejście, Pióro dotyka menu i przycisków: obsługuj pasek narzędzi i menu także piórem."
-
-#: ink/view/gestures.lua
-msgid "Pen buttons, while held"
-msgstr "Przyciski pióra, gdy przytrzymane"
 
 #: ink/guide.lua
 msgid "Pen pressure"

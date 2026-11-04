@@ -428,14 +428,12 @@ msgstr "Beim Speichern können Sie das Bild einschließen oder nur Ihre Zeichnun
 msgid "Automatic"
 msgstr "Automatisch"
 
-#: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
 #: ink/view/toolbar.lua
-#: ink/view/updates.lua
 msgid "Back"
 msgstr "Zurück"
 
@@ -1125,7 +1123,6 @@ msgstr "Nicht mehr fragen"
 #: ink/reader/hlcolour.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
-#: ink/view/gestures.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 #: ink/view/layers.lua
@@ -1139,7 +1136,6 @@ msgstr "Nicht mehr fragen"
 #: ink/view/sheetkit.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
-#: ink/view/updates.lua
 msgid "Done"
 msgstr "Erledigt"
 
@@ -1624,6 +1620,10 @@ msgstr "Volle Auflösung"
 #: ink/framecover.lua
 msgid "Fumed oak"
 msgstr "Geräucherte Eiche"
+
+#: ink/view/gestures.lua
+msgid "Gestures"
+msgstr "Gesten"
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
@@ -2983,6 +2983,7 @@ msgstr "An der alten Stelle einfügen"
 msgid "Pasted the first %d characters."
 msgstr "Die ersten %d Zeichen wurden eingefügt."
 
+#: ink/view/gestures.lua
 #: ink/view/pencase.lua
 #: ink/view/toolbar.lua
 msgid "Pen"
@@ -3003,10 +3004,6 @@ msgstr "Stift und Eingabe, Schnelle Aktualisierung beim Zeichnen: Die Tinte ersc
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
 msgstr "Stift und Eingabe, Stift tippt Menüs und Tasten: Bedienen Sie Werkzeugleiste und Menüs auch mit dem Stift."
-
-#: ink/view/gestures.lua
-msgid "Pen buttons, while held"
-msgstr "Stifttasten, solange gehalten"
 
 #: ink/guide.lua
 msgid "Pen pressure"

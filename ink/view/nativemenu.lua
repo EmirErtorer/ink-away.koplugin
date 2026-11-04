@@ -24,7 +24,8 @@ now. A row is a table with `text` and one of:
     submenu = fn                                 runs fn and shows › (it opens
                                                  another window)
 
-plus optional `tab` (the id of the tab it is on, when there are tabs), `help`
+`title` may be a function, called again with the rows, for a panel whose heading
+reports a state (a check in progress). plus optional `tab` (the id of the tab it is on, when there are tabs), `help`
 (a longer note, shown on a long press), `separator` and `dim`. `back` (a
 function) runs when the panel is closed from its Close button or by a tap
 outside, to return to what it was opened from. `tab` starts it on that tab.
@@ -192,7 +193,8 @@ local function openPanel(self, o)
         end
         for _i, r in ipairs(panelRows(self, field, o.items(), tab, refresh)) do buttons[#buttons + 1] = r end
         buttons[#buttons + 1] = { { text = _("Close"), callback = leave } }
-        return ButtonDialog:new{ title = o.title, title_align = "center", buttons = buttons,
+        return ButtonDialog:new{ title = type(o.title) == "function" and o.title() or o.title,
+            title_align = "center", buttons = buttons,
             tap_close_callback = function() if self[field] == dialog then leave() end end }
     end
     refresh = function()

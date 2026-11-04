@@ -1384,7 +1384,7 @@ do
         if t.text == "Page turn buttons" then heading = true end
         for k, c in pairs(t) do if k ~= "show_parent" and k ~= "parent" then find(c) end end end
     find(view._gestures_dialog)
-    ok(heading, "page keys: the settings sheet lists them under Page turn buttons")
+    ok(heading, "page keys: the settings panel lists them under a Page turn buttons tab")
     view:closeSheet("_gestures_dialog")
     view:onCloseWidget()
     Device.hasKeys, Device.input.group = hasKeys, group
@@ -2632,7 +2632,7 @@ do
     view:openGestureSettings()
     ok(view._gestures_dialog ~= nil, "gestures: the settings sheet opens")
     view:chooseGestureAction(require("ink/actions").trigger("two_swipe_down"))
-    ok(view._gesture_pick ~= nil and view._gestures_dialog == nil, "gestures: choosing opens the action grid")
+    ok(view._gesture_pick ~= nil and view._gestures_dialog ~= nil, "gestures: choosing opens the action list over the settings")
     -- pick Undo for the swipe down: the two-finger tap already undoes, so it asks
     b.two_tap = "undo"
     local function findButton(w, text, seen)
@@ -2647,8 +2647,9 @@ do
             end
         end
     end
-    local undo_btn = findButton(view._gesture_pick, "Undo")
-    ok(undo_btn ~= nil, "gestures: the grid offers Undo")
+    local undo_btn
+    for _, it in ipairs(view._gesture_pick.item_table) do if it.text == "Undo" then undo_btn = it end end
+    ok(undo_btn ~= nil, "gestures: the list offers Undo")
     UIManager.shown = nil
     if undo_btn then undo_btn.callback() end
     local box = UIManager.shown
@@ -3567,6 +3568,53 @@ do
     ok(view.ghost_clean == 5, "settings: the ghosting stepper sets it")
     view.ghost_clean = 0; view:setSetting("inkaway_ghost", 0)
     view:closeSheet("_settings_dialog")
+    view:onCloseWidget()
+end
+
+-- ---- the Updates panel (ink/view/updates.lua) --------------------------------
+do
+    Screen:setRotationMode(0); Screen:setSize(1072, 1448)
+    UIManager.reset()
+    local Updater = require("ink/update/updater")
+    local InkAwayView = dofile("ink/view.lua")
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    local was = { offers = Updater.offers, busy = Updater.busy, installed = Updater.installed, error = Updater.error }
+    Updater.busy, Updater.installed, Updater.error = nil, nil, nil
+    local cur = view:inkVersion()
+    Updater.offers = { stable = { version = "99.0.0", date = "2030-01-02T00:00:00Z", size = 2000000,
+            notes = "## Added\n- Something new" },
+        stable_action = "update", since = {}, on_pre = false }
+    view:openUpdates()
+    local function cell(text)
+        for _, row in ipairs(view._updates.buttons) do
+            for _, c in ipairs(row) do if c.text == text then return c end end
+        end
+    end
+    ok(view._updates and view._updates.title:find("Updates", 1, true) and view._updates.title:find("Ink Away " .. cur, 1, true),
+        "updates: the heading names the version running")
+    local release_row
+    for _, row in ipairs(view._updates.buttons) do
+        for _, c in ipairs(row) do if c.text:find("^Release: 99%.0%.0") then release_row = c end end
+    end
+    ok(release_row and release_row.hold_callback, "updates: a release row, with its details on a long press")
+    ok(cell("What's new  \u{203A}") and cell("Install") and cell("Check now"), "updates: What's new, Install and Check now are offered")
+    ok(cell("\u{2610}  Tell me about prereleases") or cell("\u{2611}  Tell me about prereleases"), "updates: the prerelease switch is there")
+    cell("What's new  \u{203A}").callback()
+    local viewer = require("ui/widget/textviewer").last
+    ok(view._release_notes == viewer and viewer.text:find("99.0.0", 1, true) and viewer.text:find("\u{2022}  Something new", 1, true),
+        "updates: What's new opens KOReader's text viewer with the notes")
+    view:closeSheet("_release_notes")
+    ok(view._updates ~= nil, "updates: and the panel is still there under it")
+    cell("Install").callback()
+    ok(view._update_confirm and view._update_confirm.ok_text == "Install", "updates: Install asks first")
+    view:closeSheet("_update_confirm")
+    Updater.busy = "checking"
+    view._updates.refresh()
+    ok(view._updates.title:find("Asking GitHub", 1, true) and not cell("Install"), "updates: a check in progress says so and hides the releases")
+    Updater.busy = nil
+    view:closeSheet("_updates")
+    Updater.offers, Updater.busy, Updater.installed, Updater.error = was.offers, was.busy, was.installed, was.error
     view:onCloseWidget()
 end
 

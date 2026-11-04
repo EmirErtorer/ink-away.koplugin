@@ -428,14 +428,12 @@ msgstr "Κατά την αποθήκευση μπορείτε να συμπερ�
 msgid "Automatic"
 msgstr "Αυτόματα"
 
-#: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
 #: ink/view/toolbar.lua
-#: ink/view/updates.lua
 msgid "Back"
 msgstr "Επιστροφή"
 
@@ -1125,7 +1123,6 @@ msgstr "Να μην ξαναρωτήσει"
 #: ink/reader/hlcolour.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
-#: ink/view/gestures.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 #: ink/view/layers.lua
@@ -1139,7 +1136,6 @@ msgstr "Να μην ξαναρωτήσει"
 #: ink/view/sheetkit.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
-#: ink/view/updates.lua
 msgid "Done"
 msgstr "Ολοκληρώθηκε"
 
@@ -1624,6 +1620,10 @@ msgstr "Πλήρης ανάλυση"
 #: ink/framecover.lua
 msgid "Fumed oak"
 msgstr "Καπνισμένη δρυς"
+
+#: ink/view/gestures.lua
+msgid "Gestures"
+msgstr "Χειρονομίες"
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
@@ -2983,6 +2983,7 @@ msgstr "Επικόλληση εκεί που ήταν"
 msgid "Pasted the first %d characters."
 msgstr "Επικολλήθηκαν οι πρώτοι %d χαρακτήρες."
 
+#: ink/view/gestures.lua
 #: ink/view/pencase.lua
 #: ink/view/toolbar.lua
 msgid "Pen"
@@ -3003,10 +3004,6 @@ msgstr "Στυλό και είσοδος, Γρήγορη ανανέωση κατ
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
 msgstr "Στυλό και είσοδος, Το στυλό πατά μενού και κουμπιά: χειριστείτε τη γραμμή εργαλείων και τα μενού και με το στυλό."
-
-#: ink/view/gestures.lua
-msgid "Pen buttons, while held"
-msgstr "Κουμπιά στυλό, όσο κρατούνται"
 
 #: ink/guide.lua
 msgid "Pen pressure"

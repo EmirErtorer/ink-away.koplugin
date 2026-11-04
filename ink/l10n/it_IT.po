@@ -428,14 +428,12 @@ msgstr "Al salvataggio puoi includere l’immagine o esportare solo il tuo diseg
 msgid "Automatic"
 msgstr "Automatico"
 
-#: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
 #: ink/view/toolbar.lua
-#: ink/view/updates.lua
 msgid "Back"
 msgstr "Indietro"
 
@@ -1125,7 +1123,6 @@ msgstr "Non chiedere più"
 #: ink/reader/hlcolour.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
-#: ink/view/gestures.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 #: ink/view/layers.lua
@@ -1139,7 +1136,6 @@ msgstr "Non chiedere più"
 #: ink/view/sheetkit.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
-#: ink/view/updates.lua
 msgid "Done"
 msgstr "Fatto"
 
@@ -1624,6 +1620,10 @@ msgstr "Piena risoluzione"
 #: ink/framecover.lua
 msgid "Fumed oak"
 msgstr "Rovere fumé"
+
+#: ink/view/gestures.lua
+msgid "Gestures"
+msgstr "Gesti"
 
 #: ink/guide.lua
 #: ink/reader/inkview.lua
@@ -2983,6 +2983,7 @@ msgstr "Incolla dov’era"
 msgid "Pasted the first %d characters."
 msgstr "Incollati i primi %d caratteri."
 
+#: ink/view/gestures.lua
 #: ink/view/pencase.lua
 #: ink/view/toolbar.lua
 msgid "Pen"
@@ -3003,10 +3004,6 @@ msgstr "Penna e input, Aggiornamento rapido mentre disegni: l’inchiostro appar
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
 msgstr "Penna e input, La penna tocca menu e pulsanti: usa anche la barra degli strumenti e i menu con la penna."
-
-#: ink/view/gestures.lua
-msgid "Pen buttons, while held"
-msgstr "Pulsanti della penna, mentre tenuti premuti"
 
 #: ink/guide.lua
 msgid "Pen pressure"

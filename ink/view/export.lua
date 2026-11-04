@@ -6,10 +6,7 @@ bookshelf ornaments.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Device = require("device")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("ink/l10n")
 local RenderImage = require("ui/renderimage")
@@ -22,15 +19,11 @@ local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
-local ToggleRow = require("ink/ui/controls").ToggleRow
 
-local Screen = Device.screen
 local existingDir = Storage.existingDir
 local strengthToLevel = Paint.strengthToLevel
 local bbToRGBA = ImageProc.bbToRGBA
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
-
-local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 -- The paper an export lays a page of paper `p` on ({r,g,b}, nil for white): `p`
 -- itself, unless the export is set to White (`choice`) or the paper is left out

@@ -427,14 +427,12 @@ msgstr ""
 msgid "Automatic"
 msgstr ""
 
-#: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
 #: ink/view/toolbar.lua
-#: ink/view/updates.lua
 msgid "Back"
 msgstr ""
 
@@ -1114,7 +1112,6 @@ msgstr ""
 #: ink/reader/hlcolour.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
-#: ink/view/gestures.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 #: ink/view/layers.lua
@@ -1128,7 +1125,6 @@ msgstr ""
 #: ink/view/sheetkit.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
-#: ink/view/updates.lua
 msgid "Done"
 msgstr ""
 
@@ -1598,6 +1594,10 @@ msgstr ""
 
 #: ink/framecover.lua
 msgid "Fumed oak"
+msgstr ""
+
+#: ink/view/gestures.lua
+msgid "Gestures"
 msgstr ""
 
 #: ink/guide.lua
@@ -2947,6 +2947,7 @@ msgstr ""
 msgid "Pasted the first %d characters."
 msgstr ""
 
+#: ink/view/gestures.lua
 #: ink/view/pencase.lua
 #: ink/view/toolbar.lua
 msgid "Pen"
@@ -2966,10 +2967,6 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
-msgstr ""
-
-#: ink/view/gestures.lua
-msgid "Pen buttons, while held"
 msgstr ""
 
 #: ink/guide.lua

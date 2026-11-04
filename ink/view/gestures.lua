@@ -6,15 +6,7 @@ Part of InkAwayView (see ink/view.lua).
 ]]
 
 local Device = require("device")
-local Font = require("ui/font")
-local GeomUI = require("ui/geometry")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
-local LeftContainer = require("ui/widget/container/leftcontainer")
-local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("ink/l10n")
 local Actions = require("ink/actions")
 local InkGeom = require("ink/geom")
@@ -23,8 +15,6 @@ local Penset = require("ink/penset")
 local Screen = Device.screen
 
 local TWO_TAP_REDO_MS = 600     -- a second two-finger tap within this is a double tap
-
-local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 local InkAwayView = {}
 
@@ -290,71 +280,57 @@ end
 -- Whether to offer an action here (every one, in the canvas).
 function InkAwayView:actionOffered(_id) return true end
 
-function InkAwayView:openGestureSettings()
-    if self:rebuildSheet("_gestures_dialog") then return end
-    self:ensureUserIcons()
-    local content_w, gap = self:sheetWidth()
-    local function closeSelf() self:closeSheet("_gestures_dialog") end
-    local build = function()
-        local b = self:gestureBindings()
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_("Gestures and pen buttons"), content_w, _("Done"), closeSelf))
-        local pill_w = math.floor(content_w * 0.48)
-        local label_w = content_w - pill_w - gap
-        local function row(t)
-            local label = TextWidget:new{ text = _(t.label), face = Font:getFace("cfont", 17), max_width = label_w }
-            local pill = self:actionButton(self:actionLabel(b[t.id]), pill_w,
-                function() self:chooseGestureAction(t) end, false, "small")
-            return HorizontalGroup:new{ align = "center",
-                LeftContainer:new{ dimen = GeomUI:new{ w = label_w, h = pill:getSize().h }, label },
-                HorizontalSpan:new{ width = gap }, pill }
-        end
-        local pen_started, keys_started = false, false
-        for _i, t in ipairs(self:availableTriggers()) do
-            if t.pen and not pen_started then
-                pen_started = true
-                add(vspan(12))
-                add(self:sheetLabel(_("Pen buttons, while held")))
-            elseif t.key and not keys_started then
-                keys_started = true
-                add(vspan(12))
-                add(self:sheetLabel(_("Page turn buttons")))
-            end
-            add(vspan((t.pen or t.key) and 6 or 8))
-            add(row(t))
-        end
-        local notes = {}
-        for _i, t in ipairs(self.reader_mode and {} or self:availableTriggers()) do
-            for _j, n in ipairs(Actions.notes(b, t.id)) do notes[n] = true end
-        end
-        for n in pairs(notes) do
-            add(vspan(6))
-            add(self:sheetHint(_(n), content_w))
-        end
-        add(vspan(14))
-        add(self:actionButton(_("Back to the usual"), content_w, function()
-            Actions.reset(b); self:saveGestures(); self:openGestureSettings() end))
-        return content
-    end
-    self:showSheet("_gestures_dialog", build)
+-- The tab a trigger is on: the finger gestures, the pen's buttons, or the page turn keys.
+local function gestureTab(t)
+    return t.pen and "pen" or t.key and "keys" or "touch"
 end
 
--- Choose the action for trigger `t`: a grid of the actions it may have, two to a
--- row. An action another gesture already does asks whether to move it here or
--- keep it on both.
-function InkAwayView:chooseGestureAction(t)
+-- Gestures and pen buttons: a panel with a tab for each kind of trigger (only
+-- the kinds this device has), each row a trigger and its action; a tap on a row
+-- lists the actions it may have.
+function InkAwayView:openGestureSettings(tab)
+    self:ensureUserIcons()
     local b = self:gestureBindings()
-    self:closeSheet("_gesture_pick")
-    local content_w, gap = self:sheetWidth()
-    local function closeSelf() self:closeSheet("_gesture_pick") end
+    local triggers = self:availableTriggers()
+    local tabs, seen = {}, {}
+    local LABEL = { touch = _("Gestures"), pen = _("Pen"), keys = _("Page turn buttons") }
+    for _i, t in ipairs(triggers) do
+        local id = gestureTab(t)
+        if not seen[id] then seen[id] = true; tabs[#tabs + 1] = { id, LABEL[id] } end
+    end
+    self:openNativeMenu{ field = "_gestures_dialog", title = _("Gestures and pen buttons"),
+        tabs = tabs, tab = seen[tab] and tab or nil,
+        items = function()
+            local rows = {}
+            for _i, t in ipairs(triggers) do
+                -- (an asterisk marks an action with a note: a long press shows it)
+                local notes = self.reader_mode and {} or Actions.notes(b, t.id)
+                rows[#rows + 1] = { tab = gestureTab(t), text = _(t.label),
+                    value = self:actionLabel(b[t.id]) .. (#notes > 0 and " *" or ""),
+                    help = #notes > 0 and table.concat((function()
+                        local out = {}
+                        for _j, n in ipairs(notes) do out[#out + 1] = _(n) end
+                        return out
+                    end)(), "\n\n") or nil,
+                    submenu = function() self:chooseGestureAction(t, gestureTab(t)) end }
+            end
+            rows[#rows + 1] = { text = _("Back to the usual"), action = function()
+                Actions.reset(b); self:saveGestures() end }
+            return rows
+        end }
+end
+
+-- Choose the action for trigger `t`: a list of the actions it may have, the
+-- one in use ticked. An action another gesture already does asks whether to
+-- move it here or keep it on both.
+function InkAwayView:chooseGestureAction(t, tab)
+    local b = self:gestureBindings()
     local function apply(id, move)
         Actions.set(b, t.id, id, move)
         self:saveGestures()
-        self:openGestureSettings()
+        self:openGestureSettings(tab)
     end
     local function pick(id)
-        closeSelf()
         local info = Actions.preview(b, t.id, id)
         -- (only the triggers this reader has: a Kobo pen was asked about a
         -- second side button it does not have)
@@ -369,34 +345,16 @@ function InkAwayView:chooseGestureAction(t)
                 table.concat(names, ", "), self:actionLabel(id), _(t.label)),
             ok_text = _("Only this one"), cancel_text = _("Both"),
             on_ok = function() apply(id, true) end,
-            on_cancel = function() apply(id, false) end,
-            on_dismiss = function() end }
+            on_cancel = function() apply(id, false) end }
     end
-    local build = function()
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        add(self:sheetTitle(_(t.label), content_w, _("Back"), function()
-            closeSelf(); self:openGestureSettings() end))
-        add(vspan(10))
-        local list = {}
-        for _i, a in ipairs(Actions.choices(t.id)) do
-            if self:actionOffered(a.id) then list[#list + 1] = a end
+    local list = {}
+    for _i, a in ipairs(Actions.choices(t.id)) do
+        if self:actionOffered(a.id) then
+            list[#list + 1] = { label = (b[t.id] == a.id and self.CHOSEN or "") .. self:actionLabel(a.id),
+                cb = function() pick(a.id) end }
         end
-        local w = math.floor((content_w - gap) / 2)
-        for i = 1, #list, 2 do
-            if i > 1 then add(vspan(8)) end
-            local hg = HorizontalGroup:new{ align = "center" }
-            for j = i, math.min(i + 1, #list) do
-                local a = list[j]
-                if j > i then table.insert(hg, HorizontalSpan:new{ width = gap }) end
-                table.insert(hg, self:actionButton(self:actionLabel(a.id), w, function() pick(a.id) end, b[t.id] == a.id, "small"))
-            end
-            add(hg)
-        end
-        return content
     end
-    self:closeSheet("_gestures_dialog")
-    self:showSheet("_gesture_pick", build)
+    self:chooseFromList{ field = "_gesture_pick", title = _(t.label), items = list }
 end
 
 return InkAwayView

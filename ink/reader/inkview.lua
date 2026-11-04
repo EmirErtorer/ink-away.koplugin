@@ -21,13 +21,10 @@ timers and input hooks.
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("ink/l10n")
 local Canvas = require("ink/canvas")
 local InkAwayView = require("ink/view")
-local ToggleRow = require("ink/ui/controls").ToggleRow
 local VBar = require("ink/reader/vbar")
 local HLColour = require("ink/reader/hlcolour")
 
