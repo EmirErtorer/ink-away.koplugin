@@ -44,7 +44,9 @@ end
 local o = Schedule.options(function() return nil end)
 eq(o.enabled, false, "off until switched on")
 eq(o.on_close, true, "sends on closing by default")
-eq(o.on_open, true, "checks on opening by default")
+eq(o.on_open, false, "opening never waits for the cloud unless asked")
+ok(not Schedule.automatic(o), "nothing is automatic while it is off")
+ok(Schedule.automatic({ enabled = true, on_close = true }) and not Schedule.automatic({ enabled = true }) and Schedule.automatic({ enabled = true, interval_min = 30 }), "automatic is on while any trigger is")
 eq(o.wifi_on, false, "never turns Wi-Fi on by default")
 eq(o.interval_min, 0, "no timer by default")
 local on = { enabled = true, on_close = true, on_open = true, on_sleep = false, pause_s = 60, interval_min = 30 }

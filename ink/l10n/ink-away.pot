@@ -618,6 +618,10 @@ msgstr ""
 msgid "Automatic"
 msgstr ""
 
+#: ink/view/sync.lua
+msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
+msgstr ""
+
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
@@ -1560,7 +1564,7 @@ msgid "Each document keeps its paper; a new one starts on the last you picked. O
 msgstr ""
 
 #: ink/view/sync.lua
-msgid "Each notebook is copied to your own cloud account, and the latest version comes to a reader when you open it there. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
+msgid "Each notebook is copied to your own cloud account. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
 msgstr ""
 
 #: ink/view/sync.lua
@@ -2776,6 +2780,10 @@ msgstr ""
 msgid "Making a notebook in Library › Imported › PDFs…"
 msgstr ""
 
+#: ink/view/sync.lua
+msgid "Manual only"
+msgstr ""
+
 #: ink/sync/errors.lua
 msgid "Many files seem to be missing"
 msgstr ""
@@ -3341,6 +3349,10 @@ msgstr ""
 
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Opening a notebook or book can wait up to 6 seconds for the cloud."
 msgstr ""
 
 #: ink/view/settings.lua
@@ -4392,6 +4404,10 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
+#: ink/view/sync.lua
+msgid "Starts a sync in the background each time you close a notebook that changed."
+msgstr ""
+
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
 msgstr ""
@@ -4506,6 +4522,14 @@ msgid "Synced, with problems"
 msgstr ""
 
 #: ink/view/sync.lua
+msgid "Syncing by itself can slow the reader and use battery. You choose when it runs, and \"Sync now\" runs only when you ask."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Syncing by itself runs in the background but uses the processor, Wi-Fi and battery, and can slow the reader. If it does, tap Manual only and use Sync now."
+msgstr ""
+
+#: ink/view/sync.lua
 msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
 msgstr ""
 
@@ -4519,6 +4543,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "Syncing would delete a large part of your notebooks in the cloud, so it stopped before deleting anything."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Syncs just before the reader sleeps, which uses Wi-Fi and battery."
 msgstr ""
 
 #: ink/view/settings.lua
@@ -4731,6 +4759,10 @@ msgstr ""
 
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
 msgstr ""
 
 #: ink/view/library.lua

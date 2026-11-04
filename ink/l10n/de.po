@@ -619,6 +619,10 @@ msgstr "Beim Speichern können Sie das Bild einschließen oder nur Ihre Zeichnun
 msgid "Automatic"
 msgstr "Automatisch"
 
+#: ink/view/sync.lua
+msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
+msgstr "Die automatische Synchronisierung kann das Lesegerät ausbremsen und Akku verbrauchen. „Jetzt synchronisieren“ läuft nur, wenn du es willst."
+
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
@@ -1578,8 +1582,8 @@ msgid "Each document keeps its paper; a new one starts on the last you picked. O
 msgstr "Jedes Dokument behält sein Papier; ein neues beginnt auf dem zuletzt gewählten. Auf dunklem Papier erscheinen schwarze Tinte und Text weiß. Der Dunkelmodus ändert das Papier nie."
 
 #: ink/view/sync.lua
-msgid "Each notebook is copied to your own cloud account, and the latest version comes to a reader when you open it there. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
-msgstr "Jedes Notizbuch wird in dein eigenes Cloud-Konto kopiert, und die neueste Version kommt auf ein Lesegerät, sobald du es dort öffnest. Nichts wird ohne Sicherheitskopie ersetzt oder entfernt, und wenn zwei Lesegeräte dasselbe Notizbuch ändern, bleiben beide Versionen erhalten."
+msgid "Each notebook is copied to your own cloud account. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
+msgstr "Jedes Notizbuch wird in dein eigenes Cloud-Konto kopiert. Nichts wird ohne Sicherheitskopie ersetzt oder entfernt, und wenn zwei Lesegeräte dasselbe Notizbuch ändern, bleiben beide Versionen erhalten."
 
 #: ink/view/sync.lua
 msgid "Each one is tried again at the next sync. Tap Details on the sync sheet for what to do."
@@ -2801,6 +2805,10 @@ msgstr "Machen Sie es zu Ihrem"
 msgid "Making a notebook in Library › Imported › PDFs…"
 msgstr "Notizbuch wird in Bibliothek › Importiert › PDFs angelegt …"
 
+#: ink/view/sync.lua
+msgid "Manual only"
+msgstr "Nur manuell"
+
 #: ink/sync/errors.lua
 msgid "Many files seem to be missing"
 msgstr "Viele Dateien scheinen zu fehlen"
@@ -3372,6 +3380,10 @@ msgstr "Das PDF jetzt öffnen?"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Öffnen Sie sie über das Lesemenü: Werkzeuge, Ink Away. Oder geben Sie ihnen eine Geste unter Einstellungen, Tipp- und Wischgesten, Gestenmanager: Die Aktionen heißen „Ink Away: Buch kommentieren“ und „Ink Away: Buchnotizen“."
+
+#: ink/view/sync.lua
+msgid "Opening a notebook or book can wait up to 6 seconds for the cloud."
+msgstr "Das Öffnen eines Notizbuchs oder Buchs kann bis zu 6 Sekunden auf die Cloud warten."
 
 #: ink/view/settings.lua
 msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
@@ -4438,6 +4450,10 @@ msgstr "Synchronisierung starten"
 msgid "Starting…"
 msgstr "Wird gestartet …"
 
+#: ink/view/sync.lua
+msgid "Starts a sync in the background each time you close a notebook that changed."
+msgstr "Startet im Hintergrund eine Synchronisierung, sobald du ein geändertes Notizbuch schließt."
+
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
 msgstr "Wird noch getestet. Bei eingeschalteter Handballenerkennung werden Kugelschreiber, Füller, Kalligrafie und Bleistift breiter, je fester Sie drücken. Wenn es auf Ihrem Lesegerät Probleme macht, würde ich gern auf GitHub davon hören."
@@ -4552,6 +4568,14 @@ msgid "Synced, with problems"
 msgstr "Synchronisiert, mit Problemen"
 
 #: ink/view/sync.lua
+msgid "Syncing by itself can slow the reader and use battery. You choose when it runs, and \"Sync now\" runs only when you ask."
+msgstr "Die automatische Synchronisierung kann das Lesegerät ausbremsen und Akku verbrauchen. Du bestimmst, wann sie läuft, und „Jetzt synchronisieren“ läuft nur, wenn du es willst."
+
+#: ink/view/sync.lua
+msgid "Syncing by itself runs in the background but uses the processor, Wi-Fi and battery, and can slow the reader. If it does, tap Manual only and use Sync now."
+msgstr "Die automatische Synchronisierung läuft im Hintergrund, belastet aber Prozessor, WLAN und Akku und kann das Lesegerät ausbremsen. Wenn das passiert, tippe auf „Nur manuell“ und nutze „Jetzt synchronisieren“."
+
+#: ink/view/sync.lua
 msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
 msgstr "Die automatische Synchronisierung nutzt WLAN nur, wenn es schon an ist, außer du erlaubst es. „Jetzt synchronisieren“ darf es immer einschalten."
 
@@ -4566,6 +4590,10 @@ msgstr "Die Synchronisierung wurde angehalten."
 #: ink/sync/errors.lua
 msgid "Syncing would delete a large part of your notebooks in the cloud, so it stopped before deleting anything."
 msgstr "Die Synchronisierung würde einen großen Teil deiner Notizbücher in der Cloud löschen und wurde deshalb gestoppt, bevor etwas gelöscht wurde."
+
+#: ink/view/sync.lua
+msgid "Syncs just before the reader sleeps, which uses Wi-Fi and battery."
+msgstr "Synchronisiert kurz bevor das Lesegerät in den Ruhezustand geht und nutzt dabei WLAN und Akku."
 
 #: ink/view/settings.lua
 msgid "System"
@@ -4780,6 +4808,10 @@ msgstr "Die Datei wurde in der Cloud geändert, während sie gesendet wurde, dah
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "Die erste Ebene enthält Radierungen aus der Zeit vor den Ebenen, deshalb bleibt sie ganz unten."
+
+#: ink/view/sync.lua
+msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
+msgstr "Die erste Synchronisierung von Tinte auf Buchseiten, Importen, Exporten und Bildschirmausschnitten kann groß und langsam sein."
 
 #: ink/view/library.lua
 msgid "The folder and everything in it go."

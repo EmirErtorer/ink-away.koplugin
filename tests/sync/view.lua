@@ -173,8 +173,19 @@ ok(t:find("Synced 5 min ago", 1, true), "when it last synced, in words")
 ok(findButton(sheet, "Sync now"), "Sync now")
 ok(findButton(sheet, "Sync automatically") and findButton(sheet, "What to sync"), "the choices are two buttons, so the sheet does not scroll")
 ok(not findButton(sheet, "After closing a notebook") and not findButton(sheet, "Exports"), "and the long lists are not on it")
+G_reader_settings.data.inkaway_sync_enabled = true
+view:rebuildSheet("_sync")
+ok(textIn(view._sync):find("Automatic sync can slow the reader and use battery", 1, true), "the main sheet says automatic sync can slow the reader")
+G_reader_settings.data.inkaway_sync_enabled = nil
+view:rebuildSheet("_sync")
+ok(not textIn(view._sync):find("Automatic sync can slow the reader", 1, true), "and says nothing while sync is off")
+sheet = view._sync
 press(sheet, "Sync automatically")
 local when = view._sync_when
+local wt = textIn(when)
+ok(wt:find("can slow the reader", 1, true), "the automatic screen says it can slow the reader")
+ok(wt:find("up to 6 seconds", 1, true) and wt:find("Starts a sync in the background", 1, true) and wt:find("uses Wi-Fi and battery", 1, true), "each switch says what it costs")
+ok(findButton(when, "Manual only"), "and a button turns it all off")
 ok(findButton(when, "After closing a notebook"), "the automatic choices are labelled")
 ok(findButton(when, "Get the latest when opening one") and findButton(when, "When the reader goes to sleep"), "all of them")
 ok(findButton(when, "Allow turning on Wi-Fi"), "Wi-Fi is the person's choice")
@@ -186,6 +197,19 @@ ok(G_reader_settings.data.inkaway_sync_pause == 60, "the pause after drawing is 
 press(view._sync_when, "30m")
 ok(G_reader_settings.data.inkaway_sync_interval == 30, "so is the timer")
 press(view._sync_when, "Off")
+G_reader_settings.data.inkaway_sync_pause = nil
+G_reader_settings.data.inkaway_sync_interval = nil
+-- Manual only turns every automatic trigger off at once
+G_reader_settings.data.inkaway_sync_on_close = true
+G_reader_settings.data.inkaway_sync_pause = 60
+G_reader_settings.data.inkaway_sync_interval = 30
+press(view._sync_when, "Manual only")
+ok(G_reader_settings.data.inkaway_sync_on_close == false and G_reader_settings.data.inkaway_sync_on_open == false
+    and G_reader_settings.data.inkaway_sync_on_sleep == false and G_reader_settings.data.inkaway_sync_pause == 0
+    and G_reader_settings.data.inkaway_sync_interval == 0, "Manual only turns off every automatic trigger")
+G_reader_settings.data.inkaway_sync_on_close = nil
+G_reader_settings.data.inkaway_sync_on_open = nil
+G_reader_settings.data.inkaway_sync_on_sleep = nil
 G_reader_settings.data.inkaway_sync_pause = nil
 G_reader_settings.data.inkaway_sync_interval = nil
 press(view._sync_when, "Back")

@@ -619,6 +619,10 @@ msgstr "Kaydederken resmi dahil edebilir ya da yalnızca çiziminizi dışa akta
 msgid "Automatic"
 msgstr "Otomatik"
 
+#: ink/view/sync.lua
+msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
+msgstr "Otomatik eşitleme okuyucuyu yavaşlatabilir ve pil harcayabilir. “Şimdi eşitle” yalnızca siz istediğinizde çalışır."
+
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
@@ -1578,8 +1582,8 @@ msgid "Each document keeps its paper; a new one starts on the last you picked. O
 msgstr "Her belge kâğıdını korur; yeni bir belge en son seçtiğiniz kâğıtla başlar. Koyu bir kâğıtta siyah mürekkep ve metin beyaz görünür. Koyu mod kâğıdı asla değiştirmez."
 
 #: ink/view/sync.lua
-msgid "Each notebook is copied to your own cloud account, and the latest version comes to a reader when you open it there. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
-msgstr "Her defter kendi bulut hesabınıza kopyalanır ve en son sürüm, orada açtığınızda okuyucuya gelir. Yedek alınmadan hiçbir şey değiştirilmez veya kaldırılmaz; iki okuyucu aynı defteri değiştirirse iki sürüm de korunur."
+msgid "Each notebook is copied to your own cloud account. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
+msgstr "Her defter kendi bulut hesabınıza kopyalanır. Güvenlik kopyası olmadan hiçbir şey değiştirilmez veya kaldırılmaz; iki okuyucu aynı defteri değiştirirse iki sürüm de saklanır."
 
 #: ink/view/sync.lua
 msgid "Each one is tried again at the next sync. Tap Details on the sync sheet for what to do."
@@ -2801,6 +2805,10 @@ msgstr "Kendinize göre yapın"
 msgid "Making a notebook in Library › Imported › PDFs…"
 msgstr "Kitaplık › Alınanlar › PDF'ler içinde defter hazırlanıyor…"
 
+#: ink/view/sync.lua
+msgid "Manual only"
+msgstr "Yalnızca elle"
+
 #: ink/sync/errors.lua
 msgid "Many files seem to be missing"
 msgstr "Birçok dosya eksik görünüyor"
@@ -3372,6 +3380,10 @@ msgstr "PDF şimdi açılsın mı?"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Bunları okuyucu menüsünden açın: Araçlar, Ink Away. Ya da Ayarlar, Dokunuşlar ve hareketler, Hareket yöneticisi'nde onlara bir hareket verin: eylemler “Ink Away: kitabı not al” ve “Ink Away: kitap notları”dır."
+
+#: ink/view/sync.lua
+msgid "Opening a notebook or book can wait up to 6 seconds for the cloud."
+msgstr "Bir defteri veya kitabı açmak, bulut için en fazla 6 saniye bekleyebilir."
 
 #: ink/view/settings.lua
 msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
@@ -4438,6 +4450,10 @@ msgstr "Eşitlemeyi başlat"
 msgid "Starting…"
 msgstr "Başlatılıyor…"
 
+#: ink/view/sync.lua
+msgid "Starts a sync in the background each time you close a notebook that changed."
+msgstr "Değişen bir defteri her kapattığınızda arka planda bir eşitleme başlatır."
+
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
 msgstr "Hâlâ deneniyor. Avuç içi reddi açıkken Tükenmez, Dolma, Kaligrafi ve Kurşun kalem ne kadar sert bastığınıza göre kalınlaşır. Okuyucunuzda sorun çıkarırsa GitHub'da duymak isterim."
@@ -4552,6 +4568,14 @@ msgid "Synced, with problems"
 msgstr "Eşitlendi, sorunlarla"
 
 #: ink/view/sync.lua
+msgid "Syncing by itself can slow the reader and use battery. You choose when it runs, and \"Sync now\" runs only when you ask."
+msgstr "Otomatik eşitleme okuyucuyu yavaşlatabilir ve pil harcayabilir. Ne zaman çalışacağını siz seçersiniz; “Şimdi eşitle” yalnızca siz istediğinizde çalışır."
+
+#: ink/view/sync.lua
+msgid "Syncing by itself runs in the background but uses the processor, Wi-Fi and battery, and can slow the reader. If it does, tap Manual only and use Sync now."
+msgstr "Otomatik eşitleme arka planda çalışır ama işlemciyi, Wi-Fi'yi ve pili kullanır ve okuyucuyu yavaşlatabilir. Böyle olursa “Yalnızca elle”ye dokunun ve “Şimdi eşitle”yi kullanın."
+
+#: ink/view/sync.lua
 msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
 msgstr "Otomatik eşitleme, siz izin vermedikçe Wi-Fi'yi yalnızca zaten açıksa kullanır. “Şimdi eşitle” onu her zaman açabilir."
 
@@ -4566,6 +4590,10 @@ msgstr "Eşitleme durduruldu."
 #: ink/sync/errors.lua
 msgid "Syncing would delete a large part of your notebooks in the cloud, so it stopped before deleting anything."
 msgstr "Eşitleme, buluttaki defterlerinizin büyük bir kısmını silecekti; bu yüzden hiçbir şey silinmeden durduruldu."
+
+#: ink/view/sync.lua
+msgid "Syncs just before the reader sleeps, which uses Wi-Fi and battery."
+msgstr "Okuyucu uykuya geçmeden hemen önce eşitler; Wi-Fi ve pil kullanır."
 
 #: ink/view/settings.lua
 msgid "System"
@@ -4780,6 +4808,10 @@ msgstr "Dosya gönderilirken bulutta değişti, bu yüzden hiçbir şeyin üzeri
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "İlk katman, katmanlar açılmadan önceki silmeleri içerir, bu yüzden en altta kalır."
+
+#: ink/view/sync.lua
+msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
+msgstr "Kitap sayfalarındaki mürekkebin, içe aktarmaların, dışa aktarmaların ve ekran kırpıntılarının ilk eşitlemesi büyük ve yavaş olabilir."
 
 #: ink/view/library.lua
 msgid "The folder and everything in it go."

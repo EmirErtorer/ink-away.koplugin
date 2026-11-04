@@ -21,14 +21,14 @@ Schedule.MIN_GAP = 30                   -- seconds between automatic runs
 Schedule.INTERVALS = { 0, 15, 30, 60, 180, 720, 1440 }     -- minutes; 0 is off
 Schedule.PAUSES = { 0, 30, 60, 120, 300 }                  -- seconds; 0 is off
 
--- The settings, with the defaults: sync on closing a notebook and when one opens,
--- nothing else, and never turning Wi-Fi on by itself. `get(key)` reads a setting.
+-- The settings, with the defaults: sync on closing a notebook, nothing else (a
+-- notebook opens without waiting for the cloud), and never turning Wi-Fi on by itself. `get(key)` reads a setting.
 function Schedule.options(get)
     local function v(k, d) local x = get and get(k); if x == nil then return d end return x end
     return {
         enabled = v("inkaway_sync_enabled", false) == true,
         on_close = v("inkaway_sync_on_close", true) ~= false,
-        on_open = v("inkaway_sync_on_open", true) ~= false,
+        on_open = v("inkaway_sync_on_open", false) == true,   -- (off: opening can wait for the cloud)
         on_sleep = v("inkaway_sync_on_sleep", false) == true,
         pause_s = tonumber(v("inkaway_sync_pause", 0)) or 0,
         interval_min = tonumber(v("inkaway_sync_interval", 0)) or 0,
@@ -41,6 +41,13 @@ end
 function Schedule.backoff(failures)
     if not failures or failures <= 0 then return 0 end
     return math.min(60 * 2 ^ (failures - 1), 3600)
+end
+
+-- Does anything make it sync by itself (and so use battery and Wi-Fi in the
+-- background)? `opts` as from Schedule.options.
+function Schedule.automatic(opts)
+    return opts.enabled and (opts.on_close or opts.on_open or opts.on_sleep
+        or (opts.pause_s or 0) > 0 or (opts.interval_min or 0) > 0) or false
 end
 
 -- Is a run due for `event`? `st` is { last = time of the last run, failures = in a row,

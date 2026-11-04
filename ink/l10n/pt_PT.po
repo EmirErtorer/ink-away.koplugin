@@ -619,6 +619,10 @@ msgstr "Ao guardar, pode incluir a imagem ou exportar só o seu desenho. A grelh
 msgid "Automatic"
 msgstr "Automático"
 
+#: ink/view/sync.lua
+msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
+msgstr "A sincronização automática pode tornar o leitor mais lento e gastar bateria. “Sincronizar agora” só corre quando você pede."
+
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
@@ -1578,8 +1582,8 @@ msgid "Each document keeps its paper; a new one starts on the last you picked. O
 msgstr "Cada documento mantém o seu papel; um novo começa no último escolhido. Em papel escuro, a tinta preta e o texto aparecem a branco. O modo escuro nunca muda o papel."
 
 #: ink/view/sync.lua
-msgid "Each notebook is copied to your own cloud account, and the latest version comes to a reader when you open it there. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
-msgstr "Cada caderno é copiado para a sua própria conta na nuvem, e a versão mais recente chega a um leitor quando você o abre lá. Nada é substituído ou removido sem uma cópia de segurança e, se dois leitores alterarem o mesmo caderno, as duas versões são mantidas."
+msgid "Each notebook is copied to your own cloud account. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
+msgstr "Cada caderno é copiado para a sua própria conta na nuvem. Nada é substituído ou removido sem uma cópia de segurança, e quando dois leitores alteram o mesmo caderno, as duas versões são mantidas."
 
 #: ink/view/sync.lua
 msgid "Each one is tried again at the next sync. Tap Details on the sync sheet for what to do."
@@ -2801,6 +2805,10 @@ msgstr "Deixe-os ao seu gosto"
 msgid "Making a notebook in Library › Imported › PDFs…"
 msgstr "A criar um caderno em Biblioteca › Importados › PDFs…"
 
+#: ink/view/sync.lua
+msgid "Manual only"
+msgstr "Apenas manual"
+
 #: ink/sync/errors.lua
 msgid "Many files seem to be missing"
 msgstr "Muitos ficheiros parecem estar faltando"
@@ -3372,6 +3380,10 @@ msgstr "Abrir o PDF agora?"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Abra-os a partir do menu do leitor: Ferramentas, Ink Away. Ou dê-lhes um gesto em Configurações, Toques e gestos, Gestor de gestos: as ações são “Ink Away: anotar o livro” e “Ink Away: notas do livro”."
+
+#: ink/view/sync.lua
+msgid "Opening a notebook or book can wait up to 6 seconds for the cloud."
+msgstr "Abrir um caderno ou livro pode esperar até 6 segundos pela nuvem."
 
 #: ink/view/settings.lua
 msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
@@ -4438,6 +4450,10 @@ msgstr "Iniciar a sincronização"
 msgid "Starting…"
 msgstr "Iniciando…"
 
+#: ink/view/sync.lua
+msgid "Starts a sync in the background each time you close a notebook that changed."
+msgstr "Inicia uma sincronização em segundo plano sempre que fecha um caderno que mudou."
+
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
 msgstr "Ainda em teste. Com a rejeição da palma ativada, esferográfica, caneta de tinta permanente, caligrafia e lápis ficam mais largos quanto mais força fizer. Se der problemas no seu leitor, gostaria de saber no GitHub."
@@ -4552,6 +4568,14 @@ msgid "Synced, with problems"
 msgstr "Sincronizado, com problemas"
 
 #: ink/view/sync.lua
+msgid "Syncing by itself can slow the reader and use battery. You choose when it runs, and \"Sync now\" runs only when you ask."
+msgstr "A sincronização automática pode tornar o leitor mais lento e gastar bateria. Você escolhe quando corre, e “Sincronizar agora” só corre quando você pede."
+
+#: ink/view/sync.lua
+msgid "Syncing by itself runs in the background but uses the processor, Wi-Fi and battery, and can slow the reader. If it does, tap Manual only and use Sync now."
+msgstr "A sincronização automática corre em segundo plano, mas usa o processador, o Wi-Fi e a bateria e pode tornar o leitor mais lento. Se isso acontecer, toque em “Apenas manual” e use “Sincronizar agora”."
+
+#: ink/view/sync.lua
 msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
 msgstr "A sincronização automática só usa o Wi-Fi quando ele já está ligado, a menos que você permita. “Sincronizar agora” sempre pode ligá-lo."
 
@@ -4566,6 +4590,10 @@ msgstr "A sincronização foi interrompida."
 #: ink/sync/errors.lua
 msgid "Syncing would delete a large part of your notebooks in the cloud, so it stopped before deleting anything."
 msgstr "A sincronização eliminaria grande parte dos seus cadernos na nuvem, então parou antes de eliminar qualquer coisa."
+
+#: ink/view/sync.lua
+msgid "Syncs just before the reader sleeps, which uses Wi-Fi and battery."
+msgstr "Sincroniza mesmo antes de o leitor entrar em repouso, o que usa Wi-Fi e bateria."
 
 #: ink/view/settings.lua
 msgid "System"
@@ -4780,6 +4808,10 @@ msgstr "O ficheiro mudou na nuvem durante o envio, então nada foi sobrescrito."
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "A primeira camada tem os apagamentos de antes das camadas, por isso fica em baixo."
+
+#: ink/view/sync.lua
+msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
+msgstr "A primeira sincronização da tinta nas páginas dos livros, das importações, das exportações e dos recortes de ecrã pode ser grande e lenta."
 
 #: ink/view/library.lua
 msgid "The folder and everything in it go."
