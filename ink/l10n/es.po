@@ -930,6 +930,7 @@ msgstr "Código %1"
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr "Color"
@@ -3402,6 +3403,10 @@ msgstr "Imágenes PNG"
 msgid "PNG, PDF and more"
 msgstr "PNG, PDF y más"
 
+#: ink/view/settings.lua
+msgid "Page"
+msgstr "Página"
+
 #: ink/view/imagebrowser.lua
 #: ink/view/links.lua
 #: ink/view/notebook.lua
@@ -4057,6 +4062,10 @@ msgstr "Escanea con un teléfono o una computadora en el mismo Wi-Fi, o abre:"
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Escanea con tu teléfono"
+
+#: ink/view/settings.lua
+msgid "Screen"
+msgstr "Pantalla"
 
 #: ink/sync/areas.lua
 #: ink/view/library.lua

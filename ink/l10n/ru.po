@@ -930,6 +930,7 @@ msgstr "Код %1"
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr "Цвет"
@@ -3402,6 +3403,10 @@ msgstr "Изображения PNG"
 msgid "PNG, PDF and more"
 msgstr "PNG, PDF и другое"
 
+#: ink/view/settings.lua
+msgid "Page"
+msgstr "Страница"
+
 #: ink/view/imagebrowser.lua
 #: ink/view/links.lua
 #: ink/view/notebook.lua
@@ -4057,6 +4062,10 @@ msgstr "Отсканируйте телефоном или компьютеро�
 #: ink/view/settings.lua
 msgid "Scan with your phone"
 msgstr "Отсканируйте телефоном"
+
+#: ink/view/settings.lua
+msgid "Screen"
+msgstr "Экран"
 
 #: ink/sync/areas.lua
 #: ink/view/library.lua

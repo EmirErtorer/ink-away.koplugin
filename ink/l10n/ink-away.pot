@@ -929,6 +929,7 @@ msgstr ""
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr ""
@@ -3372,6 +3373,10 @@ msgstr ""
 msgid "PNG, PDF and more"
 msgstr ""
 
+#: ink/view/settings.lua
+msgid "Page"
+msgstr ""
+
 #: ink/view/imagebrowser.lua
 #: ink/view/links.lua
 #: ink/view/notebook.lua
@@ -4010,6 +4015,10 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "Scan with your phone"
+msgstr ""
+
+#: ink/view/settings.lua
+msgid "Screen"
 msgstr ""
 
 #: ink/sync/areas.lua

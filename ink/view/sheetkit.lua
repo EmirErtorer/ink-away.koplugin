@@ -353,6 +353,19 @@ function InkAwayView:sheetLabel(text, bold)
     return TextWidget:new{ text = text, face = Font:getFace("cfont", 15), bold = bold, fgcolor = LABEL }
 end
 
+-- A setting on one line: its name on the left, the choices (a segmented row) on
+-- the right. Saves a line over a label above the row, so a sheet of several fits
+-- a landscape screen without scrolling.
+function InkAwayView:labelledRow(label, options, current, width, onpick)
+    local gap = Screen:scaleBySize(12)
+    local lw = math.floor(width * 0.44)
+    local text = TextWidget:new{ text = label, face = Font:getFace("cfont", 16), bold = true, fgcolor = LABEL,
+        max_width = lw - gap }
+    return HorizontalGroup:new{ align = "center", text,
+        HorizontalSpan:new{ width = lw - text:getSize().w },
+        self:segmentedRow(options, current, width - lw, onpick) }
+end
+
 -- A grey explanation under a control, wrapped to `width`.
 function InkAwayView:sheetHint(text, width, size)
     return TextBoxWidget:new{ text = text, width = width, face = Font:getFace("cfont", size or 13),
