@@ -265,9 +265,10 @@ ok(cs ~= nil and findButton(cs, "Cx"), "the conflict list names the notebook")
 press(cs, "Cx")
 local c1 = view._sync_conflict
 t = textIn(c1)
-ok(findButton(c1, "Use the copy") and findButton(c1, "Keep the original") and findButton(c1, "Keep both"), "three ways to settle it")
+ok(findButton(c1, "Keep this reader's version") and findButton(c1, "Keep the other reader's version") and findButton(c1, "Keep both"), "three ways to settle it, each saying whose version it keeps")
+ok(t:find("This reader's version: Cx (conflict B 2026-11-03), ", 1, true) and t:find("The other reader's version: Cx, ", 1, true), "both versions are named, with their sizes")
 ok(t:find("backup folder", 1, true), "the safety copy is promised in words")
-press(c1, "Use the copy")
+press(c1, "Keep this reader's version")
 ok(get("Cx.inkaway") == "COPY", "using the copy does it")
 ok(get("Cx (conflict B 2026-11-03).inkaway") == nil, "and the copy is no longer there twice")
 

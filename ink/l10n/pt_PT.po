@@ -818,11 +818,6 @@ msgid "Changed meanwhile"
 msgstr "Alterado nesse meio tempo"
 
 #: ink/view/sync.lua
-#, lua-format
-msgid "Changed on %1 and on another reader. The copy from %1 is called %2."
-msgstr "Alterado em %1 e em outro leitor. A cópia de %1 se chama %2."
-
-#: ink/view/sync.lua
 msgid "Changes are waiting to be sent."
 msgstr "Há alterações aguardando envio."
 
@@ -1594,6 +1589,10 @@ msgstr "Editar"
 #: ink/view/export.lua
 msgid "Editable"
 msgstr "Editável"
+
+#: ink/view/sync.lua
+msgid "Edited on this reader and on another reader since the last sync, so there are two versions. Nothing was lost."
+msgstr "Editado neste leitor e noutro desde a última sincronização, por isso há duas versões. Nada se perdeu."
 
 #: ink/view/receive.lua
 msgid "Either way they stay in Library › Imported. To be asked again, turn on \"Ask to open notebooks that arrive\" in Phone or computer (Wi-Fi)."
@@ -2410,8 +2409,8 @@ msgid "It can't be brought back."
 msgstr "Não é possível recuperar."
 
 #: ink/view/sync.lua
-msgid "It replaces the original. The original is kept in the backup folder."
-msgstr "Ela substitui o original. O original fica na pasta de cópias de segurança."
+msgid "It replaces the other reader's version, here and on the other reader at the next sync. The version it replaces is kept in the backup folder."
+msgstr "Substitui a versão do outro leitor, aqui e no outro leitor na próxima sincronização. A versão substituída fica na pasta de cópias de segurança."
 
 #: ink/guide.lua
 msgid "It saves itself"
@@ -2476,8 +2475,12 @@ msgid "Keep going"
 msgstr "Continuar"
 
 #: ink/view/sync.lua
-msgid "Keep the original"
-msgstr "Manter o original"
+msgid "Keep the other reader's version"
+msgstr "Manter a versão do outro leitor"
+
+#: ink/view/sync.lua
+msgid "Keep this reader's version"
+msgstr "Manter a versão deste leitor"
 
 #: ink/view/sync.lua
 msgid "Keep your notebooks and drawings the same on all your readers."
@@ -3187,10 +3190,6 @@ msgstr "Os cadernos deste leitor e da nuvem ficam como estão. Este leitor para 
 msgid "Nothing"
 msgstr "Nada"
 
-#: ink/view/sync.lua
-msgid "Nothing changes. The copy stays as a notebook of its own."
-msgstr "Nada muda. A cópia fica como um caderno à parte."
-
 #: ink/view/search.lua
 msgid "Nothing found."
 msgstr "Nada encontrado."
@@ -3202,6 +3201,10 @@ msgstr "Ainda nada aqui. Crie um desenho, um caderno ou uma pasta com + Novo."
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
 msgstr "Nada dentro do laço."
+
+#: ink/view/sync.lua
+msgid "Nothing is removed. Both stay as separate notebooks, here and on the other reader."
+msgstr "Nada é removido. Ambas ficam como cadernos separados, aqui e no outro leitor."
 
 #: ink/view/sync.lua
 msgid "Nothing on this reader is replaced or removed without a safety copy first."
@@ -4684,10 +4687,6 @@ msgstr "O índice lista as páginas que têm título. Dê primeiro títulos às 
 msgid "The copy is in Library: Imported only holds what you sent"
 msgstr "A cópia está em Biblioteca: Importados guarda só o que enviou"
 
-#: ink/view/sync.lua
-msgid "The copy is removed. It is kept in the backup folder."
-msgstr "A cópia é removida. Ela fica na pasta de cópias de segurança."
-
 #: ink/view/document.lua
 #, lua-format
 msgid "The copy, “%s”, is in Library: Imported only holds what you sent"
@@ -4757,6 +4756,11 @@ msgstr "O caderno guardado para cada livro que lê."
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
 msgstr "O caderno para o qual isto leva já não existe."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The other reader's version: %1, %2"
+msgstr "Versão do outro leitor: %1, %2"
 
 #: ink/view/handwriting.lua
 msgid "The page changed. Please read the writing again."
@@ -4979,6 +4983,15 @@ msgstr "Este leitor não está ligado a uma conta na nuvem."
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Este leitor não precisa de definições especiais para o Ink Away."
+
+#: ink/view/sync.lua
+msgid "This reader's version is removed, here and on the other reader at the next sync. It is kept in the backup folder."
+msgstr "A versão deste leitor é removida, aqui e no outro leitor na próxima sincronização. Fica na pasta de cópias de segurança."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "This reader's version: %1, %2"
+msgstr "Versão deste leitor: %1, %2"
 
 #: ink/reader/hlcolour.lua
 msgid "This version of KOReader can't keep colours of your own on a highlight."
@@ -5230,10 +5243,6 @@ msgstr "Usar"
 #: ink/coverpicker.lua
 msgid "Use for new notebooks"
 msgstr "Usar para novos cadernos"
-
-#: ink/view/sync.lua
-msgid "Use the copy"
-msgstr "Usar a cópia"
 
 #: ink/view/dialogs.lua
 msgid "Use this folder"

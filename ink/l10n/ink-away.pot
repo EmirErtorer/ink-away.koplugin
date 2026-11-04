@@ -817,11 +817,6 @@ msgid "Changed meanwhile"
 msgstr ""
 
 #: ink/view/sync.lua
-#, lua-format
-msgid "Changed on %1 and on another reader. The copy from %1 is called %2."
-msgstr ""
-
-#: ink/view/sync.lua
 msgid "Changes are waiting to be sent."
 msgstr ""
 
@@ -1575,6 +1570,10 @@ msgstr ""
 
 #: ink/view/export.lua
 msgid "Editable"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Edited on this reader and on another reader since the last sync, so there are two versions. Nothing was lost."
 msgstr ""
 
 #: ink/view/receive.lua
@@ -2385,7 +2384,7 @@ msgid "It can't be brought back."
 msgstr ""
 
 #: ink/view/sync.lua
-msgid "It replaces the original. The original is kept in the backup folder."
+msgid "It replaces the other reader's version, here and on the other reader at the next sync. The version it replaces is kept in the backup folder."
 msgstr ""
 
 #: ink/guide.lua
@@ -2451,7 +2450,11 @@ msgid "Keep going"
 msgstr ""
 
 #: ink/view/sync.lua
-msgid "Keep the original"
+msgid "Keep the other reader's version"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Keep this reader's version"
 msgstr ""
 
 #: ink/view/sync.lua
@@ -3157,10 +3160,6 @@ msgstr ""
 msgid "Nothing"
 msgstr ""
 
-#: ink/view/sync.lua
-msgid "Nothing changes. The copy stays as a notebook of its own."
-msgstr ""
-
 #: ink/view/search.lua
 msgid "Nothing found."
 msgstr ""
@@ -3171,6 +3170,10 @@ msgstr ""
 
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Nothing is removed. Both stay as separate notebooks, here and on the other reader."
 msgstr ""
 
 #: ink/view/sync.lua
@@ -4636,10 +4639,6 @@ msgstr ""
 msgid "The copy is in Library: Imported only holds what you sent"
 msgstr ""
 
-#: ink/view/sync.lua
-msgid "The copy is removed. It is kept in the backup folder."
-msgstr ""
-
 #: ink/view/document.lua
 #, lua-format
 msgid "The copy, “%s”, is in Library: Imported only holds what you sent"
@@ -4708,6 +4707,11 @@ msgstr ""
 
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The other reader's version: %1, %2"
 msgstr ""
 
 #: ink/view/handwriting.lua
@@ -4923,6 +4927,15 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "This reader's version is removed, here and on the other reader at the next sync. It is kept in the backup folder."
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "This reader's version: %1, %2"
 msgstr ""
 
 #: ink/reader/hlcolour.lua
@@ -5174,10 +5187,6 @@ msgstr ""
 
 #: ink/coverpicker.lua
 msgid "Use for new notebooks"
-msgstr ""
-
-#: ink/view/sync.lua
-msgid "Use the copy"
 msgstr ""
 
 #: ink/view/dialogs.lua

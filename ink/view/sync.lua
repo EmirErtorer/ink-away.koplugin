@@ -578,7 +578,8 @@ function InkAwayView:syncConflicts()
     end)
 end
 
--- One conflict: use the copy, keep the original, or keep both.
+-- One conflict: keep this reader's version (the copy), the other reader's (the original
+-- name, which now holds what the cloud had), or both.
 function InkAwayView:syncConflict(c)
     local field = "_sync_conflict"
     self:closeSheet(field)
@@ -595,19 +596,28 @@ function InkAwayView:syncConflict(c)
         local g = VerticalGroup:new{ align = "left", self:sheetTitle(Storage.stem(c.orig), content_w, _("Back"), close) }
         local function add(w) table.insert(g, w) end
         add(vspan(8))
-        add(para(self, T(_("Changed on %1 and on another reader. The copy from %1 is called %2."), c.device or "?", Storage.stem(c.copy)), content_w, 15))
+        local root = Manager.root()
+        local function size(rel)
+            local n = Storage.size(Storage.join(root, rel))
+            return n and string.format("%.1f KB", n / 1024) or "?"
+        end
+        add(para(self, _("Edited on this reader and on another reader since the last sync, so there are two versions. Nothing was lost."), content_w, 15))
+        add(vspan(8))
+        add(para(self, T(_("This reader's version: %1, %2"), Storage.stem(c.copy), size(c.copy)), content_w, 14))
+        add(vspan(2))
+        add(para(self, T(_("The other reader's version: %1, %2"), Storage.stem(c.orig), size(c.orig)), content_w, 14))
         add(vspan(14))
-        add(self:actionButton(_("Use the copy"), content_w, function() settle("copy") end, true))
+        add(self:actionButton(_("Keep this reader's version"), content_w, function() settle("copy") end, true))
         add(vspan(4))
-        add(self:sheetHint(_("It replaces the original. The original is kept in the backup folder."), content_w, 13))
+        add(self:sheetHint(_("It replaces the other reader's version, here and on the other reader at the next sync. The version it replaces is kept in the backup folder."), content_w, 13))
         add(vspan(10))
-        add(self:actionButton(_("Keep the original"), content_w, function() settle("original") end))
+        add(self:actionButton(_("Keep the other reader's version"), content_w, function() settle("original") end))
         add(vspan(4))
-        add(self:sheetHint(_("The copy is removed. It is kept in the backup folder."), content_w, 13))
+        add(self:sheetHint(_("This reader's version is removed, here and on the other reader at the next sync. It is kept in the backup folder."), content_w, 13))
         add(vspan(10))
         add(self:actionButton(_("Keep both"), content_w, function() settle("both") end))
         add(vspan(4))
-        add(self:sheetHint(_("Nothing changes. The copy stays as a notebook of its own."), content_w, 13))
+        add(self:sheetHint(_("Nothing is removed. Both stay as separate notebooks, here and on the other reader."), content_w, 13))
         return g
     end)
 end
