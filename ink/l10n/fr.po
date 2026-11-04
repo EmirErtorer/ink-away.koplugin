@@ -489,6 +489,10 @@ msgstr "Toutes les annotations de ce livre vont être supprimées. Elles restent
 msgid "All the layers are merged into one drawing, hidden ones too. Undo brings the layers back."
 msgstr "Tous les calques sont fusionnés en un seul dessin, y compris les masqués. Annuler les rétablit."
 
+#: ink/launcher.lua
+msgid "All your notebooks and drawings"
+msgstr "Tous vos carnets et dessins"
+
 #: ink/view/share.lua
 msgid "Allow adding files"
 msgstr "Autoriser l’ajout de fichiers"
@@ -514,6 +518,7 @@ msgid "An editable PDF can't hold these as annotations:"
 msgstr "Un PDF modifiable ne peut pas contenir ceci sous forme d’annotations :"
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Annotate the book"
@@ -698,6 +703,7 @@ msgid "Book ink, Toolbar: on the left, right, top or bottom."
 msgstr "Encre du livre, barre d’outils : à gauche, à droite, en haut ou en bas."
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/reader/inkview.lua
 #: ink/sync/areas.lua
 #: ink/welcome.lua
@@ -900,6 +906,7 @@ msgstr "Découper la page"
 msgid "Clips already on a page stay there."
 msgstr "Les extraits déjà sur une page y restent."
 
+#: ink/launcher.lua
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1043,6 +1050,11 @@ msgstr "Copié dans « %s »"
 msgid "Copy"
 msgstr "Copier"
 
+#: ink/launcher.lua
+msgid "Copy part of the page as a picture"
+msgstr "Copier une partie de la page comme image"
+
+#: ink/launcher.lua
 #: main.lua
 msgid "Copy part of the screen"
 msgstr "Copier une partie de l’écran"
@@ -1483,6 +1495,11 @@ msgstr "Les points montrent où chaque contact se pose : noir pour le stylo, gri
 #: ink/view/notebook.lua
 msgid "Dotted"
 msgstr "Pointillé"
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Double tap: %1"
+msgstr "Double appui : %1"
 
 #: ink/view/share.lua
 msgid "Download"
@@ -2234,6 +2251,11 @@ msgstr "Maintenez le bouton latéral du stylo pendant que vous dessinez."
 msgid "Hold the previous or next arrow."
 msgstr "Maintenez la flèche précédente ou suivante."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Hold: %1"
+msgstr "Appui long : %1"
+
 #: ink/view/settings.lua
 msgid "Horizontal"
 msgstr "Horizontal"
@@ -2241,6 +2263,14 @@ msgstr "Horizontal"
 #: ink/view/menus.lua
 msgid "How big the arrowheads are, in canvas pixels."
 msgstr "La taille des pointes de flèche, en pixels du canevas."
+
+#: ink/view/settings.lua
+msgid "Icon in KOReader's top menu bar"
+msgstr "Icône dans la barre de menu supérieure de KOReader"
+
+#: main.lua
+msgid "Icon in the top menu bar"
+msgstr "Icône dans la barre de menu supérieure"
 
 #: ink/view/library.lua
 #, lua-format
@@ -2295,6 +2325,7 @@ msgstr "Inclure le papier"
 msgid "Ink"
 msgstr "Encre"
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Ink Away"
 msgstr "Ink Away"
@@ -2356,6 +2387,10 @@ msgid "Ink Away only uses its own folder in your account and cannot see anything
 msgstr "Ink Away n'utilise que son propre dossier dans votre compte et ne peut rien voir d'autre. La synchronisation reste désactivée tant que vous ne vous connectez pas."
 
 #: main.lua
+msgid "Ink Away's icon in this bar opens a quick menu from any screen. It shows the next time the menu is opened."
+msgstr "L’icône d’Ink Away dans cette barre ouvre un menu rapide depuis n’importe quel écran. Elle apparaît à la prochaine ouverture du menu."
+
+#: main.lua
 msgid "Ink Away: annotate the book"
 msgstr "Ink Away : annoter le livre"
 
@@ -2366,6 +2401,10 @@ msgstr "Ink Away : notes du livre (Ink Away hors d’un livre)"
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away : copier une partie de l’écran"
+
+#: main.lua
+msgid "Ink Away: quick menu"
+msgstr "Ink Away : menu rapide"
 
 #: ink/sync/areas.lua
 msgid "Ink on book pages"
@@ -2569,6 +2608,7 @@ msgid "Legal pad"
 msgstr "Bloc-notes"
 
 #: ink/actions.lua
+#: ink/launcher.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/overview.lua
@@ -3312,6 +3352,7 @@ msgstr "Ouvrez la synchronisation cloud et reconnectez-vous. Vos carnets restent
 msgid "Open Cloud sync and connect your account."
 msgstr "Ouvrez la synchronisation cloud et connectez votre compte."
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Open Ink Away"
 msgstr "Ouvrir Ink Away"
@@ -3331,6 +3372,10 @@ msgstr "Ouvrir le PDF maintenant ?"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Ouvrez-les depuis le menu du lecteur : Outils, Ink Away. Ou donnez-leur un geste dans Paramètres, Touches et gestes, Gestionnaire de gestes : les actions sont « Ink Away : annoter le livre » et « Ink Away : notes du livre »."
+
+#: ink/view/settings.lua
+msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
+msgstr "Ouvre le menu rapide d’Ink Away depuis n’importe quel écran. Il apparaît à la prochaine ouverture du menu de KOReader."
 
 #: ink/view/imagebrowser.lua
 msgid "Openverse"
@@ -3659,6 +3704,10 @@ msgstr "Partage avec téléphone ou ordinateur arrêté : rien ne s’est passé
 msgid "Pick a PDF that is already on this reader. It becomes a notebook in this folder."
 msgstr "Choisissez un PDF déjà présent sur cette liseuse. Il devient un carnet dans ce dossier."
 
+#: ink/launcher.lua
+msgid "Pick up where you left off"
+msgstr "Reprendre là où vous en étiez"
+
 #: ink/view/share.lua
 msgid "Picture"
 msgstr "Image"
@@ -3766,6 +3815,10 @@ msgstr "Remettre dans %s"
 #, lua-format
 msgid "Put back on %s"
 msgstr "Remettre sur %s"
+
+#: ink/launcher.lua
+msgid "Quick notes for the book you're reading"
+msgstr "Notes rapides sur le livre que vous lisez"
 
 #: ink/welcome.lua
 msgid "Quick notes for the book you're reading, in a window over the page, with a page for each chapter."
@@ -4455,6 +4508,11 @@ msgstr "Balayage vers le bas le long du bord droit"
 msgid "Swipe up along the right edge"
 msgstr "Balayage vers le haut le long du bord droit"
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Swipe: %1"
+msgstr "Balayage : %1"
+
 #: ink/view/settings.lua
 msgid "Symmetry"
 msgstr "Symétrie"
@@ -4549,6 +4607,11 @@ msgstr "Touchez pour ouvrir, maintenez pour renommer, déplacer, dupliquer, expo
 #: ink/guide.lua
 msgid "Tap where it should go. Format stays open while you pick styles, colours, highlights, lists, spacing and the font; on lined paper text sits on the lines."
 msgstr "Touchez là où il doit aller. Format reste ouvert pendant que vous choisissez styles, couleurs, surlignages, listes, espacement et police ; sur du papier ligné, le texte se pose sur les lignes."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Tap: %1"
+msgstr "Appui : %1"
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -5147,6 +5210,11 @@ msgstr "Double appui à deux doigts"
 msgid "Two-finger double tap."
 msgstr "Double appui à deux doigts."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger swipe %1"
+msgstr "Balayage à deux doigts %1"
+
 #: ink/welcome.lua
 msgid "Two-finger swipe from the bottom right to the top left"
 msgstr "Balayage à deux doigts du bas à droite vers le haut à gauche"
@@ -5178,6 +5246,11 @@ msgstr "Appui à deux doigts"
 #: ink/guide.lua
 msgid "Two-finger tap."
 msgstr "Appui à deux doigts."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger tap: %1"
+msgstr "Appui à deux doigts : %1"
 
 #: ink/view/notebook.lua
 msgid "Type a page number…"
@@ -5389,6 +5462,10 @@ msgstr "Écrire"
 #: ink/welcome.lua
 msgid "Write and draw on the book's pages. Your ink stays with the words when the font changes."
 msgstr "Écrivez et dessinez sur les pages du livre. Votre encre reste avec les mots quand la police change."
+
+#: ink/launcher.lua
+msgid "Write and draw on this page"
+msgstr "Écrire et dessiner sur cette page"
 
 #: ink/view/library.lua
 msgid "Write on a PDF from this reader…"

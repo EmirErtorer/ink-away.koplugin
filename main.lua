@@ -35,6 +35,13 @@ function InkAway:onDispatcherRegisterActions()
         title = _("Ink Away: annotate the book"),
         reader = true,
     })
+    -- the quick menu of the icon in the top menu bar (see ink/launcher.lua)
+    Dispatcher:registerAction("inkaway_launcher", {
+        category = "none",
+        event = "InkAwayLauncher",
+        title = _("Ink Away: quick menu"),
+        general = true,
+    })
     Dispatcher:registerAction("inkaway_capture", {
         category = "none",
         event = "InkAwayCapture",
@@ -49,7 +56,13 @@ function InkAway:onDispatcherRegisterActions()
     })
 end
 
+-- The Ink Away module of each KOReader screen (the file browser, each open book),
+-- found from the screen's menu. (KOReader names a plugin after its folder, which
+-- is not always the same, so ui.inkaway cannot be relied on.)
+InkAway.by_ui = setmetatable({}, { __mode = "k" })
+
 function InkAway:init()
+    InkAway.by_ui[self.ui] = self
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- Ink Away's gesture actions reach it even when another window covers the
@@ -90,6 +103,26 @@ function InkAway:init()
                 self:openPdfAsNotebook(file)
             end } }
         end)
+    end
+    -- Ink Away's icon in KOReader's top menu bar, once for both menus (the file
+    -- browser's and the reader's); see ink/topbar.lua
+    if not InkAway._topbar then
+        InkAway._topbar = true
+        pcall(function()
+            local lfs = require("libs/libkoreader-lfs")
+            local dir = debug.getinfo(1, "S").source:match("^@(.*/)main%.lua$") or "./"
+            require("ink/topbar").installIcon(lfs, dir, require("datastorage"):getDataDir(), lfs.currentdir())
+        end)
+        local Topbar = require("ink/topbar")
+        local function get(k) return G_reader_settings:readSetting(k) end
+        local function tap(menu)
+            local plugin = menu.ui and InkAway.by_ui[menu.ui]
+            if plugin then require("ink/launcher").show(plugin) end
+        end
+        for _i, mod in ipairs({ "apps/filemanager/filemanagermenu", "apps/reader/modules/readermenu" }) do
+            local ok, class = pcall(require, mod)
+            if ok then Topbar.patch(class, get, tap) end
+        end
     end
     -- the book gestures, once, after every plugin (the gesture manager too) is up
     if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 3 then
@@ -137,6 +170,14 @@ function InkAway:addToMainMenu(menu_items)
                   callback = function() self:onInkAwayExportBook() end },
                 { text = _("Open Ink Away"), keep_menu_open = false,
                   callback = function() self:openCanvas() end },
+                { text = _("Icon in the top menu bar"), keep_menu_open = true,
+                  help_text = _("Ink Away's icon in this bar opens a quick menu from any screen. It shows the next time the menu is opened."),
+                  checked_func = function() return require("ink/topbar").enabled(function(k) return G_reader_settings:readSetting(k) end) end,
+                  callback = function()
+                      local Topbar = require("ink/topbar")
+                      local on = not Topbar.enabled(function(k) return G_reader_settings:readSetting(k) end)
+                      G_reader_settings:saveSetting(Topbar.SETTING, on)
+                  end },
             },
         }
         local file = self.ui.document and self.ui.document.file
@@ -219,6 +260,12 @@ function InkAway:setupEntryGestures()
     end
     G_reader_settings:saveSetting("inkaway_entry_gestures", { placed = placed, held = held })
     G_reader_settings:saveSetting("inkaway_gestures_setup", 3)
+end
+
+-- The quick menu: from the icon in the top menu bar, or a gesture set to it.
+function InkAway:onInkAwayLauncher()
+    require("ink/launcher").show(self)
+    return true
 end
 
 -- The reader's gesture action uses the same quiet capture mode as the menu.

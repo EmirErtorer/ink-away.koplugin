@@ -489,6 +489,10 @@ msgstr "Bu kitabın tüm notları şimdi silinecek. Geri isterseniz 30 gün boyu
 msgid "All the layers are merged into one drawing, hidden ones too. Undo brings the layers back."
 msgstr "Tüm katmanlar, gizli olanlar da dahil, tek bir çizimde birleştirilir. Geri Al katmanları geri getirir."
 
+#: ink/launcher.lua
+msgid "All your notebooks and drawings"
+msgstr "Tüm defterleriniz ve çizimleriniz"
+
 #: ink/view/share.lua
 msgid "Allow adding files"
 msgstr "Dosya eklemeye izin ver"
@@ -514,6 +518,7 @@ msgid "An editable PDF can't hold these as annotations:"
 msgstr "Düzenlenebilir bir PDF bunları ek açıklama olarak tutamaz:"
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Annotate the book"
@@ -698,6 +703,7 @@ msgid "Book ink, Toolbar: on the left, right, top or bottom."
 msgstr "Kitap mürekkebi, Araç çubuğu: solda, sağda, üstte veya altta."
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/reader/inkview.lua
 #: ink/sync/areas.lua
 #: ink/welcome.lua
@@ -900,6 +906,7 @@ msgstr "Sayfadan kırp"
 msgid "Clips already on a page stay there."
 msgstr "Zaten bir sayfada olan kırpıntılar orada kalır."
 
+#: ink/launcher.lua
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1043,6 +1050,11 @@ msgstr "“%s” içine kopyalandı"
 msgid "Copy"
 msgstr "Kopyala"
 
+#: ink/launcher.lua
+msgid "Copy part of the page as a picture"
+msgstr "Sayfanın bir bölümünü resim olarak kopyala"
+
+#: ink/launcher.lua
 #: main.lua
 msgid "Copy part of the screen"
 msgstr "Ekranın bir bölümünü kopyala"
@@ -1483,6 +1495,11 @@ msgstr "Noktalar her temasın nereye düştüğünü gösterir: kalem için siya
 #: ink/view/notebook.lua
 msgid "Dotted"
 msgstr "Noktalı"
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Double tap: %1"
+msgstr "Çift dokunma: %1"
 
 #: ink/view/share.lua
 msgid "Download"
@@ -2234,6 +2251,11 @@ msgstr "Çizerken kalemin yan düğmesini basılı tutun."
 msgid "Hold the previous or next arrow."
 msgstr "Önceki veya sonraki okunu basılı tutun."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Hold: %1"
+msgstr "Basılı tutma: %1"
+
 #: ink/view/settings.lua
 msgid "Horizontal"
 msgstr "Yatay"
@@ -2241,6 +2263,14 @@ msgstr "Yatay"
 #: ink/view/menus.lua
 msgid "How big the arrowheads are, in canvas pixels."
 msgstr "Ok uçlarının tuval pikseli cinsinden büyüklüğü."
+
+#: ink/view/settings.lua
+msgid "Icon in KOReader's top menu bar"
+msgstr "KOReader'ın üst menü çubuğundaki simge"
+
+#: main.lua
+msgid "Icon in the top menu bar"
+msgstr "Üst menü çubuğundaki simge"
 
 #: ink/view/library.lua
 #, lua-format
@@ -2295,6 +2325,7 @@ msgstr "Kâğıdı dahil et"
 msgid "Ink"
 msgstr "Mürekkep"
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Ink Away"
 msgstr "Ink Away"
@@ -2356,6 +2387,10 @@ msgid "Ink Away only uses its own folder in your account and cannot see anything
 msgstr "Ink Away hesabınızda yalnızca kendi klasörünü kullanır ve başka hiçbir şeyi göremez. Siz bağlanana kadar eşitleme kapalı kalır."
 
 #: main.lua
+msgid "Ink Away's icon in this bar opens a quick menu from any screen. It shows the next time the menu is opened."
+msgstr "Bu çubuktaki Ink Away simgesi, her ekrandan hızlı bir menü açar. Menü bir sonraki açılışında görünür."
+
+#: main.lua
 msgid "Ink Away: annotate the book"
 msgstr "Ink Away: kitabı not al"
 
@@ -2366,6 +2401,10 @@ msgstr "Ink Away: kitap notları (kitap dışında Ink Away)"
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away: ekranın bir bölümünü kopyala"
+
+#: main.lua
+msgid "Ink Away: quick menu"
+msgstr "Ink Away: hızlı menü"
 
 #: ink/sync/areas.lua
 msgid "Ink on book pages"
@@ -2569,6 +2608,7 @@ msgid "Legal pad"
 msgstr "Hukuk bloknotu"
 
 #: ink/actions.lua
+#: ink/launcher.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/overview.lua
@@ -3312,6 +3352,7 @@ msgstr "Bulut eşitlemeyi açıp yeniden bağlanın. Defterleriniz olduğu gibi 
 msgid "Open Cloud sync and connect your account."
 msgstr "Bulut eşitlemeyi açıp hesabınızı bağlayın."
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Open Ink Away"
 msgstr "Ink Away'i aç"
@@ -3331,6 +3372,10 @@ msgstr "PDF şimdi açılsın mı?"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Bunları okuyucu menüsünden açın: Araçlar, Ink Away. Ya da Ayarlar, Dokunuşlar ve hareketler, Hareket yöneticisi'nde onlara bir hareket verin: eylemler “Ink Away: kitabı not al” ve “Ink Away: kitap notları”dır."
+
+#: ink/view/settings.lua
+msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
+msgstr "Ink Away'in hızlı menüsünü her ekrandan açar. KOReader menüsü bir sonraki açılışında görünür."
 
 #: ink/view/imagebrowser.lua
 msgid "Openverse"
@@ -3659,6 +3704,10 @@ msgstr "Telefon veya bilgisayar paylaşımı durdu: %d dakikadır hiçbir şey o
 msgid "Pick a PDF that is already on this reader. It becomes a notebook in this folder."
 msgstr "Bu okuyucuda zaten bulunan bir PDF seçin. Bu klasörde bir defter olur."
 
+#: ink/launcher.lua
+msgid "Pick up where you left off"
+msgstr "Kaldığınız yerden devam edin"
+
 #: ink/view/share.lua
 msgid "Picture"
 msgstr "Resim"
@@ -3766,6 +3815,10 @@ msgstr "%s içine geri koy"
 #, lua-format
 msgid "Put back on %s"
 msgstr "%s üzerine geri koy"
+
+#: ink/launcher.lua
+msgid "Quick notes for the book you're reading"
+msgstr "Okuduğunuz kitap için hızlı notlar"
 
 #: ink/welcome.lua
 msgid "Quick notes for the book you're reading, in a window over the page, with a page for each chapter."
@@ -4455,6 +4508,11 @@ msgstr "Sağ kenar boyunca aşağı kaydırma"
 msgid "Swipe up along the right edge"
 msgstr "Sağ kenar boyunca yukarı kaydırma"
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Swipe: %1"
+msgstr "Kaydırma: %1"
+
 #: ink/view/settings.lua
 msgid "Symmetry"
 msgstr "Simetri"
@@ -4549,6 +4607,11 @@ msgstr "Açmak için dokunun; yeniden adlandırmak, taşımak, çoğaltmak, dı�
 #: ink/guide.lua
 msgid "Tap where it should go. Format stays open while you pick styles, colours, highlights, lists, spacing and the font; on lined paper text sits on the lines."
 msgstr "Nereye gideceğine dokunun. Siz stilleri, renkleri, vurguları, listeleri, aralığı ve yazı tipini seçerken Biçim açık kalır; çizgili kâğıtta metin çizgilerin üzerine oturur."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Tap: %1"
+msgstr "Dokunma: %1"
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -5147,6 +5210,11 @@ msgstr "İki parmakla çift dokunma"
 msgid "Two-finger double tap."
 msgstr "İki parmakla çift dokunma."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger swipe %1"
+msgstr "İki parmakla kaydırma %1"
+
 #: ink/welcome.lua
 msgid "Two-finger swipe from the bottom right to the top left"
 msgstr "Sağ alttan sol üste iki parmakla kaydırma"
@@ -5178,6 +5246,11 @@ msgstr "İki parmakla dokunma"
 #: ink/guide.lua
 msgid "Two-finger tap."
 msgstr "İki parmakla dokunma."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger tap: %1"
+msgstr "İki parmakla dokunma: %1"
 
 #: ink/view/notebook.lua
 msgid "Type a page number…"
@@ -5389,6 +5462,10 @@ msgstr "Yaz"
 #: ink/welcome.lua
 msgid "Write and draw on the book's pages. Your ink stays with the words when the font changes."
 msgstr "Kitabın sayfalarına yazın ve çizin. Yazı tipi değişince mürekkebiniz sözcüklerle birlikte kalır."
+
+#: ink/launcher.lua
+msgid "Write and draw on this page"
+msgstr "Bu sayfada yazın ve çizin"
 
 #: ink/view/library.lua
 msgid "Write on a PDF from this reader…"

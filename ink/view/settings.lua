@@ -17,6 +17,7 @@ local PenTest = require("ink/pentest")
 local Theme = require("ink/ui/theme")
 local Palette = require("ink/palette")
 local Storage = require("ink/storage")
+local Topbar = require("ink/topbar")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -407,6 +408,14 @@ function InkAwayView:openSettings()
                     { "notebooks", _("Notebooks") } },
                 self:getSetting("inkaway_start", "last"), content_w,
                 function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
+            -- Ink Away's icon in KOReader's top menu bar (its quick menu)
+            add(vspan(14))
+            add(ToggleRow:new{ label = _("Icon in KOReader's top menu bar"),
+                is_on = Topbar.enabled(function(k) return self:getSetting(k) end),
+                width = content_w, parent = menu,
+                callback = function(on) self:setSetting(Topbar.SETTING, on) end })
+            add(vspan(4))
+            add(self:sheetHint(_("Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."), content_w))
             -- (palm rejection, the stabilizer and the pen test are in the Pen
             -- sheet's Pen and input, set from where the pen is)
         end

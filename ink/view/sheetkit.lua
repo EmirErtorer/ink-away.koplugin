@@ -227,24 +227,32 @@ end
 
 -- A wide action tile for a main choice: a black button with a white icon on the
 -- left, a bold title and a small note under it; `hold_cb` adds a long-press
--- action (the note can say so).
-function InkAwayView:actionTile(icon, title, note, w, cb, hold_cb)
+-- action (the note can say so). `glyph` (an icon name) is drawn small at the
+-- right edge, as the picture of a gesture is.
+function InkAwayView:actionTile(icon, title, note, w, cb, hold_cb, glyph)
     local a = Accent.get()
     local h = Screen:scaleBySize(76)
     local isz = Screen:scaleBySize(34)
     local pad = Screen:scaleBySize(20)
+    local gsz = Screen:scaleBySize(30)
+    local gw = glyph and self:tileIcon(glyph, gsz, true) or nil
+    local room = w - 3 * pad - isz - (gw and (gsz + pad) or 0)
     local texts = VerticalGroup:new{ align = "left",
         TextWidget:new{ text = title, face = Font:getFace("cfont", 20), bold = true, fgcolor = a.text,
-            max_width = w - 3 * pad - isz },
+            max_width = room },
         vspan(2),
         TextWidget:new{ text = note, face = Font:getFace("cfont", 13),
-            fgcolor = a.note, max_width = w - 3 * pad - isz } }
+            fgcolor = a.note, max_width = room } }
     local iw = self:tileIcon(icon, isz, true) or HorizontalSpan:new{ width = isz }
     -- left aligned: the trailing span fills the rest of the tile
-    local used = pad + isz + pad + texts:getSize().w
+    local used = pad + isz + pad + texts:getSize().w + (gw and (gsz + pad) or 0)
     local row = HorizontalGroup:new{ align = "center",
         HorizontalSpan:new{ width = pad }, iw, HorizontalSpan:new{ width = pad }, texts,
         HorizontalSpan:new{ width = math.max(0, w - used) } }
+    if gw then
+        row[#row + 1] = gw
+        row[#row + 1] = HorizontalSpan:new{ width = pad }
+    end
     if a.chromatic then return self:accentButton(w, h, Screen:scaleBySize(16), row, cb, hold_cb) end
     local b = Button:new{ icon = "inkaway." .. icon, icon_width = 1, icon_height = 1,
         width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(16), background = a.fill,

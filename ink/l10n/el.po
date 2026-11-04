@@ -489,6 +489,10 @@ msgstr "Όλες οι σημειώσεις αυτού του βιβλίου θα
 msgid "All the layers are merged into one drawing, hidden ones too. Undo brings the layers back."
 msgstr "Όλα τα επίπεδα συγχωνεύονται σε ένα σχέδιο, και τα κρυφά. Η Αναίρεση επαναφέρει τα επίπεδα."
 
+#: ink/launcher.lua
+msgid "All your notebooks and drawings"
+msgstr "Όλα τα σημειωματάριά σας και τα σχέδιά σας"
+
 #: ink/view/share.lua
 msgid "Allow adding files"
 msgstr "Να επιτρέπεται η προσθήκη αρχείων"
@@ -514,6 +518,7 @@ msgid "An editable PDF can't hold these as annotations:"
 msgstr "Ένα επεξεργάσιμο PDF δεν μπορεί να κρατήσει αυτά ως σχολιασμούς:"
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Annotate the book"
@@ -698,6 +703,7 @@ msgid "Book ink, Toolbar: on the left, right, top or bottom."
 msgstr "Μελάνι βιβλίου, γραμμή εργαλείων: αριστερά, δεξιά, πάνω ή κάτω."
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/reader/inkview.lua
 #: ink/sync/areas.lua
 #: ink/welcome.lua
@@ -900,6 +906,7 @@ msgstr "Αποκοπή σελίδας"
 msgid "Clips already on a page stay there."
 msgstr "Τα αποσπάσματα που βρίσκονται ήδη σε μια σελίδα μένουν εκεί."
 
+#: ink/launcher.lua
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1043,6 +1050,11 @@ msgstr "Αντιγράφηκε στο «%s»"
 msgid "Copy"
 msgstr "Αντιγραφή"
 
+#: ink/launcher.lua
+msgid "Copy part of the page as a picture"
+msgstr "Αντιγραφή μέρους της σελίδας ως εικόνα"
+
+#: ink/launcher.lua
 #: main.lua
 msgid "Copy part of the screen"
 msgstr "Αντιγραφή μέρους της οθόνης"
@@ -1483,6 +1495,11 @@ msgstr "Οι τελείες δείχνουν πού πέφτει κάθε επα
 #: ink/view/notebook.lua
 msgid "Dotted"
 msgstr "Στικτό"
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Double tap: %1"
+msgstr "Διπλό πάτημα: %1"
 
 #: ink/view/share.lua
 msgid "Download"
@@ -2234,6 +2251,11 @@ msgstr "Κρατήστε πατημένο το πλαϊνό κουμπί του 
 msgid "Hold the previous or next arrow."
 msgstr "Κρατήστε πατημένο το προηγούμενο ή το επόμενο βέλος."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Hold: %1"
+msgstr "Παρατεταμένο πάτημα: %1"
+
 #: ink/view/settings.lua
 msgid "Horizontal"
 msgstr "Οριζόντια"
@@ -2241,6 +2263,14 @@ msgstr "Οριζόντια"
 #: ink/view/menus.lua
 msgid "How big the arrowheads are, in canvas pixels."
 msgstr "Πόσο μεγάλες είναι οι κεφαλές των βελών, σε pixel του καμβά."
+
+#: ink/view/settings.lua
+msgid "Icon in KOReader's top menu bar"
+msgstr "Εικονίδιο στην επάνω γραμμή μενού του KOReader"
+
+#: main.lua
+msgid "Icon in the top menu bar"
+msgstr "Εικονίδιο στην επάνω γραμμή μενού"
 
 #: ink/view/library.lua
 #, lua-format
@@ -2295,6 +2325,7 @@ msgstr "Συμπερίληψη του χαρτιού"
 msgid "Ink"
 msgstr "Μελάνι"
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Ink Away"
 msgstr "Ink Away"
@@ -2356,6 +2387,10 @@ msgid "Ink Away only uses its own folder in your account and cannot see anything
 msgstr "Το Ink Away χρησιμοποιεί μόνο τον δικό του φάκελο στον λογαριασμό σας και δεν μπορεί να δει τίποτα άλλο. Ο συγχρονισμός παραμένει απενεργοποιημένος μέχρι να συνδεθείτε."
 
 #: main.lua
+msgid "Ink Away's icon in this bar opens a quick menu from any screen. It shows the next time the menu is opened."
+msgstr "Το εικονίδιο του Ink Away σε αυτή τη γραμμή ανοίγει ένα γρήγορο μενού από οποιαδήποτε οθόνη. Εμφανίζεται την επόμενη φορά που θα ανοίξει το μενού."
+
+#: main.lua
 msgid "Ink Away: annotate the book"
 msgstr "Ink Away: σχολιασμός του βιβλίου"
 
@@ -2366,6 +2401,10 @@ msgstr "Ink Away: σημειώσεις βιβλίου (Ink Away εκτός βι�
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away: αντιγραφή μέρους της οθόνης"
+
+#: main.lua
+msgid "Ink Away: quick menu"
+msgstr "Ink Away: γρήγορο μενού"
 
 #: ink/sync/areas.lua
 msgid "Ink on book pages"
@@ -2569,6 +2608,7 @@ msgid "Legal pad"
 msgstr "Μπλοκ νομικού"
 
 #: ink/actions.lua
+#: ink/launcher.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/overview.lua
@@ -3312,6 +3352,7 @@ msgstr "Ανοίξτε τον συγχρονισμό cloud και συνδεθε
 msgid "Open Cloud sync and connect your account."
 msgstr "Ανοίξτε τον συγχρονισμό cloud και συνδέστε τον λογαριασμό σας."
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Open Ink Away"
 msgstr "Άνοιγμα του Ink Away"
@@ -3331,6 +3372,10 @@ msgstr "Να ανοίξει τώρα το PDF;"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Ανοίξτε τα από το μενού του αναγνώστη: Εργαλεία, Ink Away. Ή δώστε τους χειρονομία στις Ρυθμίσεις, Πατήματα και χειρονομίες, Διαχειριστής χειρονομιών: οι ενέργειες είναι «Ink Away: σχολιασμός του βιβλίου» και «Ink Away: σημειώσεις βιβλίου»."
+
+#: ink/view/settings.lua
+msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
+msgstr "Ανοίγει το γρήγορο μενού του Ink Away από οποιαδήποτε οθόνη. Εμφανίζεται την επόμενη φορά που θα ανοίξει το μενού του KOReader."
 
 #: ink/view/imagebrowser.lua
 msgid "Openverse"
@@ -3659,6 +3704,10 @@ msgstr "Η κοινή χρήση με τηλέφωνο ή υπολογιστή �
 msgid "Pick a PDF that is already on this reader. It becomes a notebook in this folder."
 msgstr "Επιλέξτε ένα PDF που υπάρχει ήδη σε αυτή τη συσκευή. Γίνεται σημειωματάριο σε αυτόν τον φάκελο."
 
+#: ink/launcher.lua
+msgid "Pick up where you left off"
+msgstr "Συνεχίστε από εκεί που σταματήσατε"
+
 #: ink/view/share.lua
 msgid "Picture"
 msgstr "Εικόνα"
@@ -3766,6 +3815,10 @@ msgstr "Επαναφορά στο %s"
 #, lua-format
 msgid "Put back on %s"
 msgstr "Επαναφορά στο %s"
+
+#: ink/launcher.lua
+msgid "Quick notes for the book you're reading"
+msgstr "Γρήγορες σημειώσεις για το βιβλίο που διαβάζετε"
 
 #: ink/welcome.lua
 msgid "Quick notes for the book you're reading, in a window over the page, with a page for each chapter."
@@ -4455,6 +4508,11 @@ msgstr "Σύρσιμο προς τα κάτω κατά μήκος της δεξ�
 msgid "Swipe up along the right edge"
 msgstr "Σύρσιμο προς τα πάνω κατά μήκος της δεξιάς άκρης"
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Swipe: %1"
+msgstr "Σύρσιμο: %1"
+
 #: ink/view/settings.lua
 msgid "Symmetry"
 msgstr "Συμμετρία"
@@ -4549,6 +4607,11 @@ msgstr "Πατήστε για άνοιγμα, κρατήστε πατημένο 
 #: ink/guide.lua
 msgid "Tap where it should go. Format stays open while you pick styles, colours, highlights, lists, spacing and the font; on lined paper text sits on the lines."
 msgstr "Πατήστε εκεί που πρέπει να μπει. Η Μορφή μένει ανοιχτή όσο επιλέγετε στυλ, χρώματα, επισημάνσεις, λίστες, διαστήματα και γραμματοσειρά· σε χαρτί με γραμμές το κείμενο κάθεται στις γραμμές."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Tap: %1"
+msgstr "Πάτημα: %1"
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -5147,6 +5210,11 @@ msgstr "Διπλό πάτημα με δύο δάχτυλα"
 msgid "Two-finger double tap."
 msgstr "Διπλό πάτημα με δύο δάχτυλα."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger swipe %1"
+msgstr "Σύρσιμο με δύο δάχτυλα %1"
+
 #: ink/welcome.lua
 msgid "Two-finger swipe from the bottom right to the top left"
 msgstr "Σύρσιμο με δύο δάχτυλα από κάτω δεξιά προς πάνω αριστερά"
@@ -5178,6 +5246,11 @@ msgstr "Πάτημα με δύο δάχτυλα"
 #: ink/guide.lua
 msgid "Two-finger tap."
 msgstr "Πάτημα με δύο δάχτυλα."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger tap: %1"
+msgstr "Πάτημα με δύο δάχτυλα: %1"
 
 #: ink/view/notebook.lua
 msgid "Type a page number…"
@@ -5389,6 +5462,10 @@ msgstr "Γράψτε"
 #: ink/welcome.lua
 msgid "Write and draw on the book's pages. Your ink stays with the words when the font changes."
 msgstr "Γράψτε και σχεδιάστε στις σελίδες του βιβλίου. Το μελάνι σας μένει με τις λέξεις όταν αλλάζει η γραμματοσειρά."
+
+#: ink/launcher.lua
+msgid "Write and draw on this page"
+msgstr "Γράψτε και σχεδιάστε σε αυτή τη σελίδα"
 
 #: ink/view/library.lua
 msgid "Write on a PDF from this reader…"
