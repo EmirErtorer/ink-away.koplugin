@@ -47,6 +47,23 @@ function Storage.ensureDir(p)
     return fs.attributes(p, "mode") == "directory"
 end
 
+local function fsDirMissing(p)
+    local fs = getLfs()
+    return fs and fs.attributes(p, "mode") ~= "directory"
+end
+
+-- A folder and every folder above it that is missing, made. The path may be
+-- relative (a Kindle's data folder is "."), and then each step stays relative.
+-- Returns whether the folder is there.
+function Storage.makePath(path)
+    local acc = path:sub(1, 1) == "/" and "" or nil
+    for part in path:gmatch("[^/]+") do
+        acc = (acc and acc .. "/" or "") .. part
+        if part ~= "." and fsDirMissing(acc) then Storage.ensureDir(acc) end
+    end
+    return Storage.ensureDir(path)
+end
+
 -- KOReader's data folder, or nil outside KOReader.
 function Storage.dataDir()
     local ds = getDataStorage()

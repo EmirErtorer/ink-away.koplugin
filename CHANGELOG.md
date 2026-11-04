@@ -67,6 +67,7 @@ versions marked *Prerelease* were test builds.
   The list is yours: hold a colour to take it off, add colours of your own from the
   colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
 
+- Cloud sync: on a reader whose data folder is a relative path (a Kindle's), the safety copy made before a downloaded notebook replaces yours could not be created, so those downloads failed with IA-S402 ("Cannot write a file"). Fixed.
 - Cloud sync: tapping Sync now while a sync was already going (the one a closing
   book starts) no longer says "Not signed in"; the sheet just shows it going. A stop
   request now belongs to one run, so an old one can never stop a later run. The

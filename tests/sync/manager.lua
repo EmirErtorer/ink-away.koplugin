@@ -131,6 +131,24 @@ res = Runner.execute(rd, function() error("boom") end)
 ok(res.crashed and res.crashed:find("boom"), "a crash in the work is a result, not silence")
 
 ------------------------------------------------------------------------------
+-- a safety copy in a relative folder (a Kindle's KOReader data folder is ".")
+------------------------------------------------------------------------------
+do
+    local Backup = require("ink/sync/backup")
+    local rel_dir = "./ia-test-rel-backup"
+    os.execute("rm -rf '" .. rel_dir .. "'")
+    local src = BASE .. "/rel-src.txt"
+    local f = io.open(src, "wb"); f:write("kept"); f:close()
+    local dst, why = Backup.put(rel_dir .. "/backup", "School/Math/Calculus.inkaway", src, 1700000000)
+    ok(dst ~= nil, "a safety copy can be made in a relative folder: " .. tostring(why))
+    local g = dst and io.open(dst, "rb")
+    eq(g and g:read("*a"), "kept", "and holds the file as it was")
+    if g then g:close() end
+    ok(not io.open("/ia-test-rel-backup", "rb"), "nothing is made at the top of the file system")
+    os.execute("rm -rf '" .. rel_dir .. "'")
+end
+
+------------------------------------------------------------------------------
 -- conflicts
 ------------------------------------------------------------------------------
 local root = Manager.root()

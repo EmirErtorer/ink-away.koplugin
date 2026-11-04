@@ -88,15 +88,6 @@ local function isTracked(ctx, rel)
     return a ~= nil and a.enabled() and a.locate(rel) ~= nil
 end
 
-local function mkdirs(path)
-    local acc = path:sub(1, 1) == "/" and "" or nil
-    for part in path:gmatch("[^/]+") do
-        acc = (acc and acc .. "/" or "") .. part
-        if not Storage.isDir(acc) then Storage.ensureDir(acc) end
-    end
-    return Storage.isDir(path)
-end
-
 -- Copy a file a piece at a time (a notebook with pictures can be big).
 local function copyStream(src, dst)
     local inf, err = io.open(src, "rb")
@@ -225,7 +216,7 @@ local function usedFiles(ctx, docs, res)
                             res.warnings[#res.warnings + 1] = { rel = p, err = Errors.make("IA-S306", "attachment too large") }
                         elseif not ctx.dry then
                             if not Storage.exists(abs(ctx, rel)) then
-                                mkdirs(Storage.dirName(abs(ctx, rel)))
+                                Storage.makePath(Storage.dirName(abs(ctx, rel)))
                                 local ok = copyStream(p, abs(ctx, rel) .. Engine.TMP)
                                 if ok then replace(abs(ctx, rel) .. Engine.TMP, abs(ctx, rel))
                                 else os.remove(abs(ctx, rel) .. Engine.TMP) end
@@ -315,7 +306,7 @@ end
 -- Fetch the cloud's version into a temporary file beside `rel` and check it.
 local function fetch(ctx, rel, rem)
     local target = abs(ctx, rel)
-    mkdirs(Storage.dirName(target))
+    Storage.makePath(Storage.dirName(target))
     local tmp = target .. Engine.TMP
     os.remove(tmp)
     local meta, err = try(ctx, function() return ctx.provider:download(rel, rem.rev, tmp) end)

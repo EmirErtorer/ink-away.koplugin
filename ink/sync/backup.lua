@@ -21,13 +21,7 @@ end
 -- piece is copied a piece at a time.
 function Backup.put(dir, rel, src, now)
     local dst = Storage.join(Storage.join(dir, stamp(now or os.time())), rel)
-    Storage.ensureDir(dir)
-    local parent = Storage.dirName(dst)
-    local acc = ""
-    for part in parent:gmatch("[^/]+") do
-        acc = acc .. "/" .. part
-        if not Storage.isDir(acc) then Storage.ensureDir(acc) end
-    end
+    Storage.makePath(Storage.dirName(dst))
     local inf, err = io.open(src, "rb")
     if not inf then return nil, err end
     local out, oerr = io.open(dst, "wb")
