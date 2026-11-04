@@ -129,7 +129,7 @@ function InkAwayView:openSync()
     self:closeSheet(SHEET)
     local content_w, gap = self:sheetWidth()
     local function close() self:closeSheet(SHEET) end
-    local build = function(menu)
+    local build = function()
         local g = VerticalGroup:new{ align = "left", self:sheetTitle(_("Cloud sync"), content_w, _("Done"), close) }
         local function add(w) table.insert(g, w) end
         local s = Manager.status()
@@ -171,51 +171,13 @@ function InkAwayView:openSync()
                 add(self:actionButton(_("Sync now"), content_w, function() self:syncNow() end, true, nil, "refresh"))
             end
         end
-        -- when it runs by itself
-        local o = Manager.options()
+        -- the choices live on two sheets of their own, so this one never scrolls
         add(vspan(16))
-        add(self:sheetLabel(_("Sync automatically"), true))
-        add(vspan(6))
-        add(ToggleRow:new{ label = _("After closing a notebook"), is_on = o.on_close, width = content_w, parent = menu,
-            callback = function(on) Manager.set("inkaway_sync_on_close", on) end })
-        add(vspan(4))
-        add(ToggleRow:new{ label = _("Get the latest when opening one"), is_on = o.on_open, width = content_w, parent = menu,
-            callback = function(on) Manager.set("inkaway_sync_on_open", on) end })
-        add(vspan(4))
-        add(ToggleRow:new{ label = _("When the reader goes to sleep"), is_on = o.on_sleep, width = content_w, parent = menu,
-            callback = function(on) Manager.set("inkaway_sync_on_sleep", on) end })
-        add(vspan(10))
-        add(self:sheetLabel(_("After I stop drawing")))
-        add(vspan(6))
-        add(self:segmentedRow(PAUSES, o.pause_s, content_w, function(v)
-            Manager.set("inkaway_sync_pause", v); self:rebuildSheet(SHEET)
-        end))
-        add(vspan(10))
-        add(self:sheetLabel(_("Also every")))
-        add(vspan(6))
-        add(self:segmentedRow(EVERY, o.interval_min, content_w, function(v)
-            Manager.set("inkaway_sync_interval", v); Manager.armInterval(); self:rebuildSheet(SHEET)
-        end))
-        add(vspan(10))
-        add(ToggleRow:new{ label = _("Allow turning on Wi-Fi"), is_on = o.wifi_on, width = content_w, parent = menu,
-            callback = function(on) Manager.set("inkaway_sync_wifi_on", on) end })
-        add(vspan(6))
-        add(self:sheetHint(_("Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."), content_w, 13))
-        -- what is carried: each part on its own
-        add(vspan(16))
-        add(self:sheetLabel(_("What to sync"), true))
-        add(vspan(6))
-        for _i, a in ipairs(Manager.areas()) do
-            add(ToggleRow:new{ label = a.label, is_on = a.on, width = content_w, parent = menu,
-                callback = function(on) Manager.setArea(a.id, on) end })
-            add(vspan(2))
-            add(self:sheetHint(a.hint, content_w, 12))
-            add(vspan(6))
-        end
+        add(self:actionButton(_("Sync automatically"), content_w, function() self:syncWhenSheet() end))
+        add(vspan(8))
+        add(self:actionButton(_("What to sync"), content_w, function() self:syncWhatSheet() end))
         -- this reader, conflicts, versions, log, disconnect
-        add(vspan(16))
-        add(self:sheetLabel(_("This reader"), true))
-        add(vspan(6))
+        add(vspan(8))
         add(self:actionButton(T(_("Name: %1"), s.device), content_w, function() self:syncRename() end, nil, nil, "rename"))
         if s.conflicts > 0 then
             add(vspan(8))
@@ -228,12 +190,79 @@ function InkAwayView:openSync()
             add(self:actionButton(_("Earlier versions of this notebook"), content_w, function() self:syncVersions() end, nil, nil, "page"))
         end
         add(vspan(8))
-        add(self:actionButton(_("Sync log"), content_w, function() self:syncLog() end, nil, nil, "file"))
-        add(vspan(8))
-        add(self:actionButton(_("Disconnect"), content_w, function() self:syncDisconnect() end, nil, nil, "exit"))
+        local half2 = math.floor((content_w - gap) / 2)
+        add(HorizontalGroup:new{ align = "center",
+            self:actionButton(_("Sync log"), half2, function() self:syncLog() end, nil, nil, "file"),
+            HorizontalSpan:new{ width = gap },
+            self:actionButton(_("Disconnect"), half2, function() self:syncDisconnect() end, nil, nil, "exit") })
         return g
     end
     self:showSheet(SHEET, build)
+end
+
+-- When it syncs by itself: the triggers, the pause after drawing, the timer, Wi-Fi.
+function InkAwayView:syncWhenSheet()
+    local field = "_sync_when"
+    self:closeSheet(field)
+    self:closeSheet(SHEET)   -- (the sync sheet comes back with Back; two sheets never show at once)
+    local content_w = self:sheetWidth()
+    local function close() self:closeSheet(field); self:openSync() end
+    local build = function(menu)
+        local g = VerticalGroup:new{ align = "left", self:sheetTitle(_("Sync automatically"), content_w, _("Back"), close) }
+        local function add(w) table.insert(g, w) end
+        add(vspan(10))
+        local o = Manager.options()
+        add(ToggleRow:new{ label = _("After closing a notebook"), is_on = o.on_close, width = content_w, parent = menu,
+            callback = function(on) Manager.set("inkaway_sync_on_close", on) end })
+        add(vspan(4))
+        add(ToggleRow:new{ label = _("Get the latest when opening one"), is_on = o.on_open, width = content_w, parent = menu,
+            callback = function(on) Manager.set("inkaway_sync_on_open", on) end })
+        add(vspan(4))
+        add(ToggleRow:new{ label = _("When the reader goes to sleep"), is_on = o.on_sleep, width = content_w, parent = menu,
+            callback = function(on) Manager.set("inkaway_sync_on_sleep", on) end })
+        add(vspan(10))
+        add(self:sheetLabel(_("After I stop drawing")))
+        add(vspan(6))
+        add(self:segmentedRow(PAUSES, o.pause_s, content_w, function(v)
+            Manager.set("inkaway_sync_pause", v); self:rebuildSheet(field)
+        end))
+        add(vspan(10))
+        add(self:sheetLabel(_("Also every")))
+        add(vspan(6))
+        add(self:segmentedRow(EVERY, o.interval_min, content_w, function(v)
+            Manager.set("inkaway_sync_interval", v); Manager.armInterval(); self:rebuildSheet(field)
+        end))
+        add(vspan(10))
+        add(ToggleRow:new{ label = _("Allow turning on Wi-Fi"), is_on = o.wifi_on, width = content_w, parent = menu,
+            callback = function(on) Manager.set("inkaway_sync_wifi_on", on) end })
+        add(vspan(6))
+        add(self:sheetHint(_("Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."), content_w, 13))
+        return g
+    end
+    self:showSheet(field, build)
+end
+
+-- What is carried: each part on its own, with a line on what it holds.
+function InkAwayView:syncWhatSheet()
+    local field = "_sync_what"
+    self:closeSheet(field)
+    self:closeSheet(SHEET)   -- (the sync sheet comes back with Back; two sheets never show at once)
+    local content_w = self:sheetWidth()
+    local function close() self:closeSheet(field); self:openSync() end
+    local build = function(menu)
+        local g = VerticalGroup:new{ align = "left", self:sheetTitle(_("What to sync"), content_w, _("Back"), close) }
+        local function add(w) table.insert(g, w) end
+        add(vspan(10))
+        for _i, a in ipairs(Manager.areas()) do
+            add(ToggleRow:new{ label = a.label, is_on = a.on, width = content_w, parent = menu,
+                callback = function(on) Manager.setArea(a.id, on) end })
+            add(vspan(2))
+            add(self:sheetHint(a.hint, content_w, 12))
+            add(vspan(6))
+        end
+        return g
+    end
+    self:showSheet(field, build)
 end
 
 ------------------------------------------------------------------------------

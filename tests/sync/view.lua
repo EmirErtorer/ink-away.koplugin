@@ -167,33 +167,46 @@ view:closeSheet("_sync")
 view:openSync()
 sheet = view._sync
 t = textIn(sheet)
+local t2
 ok(t:find("Dropbox", 1, true) and t:find("Ada Lovelace", 1, true), "the account is shown")
 ok(t:find("Synced 5 min ago", 1, true), "when it last synced, in words")
 ok(findButton(sheet, "Sync now"), "Sync now")
-ok(findButton(sheet, "After closing a notebook"), "the automatic choices are labelled")
-ok(findButton(sheet, "Get the latest when opening one") and findButton(sheet, "When the reader goes to sleep"), "all of them")
-ok(findButton(sheet, "Allow turning on Wi-Fi"), "Wi-Fi is the person's choice")
+ok(findButton(sheet, "Sync automatically") and findButton(sheet, "What to sync"), "the choices are two buttons, so the sheet does not scroll")
+ok(not findButton(sheet, "After closing a notebook") and not findButton(sheet, "Exports"), "and the long lists are not on it")
+press(sheet, "Sync automatically")
+local when = view._sync_when
+ok(findButton(when, "After closing a notebook"), "the automatic choices are labelled")
+ok(findButton(when, "Get the latest when opening one") and findButton(when, "When the reader goes to sleep"), "all of them")
+ok(findButton(when, "Allow turning on Wi-Fi"), "Wi-Fi is the person's choice")
+t2 = textIn(when)
+ok(t2:find("After I stop drawing", 1, true) and t2:find("Also every", 1, true), "the timer choices")
+-- a timer choice is remembered
+press(when, "1 min")
+ok(G_reader_settings.data.inkaway_sync_pause == 60, "the pause after drawing is remembered")
+press(view._sync_when, "30m")
+ok(G_reader_settings.data.inkaway_sync_interval == 30, "so is the timer")
+press(view._sync_when, "Off")
+G_reader_settings.data.inkaway_sync_pause = nil
+G_reader_settings.data.inkaway_sync_interval = nil
+press(view._sync_when, "Back")
+ok(view._sync_when == nil and view._sync ~= nil, "Back returns to the sync sheet")
+press(view._sync, "Sync automatically")
+ok(view._sync == nil and view._sync_when ~= nil, "only one of the sheets is shown at a time")
+press(view._sync_when, "Back")
+press(view._sync, "What to sync")
+local what = view._sync_what
 for _i, label in ipairs({ "Notebooks and drawings", "Book notes", "Ink on book pages", "Imported PDFs and pictures", "Exports", "Screen clips", "Pens, colours and preferences" }) do
-    ok(findButton(sheet, label), label .. " can be turned on or off on its own")
+    ok(findButton(what, label), label .. " can be turned on or off on its own")
 end
-ok(t:find("What to sync", 1, true) and t:find("KOReader's own highlights are not included", 1, true), "each part says what it holds")
+ok(textIn(what):find("KOReader's own highlights are not included", 1, true), "each part says what it holds")
+press(view._sync_what, "Back")
 local parts = Manager.areas()
 ok(#parts == 7 and parts[1].on and parts[2].on and not parts[3].on, "the parts start as they always were, the new ones off")
 Manager.setArea("exports", true)
 ok(Manager.areas()[5].on == true, "turning a part on is remembered")
 Manager.setArea("exports", false)
-ok(t:find("After I stop drawing", 1, true) and t:find("Also every", 1, true), "the timer choices")
-ok(findButton(sheet, "Disconnect") and findButton(sheet, "Sync log"), "log and disconnect")
-ok(not findButton(sheet, "Conflicts (1)"), "no conflicts line when there are none")
-
--- a timer choice is remembered
-press(sheet, "1 min")
-ok(G_reader_settings.data.inkaway_sync_pause == 60, "the pause after drawing is remembered")
-press(view._sync, "30m")
-ok(G_reader_settings.data.inkaway_sync_interval == 30, "so is the timer")
-press(view._sync, "Off")
-G_reader_settings.data.inkaway_sync_pause = nil
-G_reader_settings.data.inkaway_sync_interval = nil
+ok(findButton(view._sync, "Disconnect") and findButton(view._sync, "Sync log"), "log and disconnect")
+ok(not findButton(view._sync, "Conflicts (1)"), "no conflicts line when there are none")
 
 -- an error on the sheet, with its code
 Manager.live.result = { fatal = { code = "IA-S101" } }

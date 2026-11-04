@@ -259,6 +259,7 @@ function InkAwayView:openSettings()
         local function add(w) table.insert(content, w) end
 
         add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "cloud", cb = function() closeSelf(); self:openSync() end },
             { icon = "coffee", cb = function() self:openSupport() end },
             { icon = "appearance", cb = function() self:openAppearance() end },
             { label = _("Guide"), cb = function() self:openGuide() end } }))

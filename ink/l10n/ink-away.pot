@@ -912,6 +912,7 @@ msgstr ""
 msgid "Close"
 msgstr ""
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr ""
@@ -4907,10 +4908,6 @@ msgstr ""
 
 #: ink/view/export.lua
 msgid "This page"
-msgstr ""
-
-#: ink/view/sync.lua
-msgid "This reader"
 msgstr ""
 
 #: ink/view/share.lua

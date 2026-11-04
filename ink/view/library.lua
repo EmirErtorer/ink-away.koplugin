@@ -104,6 +104,7 @@ function InkAwayView:openLibrary(dir, over_grid)
             -- one button for what can be made here, so a folder's name has room
             { "+ " .. _("New"), function() self:libraryNewSheet() end, true },
             { _("Search"), function() self:openSearch("library") end, icon = self:iconPath("search") },
+            { _("Cloud sync"), function() self:openSync() end, icon = self:iconPath("cloud") },
             { "\u{22EF}", function() self:libraryMenu() end },
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,

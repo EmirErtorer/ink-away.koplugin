@@ -636,6 +636,7 @@ function ReaderInkView:openReaderSettings()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Book ink"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "cloud", cb = function() closeSelf(); self:openSync() end },
             { icon = "appearance", cb = function() closeSelf(); self:openAppearance() end },
             { label = _("Guide"), cb = function() self:openGuide() end } }))
         add(VerticalSpan:new{ width = Screen:scaleBySize(12) })

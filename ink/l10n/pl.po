@@ -913,6 +913,7 @@ msgstr "Wycinki, które już są na stronie, tam zostają."
 msgid "Close"
 msgstr "Zamknij"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Synchronizacja z chmurą"
@@ -4963,10 +4964,6 @@ msgstr "Ten notatnik nie ma jeszcze strony spisu treści: menu strony ją tworzy
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Ta strona"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Ten czytnik"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

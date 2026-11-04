@@ -913,6 +913,7 @@ msgstr "I ritagli già su una pagina restano lì."
 msgid "Close"
 msgstr "Chiudi"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Sincronizzazione cloud"
@@ -4963,10 +4964,6 @@ msgstr "Questo quaderno non ha ancora una pagina dell’indice: il menu della pa
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Questa pagina"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Questo lettore"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

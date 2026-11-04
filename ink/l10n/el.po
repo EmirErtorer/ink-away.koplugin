@@ -913,6 +913,7 @@ msgstr "Τα αποσπάσματα που βρίσκονται ήδη σε μι
 msgid "Close"
 msgstr "Κλείσιμο"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Συγχρονισμός cloud"
@@ -4963,10 +4964,6 @@ msgstr "Αυτό το σημειωματάριο δεν έχει ακόμη σε
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Αυτή η σελίδα"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Αυτή η συσκευή"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

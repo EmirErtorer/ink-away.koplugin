@@ -913,6 +913,7 @@ msgstr "Les extraits déjà sur une page y restent."
 msgid "Close"
 msgstr "Fermer"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Synchronisation cloud"
@@ -4963,10 +4964,6 @@ msgstr "Ce carnet n’a pas encore de sommaire : le menu de la page en crée un.
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Cette page"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Cette liseuse"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

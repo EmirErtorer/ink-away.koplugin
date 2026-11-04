@@ -913,6 +913,7 @@ msgstr "Zaten bir sayfada olan kırpıntılar orada kalır."
 msgid "Close"
 msgstr "Kapat"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Bulut eşitleme"
@@ -4963,10 +4964,6 @@ msgstr "Bu defterin henüz içindekiler sayfası yok: sayfa menüsü bir tane ya
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Bu sayfa"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Bu okuyucu"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

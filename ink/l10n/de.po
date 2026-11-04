@@ -913,6 +913,7 @@ msgstr "Ausschnitte, die schon auf einer Seite sind, bleiben dort."
 msgid "Close"
 msgstr "Schließen"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Cloud-Synchronisierung"
@@ -4963,10 +4964,6 @@ msgstr "Dieses Notizbuch hat noch keine Inhaltsseite: Das Seitenmenü legt eine 
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Diese Seite"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Dieses Lesegerät"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

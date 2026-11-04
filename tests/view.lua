@@ -3806,7 +3806,10 @@ do
     -- a new folder from the header's + Folder, then a new drawing made inside it
     local plus_new
     for _, a in ipairs(lib.actions) do if a[1] == "+ New" then plus_new = a end end
-    ok(plus_new and plus_new[3] and #lib.actions == 3, "lib: one filled + New sits in the header, with Search and the menu")
+    ok(plus_new and plus_new[3] and #lib.actions == 4, "lib: one filled + New sits in the header, with Search, the cloud and the menu")
+    local cloud_btn
+    for _, a in ipairs(lib.actions) do if a.icon and a.icon:find("cloud.svg", 1, true) then cloud_btn = a end end
+    ok(cloud_btn ~= nil, "lib: a cloud icon opens the sync sheet, next to the menu")
     plus_new[2]()
     local new_sheet = view._library_new
     ok(new_sheet and findButton(new_sheet, "Drawing") and findButton(new_sheet, "Notebook") and findButton(new_sheet, "Folder"),

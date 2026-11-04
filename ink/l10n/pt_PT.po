@@ -913,6 +913,7 @@ msgstr "Os recortes que já estão numa página ficam lá."
 msgid "Close"
 msgstr "Fechar"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Sincronização na nuvem"
@@ -4963,10 +4964,6 @@ msgstr "Este caderno ainda não tem página de índice: o menu da página cria u
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Esta página"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Este leitor"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

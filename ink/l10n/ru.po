@@ -913,6 +913,7 @@ msgstr "Фрагменты, уже находящиеся на странице,
 msgid "Close"
 msgstr "Закрыть"
 
+#: ink/view/library.lua
 #: ink/view/sync.lua
 msgid "Cloud sync"
 msgstr "Синхронизация с облаком"
@@ -4963,10 +4964,6 @@ msgstr "В этом блокноте ещё нет страницы оглавл
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Эта страница"
-
-#: ink/view/sync.lua
-msgid "This reader"
-msgstr "Это устройство"
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."
