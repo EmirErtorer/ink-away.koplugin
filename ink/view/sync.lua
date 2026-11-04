@@ -395,7 +395,9 @@ function InkAwayView:syncNow(extra)
     self:leaveDocument()   -- the open notebook's latest changes go out too
     local o = extra or {}
     o.on_done = function(res) self:syncShowResult(res) end
-    if not Manager.run("manual", o) then self:syncShowResult({ fatal = { code = "IA-S201" }, errors = {}, warnings = {}, plan = {} }) end
+    -- (a run that is already going, such as the one the notebook's closing began,
+    -- is not an error: the sheet below shows it going)
+    Manager.run("manual", o)
     if self[SHEET] then self:rebuildSheet(SHEET) end
 end
 
@@ -403,7 +405,7 @@ end
 function InkAwayView:syncPreview()
     self:openSync()
     local close_wait = self:tell(_("Looking at what there is to sync\u{2026}"), { wait = true, field = "_sync_wait" })
-    Manager.run("manual", { dry = true, on_done = function(res)
+    local _started, why = Manager.run("manual", { dry = true, on_done = function(res)
         close_wait()
         if res.fatal then return self:syncErrorSheet(res.fatal.code) end
         local n = { upload = 0, download = 0, conflict = 0, delete_remote = 0, delete_local = 0 }
@@ -438,6 +440,8 @@ function InkAwayView:syncPreview()
             return g
         end)
     end })
+    -- (a run already going never calls back: the waiting note must not stay)
+    if why == "busy" then close_wait() end
 end
 
 -- The result of a sync that was asked for.

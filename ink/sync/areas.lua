@@ -24,6 +24,7 @@ drive it.
 
 local _ = require("ink/l10n")
 local Storage = require("ink/storage")
+local BookIndex = require("ink/sync/bookindex")
 
 local Areas = {}
 
@@ -76,8 +77,23 @@ end
 -- The sidecar files of a book that belong to its ink (and nothing else of KOReader's).
 local function bookFile(rest)
     if rest == "inkaway.lua" then return true end
+    if rest:match("^inkaway%-book%-[^/]+%.txt$") then return true end   -- the book's name (see BookIndex.mark)
     local pic = rest:match("^inkaway%-pictures/([^/]+)$")
     return pic ~= nil and pic ~= "." and pic ~= ".."
+end
+
+-- Combine two versions of a file of a book. Only the ink file is really merged; any
+-- other (a picture, the book's name) is kept as this reader has it, which is what
+-- the other reader's copy is or becomes.
+local function mergeBookFile(merge)
+    return function(first, second)
+        if first:match("inkaway%.lua$") then return merge(first, second) end
+        local f = io.open(first, "rb")
+        if not f then return nil end
+        local text = f:read("*a")
+        f:close()
+        return text
+    end
 end
 
 -- Build the areas for a run. `env`: get (settings), root (the library folder),
@@ -145,7 +161,7 @@ function Areas.build(env)
     -- what is drawn on book pages: one folder per book, named by its checksum
     do
         local books = Areas.PREFIX .. "/books"
-        local a = { id = "bookink", prefix = Areas.PREFIX, merge = env.merge }
+        local a = { id = "bookink", prefix = Areas.PREFIX, merge = env.merge and mergeBookFile(env.merge) }
         function a.enabled() return on("bookink") end
         function a.owns(rel) return under(rel, books) ~= nil end
         function a.locate(rel)
@@ -158,7 +174,15 @@ function Areas.build(env)
             for md5, book in pairs(env.books and env.books() or {}) do
                 if book.dir then
                     local ink = Storage.join(book.dir, "inkaway.lua")
-                    if Storage.exists(ink) then add(books .. "/" .. md5 .. "/inkaway.lua", ink, Storage.mtime(ink) or 0) end
+                    if Storage.exists(ink) then
+                        add(books .. "/" .. md5 .. "/inkaway.lua", ink, Storage.mtime(ink) or 0)
+                        BookIndex.mark(book.dir, book.file)
+                        for _i, e in ipairs(Storage.list(book.dir)) do
+                            if e.mode == "file" and bookFile(e.name) and e.name ~= "inkaway.lua" then
+                                add(books .. "/" .. md5 .. "/" .. e.name, e.path, e.mtime)
+                            end
+                        end
+                    end
                     for _i, e in ipairs(Storage.list(Storage.join(book.dir, "inkaway-pictures"))) do
                         if e.mode == "file" then add(books .. "/" .. md5 .. "/inkaway-pictures/" .. e.name, e.path, e.mtime) end
                     end

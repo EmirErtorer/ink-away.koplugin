@@ -455,17 +455,18 @@ local function withNetwork(allow_wifi, cb)
 end
 
 -- Start a run for `event` (see ink/sync/schedule.lua). `o`: dry, only, rebase,
--- allow_mass_delete, on_done(result). Returns whether a run started.
+-- allow_mass_delete, on_done(result). Returns whether a run started, and when it
+-- did not, why: "account" (not signed in), "busy" (a run is going) or "not due".
 function Manager.run(event, o)
     o = o or {}
     local acct = Manager.account()
     if not acct then
         if o.on_done and event == "manual" then o.on_done({ fatal = { code = "IA-S201" }, errors = {}, warnings = {}, plan = {} }) end
-        return false
+        return false, "account"
     end
     local opts = Manager.options()
     local st = { last = now_state.last_started, failures = now_state.failures, dirty = now_state.dirty, running = now_state.running }
-    if not Schedule.due(opts, event, os.time(), st) then return false end
+    if not Schedule.due(opts, event, os.time(), st) then return false, now_state.running and "busy" or "not due" end
     o.provider = acct.provider
     now_state.running = true
     now_state.progress = { phase = "start" }
@@ -481,15 +482,22 @@ function Manager.run(event, o)
                 now_state.running, now_state.progress, now_state.handle = false, nil, nil
                 now_state.result = res
                 if res.crashed then res.fatal = res.fatal or { code = "IA-S503", detail = res.crashed } end
-                if res.fatal and Errors.isFatal(res.fatal) then
+                -- (a run the person stopped is neither a failure to back off from nor a success)
+                local stopped = res.fatal and res.fatal.code == "IA-S502"
+                if res.fatal and Errors.isFatal(res.fatal) and not stopped then
                     now_state.failures = now_state.failures + 1
-                elseif not res.dry then now_state.failures = 0 end
+                elseif not res.dry and not stopped then now_state.failures = 0 end
                 if not res.dry and not res.fatal and (now_state.change_serial or 0) == started_dirty_mark then
                     now_state.dirty = false
                 end
                 Manager.log(string.format("%s: up %s down %s conflicts %s deleted %s errors %s%s", event,
                     tostring(res.uploaded), tostring(res.downloaded), tostring(res.conflicts), tostring(res.deleted),
                     tostring(res.errors and #res.errors or 0), res.fatal and (" FATAL " .. tostring(res.fatal.code)) or ""))
+                if res.fatal and res.fatal.detail then Manager.log("  detail: " .. tostring(res.fatal.detail):sub(1, 300)) end
+                for i, e in ipairs(res.errors or {}) do
+                    if i > 5 then break end
+                    Manager.log(string.format("  error %s %s %s", tostring(e.code), tostring(e.rel), tostring(e.detail or ""):sub(1, 200)))
+                end
                 if not res.dry and not res.fatal then pcall(Manager.readPrefs, wrote) end
                 changed()
                 if o.on_done then o.on_done(res) end

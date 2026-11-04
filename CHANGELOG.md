@@ -67,6 +67,12 @@ versions marked *Prerelease* were test builds.
   The list is yours: hold a colour to take it off, add colours of your own from the
   colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
 
+- Cloud sync: tapping Sync now while a sync was already going (the one a closing
+  book starts) no longer says "Not signed in"; the sheet just shows it going. A stop
+  request now belongs to one run, so an old one can never stop a later run. The
+  sync log says what went wrong, not only the code. Ink on a book is joined by a
+  small file named after the book, so its folder in the cloud says which book it is.
+
 ### Fixed
 
 - The screen clip confirmation stays above the selected area, and small pen

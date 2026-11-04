@@ -6,7 +6,9 @@ process and Ink Away talk through three small files in the sync's folder:
 
     progress.lua   what the run is doing now (written by the process)
     result.lua     how it ended (written once, at the end)
-    stop           exists when the person asked it to stop (read by the process)
+    stop           holds the number of the run the person asked to stop (read by the
+                   process, which obeys only its own number: a request left over
+                   from an earlier run must never stop a later one)
 
 Where a system gives no background process, the work runs right here in small
 steps instead. Plain files and Lua, so the file protocol is tested headless.
@@ -43,14 +45,16 @@ end
 
 function Runner.readResult(dir) return readValue(p(dir, "result.lua")) end
 
--- Ask a run to stop / has someone asked?
-function Runner.requestStop(dir)
-    Storage.writeAtomic(p(dir, "stop"), "1")
+-- Ask run `id` to stop / has someone asked it? Without an id, any request counts.
+function Runner.requestStop(dir, id)
+    Storage.writeAtomic(p(dir, "stop"), tostring(id or "1"))
 end
-function Runner.stopRequested(dir)
+function Runner.stopRequested(dir, id)
     local f = io.open(p(dir, "stop"), "rb")
-    if f then f:close() end
-    return f ~= nil
+    if not f then return false end
+    local asked = f:read("*a")
+    f:close()
+    return id == nil or asked == tostring(id)
 end
 
 local function clean(dir)
@@ -59,7 +63,7 @@ end
 
 -- Do the work of a run: `work(report, stop)` returns the result table. The
 -- result is written to a file whatever happens, a Lua error included.
-function Runner.execute(dir, work)
+function Runner.execute(dir, work, id)
     local last = -1
     local function report(info)
         local now = os.clock()
@@ -67,7 +71,7 @@ function Runner.execute(dir, work)
         last = now
         Runner.writeProgress(dir, info)
     end
-    local ok, res = pcall(work, report, function() return Runner.stopRequested(dir) end)
+    local ok, res = pcall(work, report, function() return Runner.stopRequested(dir, id) end)
     if not ok then res = { crashed = tostring(res) } end
     Runner.writeResult(dir, res)
     return res
@@ -81,7 +85,8 @@ function Runner.start(o)
     local util = require("ffi/util")
     local dir = o.dir
     clean(dir)
-    local handle = { dir = dir, done = false }
+    Runner.serial = (Runner.serial or 0) + 1
+    local handle = { dir = dir, done = false, id = os.time() .. "-" .. Runner.serial }
     local function finish(res)
         if handle.done then return end
         handle.done = true
@@ -90,12 +95,12 @@ function Runner.start(o)
         if o.on_done then o.on_done(out) end
     end
     function handle:stop()
-        Runner.requestStop(dir)
+        Runner.requestStop(dir, self.id)
         self.stopping = true
     end
     function handle:alive() return not self.done end
 
-    local pid = util.runInSubProcess(function() Runner.execute(dir, o.work) end, false, false)
+    local pid = util.runInSubProcess(function() Runner.execute(dir, o.work, handle.id) end, false, false)
     if not pid then
         -- no background process here: run in small steps in this one
         handle.inline = true
@@ -105,7 +110,7 @@ function Runner.start(o)
                     report(info)
                     if o.on_progress then o.on_progress(info) end
                 end, stop)
-            end)
+            end, handle.id)
             finish(res)
         end)
         return handle

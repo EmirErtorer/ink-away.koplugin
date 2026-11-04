@@ -102,6 +102,11 @@ SETTINGS.inkaway_sync_dropbox_key = nil
 ------------------------------------------------------------------------------
 -- runner file protocol
 ------------------------------------------------------------------------------
+do
+    local started, why = Manager.run("manual", {})
+    eq(started, false, "nothing runs without an account")
+    eq(why, "account", "and it says why, so a busy reader is not called signed out")
+end
 local rd = BASE .. "/runner"
 os.execute("mkdir -p '" .. rd .. "'")
 local res = Runner.execute(rd, function(report, stop)
@@ -115,6 +120,13 @@ Runner.requestStop(rd)
 eq(Runner.stopRequested(rd), true, "a stop request is seen")
 res = Runner.execute(rd, function(_, stop) return { stopped = stop() } end)
 eq(res.stopped, true, "the work sees it")
+-- a request left over from an earlier run never stops a later one
+Runner.requestStop(rd, "run-1")
+res = Runner.execute(rd, function(_, stop) return { stopped = stop() } end, "run-2")
+eq(res.stopped, false, "a stop meant for another run is not obeyed")
+res = Runner.execute(rd, function(_, stop) return { stopped = stop() } end, "run-1")
+eq(res.stopped, true, "a stop for this run is")
+os.remove(rd .. "/stop")
 res = Runner.execute(rd, function() error("boom") end)
 ok(res.crashed and res.crashed:find("boom"), "a crash in the work is a result, not silence")
 
