@@ -2027,6 +2027,10 @@ msgstr "Слоновая кость и серебро"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Менеджер жестов KOReader отключён, поэтому Ink Away не смог назначить им жест."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "Файл input.lua в KOReader заменён, скорее всего другим плагином для пера, поэтому перо может вести себя странно в Ink Away. Обновление или переустановка KOReader возвращает его собственный файл, либо скопируйте frontend/device/input.lua из загрузки вашей версии KOReader. Пользуйтесь Ink Away и другими плагинами для пера по одному."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Оставить как изображения"

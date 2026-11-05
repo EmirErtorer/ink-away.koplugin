@@ -2027,6 +2027,10 @@ msgstr "Elfenbein und Silber"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Der Gestenmanager von KOReader ist aus, daher konnte Ink Away diesen keine Geste geben."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "Die input.lua von KOReader wurde ersetzt, höchstwahrscheinlich durch ein anderes Stift-Plugin, daher verhält sich der Stift in Ink Away womöglich seltsam. Wenn Sie KOReader aktualisieren oder neu installieren, kommt die eigene Datei zurück; oder kopieren Sie frontend/device/input.lua aus dem Download Ihrer KOReader-Version. Verwenden Sie Ink Away und andere Stift-Plugins nur nacheinander."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Als Bilder behalten"

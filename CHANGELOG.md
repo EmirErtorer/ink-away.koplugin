@@ -30,6 +30,12 @@ versions marked *Prerelease* were test builds.
   The list is yours: hold a colour to take it off, add colours of your own from the
   colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
 
+- Ink Away says so when KOReader's input.lua has been replaced, most likely
+  by another pen plugin (#38). Older pencil.koplugin releases install their
+  own copy, and turning the plugin off doesn't undo it, so the pen can act
+  oddly. The note, shown once each time KOReader starts until it is fixed,
+  says how to put KOReader's own back. The README says it too.
+
 ### Fixed
 
 - The screen clip confirmation stays above the selected area, and small pen

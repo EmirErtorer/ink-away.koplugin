@@ -2027,6 +2027,10 @@ msgstr "Avorio e argento"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "Il gestore dei gesti di KOReader è disattivato, quindi Ink Away non ha potuto assegnare loro un gesto."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "L'input.lua di KOReader è stato sostituito, molto probabilmente da un altro plugin per la penna, quindi la penna può comportarsi in modo strano in Ink Away. Aggiornando o reinstallando KOReader torna quello originale, oppure copia frontend/device/input.lua dal download della tua versione di KOReader. Usa Ink Away e gli altri plugin per la penna uno alla volta."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Tieni come immagini"

@@ -2027,6 +2027,10 @@ msgstr "Fildişi ve gümüş"
 msgid "KOReader's gesture manager is off, so Ink Away couldn't give these a gesture."
 msgstr "KOReader'ın hareket yöneticisi kapalı, bu yüzden Ink Away bunlara bir hareket veremedi."
 
+#: ink/view/settings.lua
+msgid "KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."
+msgstr "KOReader'ın input.lua dosyası, büyük olasılıkla başka bir kalem eklentisi tarafından değiştirilmiş; bu yüzden kalem Ink Away'de tuhaf davranabilir. KOReader'ı güncellemek veya yeniden kurmak kendi dosyasını geri getirir; ya da sürümünüzün KOReader indirmesinden frontend/device/input.lua dosyasını kopyalayın. Ink Away'i ve diğer kalem eklentilerini aynı anda değil, birer birer kullanın."
+
 #: ink/view/exportbook.lua
 msgid "Keep as pictures"
 msgstr "Resim olarak tut"

@@ -66,6 +66,21 @@ function Stylus.facts(input, learned_slot, android)
     }
 end
 
+-- Is KOReader's input.lua (frontend/device/input.lua) replaced by another
+-- plugin's copy? Older pen plugins (pencil.koplugin up to 0.5) shipped one made
+-- from an older KOReader, which turning the plugin off doesn't undo. KOReader's
+-- own routeStylusEvents reads stylus_eraser_active (both came in 2026.07); the
+-- copies don't, and a field name is a string constant in the function's
+-- bytecode, so no file is read. A C function, or no stylus hook, says false.
+-- shortcut: a plugin wrapping routeStylusEvents at runtime reads as foreign too,
+-- check the class's own method if one ever does
+function Stylus.foreignInput(input)
+    local route = input and input.routeStylusEvents
+    if type(route) ~= "function" then return false end
+    local ok, code = pcall(string.dump, route)
+    return ok and not code:find("stylus_eraser_active", 1, true)
+end
+
 -- Is a tool type one of the pen-like tools we take over?
 function Stylus.isPen(tool)
     return tool == Stylus.TOOL_PEN
