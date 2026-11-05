@@ -1,6 +1,6 @@
 -- Run the whole Ink Away test suite:  luajit tests/run.lua
 -- (core logic under real FFI, then the view against a mock KOReader env)
-local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua", "tests/links.lua", "tests/pentest.lua", "tests/pens.lua", "tests/wash.lua", "tests/smudge.lua", "tests/penset.lua", "tests/actions.lua", "tests/bookink.lua", "tests/cut.lua", "tests/readerview.lua", "tests/einkdrive.lua", "tests/elipsadrive.lua", "tests/elipsaworker.lua", "tests/guide.lua", "tests/snap.lua", "tests/update.lua", "tests/layers.lua", "tests/bookshelf.lua", "tests/drawingshelf.lua", "tests/share.lua", "tests/annots.lua", "tests/hlpalette.lua", "tests/clips.lua", "tests/sync/json.lua", "tests/sync/hash.lua", "tests/sync/plan.lua", "tests/sync/engine.lua", "tests/sync/dropbox.lua", "tests/sync/clouds.lua", "tests/sync/areas.lua", "tests/sync/manager.lua", "tests/sync/portable.lua", "tests/sync/view.lua", "tests/launcher.lua", "tests/fit.lua", "tests/l10n.lua" }
+local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua", "tests/links.lua", "tests/pentest.lua", "tests/pens.lua", "tests/wash.lua", "tests/smudge.lua", "tests/penset.lua", "tests/actions.lua", "tests/bookink.lua", "tests/cut.lua", "tests/readerview.lua", "tests/einkdrive.lua", "tests/elipsadrive.lua", "tests/elipsaworker.lua", "tests/guide.lua", "tests/snap.lua", "tests/update.lua", "tests/layers.lua", "tests/bookshelf.lua", "tests/drawingshelf.lua", "tests/share.lua", "tests/annots.lua", "tests/hlpalette.lua", "tests/clips.lua", "tests/sync/json.lua", "tests/sync/plan.lua", "tests/launcher.lua", "tests/fit.lua", "tests/l10n.lua" }
 -- Some suites need a KOReader checkout with the emulator built in it:
 -- ~/koreader-emulator unless KO_SRC says otherwise (see tests/README.md).
 local KO_SRC = os.getenv("KO_SRC") or (os.getenv("HOME") .. "/koreader-emulator")
@@ -16,6 +16,12 @@ if exists(KO_SRC .. "/frontend/device/input.lua") then
     suites[#suites + 1] = "tests/gestures.lua"
     suites[#suites + 1] = "tests/kobopen.lua"
     suites[#suites + 1] = "tests/penhighlight.lua"
+end
+-- The cloud sync suites need KOReader's SHA-2 code (ffi/sha2) from the checkout.
+if exists(KO_SRC .. "/base/ffi/sha2.lua") then
+    for _, n in ipairs({ "hash", "engine", "dropbox", "clouds", "areas", "manager", "portable", "view" }) do
+        suites[#suites + 1] = "tests/sync/" .. n .. ".lua"
+    end
 end
 -- Pixel-level checks on KOReader's real C blitter, run with the emulator's luajit.
 -- The emulator's koreader folder is found in the checkout, or set with KO_EMU.
@@ -56,7 +62,7 @@ do
     local allowed = {}
     for n in ("_G assert bit collectgarbage coroutine debug error getmetatable io ipairs jit load loadfile "
         .. "loadstring math next os pairs pcall print rawequal rawget rawlen rawset require select "
-        .. "setfenv getfenv setmetatable string table tonumber tostring type unpack xpcall "
+        .. "setfenv getfenv setmetatable string table tonumber tostring type unpack xpcall package "
         .. "G_reader_settings"):gmatch("%S+") do allowed[n] = true end
     local bad = 0
     for f in io.popen("find ink -name '*.lua' | sort; echo main.lua"):lines() do
