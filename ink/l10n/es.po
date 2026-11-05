@@ -772,6 +772,10 @@ msgstr "Explorar imágenes"
 msgid "Browse notebooks"
 msgstr "Explorar libretas"
 
+#: ink/view/stickers.lua
+msgid "Bubbles"
+msgstr "Bocadillos"
+
 #: ink/sync/errors.lua
 msgid "Busy"
 msgstr "Ocupado"
@@ -1205,6 +1209,10 @@ msgstr ""
 "\n"
 "%s"
 
+#: ink/view/stickers.lua
+msgid "Couldn't add that sticker."
+msgstr "No se pudo añadir esa pegatina."
+
 #: ink/view/imagebrowser.lua
 msgid "Couldn't download that image."
 msgstr "No se pudo descargar esa imagen."
@@ -1345,6 +1353,7 @@ msgstr "Por defecto (fuente del contenido)"
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/selection.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Delete"
@@ -1407,6 +1416,10 @@ msgstr "¿Eliminar esta capa?"
 #: ink/view/library.lua
 msgid "Delete this page?"
 msgstr "¿Eliminar esta página?"
+
+#: ink/view/stickers.lua
+msgid "Delete this sticker?"
+msgstr "¿Eliminar esta pegatina?"
 
 #: ink/view/notebook.lua
 msgid "Delete which template?"
@@ -1494,6 +1507,7 @@ msgstr "No volver a mostrar"
 #: ink/view/selection.lua
 #: ink/view/settings.lua
 #: ink/view/sheetkit.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
@@ -2056,6 +2070,10 @@ msgstr "Resolución completa"
 msgid "Fumed oak"
 msgstr "Roble ahumado"
 
+#: ink/view/stickers.lua
+msgid "Fun"
+msgstr "Diversión"
+
 #: ink/guide.lua
 #: ink/reader/inkview.lua
 #: ink/view/gestures.lua
@@ -2196,12 +2214,17 @@ msgid "Hidden"
 msgstr "Oculto"
 
 #: ink/view/layers.lua
+#: ink/view/stickers.lua
 msgid "Hide"
 msgstr "Ocultar"
 
 #: ink/actions.lua
 msgid "Hide or show the toolbar"
 msgstr "Ocultar o mostrar la barra de herramientas"
+
+#: ink/view/stickers.lua
+msgid "Hide this sticker?"
+msgstr "¿Ocultar esta pegatina?"
 
 #: ink/view/textformat.lua
 msgid "Highlight"
@@ -2294,6 +2317,7 @@ msgstr "Icono en la barra de menú superior"
 msgid "Icon: %s"
 msgstr "Icono: %s"
 
+#: ink/view/settings.lua
 #: ink/view/toolbar.lua
 msgid "Image"
 msgstr "Imagen"
@@ -2842,6 +2866,10 @@ msgstr "Marcar"
 msgid "Marker"
 msgstr "Marcador"
 
+#: ink/view/stickers.lua
+msgid "Marks"
+msgstr "Marcas"
+
 #: ink/view/pencase.lua
 msgid "Medium"
 msgstr "Media"
@@ -2858,6 +2886,10 @@ msgstr "Fusionar"
 #: ink/view/layers.lua
 msgid "Merge down"
 msgstr "Fusionar hacia abajo"
+
+#: ink/view/stickers.lua
+msgid "Mine"
+msgstr "Mis pegatinas"
 
 #: ink/framecover.lua
 msgid "Minimal Metal"
@@ -3050,6 +3082,7 @@ msgid "Newest first"
 msgstr "Más recientes primero"
 
 #: ink/view/imagebrowser.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 msgid "Next"
 msgstr "Siguiente"
@@ -3252,6 +3285,14 @@ msgstr "Libretas cambiadas en dos lectores. Se conservan ambas versiones."
 msgid "Notebooks on this reader and in the cloud stay as they are. This reader stops syncing. You can connect again at any time."
 msgstr "Las libretas de este lector y de la nube se quedan como están. Este lector deja de sincronizar. Puedes volver a conectar cuando quieras."
 
+#: ink/view/stickers.lua
+msgid "Notes"
+msgstr "Notas"
+
+#: ink/view/images.lua
+msgid "Notes, speech bubbles, marks and your own."
+msgstr "Notas, bocadillos, marcas y las tuyas."
+
 #: ink/actions.lua
 #: ink/view/pencase.lua
 msgid "Nothing"
@@ -3264,6 +3305,10 @@ msgstr "No se encontró nada."
 #: ink/view/library.lua
 msgid "Nothing here yet. Make a drawing, a notebook or a folder with + New."
 msgstr "Aún no hay nada aquí. Crea un dibujo, una libreta o una carpeta con + Nuevo."
+
+#: ink/view/stickers.lua
+msgid "Nothing here. Hidden stickers come back in the sticker options."
+msgstr "Aquí no hay nada. Las pegatinas ocultas vuelven desde las opciones de pegatinas."
 
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
@@ -3315,6 +3360,10 @@ msgstr "Roble"
 #: ink/view/sync.lua
 msgid "Off"
 msgstr "Apagado"
+
+#: ink/view/stickers.lua
+msgid "Off keeps the toolbar shorter: stickers are then under Image."
+msgstr "Desactivado, la barra queda más corta: las pegatinas estarán en Imagen."
 
 #: ink/view/settings.lua
 msgid "Off: colour ink shows black until the pen rests, which reads more clearly on some colour e-ink screens."
@@ -3538,6 +3587,10 @@ msgstr "Páginas"
 #, lua-format
 msgid "Pages %d–%d (tap to change)"
 msgstr "Páginas %d–%d (toca para cambiar)"
+
+#: ink/view/stickers.lua
+msgid "Pages that already use it keep their copy."
+msgstr "Las páginas que ya la usan conservan su copia."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -3803,6 +3856,7 @@ msgstr "Versión preliminar"
 
 #: ink/ui/thumbgrid.lua
 #: ink/view/imagebrowser.lua
+#: ink/view/stickers.lua
 msgid "Prev"
 msgstr "Anterior"
 
@@ -4307,6 +4361,11 @@ msgstr "Formas, texto e imágenes"
 msgid "Show"
 msgstr "Mostrar"
 
+#: ink/view/stickers.lua
+#, lua-format
+msgid "Show all stickers (%d hidden)"
+msgstr "Mostrar todas las pegatinas (%d ocultas)"
+
 #: ink/reader/inkview.lua
 msgid "Show ink while reading"
 msgstr "Mostrar tinta al leer"
@@ -4470,6 +4529,32 @@ msgstr "Iniciando…"
 #: ink/view/sync.lua
 msgid "Starts a sync in the background each time you close a notebook that changed."
 msgstr "Inicia una sincronización en segundo plano cada vez que cierras un cuaderno que cambió."
+
+#: ink/view/stickers.lua
+msgid "Sticker options"
+msgstr "Opciones de pegatinas"
+
+#: ink/view/images.lua
+#: ink/view/stickers.lua
+#: ink/view/toolbar.lua
+msgid "Stickers"
+msgstr "Pegatinas"
+
+#: ink/view/settings.lua
+msgid "Stickers button"
+msgstr "Botón de pegatinas"
+
+#: ink/view/stickers.lua
+msgid "Stickers button in the toolbar"
+msgstr "Botón de pegatinas en la barra"
+
+#: ink/view/stickers.lua
+msgid "Stickers per page"
+msgstr "Pegatinas por página"
+
+#: ink/reader/inkview.lua
+msgid "Stickers…"
+msgstr "Pegatinas…"
 
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
@@ -4657,6 +4742,10 @@ msgstr "Toca para colocar. El formato queda abierto mientras eliges estilos, col
 #, lua-format
 msgid "Tap: %1"
 msgstr "Toque: %1"
+
+#: ink/view/stickers.lua
+msgid "Tape"
+msgstr "Cinta"
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -5140,6 +5229,7 @@ msgid "Too many requests"
 msgstr "Demasiadas solicitudes"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Toolbar"
 msgstr "Barra de herramientas"
 
@@ -5524,11 +5614,19 @@ msgstr "Escribe y dibuja en esta página"
 msgid "Write on a PDF from this reader…"
 msgstr "Escribir en un PDF de este lector…"
 
+#: ink/view/stickers.lua
+msgid "Write on a note with the pen or the Text tool, and it moves with the note."
+msgstr "Escribe en una nota con el lápiz o la herramienta Texto y se mueve con la nota."
+
 #: ink/folderlook.lua
 #: ink/palette.lua
 #: ink/view/textformat.lua
 msgid "Yellow"
 msgstr "Amarillo"
+
+#: ink/view/stickers.lua
+msgid "You can bring hidden stickers back in the sticker options."
+msgstr "Puedes recuperar las pegatinas ocultas en las opciones de pegatinas."
 
 #: ink/view/pencase.lua
 #, lua-format

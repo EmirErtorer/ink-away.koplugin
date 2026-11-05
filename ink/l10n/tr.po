@@ -772,6 +772,10 @@ msgstr "Resimlere gözat"
 msgid "Browse notebooks"
 msgstr "Defterlere gözat"
 
+#: ink/view/stickers.lua
+msgid "Bubbles"
+msgstr "Balonlar"
+
 #: ink/sync/errors.lua
 msgid "Busy"
 msgstr "Meşgul"
@@ -1205,6 +1209,10 @@ msgstr ""
 "\n"
 "%s"
 
+#: ink/view/stickers.lua
+msgid "Couldn't add that sticker."
+msgstr "Çıkartma eklenemedi."
+
 #: ink/view/imagebrowser.lua
 msgid "Couldn't download that image."
 msgstr "Bu resim indirilemedi."
@@ -1345,6 +1353,7 @@ msgstr "Varsayılan (içerik yazı tipi)"
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/selection.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Delete"
@@ -1407,6 +1416,10 @@ msgstr "Bu katman silinsin mi?"
 #: ink/view/library.lua
 msgid "Delete this page?"
 msgstr "Bu sayfa silinsin mi?"
+
+#: ink/view/stickers.lua
+msgid "Delete this sticker?"
+msgstr "Bu çıkartma silinsin mi?"
 
 #: ink/view/notebook.lua
 msgid "Delete which template?"
@@ -1494,6 +1507,7 @@ msgstr "Bunu bir daha gösterme"
 #: ink/view/selection.lua
 #: ink/view/settings.lua
 #: ink/view/sheetkit.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
@@ -2056,6 +2070,10 @@ msgstr "Tam çözünürlük"
 msgid "Fumed oak"
 msgstr "Dumanlı meşe"
 
+#: ink/view/stickers.lua
+msgid "Fun"
+msgstr "Eğlence"
+
 #: ink/guide.lua
 #: ink/reader/inkview.lua
 #: ink/view/gestures.lua
@@ -2196,12 +2214,17 @@ msgid "Hidden"
 msgstr "Gizli"
 
 #: ink/view/layers.lua
+#: ink/view/stickers.lua
 msgid "Hide"
 msgstr "Gizle"
 
 #: ink/actions.lua
 msgid "Hide or show the toolbar"
 msgstr "Araç çubuğunu gizle veya göster"
+
+#: ink/view/stickers.lua
+msgid "Hide this sticker?"
+msgstr "Bu çıkartma gizlensin mi?"
 
 #: ink/view/textformat.lua
 msgid "Highlight"
@@ -2294,6 +2317,7 @@ msgstr "Üst menü çubuğundaki simge"
 msgid "Icon: %s"
 msgstr "Simge: %s"
 
+#: ink/view/settings.lua
 #: ink/view/toolbar.lua
 msgid "Image"
 msgstr "Resim"
@@ -2842,6 +2866,10 @@ msgstr "İşaretle"
 msgid "Marker"
 msgstr "Keçeli kalem"
 
+#: ink/view/stickers.lua
+msgid "Marks"
+msgstr "İşaretler"
+
 #: ink/view/pencase.lua
 msgid "Medium"
 msgstr "Orta"
@@ -2858,6 +2886,10 @@ msgstr "Birleştir"
 #: ink/view/layers.lua
 msgid "Merge down"
 msgstr "Aşağıyla birleştir"
+
+#: ink/view/stickers.lua
+msgid "Mine"
+msgstr "Benimki"
 
 #: ink/framecover.lua
 msgid "Minimal Metal"
@@ -3050,6 +3082,7 @@ msgid "Newest first"
 msgstr "Önce en yeni"
 
 #: ink/view/imagebrowser.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 msgid "Next"
 msgstr "Sonraki"
@@ -3252,6 +3285,14 @@ msgstr "İki okuyucuda değiştirilen defterler. İki sürüm de korunuyor."
 msgid "Notebooks on this reader and in the cloud stay as they are. This reader stops syncing. You can connect again at any time."
 msgstr "Bu okuyucudaki ve buluttaki defterler olduğu gibi kalır. Bu okuyucu eşitlemeyi bırakır. İstediğiniz zaman yeniden bağlanabilirsiniz."
 
+#: ink/view/stickers.lua
+msgid "Notes"
+msgstr "Notlar"
+
+#: ink/view/images.lua
+msgid "Notes, speech bubbles, marks and your own."
+msgstr "Notlar, konuşma balonları, işaretler ve kendi çıkartmalarınız."
+
 #: ink/actions.lua
 #: ink/view/pencase.lua
 msgid "Nothing"
@@ -3264,6 +3305,10 @@ msgstr "Hiçbir şey bulunamadı."
 #: ink/view/library.lua
 msgid "Nothing here yet. Make a drawing, a notebook or a folder with + New."
 msgstr "Henüz burada bir şey yok. + Yeni ile bir çizim, defter veya klasör oluşturun."
+
+#: ink/view/stickers.lua
+msgid "Nothing here. Hidden stickers come back in the sticker options."
+msgstr "Burada bir şey yok. Gizlenen çıkartmalar çıkartma seçeneklerinde geri gelir."
 
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
@@ -3315,6 +3360,10 @@ msgstr "Meşe"
 #: ink/view/sync.lua
 msgid "Off"
 msgstr "Kapalı"
+
+#: ink/view/stickers.lua
+msgid "Off keeps the toolbar shorter: stickers are then under Image."
+msgstr "Kapalıyken araç çubuğu kısalır: çıkartmalar Resim'in altında olur."
 
 #: ink/view/settings.lua
 msgid "Off: colour ink shows black until the pen rests, which reads more clearly on some colour e-ink screens."
@@ -3538,6 +3587,10 @@ msgstr "Sayfalar"
 #, lua-format
 msgid "Pages %d–%d (tap to change)"
 msgstr "Sayfalar %d–%d (değiştirmek için dokunun)"
+
+#: ink/view/stickers.lua
+msgid "Pages that already use it keep their copy."
+msgstr "Onu kullanan sayfalar kendi kopyasını korur."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -3803,6 +3856,7 @@ msgstr "Ön sürüm"
 
 #: ink/ui/thumbgrid.lua
 #: ink/view/imagebrowser.lua
+#: ink/view/stickers.lua
 msgid "Prev"
 msgstr "Önceki"
 
@@ -4307,6 +4361,11 @@ msgstr "Şekiller, metin ve resimler"
 msgid "Show"
 msgstr "Göster"
 
+#: ink/view/stickers.lua
+#, lua-format
+msgid "Show all stickers (%d hidden)"
+msgstr "Tüm çıkartmaları göster (%d gizli)"
+
 #: ink/reader/inkview.lua
 msgid "Show ink while reading"
 msgstr "Okurken mürekkebi göster"
@@ -4470,6 +4529,32 @@ msgstr "Başlatılıyor…"
 #: ink/view/sync.lua
 msgid "Starts a sync in the background each time you close a notebook that changed."
 msgstr "Değişen bir defteri her kapattığınızda arka planda bir eşitleme başlatır."
+
+#: ink/view/stickers.lua
+msgid "Sticker options"
+msgstr "Çıkartma seçenekleri"
+
+#: ink/view/images.lua
+#: ink/view/stickers.lua
+#: ink/view/toolbar.lua
+msgid "Stickers"
+msgstr "Çıkartmalar"
+
+#: ink/view/settings.lua
+msgid "Stickers button"
+msgstr "Çıkartma düğmesi"
+
+#: ink/view/stickers.lua
+msgid "Stickers button in the toolbar"
+msgstr "Araç çubuğunda çıkartma düğmesi"
+
+#: ink/view/stickers.lua
+msgid "Stickers per page"
+msgstr "Sayfa başına çıkartma"
+
+#: ink/reader/inkview.lua
+msgid "Stickers…"
+msgstr "Çıkartmalar…"
 
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
@@ -4657,6 +4742,10 @@ msgstr "Nereye gideceğine dokunun. Siz stilleri, renkleri, vurguları, listeler
 #, lua-format
 msgid "Tap: %1"
 msgstr "Dokunma: %1"
+
+#: ink/view/stickers.lua
+msgid "Tape"
+msgstr "Bant"
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -5140,6 +5229,7 @@ msgid "Too many requests"
 msgstr "Çok fazla istek"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Toolbar"
 msgstr "Araç çubuğu"
 
@@ -5524,11 +5614,19 @@ msgstr "Bu sayfada yazın ve çizin"
 msgid "Write on a PDF from this reader…"
 msgstr "Bu okuyucudaki bir PDF'ye yaz…"
 
+#: ink/view/stickers.lua
+msgid "Write on a note with the pen or the Text tool, and it moves with the note."
+msgstr "Bir nota kalemle veya Metin aracıyla yazın; not ile birlikte hareket eder."
+
 #: ink/folderlook.lua
 #: ink/palette.lua
 #: ink/view/textformat.lua
 msgid "Yellow"
 msgstr "Sarı"
+
+#: ink/view/stickers.lua
+msgid "You can bring hidden stickers back in the sticker options."
+msgstr "Gizlenen çıkartmaları çıkartma seçeneklerinden geri getirebilirsiniz."
 
 #: ink/view/pencase.lua
 #, lua-format

@@ -10,6 +10,18 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Stickers: ready-made notes, speech bubbles, marks, tape and little pictures, each
+  shown as a preview, a few to a page. Post-its come in many shapes, flat, curled,
+  torn, taped, pinned, creased or worn, and in any colour (the colour is remembered,
+  and so is the last one used); tap one to put it on the page, ready to move, resize
+  or turn. What you write on a note, with the pen or the Text tool, moves, turns and
+  resizes with it. Hold a sticker to hide it (it comes back in the sticker options)
+  or, for your own pictures added under Mine, to delete it. How many show to a page
+  is a setting. The Stickers button takes the place of the quick-note button in the
+  book toolbar and sits next to Image in the notebook toolbar; Settings can move it
+  under Image instead, for a crowded toolbar. Book notes stay one tap away from the
+  quick menu and their gesture. The built-in stickers are drawn by a few lines of
+  code each, so all of them take only a few kilobytes.
 - Connecting Dropbox no longer means typing a 40-letter code on the reader. When
   the reader is on Wi-Fi, the QR code leads to a page the reader serves: on the
   phone, tap Open Dropbox, tap Allow, paste the code on that page, and the reader

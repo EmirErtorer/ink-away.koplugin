@@ -77,7 +77,9 @@ function InkAwayView:pasteAt(pos)
     self:layerReady()
     self.canvas:pushHistory()
     local idxs = {}
-    for _, op in ipairs(Clipboard.take(cx, cy)) do
+    local taken = Clipboard.take(cx, cy)
+    require("ink/stickers").rekey(taken)   -- (a pasted sticker is a new one)
+    for _, op in ipairs(taken) do
         -- a screen clip goes into the page as a copy of its own, so it outlasts the clips folder
         if op.kind == "image" then op.path = Clips.keep(op.path) end
         local _op, at = self.canvas:placeOp(op)   -- (onto the active layer)

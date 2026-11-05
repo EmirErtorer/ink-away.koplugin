@@ -496,16 +496,27 @@ function ReaderInkView:buildToolbar()
             else self:setTool("text") end
         end },
         { id = "image", icon = "image", cb = function() self:chooseImage() end },
+        { id = "sticker", icon = "sticker", cb = function() self:openStickers() end },
         { id = "undo", icon = "undo", cb = function() self:undo() end },
         { id = "redo", icon = "redo", cb = function() self:redo() end },
         { id = "prev", icon = "nav_prev", cb = function() self:turnPage(-1) end },
         { id = "next", icon = "nav_next", cb = function() self:turnPage(1) end },
-        { id = "notes", icon = "booknotes", cb = function() self:openBookNotes() end },
         { id = "menu", icon = "menu", cb = function() self:openReaderSettings() end },
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
     }
+    if not self:stickersInToolbar() then
+        for i, s in ipairs(specs) do if s.id == "sticker" then table.remove(specs, i); break end end
+    end
     local across = self._bar_side == "top" or self._bar_side == "bottom"
     self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side, self:toolbarFit())
+end
+
+-- The Stickers button comes or goes: the toolbar is built again.
+function ReaderInkView:stickersBarChanged()
+    self:flushPending()
+    self:buildToolbar()
+    self:placeToolbar()
+    self:areaChanged()
 end
 
 -- Is the toolbar sized to the book's margin (Book ink settings, off by default)?
@@ -664,6 +675,9 @@ function ReaderInkView:openReaderSettings()
         add(self:sheetHint(_("The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."), content_w))
         -- (Pen and input is in the Pen sheet, where the pen is)
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
+        add(self:actionButton(_("Stickers\u{2026}"), content_w, function()
+            closeSelf(); self:openStickerOptions() end))
+        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
         add(self:actionButton(_("Export\u{2026}"), content_w, function()
             closeSelf(); self:openExport() end, nil, nil, "export"))
         add(VerticalSpan:new{ width = Screen:scaleBySize(10) })

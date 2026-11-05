@@ -105,6 +105,7 @@ function Canvas:placeOp(op)
     elseif op.layer ~= nil then
         op.layer = nil   -- (pasted from a layered drawing into one without)
     end
+    require("ink/stickers").attach(self.ops, op)   -- what begins on a sticker belongs to it
     table.insert(self.ops, at, op)
     self.rev = self.rev + 1
     self.last_placed = op

@@ -311,7 +311,7 @@ end
 
 -- Insert a new image from a file: fit it to ~60% of the visible area (so its
 -- corners show for dragging), centre it in the viewport and select it.
-function InkAwayView:insertImage(path)
+function InkAwayView:insertImage(path, frac)
     path = Clips.keep(path)   -- (a screen clip is kept, see ink/clips.lua)
     local tmp = { kind = "image", path = path, x = 0, y = 0, w = 1, h = 1 }
     local src = self:imageSrc(tmp)
@@ -321,8 +321,8 @@ function InkAwayView:insertImage(path)
     end
     local natw, nath = src:getWidth(), src:getHeight()
     local v = self.view
-    local maxw = 0.6 * v.area_w / v.zoom
-    local maxh = 0.6 * v.area_h / v.zoom
+    local maxw = (frac or 0.6) * v.area_w / v.zoom
+    local maxh = (frac or 0.6) * v.area_h / v.zoom
     local s = math.min(maxw / natw, maxh / nath)
     if s <= 0 then s = 1 end
     local op = { kind = "image", path = path, natw = natw, nath = nath,
@@ -358,6 +358,12 @@ function InkAwayView:chooseImage()
         end
         add(self:sheetTitle(_("Add image"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
+        if not self:stickersInToolbar() then   -- (Settings put the stickers under Image)
+            add(self:actionButton(_("Stickers"), content_w, function()
+                closeSelf(); self:openStickers() end, nil, nil, "sticker"))
+            hint(_("Notes, speech bubbles, marks and your own."))
+            add(vspan(12))
+        end
         add(self:actionButton(_("From this reader"), content_w, function()
             closeSelf(); self:chooseLocalImage() end, true, nil, "reader"))
         hint(_("A picture file on this reader."))

@@ -772,6 +772,10 @@ msgstr "Περιήγηση εικόνων"
 msgid "Browse notebooks"
 msgstr "Περιήγηση σημειωματαρίων"
 
+#: ink/view/stickers.lua
+msgid "Bubbles"
+msgstr "Φούσκες"
+
 #: ink/sync/errors.lua
 msgid "Busy"
 msgstr "Απασχολημένο"
@@ -1205,6 +1209,10 @@ msgstr ""
 "\n"
 "%s"
 
+#: ink/view/stickers.lua
+msgid "Couldn't add that sticker."
+msgstr "Δεν ήταν δυνατή η προσθήκη του αυτοκόλλητου."
+
 #: ink/view/imagebrowser.lua
 msgid "Couldn't download that image."
 msgstr "Δεν ήταν δυνατή η λήψη αυτής της εικόνας."
@@ -1345,6 +1353,7 @@ msgstr "Προεπιλογή (γραμματοσειρά περιεχομένο�
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/selection.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Delete"
@@ -1407,6 +1416,10 @@ msgstr "Διαγραφή αυτού του επιπέδου;"
 #: ink/view/library.lua
 msgid "Delete this page?"
 msgstr "Διαγραφή αυτής της σελίδας;"
+
+#: ink/view/stickers.lua
+msgid "Delete this sticker?"
+msgstr "Διαγραφή αυτού του αυτοκόλλητου;"
 
 #: ink/view/notebook.lua
 msgid "Delete which template?"
@@ -1494,6 +1507,7 @@ msgstr "Να μην εμφανιστεί ξανά"
 #: ink/view/selection.lua
 #: ink/view/settings.lua
 #: ink/view/sheetkit.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
@@ -2056,6 +2070,10 @@ msgstr "Πλήρης ανάλυση"
 msgid "Fumed oak"
 msgstr "Καπνισμένη δρυς"
 
+#: ink/view/stickers.lua
+msgid "Fun"
+msgstr "Διασκέδαση"
+
 #: ink/guide.lua
 #: ink/reader/inkview.lua
 #: ink/view/gestures.lua
@@ -2196,12 +2214,17 @@ msgid "Hidden"
 msgstr "Κρυφό"
 
 #: ink/view/layers.lua
+#: ink/view/stickers.lua
 msgid "Hide"
 msgstr "Απόκρυψη"
 
 #: ink/actions.lua
 msgid "Hide or show the toolbar"
 msgstr "Απόκρυψη ή εμφάνιση της γραμμής εργαλείων"
+
+#: ink/view/stickers.lua
+msgid "Hide this sticker?"
+msgstr "Απόκρυψη αυτού του αυτοκόλλητου;"
 
 #: ink/view/textformat.lua
 msgid "Highlight"
@@ -2294,6 +2317,7 @@ msgstr "Εικονίδιο στην επάνω γραμμή μενού"
 msgid "Icon: %s"
 msgstr "Εικονίδιο: %s"
 
+#: ink/view/settings.lua
 #: ink/view/toolbar.lua
 msgid "Image"
 msgstr "Εικόνα"
@@ -2842,6 +2866,10 @@ msgstr "Σήμανση"
 msgid "Marker"
 msgstr "Μαρκαδόρος"
 
+#: ink/view/stickers.lua
+msgid "Marks"
+msgstr "Σήματα"
+
 #: ink/view/pencase.lua
 msgid "Medium"
 msgstr "Μεσαίο"
@@ -2858,6 +2886,10 @@ msgstr "Συγχώνευση"
 #: ink/view/layers.lua
 msgid "Merge down"
 msgstr "Συγχώνευση προς τα κάτω"
+
+#: ink/view/stickers.lua
+msgid "Mine"
+msgstr "Δικά μου"
 
 #: ink/framecover.lua
 msgid "Minimal Metal"
@@ -3050,6 +3082,7 @@ msgid "Newest first"
 msgstr "Πρώτα τα νεότερα"
 
 #: ink/view/imagebrowser.lua
+#: ink/view/stickers.lua
 #: ink/view/sync.lua
 msgid "Next"
 msgstr "Επόμενο"
@@ -3252,6 +3285,14 @@ msgstr "Σημειωματάρια που άλλαξαν σε δύο συσκε�
 msgid "Notebooks on this reader and in the cloud stay as they are. This reader stops syncing. You can connect again at any time."
 msgstr "Τα σημειωματάρια σε αυτή τη συσκευή και στο cloud μένουν όπως είναι. Αυτή η συσκευή σταματά να συγχρονίζεται. Μπορείτε να συνδεθείτε ξανά οποιαδήποτε στιγμή."
 
+#: ink/view/stickers.lua
+msgid "Notes"
+msgstr "Σημειώσεις"
+
+#: ink/view/images.lua
+msgid "Notes, speech bubbles, marks and your own."
+msgstr "Σημειώσεις, φούσκες διαλόγου, σήματα και δικά σας."
+
 #: ink/actions.lua
 #: ink/view/pencase.lua
 msgid "Nothing"
@@ -3264,6 +3305,10 @@ msgstr "Δεν βρέθηκε τίποτα."
 #: ink/view/library.lua
 msgid "Nothing here yet. Make a drawing, a notebook or a folder with + New."
 msgstr "Τίποτα εδώ ακόμη. Φτιάξτε ένα σχέδιο, σημειωματάριο ή φάκελο με το + Νέο."
+
+#: ink/view/stickers.lua
+msgid "Nothing here. Hidden stickers come back in the sticker options."
+msgstr "Εδώ δεν υπάρχει τίποτα. Τα κρυμμένα αυτοκόλλητα επιστρέφουν από τις επιλογές αυτοκόλλητων."
 
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
@@ -3315,6 +3360,10 @@ msgstr "Δρυς"
 #: ink/view/sync.lua
 msgid "Off"
 msgstr "Απενεργοποίηση"
+
+#: ink/view/stickers.lua
+msgid "Off keeps the toolbar shorter: stickers are then under Image."
+msgstr "Απενεργοποιημένο, η γραμμή εργαλείων μένει πιο κοντή: τα αυτοκόλλητα βρίσκονται τότε στην Εικόνα."
 
 #: ink/view/settings.lua
 msgid "Off: colour ink shows black until the pen rests, which reads more clearly on some colour e-ink screens."
@@ -3538,6 +3587,10 @@ msgstr "Σελίδες"
 #, lua-format
 msgid "Pages %d–%d (tap to change)"
 msgstr "Σελίδες %d–%d (πατήστε για αλλαγή)"
+
+#: ink/view/stickers.lua
+msgid "Pages that already use it keep their copy."
+msgstr "Οι σελίδες που το χρησιμοποιούν ήδη κρατούν το αντίγραφό τους."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -3803,6 +3856,7 @@ msgstr "Προ-έκδοση"
 
 #: ink/ui/thumbgrid.lua
 #: ink/view/imagebrowser.lua
+#: ink/view/stickers.lua
 msgid "Prev"
 msgstr "Προηγ."
 
@@ -4307,6 +4361,11 @@ msgstr "Σχήματα, κείμενο και εικόνες"
 msgid "Show"
 msgstr "Εμφάνιση"
 
+#: ink/view/stickers.lua
+#, lua-format
+msgid "Show all stickers (%d hidden)"
+msgstr "Εμφάνιση όλων των αυτοκόλλητων (%d κρυμμένα)"
+
 #: ink/reader/inkview.lua
 msgid "Show ink while reading"
 msgstr "Εμφάνιση μελανιού κατά την ανάγνωση"
@@ -4470,6 +4529,32 @@ msgstr "Έναρξη…"
 #: ink/view/sync.lua
 msgid "Starts a sync in the background each time you close a notebook that changed."
 msgstr "Ξεκινά έναν συγχρονισμό στο παρασκήνιο κάθε φορά που κλείνετε ένα σημειωματάριο που άλλαξε."
+
+#: ink/view/stickers.lua
+msgid "Sticker options"
+msgstr "Επιλογές αυτοκόλλητων"
+
+#: ink/view/images.lua
+#: ink/view/stickers.lua
+#: ink/view/toolbar.lua
+msgid "Stickers"
+msgstr "Αυτοκόλλητα"
+
+#: ink/view/settings.lua
+msgid "Stickers button"
+msgstr "Κουμπί αυτοκόλλητων"
+
+#: ink/view/stickers.lua
+msgid "Stickers button in the toolbar"
+msgstr "Κουμπί αυτοκόλλητων στη γραμμή εργαλείων"
+
+#: ink/view/stickers.lua
+msgid "Stickers per page"
+msgstr "Αυτοκόλλητα ανά σελίδα"
+
+#: ink/reader/inkview.lua
+msgid "Stickers…"
+msgstr "Αυτοκόλλητα…"
 
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
@@ -4657,6 +4742,10 @@ msgstr "Πατήστε εκεί που πρέπει να μπει. Η Μορφή
 #, lua-format
 msgid "Tap: %1"
 msgstr "Πάτημα: %1"
+
+#: ink/view/stickers.lua
+msgid "Tape"
+msgstr "Ταινία"
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
@@ -5140,6 +5229,7 @@ msgid "Too many requests"
 msgstr "Πάρα πολλά αιτήματα"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Toolbar"
 msgstr "Γραμμή εργαλείων"
 
@@ -5524,11 +5614,19 @@ msgstr "Γράψτε και σχεδιάστε σε αυτή τη σελίδα"
 msgid "Write on a PDF from this reader…"
 msgstr "Γράψτε σε ένα PDF από αυτή τη συσκευή…"
 
+#: ink/view/stickers.lua
+msgid "Write on a note with the pen or the Text tool, and it moves with the note."
+msgstr "Γράψτε σε μια σημείωση με το στυλό ή το εργαλείο Κείμενο και μετακινείται μαζί της."
+
 #: ink/folderlook.lua
 #: ink/palette.lua
 #: ink/view/textformat.lua
 msgid "Yellow"
 msgstr "Κίτρινο"
+
+#: ink/view/stickers.lua
+msgid "You can bring hidden stickers back in the sticker options."
+msgstr "Μπορείτε να επαναφέρετε τα κρυμμένα αυτοκόλλητα από τις επιλογές αυτοκόλλητων."
 
 #: ink/view/pencase.lua
 #, lua-format

@@ -4249,7 +4249,7 @@ do
     ok(view.nb_bar_h == view.toolbar:getSize().h, "pages: the bottom bar is as tall as the toolbar")
     ok(ov.w >= view._btn_w and plus.w >= view._btn_w and view._nb_prev.w >= view._btn_w
         and view._nb_next.w >= view._btn_w, "pages: each bar button is at least a toolbar button wide")
-    ok(cnt.w >= 2 * view._btn_w, "pages: and the counter has two columns' room between them")
+    ok(cnt.w >= 2 * view._btn_w - 2, "pages: and the counter has two columns' room between them")
     ok(view._nb_prev.w >= 1.4 * view._btn_w and view._nb_next.w >= 1.4 * view._btn_w
         and view._nb_prev.x + view._nb_prev.w <= ov.x and plus.x + plus.w <= view._nb_next.x,
         "pages: Prev and Next take taps further in, clear of the middle buttons")

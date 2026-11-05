@@ -82,6 +82,8 @@ InkAwayView.opExtent = opExtent
 -- Pan). Returns whether anything is selected.
 function InkAwayView:selectOps(idxs, from)
     if #idxs == 0 then self.selection = nil; return false end
+    -- a sticker and what is written on it are one: any part selects all
+    idxs = require("ink/stickers").expand(self.canvas.ops, idxs)
     self.selection = { idxs = idxs, from = from or "lasso" }
     self:recomputeSelectionBBox()
     return self.selection ~= nil
@@ -633,10 +635,14 @@ function InkAwayView:selDuplicate()
     if not sel then return end
     self.canvas:pushHistory()
     local off = self.grid_on and self.grid_size or math.floor(24 / self.view.zoom + 0.5)
-    local new = {}
+    local new, copies = {}, {}
     for _, op in ipairs(self:selectionOps()) do
         local c = self.canvas:cloneOp(op)
         translateOp(c, off, off)
+        copies[#copies + 1] = c
+    end
+    require("ink/stickers").rekey(copies)   -- (a copied sticker moves apart from the original)
+    for _, c in ipairs(copies) do
         local _op, at = self.canvas:placeOp(c)
         new[#new + 1] = at
     end
