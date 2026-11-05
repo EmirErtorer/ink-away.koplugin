@@ -364,6 +364,7 @@ msgstr "Otra libreta…"
 msgid "Antique gold"
 msgstr "Oro antiguo"
 
+#: ink/reader/inkview.lua
 #: ink/view/settings.lua
 msgid "Appearance"
 msgstr "Apariencia"
@@ -427,14 +428,12 @@ msgstr "Al guardar puedes incluir la imagen o exportar solo tu dibujo. La cuadr�
 msgid "Automatic"
 msgstr "Automático"
 
-#: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
 #: ink/view/toolbar.lua
-#: ink/view/updates.lua
 msgid "Back"
 msgstr "Volver"
 
@@ -460,6 +459,7 @@ msgstr "Bolígrafo, Estilográfica, Caligrafía y Lápiz pueden seguir la fuerza
 
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Black"
 msgstr "Negro"
 
@@ -478,6 +478,7 @@ msgstr "En blanco"
 #: ink/folderlook.lua
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Blue"
 msgstr "Azul"
 
@@ -572,7 +573,6 @@ msgstr "Caligrafía"
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
-#: ink/view/export.lua
 #: ink/view/exportbook.lua
 #: ink/view/images.lua
 #: ink/view/library.lua
@@ -656,11 +656,12 @@ msgstr "Los recortes que ya están en una página se quedan ahí."
 
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
-#: ink/view/dialogs.lua
 #: ink/view/guide.lua
 #: ink/view/library.lua
+#: ink/view/nativemenu.lua
 #: ink/view/notebook.lua
 #: ink/view/search.lua
+#: ink/view/settings.lua
 #: ink/view/sheetkit.lua
 #: ink/view/trash.lua
 msgid "Close"
@@ -669,6 +670,7 @@ msgstr "Cerrar"
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr "Color"
@@ -678,17 +680,13 @@ msgid "Colour and icon…"
 msgstr "Color e icono…"
 
 #: ink/coverpicker.lua
+#: ink/view/settings.lua
 msgid "Colour wheel"
 msgstr "Rueda de color"
 
 #: ink/view/settings.lua
 msgid "Colour while drawing"
 msgstr "Color al dibujar"
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Colour: %s"
-msgstr "Color: %s"
 
 #: ink/view/overview.lua
 msgid "Colour…"
@@ -1123,10 +1121,8 @@ msgstr "No volver a preguntar"
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
 #: ink/reader/hlcolour.lua
-#: ink/reader/inkview.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
-#: ink/view/gestures.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
 #: ink/view/layers.lua
@@ -1140,7 +1136,6 @@ msgstr "No volver a preguntar"
 #: ink/view/sheetkit.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
-#: ink/view/updates.lua
 msgid "Done"
 msgstr "Hecho"
 
@@ -1327,6 +1322,7 @@ msgstr "Experimental. Convertir a texto envía una imagen de la escritura selecc
 
 #: ink/guide.lua
 #: ink/view/export.lua
+#: ink/view/settings.lua
 msgid "Export"
 msgstr "Exportar"
 
@@ -1391,11 +1387,6 @@ msgstr "Exportar la carpeta como PDF"
 msgid "Exporting %d page(s) to PDF"
 msgstr "Exportando %d página(s) a PDF"
 
-#: ink/view/settings.lua
-#, lua-format
-msgid "Exports: %s"
-msgstr "Exportaciones: %s"
-
 #: ink/reader/inkview.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -1452,10 +1443,6 @@ msgstr "Archivo, Exportar: transparente o blanco, la página entera o un área q
 #: ink/guide.lua
 msgid "File, Layers splits a drawing into layers. The strip at the right adds one or picks where you draw; tap that one for its menu."
 msgstr "Archivo, Capas: divide un dibujo en capas. La tira de la derecha añade una o elige en cuál dibujas; toca la capa activa para ver su menú."
-
-#: ink/view/settings.lua
-msgid "Files"
-msgstr "Archivos"
 
 #: ink/view/share.lua
 msgid "Files arrive in Library › Imported. Reload the page if it was open."
@@ -1634,6 +1621,10 @@ msgstr "Resolución completa"
 msgid "Fumed oak"
 msgstr "Roble ahumado"
 
+#: ink/view/gestures.lua
+msgid "Gestures"
+msgstr "Gestos"
+
 #: ink/guide.lua
 #: ink/reader/inkview.lua
 #: ink/view/gestures.lua
@@ -1735,11 +1726,6 @@ msgstr "Gris"
 #: ink/view/settings.lua
 msgid "Grid"
 msgstr "Cuadrícula"
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Grid: %s"
-msgstr "Cuadrícula: %s"
 
 #: ink/reader/inkview.lua
 #: ink/view/guide.lua
@@ -2146,11 +2132,6 @@ msgid "Library folder: %s"
 msgstr "Carpeta de la biblioteca: %s"
 
 #: ink/view/settings.lua
-#, lua-format
-msgid "Library: %s"
-msgstr "Biblioteca: %s"
-
-#: ink/view/settings.lua
 msgid "Light"
 msgstr "Claro"
 
@@ -2340,7 +2321,9 @@ msgstr "Modelo"
 msgid "Monthly"
 msgstr "Mensual"
 
+#: ink/reader/inkview.lua
 #: ink/ui/thumbgrid.lua
+#: ink/view/settings.lua
 msgid "More"
 msgstr "Más"
 
@@ -2515,17 +2498,9 @@ msgstr "Aquí no hay PDF ni carpetas."
 msgid "No colour"
 msgstr "Sin color"
 
-#: ink/view/dialogs.lua
-msgid "No files or folders here."
-msgstr "Aquí no hay archivos ni carpetas."
-
 #: ink/view/library.lua
 msgid "No folders here."
 msgstr "Aquí no hay carpetas."
-
-#: ink/view/dialogs.lua
-msgid "No folders in here."
-msgstr "No hay carpetas aquí dentro."
 
 #: ink/view/library.lua
 msgid "No icon"
@@ -2684,10 +2659,6 @@ msgstr "Ahora estás en la copia, “%s”"
 msgid "Now page %d"
 msgstr "Ahora la página %d"
 
-#: ink/view/dialogs.lua
-msgid "OK"
-msgstr "Aceptar"
-
 #: ink/framecover.lua
 msgid "Oak"
 msgstr "Roble"
@@ -2779,6 +2750,7 @@ msgstr "O gira el cuadro a cualquier ángulo con el anillo que tiene encima."
 
 #: ink/folderlook.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Orange"
 msgstr "Naranja"
 
@@ -2950,22 +2922,19 @@ msgid "Pan, above the zoom, moves the page; tap it again to go back to your tool
 msgstr "Desplazar: mueve la página; tócala de nuevo para volver a tu herramienta. Dos dedos mueven la página con cualquier herramienta."
 
 #: ink/view/export.lua
+#: ink/view/settings.lua
 msgid "Paper"
 msgstr "Papel"
 
 #: ink/guide.lua
 #: ink/view/paper.lua
+#: ink/view/settings.lua
 msgid "Paper colour"
 msgstr "Color del papel"
 
 #: ink/view/notebook.lua
 msgid "Paper for this page"
 msgstr "Papel de esta página"
-
-#: ink/view/settings.lua
-#, lua-format
-msgid "Paper: %s"
-msgstr "Papel: %s"
 
 #: ink/guide.lua
 msgid "Papers and planners"
@@ -3014,6 +2983,7 @@ msgstr "Pegar donde estaba"
 msgid "Pasted the first %d characters."
 msgstr "Se pegaron los primeros %d caracteres."
 
+#: ink/view/gestures.lua
 #: ink/view/pencase.lua
 #: ink/view/toolbar.lua
 msgid "Pen"
@@ -3034,10 +3004,6 @@ msgstr "Stylus y entrada, Actualizado rápido al dibujar: la tinta aparece con e
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
 msgstr "Stylus y entrada, El Stylus toca menús y botones: usa la barra de herramientas y los menús también con el Stylus."
-
-#: ink/view/gestures.lua
-msgid "Pen buttons, while held"
-msgstr "Botones del Stylus, mientras se mantienen presionados"
 
 #: ink/guide.lua
 msgid "Pen pressure"
@@ -3163,6 +3129,7 @@ msgstr "Proteger el texto del borrador y Borrar imágenes, en el menú del borra
 
 #: ink/folderlook.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Purple"
 msgstr "Púrpura"
 
@@ -3233,6 +3200,7 @@ msgstr "Recuperado"
 #: ink/folderlook.lua
 #: ink/framecover.lua
 #: ink/palette.lua
+#: ink/view/settings.lua
 msgid "Red"
 msgstr "Rojo"
 
@@ -3854,6 +3822,7 @@ msgstr "Toca para colocar. El formato queda abierto mientras eliges estilos, col
 
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
+#: ink/view/settings.lua
 msgid "Teal"
 msgstr "Verde azulado"
 
@@ -4168,11 +4137,11 @@ msgid "To keep notebooks and drawings together"
 msgstr "Para mantener juntos las libretas y dibujos"
 
 #: ink/reader/inkview.lua
+#: ink/view/settings.lua
 msgid "Toolbar"
 msgstr "Barra de herramientas"
 
 #: ink/guide.lua
-#: ink/view/settings.lua
 msgid "Toolbar side"
 msgstr "Lado de la barra de herramientas"
 
@@ -4340,10 +4309,6 @@ msgstr "Usar"
 #: ink/coverpicker.lua
 msgid "Use for new notebooks"
 msgstr "Usar para libretas nuevas"
-
-#: ink/view/dialogs.lua
-msgid "Use this folder"
-msgstr "Usar esta carpeta"
 
 #: ink/view/settings.lua
 msgid "Vertical"

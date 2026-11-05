@@ -8,34 +8,22 @@ lets that touch through. The checking and installing are ink/update/*.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
-local Font = require("ui/font")
 local GeomUI = require("ui/geometry")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
-local TextBoxWidget = require("ui/widget/textboxwidget")
-local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("ink/l10n")
 local Accent = require("ink/accent")
 local Policy = require("ink/update/policy")
 local Updater = require("ink/update/updater")
-local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
-local BLACK = Blitbuffer.COLOR_BLACK
-local LABEL = Blitbuffer.ColorRGB32(0x66, 0x66, 0x66, 0xFF)
-
 local function S(px) return Screen:scaleBySize(px) end
+
 -- A translated text with %1, %2... filled in (as KOReader's template).
 local function T(s, ...)
     local args = { ... }
     return (s:gsub("%%(%d)", function(i) return tostring(args[tonumber(i)]) end))
 end
-local function vspan(px) return VerticalSpan:new{ width = S(px) } end
 
 local InkAwayView = {}
 
@@ -148,110 +136,91 @@ function InkAwayView:checkUpdatesNow()
     local cur = self:inkVersion()
     local function run()
         local started = Updater.check(cur, function()
-            if self._updates then self:rebuildSheet("_updates") end
+            self:refreshUpdates()
         end, true)
         if not started and not Updater.busy then
             Updater.error = Updater.error or _("a check could not start")
         end
-        if self._updates then self:rebuildSheet("_updates") end
+        self:refreshUpdates()
     end
     local ok, NetworkMgr = pcall(require, "ui/network/manager")
     if ok and NetworkMgr and NetworkMgr.runWhenOnline then NetworkMgr:runWhenOnline(run) else run() end
 end
 
--- A release's card: its kind, version and date, a line about it, What's new,
--- and its action (or a note that it is the one installed).
-function InkAwayView:releaseCard(content_w, kind, rel, action, notes_of)
-    local col = VerticalGroup:new{ align = "left" }
-    col[#col + 1] = self:sheetLabel(kind, true)
-    col[#col + 1] = vspan(4)
-    local head = rel.version .. ((rel.date and rel.date ~= "") and ("  ·  " .. dateText(rel.date)) or "")
-    col[#col + 1] = TextWidget:new{ text = head, face = Font:getFace("cfont", 20), bold = true, fgcolor = BLACK,
-        max_width = content_w }
+-- Redraw the Updates panel, when it is open, after something changed.
+function InkAwayView:refreshUpdates()
+    if self._updates and self._updates.refresh then self._updates.refresh() end
+end
+
+-- A release's rows: its kind, version and date (a long press tells more), What's
+-- new, and its action (none for the one installed).
+local function releaseRows(self, rows, kind, rel, action, notes_of)
+    local head = rel.version .. ((rel.date and rel.date ~= "") and ("  \u{00B7}  " .. dateText(rel.date)) or "")
     local line
     if action == "update" then line = T(_("A newer release, %1 to download."), sizeText(rel.size))
     elseif action == "back" then line = T(_("Go back from this version to the latest release (%1)."), sizeText(rel.size))
     elseif action == "try" then line = T(_("A test build before the next release: newer things, maybe rough edges. You can go back to the release here any time. %1."), sizeText(rel.size))
     elseif action == "current" then line = _("You have this version.") end
-    if line then
-        col[#col + 1] = vspan(4)
-        col[#col + 1] = self:sheetHint(line, content_w, 14)
-    end
-    col[#col + 1] = vspan(10)
-    local gap = S(12)
-    local half = math.floor((content_w - gap) / 2)
-    local notes = self:actionButton(_("What's new"), (action == "current") and content_w or half, function()
-        self:openReleaseNotes(notes_of, kind)
-    end)
-    if action == "current" then
-        col[#col + 1] = notes
-    else
+    rows[#rows + 1] = { text = kind, value = head, help = line, action = function() end }
+    rows[#rows + 1] = { text = _("What's new"), submenu = function() self:openReleaseNotes(notes_of, kind) end }
+    if action ~= "current" then
         local label = (action == "back" and _("Go back to it")) or (action == "try" and _("Try it")) or _("Install")
-        col[#col + 1] = HorizontalGroup:new{ align = "center", notes, HorizontalSpan:new{ width = gap },
-            self:actionButton(label, half, function() self:confirmUpdate(rel, action) end, true) }
+        rows[#rows + 1] = { text = label, action = function() self:confirmUpdate(rel, action) end }
     end
-    return col
 end
 
--- The Updates sheet.
+-- The Updates panel: the version and what the check found in its heading, a
+-- release's rows, the two switches and Check now.
 function InkAwayView:openUpdates()
     self:closeSheet("_settings_dialog")
     local cur = self:inkVersion()
-    local content_w = self:sheetWidth()
-    -- opening the sheet is looking at the news: the dot goes
+    -- opening the panel is looking at the news: the dot goes
     local avail = Updater.available(cur)
     if avail then Updater.set("seen", avail) end
     if self._update_dot then self._update_dot = false; self:refreshToolbarStrip() end
-    local build = function(menu)
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) content[#content + 1] = w end
-        add(self:sheetTitle(_("Updates"), content_w, _("Done"), function() self:closeSheet("_updates") end))
-        add(vspan(12))
+    local function heading()
         local o = Updater.offers
         local kind = o and o.on_pre and (o.pre and Policy.compare(o.pre.version, cur) == 0 and _("a prerelease")
             or _("a test build")) or _("a release")
-        add(TextWidget:new{ text = T(_("Ink Away %1"), cur) .. (o and ("  ·  " .. kind) or ""),
-            face = Font:getFace("cfont", 17), bold = true, fgcolor = LABEL, max_width = content_w })
-        add(vspan(12))
+        local lines = { T(_("Ink Away %1"), cur) .. (o and ("  \u{00B7}  " .. kind) or "") }
         if Updater.installed then
-            add(self:sheetHint(T(_("%1 is installed. Restart KOReader to use it."), Updater.installed), content_w, 15))
-            add(vspan(10))
-            add(self:actionButton(_("Restart KOReader"), content_w, function() UIManager:askForRestart() end, true))
+            lines[#lines + 1] = T(_("%1 is installed. Restart KOReader to use it."), Updater.installed)
         elseif Updater.busy == "installing" then
-            add(self:sheetHint(_("Downloading and checking the update…"), content_w, 15))
+            lines[#lines + 1] = _("Downloading and checking the update…")
         elseif Updater.busy == "checking" then
-            add(self:sheetHint(_("Asking GitHub what there is…"), content_w, 15))
+            lines[#lines + 1] = _("Asking GitHub what there is…")
         elseif o then
-            if o.stable then
-                add(self:releaseCard(content_w, _("Release"), o.stable, o.stable_action,
-                    (o.stable_action == "update" and #o.since > 0) and o.since or { o.stable }))
-            else
-                add(self:sheetHint(_("No release found on GitHub."), content_w, 14))
-            end
-            if o.pre then
-                add(vspan(18))
-                add(self:releaseCard(content_w, _("Prerelease"), o.pre, o.pre_action, { o.pre }))
-            end
+            if not o.stable then lines[#lines + 1] = _("No release found on GitHub.") end
         elseif Updater.error then
-            add(self:sheetHint(T(_("Could not check: %1."), Updater.error), content_w, 15))
+            lines[#lines + 1] = T(_("Could not check: %1."), Updater.error)
         end
-        add(vspan(18))
-        add(ToggleRow:new{ label = _("Check once a day"), is_on = Updater.autoOn(), width = content_w, parent = menu,
-            callback = function(on) Updater.set("auto", on) end })
-        add(vspan(4))
-        add(ToggleRow:new{ label = _("Tell me about prereleases"), is_on = Updater.preOn(), width = content_w, parent = menu,
-            callback = function(on) Updater.set("pre", on) end })
-        add(vspan(6))
         local last = Updater.get("last")
-        add(self:sheetHint((last and T(_("Last checked %1."), os.date("%d %b, %H:%M", last)) or _("Not checked yet."))
-            .. " " .. _("On its own Ink Away looks once a day, when it opens on Wi-Fi; it never turns Wi-Fi on."), content_w, 13))
-        if not Updater.busy and not Updater.installed then
-            add(vspan(10))
-            add(self:actionButton(_("Check now"), content_w, function() self:checkUpdatesNow() end))
-        end
-        return content
+        lines[#lines + 1] = last and T(_("Last checked %1."), os.date("%d %b, %H:%M", last)) or _("Not checked yet.")
+        return table.concat(lines, "\n")
     end
-    self:showSheet("_updates", build)
+    self:openNativeMenu{ field = "_updates", title = function() return _("Updates") .. "\n\n" .. heading() end,
+        items = function()
+            local rows = {}
+            local o = Updater.offers
+            if Updater.installed then
+                rows[#rows + 1] = { text = _("Restart KOReader"), action = function() UIManager:askForRestart() end }
+            elseif not Updater.busy and o then
+                if o.stable then
+                    releaseRows(self, rows, _("Release"), o.stable, o.stable_action,
+                        (o.stable_action == "update" and #o.since > 0) and o.since or { o.stable })
+                end
+                if o.pre then releaseRows(self, rows, _("Prerelease"), o.pre, o.pre_action, { o.pre }) end
+            end
+            rows[#rows + 1] = { text = _("Check once a day"),
+                help = _("On its own Ink Away looks once a day, when it opens on Wi-Fi; it never turns Wi-Fi on."),
+                toggle = { get = Updater.autoOn, set = function(on) Updater.set("auto", on) end } }
+            rows[#rows + 1] = { text = _("Tell me about prereleases"),
+                toggle = { get = Updater.preOn, set = function(on) Updater.set("pre", on) end } }
+            if not Updater.busy and not Updater.installed then
+                rows[#rows + 1] = { text = _("Check now"), action = function() self:checkUpdatesNow() end }
+            end
+            return rows
+        end }
     -- nothing known this session: look now when already online
     if not Updater.offers and not Updater.busy and not Updater.installed then
         local ok, NetworkMgr = pcall(require, "ui/network/manager")
@@ -259,48 +228,29 @@ function InkAwayView:openUpdates()
     end
 end
 
--- Release notes, newest first: each release's version and date, then its notes.
+-- Release notes, newest first: each release's version and date, then its
+-- notes, in KOReader's own text viewer over the Updates panel.
 function InkAwayView:openReleaseNotes(list, kind)
-    local content_w = self:sheetWidth()
-    local build = function()
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) content[#content + 1] = w end
-        add(self:sheetTitle(_("What's new"), content_w, _("Back"), function()
-            self:closeSheet("_release_notes")
-            self:openUpdates()
-        end))
-        for i, rel in ipairs(list) do
-            add(vspan(i == 1 and 12 or 22))
-            add(TextWidget:new{ text = rel.version .. ((rel.date and rel.date ~= "") and ("  ·  " .. dateText(rel.date)) or ""),
-                face = Font:getFace("cfont", 20), bold = true, fgcolor = BLACK, max_width = content_w })
-            if rel.pre then add(self:sheetLabel(kind or _("Prerelease"))) end
-            local blocks = Policy.notes(rel.notes)
-            if #blocks == 0 then
-                add(vspan(6))
-                add(self:sheetHint(_("No notes for this version."), content_w, 14))
-            end
-            for _j, b in ipairs(blocks) do
-                if b.kind == "h" then
-                    add(vspan(10))
-                    add(TextBoxWidget:new{ text = b.text, width = content_w, face = Font:getFace("cfont", 17),
-                        bold = true, fgcolor = BLACK })
-                elseif b.kind == "li" then
-                    add(vspan(3))
-                    local indent = S(6 + 16 * (b.depth or 0))
-                    add(HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = indent },
-                        TextBoxWidget:new{ text = "\u{2022}  " .. b.text, width = content_w - indent,
-                            face = Font:getFace("cfont", 15), fgcolor = BLACK } })
-                else
-                    add(vspan(6))
-                    add(TextBoxWidget:new{ text = b.text, width = content_w, face = Font:getFace("cfont", 15),
-                        fgcolor = BLACK })
-                end
+    local out = {}
+    for i, rel in ipairs(list) do
+        if i > 1 then out[#out + 1] = "" end
+        out[#out + 1] = rel.version .. ((rel.date and rel.date ~= "") and ("  \u{00B7}  " .. dateText(rel.date)) or "")
+        if rel.pre then out[#out + 1] = kind or _("Prerelease") end
+        local blocks = Policy.notes(rel.notes)
+        if #blocks == 0 then out[#out + 1] = _("No notes for this version.") end
+        for _j, b in ipairs(blocks) do
+            if b.kind == "h" then
+                out[#out + 1] = ""; out[#out + 1] = b.text
+            elseif b.kind == "li" then
+                out[#out + 1] = string.rep("   ", b.depth or 0) .. "\u{2022}  " .. b.text
+            else
+                out[#out + 1] = ""; out[#out + 1] = b.text
             end
         end
-        return content
     end
-    self:closeSheet("_updates")
-    self:showSheet("_release_notes", build)
+    local TextViewer = require("ui/widget/textviewer")
+    self:presentNative("_release_notes", TextViewer:new{ title = _("What's new"), text = table.concat(out, "\n"),
+        justified = false })
 end
 
 -- Ask before installing `rel` (offered as `action`), then install it.
@@ -317,7 +267,7 @@ end
 
 function InkAwayView:installUpdate(rel)
     local function show()
-        if self._updates then self:rebuildSheet("_updates") else self:openUpdates() end
+        if self._updates then self:refreshUpdates() else self:openUpdates() end
     end
     Updater.install(rel, self:pluginFolder(), function(ok, why)
         if ok then

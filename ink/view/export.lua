@@ -6,10 +6,7 @@ bookshelf ornaments.
 Part of InkAwayView (see ink/view.lua).
 ]]
 
-local Device = require("device")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("ink/l10n")
 local RenderImage = require("ui/renderimage")
@@ -22,15 +19,11 @@ local Paint = require("ink/paint")
 local Palette = require("ink/palette")
 local Project = require("ink/project")
 local Storage = require("ink/storage")
-local ToggleRow = require("ink/ui/controls").ToggleRow
 
-local Screen = Device.screen
 local existingDir = Storage.existingDir
 local strengthToLevel = Paint.strengthToLevel
 local bbToRGBA = ImageProc.bbToRGBA
 local fitIntoCanvasBB = ImageProc.fitIntoCanvasBB
-
-local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px) } end
 
 -- The paper an export lays a page of paper `p` on ({r,g,b}, nil for white): `p`
 -- itself, unless the export is set to White (`choice`) or the paper is left out
@@ -171,133 +164,36 @@ function InkAwayView:openExport()
         self:showNotice(_("There is nothing to export yet."), 2)
         return
     end
-    local o = self:exportOptions()
     local nb, book = self.notebook, self.book
     local paged = nb or book
     local count = paged and self:exportCount() or 1
     local pdf_src = paged and self:exportPdf() or nil
-    local can_edit = pdf_src and o.fmt == "pdf" and self:exportEditable() or false
-    local editable = can_edit and o.pdf_type ~= "pictures"
     -- a book that reflows is saved as pictures laid out as it is now
     local reflow = book and not pdf_src
     self:closeSheet("_save_dialog")
-    self:ensureUserIcons()
-    local content_w = self:sheetWidth()
-    local closeSelf = function() self:closeSheet("_save_dialog") end
-    local reopen = function() self:openExport() end   -- rebuild after a choice changes the layout
-    local left, added, left_pages
-    if editable then
-        left, added, left_pages = select(2, self:editableWork())
+    local function closeSelf() self:closeSheet("_save_dialog") end
+    -- what an editable PDF would leave out, worked out once, when it is needed
+    local work
+    local function leftOut()
+        if not work then work = { select(2, self:editableWork()) } end
+        return work[1], work[2], work[3]
     end
-    local build = function(menu)
-        local content = VerticalGroup:new{ align = "left" }
-        local function add(w) table.insert(content, w) end
-        local function toggle(label, key, after)
-            add(vspan(10))
-            add(ToggleRow:new{ label = label, is_on = o[key] and true or false, width = content_w, parent = menu,
-                callback = function(on) o[key] = on; if after then after() end end })
+    -- the rows are worked out again after every change, as a choice can change
+    -- which of them there are
+    local function items()
+        local o = self:exportOptions()
+        local can_edit = pdf_src and o.fmt == "pdf" and self:exportEditable() or false
+        local editable = can_edit and o.pdf_type ~= "pictures"
+        local left, added, left_pages
+        if editable then left, added, left_pages = leftOut() end
+        local rows = {}
+        local function add(r) rows[#rows + 1] = r end
+        local function toggle(label, key, help)
+            add({ text = label, help = help, toggle = { get = function() return o[key] and true or false end,
+                set = function(on) o[key] = on end } })
         end
-        add(self:sheetTitle(_("Export"), content_w, _("Cancel"), closeSelf))
-        add(vspan(16))
-        add(self:sheetLabel(_("Format"), true))
-        add(vspan(6))
-        add(self:segmentedRow({ { "png", _("PNG images") }, { "pdf", _("PDF") } }, o.fmt, content_w,
-            function(v) o.fmt = v; reopen() end))
-        if can_edit then
-            add(vspan(12))
-            add(self:sheetLabel(_("PDF type"), true))
-            add(vspan(6))
-            add(self:segmentedRow({ { "editable", _("Editable") }, { "pictures", _("Pictures") } },
-                editable and "editable" or "pictures", content_w,
-                function(v) o.pdf_type = v; reopen() end))
-            add(vspan(4))
-            add(self:sheetHint(editable
-                and _("Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them.")
-                or _("Saves each page as a picture with your ink on it. It looks the same everywhere, but the file is bigger and its text can't be selected."), content_w))
-            if editable and left.total + added > 0 then
-                add(vspan(4))
-                add(self:sheetHint(string.format(_("%d item(s) can't be kept editable. You'll choose what to do when you export."),
-                    left.total + added), content_w))
-            end
-        end
-        if paged and not editable then
-            add(vspan(12))
-            add(self:sheetLabel(_("Pages"), true))
-            add(vspan(6))
-            add(self:segmentedRow({ { "page", _("This page") }, { "all", _("All") }, { "ink", _("With ink") },
-                    { "range", _("Range") } }, o.scope, content_w,
-                function(v)
-                    o.scope = v
-                    if v == "range" and not o.range then o.range = { from = 1, to = count } end
-                    reopen()
-                end))
-            if o.scope == "range" then
-                add(vspan(8))
-                add(self:actionButton(string.format(_("Pages %d\u{2013}%d (tap to change)"),
-                    o.range.from or 1, o.range.to or count), content_w,
-                    function() closeSelf(); self:promptExportRange() end))
-            end
-        end
-        if o.fmt == "png" then
-            if paged and o.scope ~= "page" then
-                add(vspan(4))
-                add(self:sheetHint(_("One PNG per page, in a folder of its own."), content_w))
-            elseif not book then
-                add(vspan(12))
-                local area = self.save_area
-                    and string.format(_("Area: %d\u{00D7}%d (tap for the whole page)"), self.save_area.w, self.save_area.h)
-                    or _("Area: the whole page (tap to choose)")
-                add(self:actionButton(area, content_w, function()
-                    if self.save_area then self.save_area = nil; reopen()
-                    else closeSelf(); self:beginCropSelect() end
-                end))
-                if nb and nb:count() > 1 then
-                    add(vspan(4))
-                    add(self:sheetHint(string.format(_("A PNG holds the page shown, page %d."), nb.index), content_w))
-                end
-            end
-        elseif not editable and not book then
-            -- a light paper can print on white instead (a dark one always goes,
-            -- or its white ink would not show)
-            local p = self:paperRGB()
-            if p and not Paint.darkPaper(p) then
-                add(vspan(12))
-                add(self:sheetLabel(_("Paper"), true))
-                add(vspan(6))
-                add(self:segmentedRow({ { "page", Palette.paperName(p) }, { "white", _("White") } },
-                    o.on_paper == "white" and "white" or "page", content_w,
-                    function(v) o.on_paper = v; reopen() end))
-            end
-        end
-        if not editable then
-            if nb then
-                toggle(pdf_src and _("Include the PDF page") or _("Include the paper"), "include_bg")
-            elseif book then
-                toggle(_("Include the book's pages"), "include_bg")
-                if not o.include_bg then
-                    add(vspan(4))
-                    add(self:sheetHint(_("Only your ink, on white pages."), content_w))
-                end
-            elseif self.bg_bb then
-                toggle(_("Include the background"), "include_bg")
-            end
-            if reflow and o.fmt == "pdf" then
-                add(vspan(4))
-                add(self:sheetHint(_("The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."), content_w))
-                -- a picture of a page is a few hundred KB: say what the PDF will weigh
-                local mb = math.floor(#self:exportPageList() * 0.3 + 0.5)
-                if mb >= 10 and o.include_bg then
-                    add(vspan(4))
-                    add(self:sheetHint(string.format(_("A picture of each page takes about 0.3 MB, so this PDF will be around %d MB."), mb), content_w))
-                end
-            end
-            -- a drawing's grid can go into an export on a page (not a transparent one)
-            local grid_row = not paged and self.grid_on
-            if o.fmt == "png" then toggle(_("Transparent"), "transparent", grid_row and reopen or nil) end
-            if grid_row and (o.fmt == "pdf" or not o.transparent) then toggle(_("Include the grid"), "include_grid") end
-            if o.fmt == "pdf" then toggle(_("Page numbers"), "numbers") end
-        end
-        add(vspan(16))
+
+        -- the export itself, first, so it is never down a long list
         local label = _("Export PNG")
         if editable then
             label = _("Export editable PDF")
@@ -307,8 +203,7 @@ function InkAwayView:openExport()
         elseif paged and o.scope ~= "page" then
             label = string.format(_("Export %d page(s) as PNGs"), #self:exportPageList())
         end
-        add(self:actionButton(label, content_w, function()
-            local function go() closeSelf(); self:promptExportName() end
+        add({ text = label, separator = true, action = function()
             if editable then
                 if left.total + added > 0 then
                     closeSelf()
@@ -321,24 +216,97 @@ function InkAwayView:openExport()
                 self:showNotice(o.scope == "ink" and _("None of the pages has ink.") or _("No pages match the chosen range."), 3)
                 return
             end
-            go()
-        end, true))
+            closeSelf(); self:promptExportName()
+        end })
+
+        -- (what a reflowing book's PDF will be, on a long press of Format)
+        local fmt_help
+        if reflow and o.fmt == "pdf" and not editable then
+            fmt_help = _("The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size.")
+            -- a picture of a page is a few hundred KB: say what the PDF will weigh
+            local mb = math.floor(#self:exportPageList() * 0.3 + 0.5)
+            if mb >= 10 and o.include_bg then
+                fmt_help = fmt_help .. "\n\n" .. string.format(_("A picture of each page takes about 0.3 MB, so this PDF will be around %d MB."), mb)
+            end
+        end
+        add({ text = _("Format"), help = fmt_help, choice = { options = { { "png", _("PNG images") }, { "pdf", _("PDF") } },
+            get = function() return o.fmt end, set = function(v) o.fmt = v end } })
+        if can_edit then
+            local help = editable
+                and _("Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them.")
+                or _("Saves each page as a picture with your ink on it. It looks the same everywhere, but the file is bigger and its text can't be selected.")
+            if editable and left.total + added > 0 then
+                help = help .. "\n\n" .. string.format(_("%d item(s) can't be kept editable. You'll choose what to do when you export."),
+                    left.total + added)
+            end
+            add({ text = _("PDF type"), help = help, choice = {
+                options = { { "editable", _("Editable") }, { "pictures", _("Pictures") } },
+                get = function() return editable and "editable" or "pictures" end,
+                set = function(v) o.pdf_type = v end } })
+        end
+        if paged and not editable then
+            add({ text = _("Pages"), help = o.fmt == "png" and o.scope ~= "page" and _("One PNG per page, in a folder of its own.") or nil,
+                choice = { options = { { "page", _("This page") }, { "all", _("All") }, { "ink", _("With ink") },
+                        { "range", _("Range") } },
+                    get = function() return o.scope end,
+                    set = function(v)
+                        o.scope = v
+                        if v == "range" and not o.range then o.range = { from = 1, to = count } end
+                    end } })
+            if o.scope == "range" then
+                add({ text = string.format(_("Pages %d\u{2013}%d (tap to change)"), o.range.from or 1, o.range.to or count),
+                    close = true, action = function() self:promptExportRange() end })
+            end
+        end
+        if o.fmt == "png" then
+            if not (paged and o.scope ~= "page") and not book then
+                local area = self.save_area
+                    and string.format(_("Area: %d\u{00D7}%d (tap for the whole page)"), self.save_area.w, self.save_area.h)
+                    or _("Area: the whole page (tap to choose)")
+                add({ text = area,
+                    help = nb and nb:count() > 1 and string.format(_("A PNG holds the page shown, page %d."), nb.index) or nil,
+                    action = function()
+                        if self.save_area then self.save_area = nil
+                        else closeSelf(); self:beginCropSelect() end
+                    end })
+            end
+        elseif not editable and not book then
+            -- a light paper can print on white instead (a dark one always goes,
+            -- or its white ink would not show)
+            local p = self:paperRGB()
+            if p and not Paint.darkPaper(p) then
+                add({ text = _("Paper"), choice = { options = { { "page", Palette.paperName(p) }, { "white", _("White") } },
+                    get = function() return o.on_paper == "white" and "white" or "page" end,
+                    set = function(v) o.on_paper = v end } })
+            end
+        end
+        if not editable then
+            if nb then
+                toggle(pdf_src and _("Include the PDF page") or _("Include the paper"), "include_bg")
+            elseif book then
+                toggle(_("Include the book's pages"), "include_bg",
+                    not o.include_bg and _("Only your ink, on white pages.") or nil)
+            elseif self.bg_bb then
+                toggle(_("Include the background"), "include_bg")
+            end
+            -- a drawing's grid can go into an export on a page (not a transparent one)
+            local grid_row = not paged and self.grid_on
+            if o.fmt == "png" then toggle(_("Transparent"), "transparent") end
+            if grid_row and (o.fmt == "pdf" or not o.transparent) then toggle(_("Include the grid"), "include_grid") end
+            if o.fmt == "pdf" then toggle(_("Page numbers"), "numbers") end
+        end
         -- save straight into the bookshelf plugin's ornament folder, when that
         -- plugin is in use; always a transparent PNG
         if o.fmt == "png" and not paged and self:ornamentsDir() then
-            add(vspan(10))
-            add(self:actionButton(_("Save as bookshelf ornament"), content_w, function()
-                closeSelf(); self:saveOrnament() end, nil, nil, "frame"))
+            add({ text = _("Save as bookshelf ornament"), close = true, action = function() self:saveOrnament() end })
         end
         -- (see ink/view/share.lua)
         if not book then
-            add(vspan(10))
-            add(self:actionButton(_("Send to phone or computer (Wi-Fi)\u{2026}"), content_w, function()
-                closeSelf(); self:openSend() end, nil, nil, "qr"))
+            add({ text = _("Send to phone or computer (Wi-Fi)\u{2026}"), close = true, action = function() self:openSend() end })
         end
-        return content
+        return rows
     end
-    self:showSheet("_save_dialog", build)
+    self:openNativeMenu{ field = "_save_dialog", title = _("Export"), items = items }
 end
 
 -- Enter the area-selection mode: the next drag marks the export rectangle.

@@ -30,12 +30,30 @@ local function hasText(w, text)
         if type(t) ~= "table" or seen[t] then return false end
         seen[t] = true
         if t.text == text or t.label == text then return true end
+        -- (a native box has its title above its text, in one string)
+        if type(t.text) == "string" and t.text:find(text, 1, true) then return true end
         for k, v in pairs(t) do
             if k ~= "show_parent" and k ~= "parent" and walk(v) then return true end
         end
         return false
     end
     return walk(w)
+end
+
+-- Show tab `label` of the settings panel open in view[field].
+local function tabOf(view, field, label)
+    local panel = view[field]
+    local function walk(t, seen)
+        if type(t) ~= "table" or seen[t] then return nil end
+        seen[t] = true
+        if t.text == label and type(t.callback) == "function" then return t end
+        for k, v in pairs(t) do
+            if k ~= "show_parent" and k ~= "parent" then local f = walk(v, seen); if f then return f end end
+        end
+    end
+    local b = walk(panel, {})
+    if b then b.callback() end
+    return view[field]
 end
 
 -- The button in a widget tree labelled `text`.
@@ -301,6 +319,7 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     -- Book ink can refresh the screen (#12): the sheet closes, then one full refresh
     do
         view:openReaderSettings()
+        tabOf(view, "_settings_dialog", "More")
         local rb = findButton(view._settings_dialog, "Refresh the screen")
         ok(rb ~= nil, tag .. ": Book ink has a Refresh the screen button")
         local full = 0
@@ -318,18 +337,20 @@ for _, wh in ipairs({ { 1072, 1448 }, { 600, 800 }, { 800, 600 } }) do
     -- deleting every annotation on the book: two confirmations, then gone at
     -- once into the trash, with nothing left to undo
     view:openReaderSettings()
+    tabOf(view, "_settings_dialog", "More")
     local del = findButton(view._settings_dialog, "Delete all annotations on this book\u{2026}")
     ok(del ~= nil, tag .. ": Book ink offers to delete the book's annotations")
     del.callback()
     ok(view._delete_ink and hasText(view._delete_ink, "Delete all annotations?"), tag .. ": first it asks")
-    findButton(view._delete_ink, "Continue").callback()
+    view._delete_ink.ok_callback()   -- Continue
     ok(view._delete_ink and hasText(view._delete_ink, "Are you sure?") and not book.trashed, tag .. ": then asks again")
-    findButton(view._delete_ink, "Delete").callback()
+    view._delete_ink.ok_callback()   -- Delete
     ok(book.trashed and book.trash_root == view:libraryDir(), tag .. ": then the annotations go to the trash")
     ok(#view.canvas.ops == 0 and not view.canvas:canUndo(), tag .. ": gone from the page at once, nothing to undo")
     ok(view._delete_ink and hasText(view._delete_ink, "Moved to the trash"), tag .. ": and it says where they are")
     view:closeSheet("_delete_ink")
     view:openReaderSettings()
+    tabOf(view, "_settings_dialog", "More")
     ok(findButton(view._settings_dialog, "Delete all annotations on this book\u{2026}") == nil,
         tag .. ": with no annotations left, nothing to delete")
     view:closeSheet("_settings_dialog")
@@ -557,8 +578,8 @@ do
     package.loaded["ink/view"] = nil
     local lib = require("ink/view"):new{}
     lib:promptRenameItem({ path = root .. "/Book notes", label = "Book notes", folder = true })
-    local field = require("ui/widget/inputtext").last
-    field.text = "Reading notes"
+    local field = require("ui/widget/inputdialog").last
+    field.input = "Reading notes"
     field.enter_callback()
     lib:closeCanvas()
     local renamed = root .. "/Reading notes/Moved Notes Book.inkaway"
