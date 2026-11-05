@@ -459,6 +459,7 @@ function InkAwayView:onCloseWidget()
         self._export_job = nil
     end
     self:stopSend()   -- the reader stops sharing over Wi-Fi with Ink Away
+    self:stopCodePage()
     if self._search_job then self._search_job.abort(); self._search_job = nil end
     self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
     local tm = self._text_btn_metrics
@@ -1044,7 +1045,7 @@ end
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "exportbook", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "ocrapi", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
-    "paper", "updates", "layers", "keys", "share", "receive", "dialogs", "erasecursor", "sync" }
+    "paper", "updates", "layers", "keys", "share", "codepage", "receive", "dialogs", "erasecursor", "sync" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

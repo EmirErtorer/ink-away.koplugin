@@ -100,6 +100,29 @@ local function suite(label, Provider, Fake, newAccount, expect_hash_prefix)
     eq(r.uploaded + r.downloaded + r.conflicts + r.deleted, 0, label .. ": a second run changes nothing")
     eq(fake.count("PUT") + fake.count("alt=media"), moved, label .. ": and sends nothing")
 
+    -- the hidden areas folders (a book's ink and its readable label) go through the provider as any path
+    do
+        local p = Provider.new(A.acct, { app_key = "KEY", app_secret = "SECRET", dir = A.sync, now = function() return clock end,
+            save = function() end })
+        local tmp = BASE .. "/" .. label .. "-area.tmp"
+        local deep = ".areas/books/0123456789abcdef0123456789abcdef"
+        write(tmp, "return {}")
+        local m1, e1 = p:upload(tmp, deep .. "/inkaway.lua")
+        ok(m1, label .. ": a file deep in .areas goes up" .. (e1 and (" (" .. tostring(e1.code) .. ")") or ""))
+        write(tmp, "Calculus - Spivak")
+        local m2 = p:upload(tmp, deep .. "/inkaway-book-Calculus - Spivak.txt")
+        ok(m2, label .. ": and so does its label, with spaces in the name")
+        local listing = p:list(nil)
+        local seen = {}
+        for _i, e in ipairs(listing and listing.entries or {}) do seen[e.rel] = true end
+        ok(seen[deep .. "/inkaway.lua"] and seen[deep .. "/inkaway-book-Calculus - Spivak.txt"], label .. ": both are listed under their paths")
+        local got = BASE .. "/" .. label .. "-area.got"
+        ok(p:download(deep .. "/inkaway-book-Calculus - Spivak.txt", m2 and m2.rev, got) and read(got) == "Calculus - Spivak",
+            label .. ": the label comes back whole")
+        ok(p:delete(deep .. "/inkaway.lua", m1 and m1.rev) and p:delete(deep .. "/inkaway-book-Calculus - Spivak.txt"),
+            label .. ": and both can be removed")
+    end
+
     -- B gets them, checked against the service's own hash
     r = run(B)
     errors(r, "B")

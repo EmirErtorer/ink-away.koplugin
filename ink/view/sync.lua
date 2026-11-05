@@ -292,7 +292,8 @@ end
 
 -- The QR code of `url`, centred, as wide as fits.
 local function qrCode(url, content_w)
-    local side = math.floor(math.min(content_w * 0.7, math.min(Screen:getWidth(), Screen:getHeight()) * 0.55))
+    local side = math.floor(math.min(content_w * 0.7, math.min(Screen:getWidth(), Screen:getHeight()) * 0.55,
+        Screen:getHeight() * 0.4))   -- (short enough that a landscape screen needs no scrolling)
     local okq, QRWidget = pcall(require, "ui/widget/qrwidget")
     if not (okq and QRWidget) then return nil end
     return CenterContainer:new{ dimen = Geom:new{ w = content_w, h = side },
@@ -310,7 +311,56 @@ function InkAwayView:syncSignIn(id)
         return self:syncErrorSheet(err and err.code or "IA-S503", { again = function() self:syncSignIn(id) end })
     end
     if pending.kind == "device" then return self:syncSignInDevice(pending) end
-    local name = Providers.name(id)
+    if self:syncSignInPaste(pending) then return end
+    return self:syncSignInTyped(pending)
+end
+
+-- The sign-in where the long code is pasted on a phone: the QR code leads to a page
+-- the reader serves on the Wi-Fi (see ink/view/codepage.lua). False when the reader
+-- can't serve one, and the code is typed instead.
+function InkAwayView:syncSignInPaste(pending)
+    local name = Providers.name(pending.provider)
+    local field = "_sync_signin"
+    local token = {}
+    local url = self:startCodePage(name, pending.url, function(code)
+        UIManager:nextTick(function()
+            if self._sync_pending ~= token then return end
+            self._sync_pending = nil
+            self:stopCodePage()
+            self:closeSheet(field)
+            self:syncFinishCode(pending, code)
+        end)
+    end)
+    if not url then return false end
+    self._sync_pending = token
+    self:closeSheet(field)
+    local content_w = self:sheetWidth()
+    local function close() self._sync_pending = nil; self:stopCodePage(); self:closeSheet(field) end
+    local build = function()
+        local g = VerticalGroup:new{ align = "center", self:sheetTitle(T(_("Connect %1"), name), content_w, _("Cancel"), close) }
+        local function add(w) table.insert(g, w) end
+        add(vspan(10))
+        add(para(self, _("1. Scan this with your phone's camera. The phone must be on the same Wi-Fi as the reader."), content_w, 16))
+        add(vspan(10))
+        add(qrCode(url, content_w) or vspan(0))
+        add(vspan(10))
+        add(para(self, T(_("2. On the page, tap Open %1, tap Allow, then paste the code there. This screen carries on by itself."), name), content_w, 16))
+        add(vspan(12))
+        add(self:actionButton(_("Type the code instead"), content_w, function()
+            close()
+            self:syncSignInTyped(pending)
+        end, false, nil, "text"))
+        add(vspan(8))
+        add(self:sheetHint(_("No camera? Open this address in any browser:") .. "\n" .. url, content_w, 11))
+        return g
+    end
+    self:showSheet(field, build)
+    return true
+end
+
+-- The sign-in where the code is typed on the reader.
+function InkAwayView:syncSignInTyped(pending)
+    local name = Providers.name(pending.provider)
     local field = "_sync_signin"
     self:closeSheet(field)
     local content_w = self:sheetWidth()
@@ -393,18 +443,22 @@ function InkAwayView:syncAskCode(pending)
         description = T(_("Type the code %1 showed after you tapped Allow."), name),
         ok_text = _("Connect"),
         on_cancel = function() end,
-        on_ok = function(text)
-            local close_wait = self:tell(T(_("Connecting to %1\u{2026}"), name), { wait = true, field = "_sync_wait" })
-            UIManager:scheduleIn(0.3, function()
-                local who, err = Manager.finishSignIn(pending, text)
-                close_wait()
-                if not who then
-                    return self:syncErrorSheet(err and err.code or "IA-S503", { again = function() self:syncSignIn(pending.provider) end })
-                end
-                self:syncPreview()
-            end)
-        end,
+        on_ok = function(text) self:syncFinishCode(pending, text) end,
     }
+end
+
+-- Finish the sign-in with `code` (typed on the reader or pasted on the phone).
+function InkAwayView:syncFinishCode(pending, code)
+    local name = Providers.name(pending.provider)
+    local close_wait = self:tell(T(_("Connecting to %1\u{2026}"), name), { wait = true, field = "_sync_wait" })
+    UIManager:scheduleIn(0.3, function()
+        local who, err = Manager.finishSignIn(pending, code)
+        close_wait()
+        if not who then
+            return self:syncErrorSheet(err and err.code or "IA-S503", { again = function() self:syncSignIn(pending.provider) end })
+        end
+        self:syncPreview()
+    end)
 end
 
 -- This copy of Ink Away is not registered with the service: the person can enter

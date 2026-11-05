@@ -95,6 +95,37 @@ ok(view._prompt ~= nil, "typing the code opens the keyboard sheet")
 ok(textIn(view._prompt):find("Type the code Dropbox showed", 1, true), "with its instruction")
 view:closeSheet("_prompt")
 view:closeSheet("_sync_signin")
+
+-- a reader on Wi-Fi serves a page where the phone pastes the long code
+local served = {}
+view.startCodePage = function(_self, name, url, on_code)
+    served = { name = name, url = url, on_code = on_code, stopped = false }
+    return "http://192.168.1.20:8642/abcdefghijkl/"
+end
+view.stopCodePage = function() served.stopped = true end
+press(view._sync, "Connect Dropbox")
+si = view._sync_signin
+st = textIn(si)
+ok(served.name == "Dropbox" and served.url:find("dropbox.com/oauth2/authorize", 1, true), "the page is told which service and where")
+ok(st:find("same Wi-Fi", 1, true) and st:find("http://192.168.1.20:8642/abcdefghijkl/", 1, true), "the QR code leads to the reader's page, its address under it")
+ok(findButton(si, "Type the code instead") and not findButton(si, "Type the code"), "typing stays a way out")
+press(si, "Type the code instead")
+ok(served.stopped and view._prompt == nil and view._sync_signin ~= nil
+    and textIn(view._sync_signin):find("3. Dropbox shows a code", 1, true), "which stops the page and shows the typing screen")
+view:closeSheet("_sync_signin")
+press(view._sync, "Connect Dropbox")
+served.stopped = false
+press(view._sync_signin, "Cancel")
+ok(served.stopped and view._sync_signin == nil, "cancelling stops the page")
+-- the phone sends the code: the page stops, the sign-in screen goes, the reader connects
+press(view._sync, "Connect Dropbox")
+served.stopped = false
+served.on_code("Zk3_9aQ-x0P1Bv7cT5mRwY2nEhJdLfGsUoKiA4")
+UIManager.fireScheduled()
+ok(served.stopped and view._sync_signin == nil, "a code from the phone stops the page and closes the sign-in screen")
+UIManager.fireScheduled()
+view:closeSheet("_sync_error")
+view.startCodePage, view.stopCodePage = nil, nil
 G_reader_settings.data.inkaway_sync_dropbox_key = nil
 
 -- the other services are offered too, and sign in by showing a code on the reader

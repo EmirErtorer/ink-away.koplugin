@@ -267,6 +267,10 @@ msgid "1. Scan this with your phone's camera."
 msgstr "1. Σαρώστε το με την κάμερα του κινητού σας."
 
 #: ink/view/sync.lua
+msgid "1. Scan this with your phone's camera. The phone must be on the same Wi-Fi as the reader."
+msgstr "1. Σαρώστε το με την κάμερα του τηλεφώνου. Το τηλέφωνο πρέπει να είναι στο ίδιο Wi-Fi με τον αναγνώστη."
+
+#: ink/view/sync.lua
 msgid "12h"
 msgstr "12ώ"
 
@@ -286,6 +290,11 @@ msgstr "2 στήλες"
 #: ink/view/sync.lua
 msgid "2 min"
 msgstr "2 λ."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "2. On the page, tap Open %1, tap Allow, then paste the code there. This screen carries on by itself."
+msgstr "2. Στη σελίδα πατήστε \"Open %1\", πατήστε Να επιτραπεί και επικολλήστε εκεί τον κωδικό. Αυτή η οθόνη συνεχίζει μόνη της."
 
 #: ink/view/sync.lua
 #, lua-format
@@ -5296,6 +5305,10 @@ msgstr "Πληκτρολογήστε τον κωδικό"
 #, lua-format
 msgid "Type the code %1 showed after you tapped Allow."
 msgstr "Πληκτρολογήστε τον κωδικό που έδειξε το %1 αφού πατήσατε Να επιτρέπεται."
+
+#: ink/view/sync.lua
+msgid "Type the code instead"
+msgstr "Πληκτρολόγηση του κωδικού"
 
 #: ink/view/textformat.lua
 msgid "Underline"

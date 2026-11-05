@@ -194,6 +194,11 @@ end
 
 -- The reader goes to sleep: sharing stops (its network goes too).
 function InkAwayView:stopSendForSleep()
+    if self._code_page then
+        self:stopCodePage()
+        self._sync_pending = nil
+        self:closeSheet("_sync_signin")
+    end
     if self._send then
         self:stopSend()
         self:closeSheet("_send_dialog")

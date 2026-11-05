@@ -10,6 +10,12 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Connecting Dropbox no longer means typing a 40-letter code on the reader. When
+  the reader is on Wi-Fi, the QR code leads to a page the reader serves: on the
+  phone, tap Open Dropbox, tap Allow, paste the code on that page, and the reader
+  carries on by itself. The page lives only while the sign-in screen is open and
+  takes one code. With no Wi-Fi address, or if you prefer, "Type the code instead"
+  works as before. Google Drive and OneDrive only ask for a short code on the phone.
 - Cloud sync can carry more than notebooks, and each part is turned on or off on
   its own under "What to sync": notebooks and drawings, book notes, ink on book
   pages, imported PDFs and pictures, exports, screen clips, and your pens, colours

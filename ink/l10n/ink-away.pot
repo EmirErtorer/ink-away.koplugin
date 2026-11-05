@@ -266,6 +266,10 @@ msgid "1. Scan this with your phone's camera."
 msgstr ""
 
 #: ink/view/sync.lua
+msgid "1. Scan this with your phone's camera. The phone must be on the same Wi-Fi as the reader."
+msgstr ""
+
+#: ink/view/sync.lua
 msgid "12h"
 msgstr ""
 
@@ -284,6 +288,11 @@ msgstr ""
 
 #: ink/view/sync.lua
 msgid "2 min"
+msgstr ""
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "2. On the page, tap Open %1, tap Allow, then paste the code there. This screen carries on by itself."
 msgstr ""
 
 #: ink/view/sync.lua
@@ -5240,6 +5249,10 @@ msgstr ""
 #: ink/view/sync.lua
 #, lua-format
 msgid "Type the code %1 showed after you tapped Allow."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Type the code instead"
 msgstr ""
 
 #: ink/view/textformat.lua

@@ -206,5 +206,33 @@ ok(t.template.pdf_path == nil and t.bg == nil and t.ops[1].path == nil and t.ops
     and t.pages[1].ops[1].path == nil, "pictures, background and PDF elsewhere are gone")
 ok(t.ops[2].path ~= nil and t.template.style == "blank", "one in Ink Away's folders stays, and so does the rest")
 
+-- the paste page for a long sign-in code (ink/share/codepage.lua)
+local CodePage = require("ink/share/codepage")
+local L = "Zk3_9aQ-x0P1Bv7cT5mRwY2nEhJdLfGsUoKiA4"
+ok(CodePage.clean("  " .. L:sub(1, 20) .. "\n" .. L:sub(21) .. " ") == L, "a pasted code loses its spaces and line breaks")
+ok(CodePage.clean("short") == nil and CodePage.clean(nil) == nil and CodePage.clean(("a"):rep(500)) == nil, "too short or too long is refused")
+ok(CodePage.clean("abc<script>alert(1)</script>") == nil and CodePage.clean("abcdefgh\"x") == nil, "characters a code never has are refused")
+local st = { token = "secret123456", name = "Dropbox", auth_url = "https://www.dropbox.com/oauth2/authorize?a=1&b=2",
+    nonce = "nonce1234567890", got = {} }
+st.on_code = function(c) st.got[#st.got + 1] = c end
+local function ask(method, path, q)
+    local out = {}
+    local reply = { send = function(code, ctype, body, extra) out.code, out.body, out.extra = code, body, extra end }
+    CodePage.route({ method = method, path = path, query = q or {} }, reply, st)
+    return out
+end
+local pg = ask("GET", "/secret123456/")
+ok(pg.code == 200 and pg.body:find("Open Dropbox", 1, true) and pg.body:find("oauth2/authorize?a=1&amp;b=2", 1, true),
+    "the page opens Dropbox, the address escaped")
+ok(pg.body:find('nonce="nonce1234567890"', 1, true) and pg.extra[1]:find("nonce-nonce1234567890", 1, true), "its one script has the policy's nonce")
+ok(not pg.body:find("Nothing here yet", 1, true), "and none of the library page's words")
+ok(ask("GET", "/wrongsecret/").code == 404 and ask("GET", "/").code == 404, "without the secret there is nothing")
+ok(ask("POST", "/secret123456/code", { c = L }).code == 405 and #st.got == 0, "only a GET carries a code")
+ok(ask("GET", "/secret123456/code", { c = "tiny" }).code == 400 and #st.got == 0, "a code that is not one is turned away")
+local sent = ask("GET", "/secret123456/code", { c = L })
+ok(sent.code == 200 and st.got[1] == L, "a code goes to the reader")
+ok(ask("GET", "/secret123456/code", { c = L }).code == 409 and #st.got == 1, "and only once")
+ok(ask("GET", "/secret123456/other").code == 404, "no other page")
+
 print(("share: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
