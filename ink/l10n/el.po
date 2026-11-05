@@ -41,6 +41,26 @@ msgstr "%1 και %2"
 msgid "%1 and everything on it are deleted. Undo brings them back."
 msgstr "Το %1 και ό,τι υπάρχει πάνω του θα διαγραφούν. Η Αναίρεση τα επαναφέρει."
 
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 changed in both places: both versions are kept"
+msgstr "%1 άλλαξαν και στα δύο μέρη: διατηρούνται και οι δύο εκδόσεις"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 code"
+msgstr "Κωδικός %1"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 combined from two readers"
+msgstr "%1 συνδυάστηκαν από δύο συσκευές"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 h ago"
+msgstr "πριν από %1 ώ."
+
 #: ink/welcome.lua
 #, lua-format
 msgid "%1 has no gesture: %2 already do something else."
@@ -55,6 +75,66 @@ msgstr "Το %1 δεν έχει χειρονομία: οι χειρονομίε�
 #, lua-format
 msgid "%1 is installed. Restart KOReader to use it."
 msgstr "Το %1 εγκαταστάθηκε. Επανεκκινήστε το KOReader για να το χρησιμοποιήσετε."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 is not set up here"
+msgstr "Το %1 δεν έχει ρυθμιστεί εδώ"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 kept in two versions"
+msgstr "%1 διατηρούνται σε δύο εκδόσεις"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 min ago"
+msgstr "πριν από %1 λ."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 of %2: %3"
+msgstr "%1 από %2: %3"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 received"
+msgstr "%1 ελήφθησαν"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 removed"
+msgstr "%1 αφαιρέθηκαν"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 removed, with a safety copy"
+msgstr "%1 αφαιρέθηκαν, με αντίγραφο ασφαλείας"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 sent to the cloud"
+msgstr "%1 στάλθηκαν στο cloud"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 to download to this reader"
+msgstr "%1 προς λήψη σε αυτή τη συσκευή"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 to send to the cloud"
+msgstr "%1 προς αποστολή στο cloud"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1 will wait until closed"
+msgstr "%1 θα περιμένουν μέχρι να κλείσουν"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "%1, %2"
+msgstr "%1, %2"
 
 #: ink/view/share.lua
 #, lua-format
@@ -158,6 +238,10 @@ msgstr "Λήφθηκε 1 αρχείο"
 msgid "1 file sent"
 msgstr "Στάλθηκε 1 αρχείο"
 
+#: ink/view/sync.lua
+msgid "1 min"
+msgstr "1 λ."
+
 #: ink/view/share.lua
 msgid "1 more after it"
 msgstr "1 ακόμη μετά από αυτό"
@@ -178,10 +262,74 @@ msgstr "1 εικόνα"
 msgid "1 result"
 msgstr "1 αποτέλεσμα"
 
+#: ink/view/sync.lua
+msgid "1. Scan this with your phone's camera."
+msgstr "1. Σαρώστε το με την κάμερα του κινητού σας."
+
+#: ink/view/sync.lua
+msgid "1. Scan this with your phone's camera. The phone must be on the same Wi-Fi as the reader."
+msgstr "1. Σαρώστε το με την κάμερα του τηλεφώνου. Το τηλέφωνο πρέπει να είναι στο ίδιο Wi-Fi με τον αναγνώστη."
+
+#: ink/view/sync.lua
+msgid "12h"
+msgstr "12ώ"
+
+#: ink/view/sync.lua
+msgid "15m"
+msgstr "15λ"
+
+#: ink/view/sync.lua
+msgid "1h"
+msgstr "1ώ"
+
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
 msgid "2 columns"
 msgstr "2 στήλες"
+
+#: ink/view/sync.lua
+msgid "2 min"
+msgstr "2 λ."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "2. On the page, tap Open %1, tap Allow, then paste the code there. This screen carries on by itself."
+msgstr "2. Στη σελίδα πατήστε \"Open %1\", πατήστε Να επιτραπεί και επικολλήστε εκεί τον κωδικό. Αυτή η οθόνη συνεχίζει μόνη της."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "2. Sign in to %1 and tap Allow."
+msgstr "2. Συνδεθείτε στο %1 και πατήστε Να επιτρέπεται."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "2. Sign in to %1 and type this code:"
+msgstr "2. Συνδεθείτε στο %1 και πληκτρολογήστε αυτόν τον κωδικό:"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "3. %1 shows a code. Type it here."
+msgstr "3. Το %1 δείχνει έναν κωδικό. Πληκτρολογήστε τον εδώ."
+
+#: ink/view/sync.lua
+msgid "3. Tap Allow. This screen carries on by itself."
+msgstr "3. Πατήστε Να επιτρέπεται. Αυτή η οθόνη συνεχίζει μόνη της."
+
+#: ink/view/sync.lua
+msgid "30 s"
+msgstr "30 δ."
+
+#: ink/view/sync.lua
+msgid "30m"
+msgstr "30λ"
+
+#: ink/view/sync.lua
+msgid "3h"
+msgstr "3ώ"
+
+#: ink/view/sync.lua
+msgid "5 min"
+msgstr "5 λ."
 
 #: ink/view/selection.lua
 msgid "90°"
@@ -214,6 +362,18 @@ msgstr "Ένα σχέδιο μπορεί να έχει έως %1 επίπεδα.
 msgid "A drawing with layers keeps at least one. To stop using layers, turn them off in File."
 msgstr "Ένα σχέδιο με επίπεδα κρατά τουλάχιστον ένα. Για να σταματήσετε να χρησιμοποιείτε επίπεδα, απενεργοποιήστε τα στο Αρχείο."
 
+#: ink/sync/errors.lua
+msgid "A file on this reader could not be read."
+msgstr "Δεν ήταν δυνατή η ανάγνωση ενός αρχείου σε αυτή τη συσκευή."
+
+#: ink/sync/errors.lua
+msgid "A file on this reader could not be written, so nothing was replaced."
+msgstr "Δεν ήταν δυνατή η εγγραφή ενός αρχείου σε αυτή τη συσκευή, οπότε δεν αντικαταστάθηκε τίποτα."
+
+#: ink/sync/errors.lua
+msgid "A file used by a notebook is not on this reader and could not be found."
+msgstr "Ένα αρχείο που χρησιμοποιεί ένα σημειωματάριο δεν υπάρχει σε αυτή τη συσκευή και δεν βρέθηκε."
+
 #: ink/guide.lua
 msgid "A folder's notebooks are tabs beside their pages. Hold a tab to rename, colour or reorder it; hold a page to star, move or copy it."
 msgstr "Τα σημειωματάρια ενός φακέλου είναι καρτέλες δίπλα στις σελίδες τους. Κρατήστε πατημένη μια καρτέλα για να τη μετονομάσετε, να τη χρωματίσετε ή να την αναδιατάξετε· κρατήστε πατημένη μια σελίδα για να της βάλετε αστέρι, να τη μετακινήσετε ή να την αντιγράψετε."
@@ -225,6 +385,10 @@ msgstr "Μια γραμμή υπογραμμιστή πάνω σε κείμεν�
 #: ink/guide.lua
 msgid "A highlighter stroke over text becomes the reader's own highlight, from the first word it touches to the last. Over empty space it stays ink."
 msgstr "Μια γραμμή υπογραμμιστή πάνω σε κείμενο γίνεται η δική σας επισήμανση στο βιβλίο, από την πρώτη λέξη που αγγίζει ως την τελευταία. Πάνω σε κενό χώρο μένει μελάνι."
+
+#: ink/view/sync.lua
+msgid "A large part of your notebooks will be removed in the cloud or on this reader. A safety copy is kept on this reader for 30 days."
+msgstr "Μεγάλο μέρος των σημειωματαρίων σας θα αφαιρεθεί από το cloud ή από αυτή τη συσκευή. Ένα αντίγραφο ασφαλείας φυλάσσεται σε αυτή τη συσκευή για 30 ημέρες."
 
 #: ink/guide.lua
 msgid "A new pen"
@@ -243,6 +407,10 @@ msgstr "Ένα σημειωματάριο κρατά τουλάχιστον μί
 #: ink/guide.lua
 msgid "A notebook or some of its pages, with bookmarks for titled pages and links that work."
 msgstr "Ένα σημειωματάριο ή μερικές από τις σελίδες του, με σελιδοδείκτες για σελίδες με τίτλο και συνδέσμους που λειτουργούν."
+
+#: ink/sync/errors.lua
+msgid "A notebook was being written, so it is skipped for now."
+msgstr "Ένα σημειωματάριο γραφόταν εκείνη τη στιγμή, οπότε παραλείπεται προς το παρόν."
 
 #: ink/view/images.lua
 msgid "A picture file on this reader."
@@ -306,6 +474,14 @@ msgstr "Διεύθυνση"
 msgid "Adds your ink and highlights to a copy of the original PDF. The text stays real, the file stays small, and any PDF viewer can edit or remove them."
 msgstr "Προσθέτει το μελάνι και τις επισημάνσεις σας σε ένα αντίγραφο του αρχικού PDF. Το κείμενο παραμένει πραγματικό κείμενο, το αρχείο παραμένει μικρό και κάθε πρόγραμμα προβολής PDF μπορεί να τα επεξεργαστεί ή να τα αφαιρέσει."
 
+#: ink/view/sync.lua
+msgid "After I stop drawing"
+msgstr "Αφού σταματήσω να σχεδιάζω"
+
+#: ink/view/sync.lua
+msgid "After closing a notebook"
+msgstr "Μετά το κλείσιμο ενός σημειωματαρίου"
+
 #: ink/view/textformat.lua
 msgid "Alignment"
 msgstr "Στοίχιση"
@@ -322,13 +498,25 @@ msgstr "Όλες οι σημειώσεις αυτού του βιβλίου θα
 msgid "All the layers are merged into one drawing, hidden ones too. Undo brings the layers back."
 msgstr "Όλα τα επίπεδα συγχωνεύονται σε ένα σχέδιο, και τα κρυφά. Η Αναίρεση επαναφέρει τα επίπεδα."
 
+#: ink/launcher.lua
+msgid "All your notebooks and drawings"
+msgstr "Όλα τα σημειωματάριά σας και τα σχέδιά σας"
+
 #: ink/view/share.lua
 msgid "Allow adding files"
 msgstr "Να επιτρέπεται η προσθήκη αρχείων"
 
+#: ink/view/sync.lua
+msgid "Allow turning on Wi-Fi"
+msgstr "Να επιτρέπεται η ενεργοποίηση του Wi-Fi"
+
 #: ink/view/gestures.lua
 msgid "Already in use"
 msgstr "Ήδη σε χρήση"
+
+#: ink/view/sync.lua
+msgid "Also every"
+msgstr "Επίσης κάθε"
 
 #: ink/view/search.lua
 msgid "Also look inside pages (slower)"
@@ -339,6 +527,7 @@ msgid "An editable PDF can't hold these as annotations:"
 msgstr "Ένα επεξεργάσιμο PDF δεν μπορεί να κρατήσει αυτά ως σχολιασμούς:"
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Annotate the book"
@@ -364,9 +553,17 @@ msgstr "Άλλο σημειωματάριο…"
 msgid "Antique gold"
 msgstr "Παλαιό χρυσό"
 
+#: ink/sync/config.lua
+msgid "App key"
+msgstr "Κλειδί εφαρμογής"
+
 #: ink/view/settings.lua
 msgid "Appearance"
 msgstr "Εμφάνιση"
+
+#: ink/sync/config.lua
+msgid "Application (client) ID"
+msgstr "Αναγνωριστικό εφαρμογής (client ID)"
 
 #: ink/view/textformat.lua
 msgid "Applies to the selected word or text"
@@ -419,6 +616,10 @@ msgstr "Ερώτηση για άνοιγμα των σημειωματαρίων
 msgid "Asking GitHub what there is…"
 msgstr "Ρωτάμε το GitHub τι υπάρχει…"
 
+#: ink/view/sync.lua
+msgid "Asking the cloud…"
+msgstr "Ερώτηση στο cloud…"
+
 #: ink/view/images.lua
 msgid "At save time you can include the picture or export just your drawing. The grid is always left out."
 msgstr "Κατά την αποθήκευση μπορείτε να συμπεριλάβετε την εικόνα ή να εξαγάγετε μόνο το σχέδιό σας. Το πλέγμα μένει πάντα έξω."
@@ -427,12 +628,17 @@ msgstr "Κατά την αποθήκευση μπορείτε να συμπερ�
 msgid "Automatic"
 msgstr "Αυτόματα"
 
+#: ink/view/sync.lua
+msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
+msgstr "Ο αυτόματος συγχρονισμός μπορεί να επιβραδύνει τη συσκευή και να καταναλώνει μπαταρία. Το «Συγχρονισμός τώρα» εκτελείται μόνο όταν το ζητήσετε."
+
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/pencase.lua
 #: ink/view/selection.lua
+#: ink/view/sync.lua
 #: ink/view/toolbar.lua
 #: ink/view/updates.lua
 msgid "Back"
@@ -510,7 +716,9 @@ msgid "Book ink, Toolbar: on the left, right, top or bottom."
 msgstr "Μελάνι βιβλίου, γραμμή εργαλείων: αριστερά, δεξιά, πάνω ή κάτω."
 
 #: ink/guide.lua
+#: ink/launcher.lua
 #: ink/reader/inkview.lua
+#: ink/sync/areas.lua
 #: ink/welcome.lua
 #: main.lua
 msgid "Book notes"
@@ -540,6 +748,14 @@ msgstr "Κάτω"
 msgid "Brass"
 msgstr "Ορείχαλκος"
 
+#: ink/view/sync.lua
+msgid "Bring back this version?"
+msgstr "Επαναφορά αυτής της έκδοσης;"
+
+#: ink/view/sync.lua
+msgid "Bring it back"
+msgstr "Επαναφορά"
+
 #: ink/folderlook.lua
 msgid "Brown"
 msgstr "Καφέ"
@@ -555,6 +771,10 @@ msgstr "Περιήγηση εικόνων"
 #: ink/actions.lua
 msgid "Browse notebooks"
 msgstr "Περιήγηση σημειωματαρίων"
+
+#: ink/sync/errors.lua
+msgid "Busy"
+msgstr "Απασχολημένο"
 
 #: ink/view/library.lua
 msgid "By name"
@@ -580,8 +800,17 @@ msgstr "Καλλιγραφία"
 #: ink/view/notebook.lua
 #: ink/view/overview.lua
 #: ink/view/share.lua
+#: ink/view/sync.lua
 msgid "Cancel"
 msgstr "Άκυρο"
+
+#: ink/sync/errors.lua
+msgid "Cannot read a file"
+msgstr "Αδυναμία ανάγνωσης αρχείου"
+
+#: ink/sync/errors.lua
+msgid "Cannot write a file"
+msgstr "Αδυναμία εγγραφής αρχείου"
 
 #: ink/framecover.lua
 msgid "Canvas Wrap"
@@ -603,6 +832,14 @@ msgstr "Πίνακας κιμωλίας"
 msgid "Change link…"
 msgstr "Αλλαγή συνδέσμου…"
 
+#: ink/sync/errors.lua
+msgid "Changed meanwhile"
+msgstr "Άλλαξε στο μεταξύ"
+
+#: ink/view/sync.lua
+msgid "Changes are waiting to be sent."
+msgstr "Οι αλλαγές περιμένουν να σταλούν."
+
 #: ink/coverpicker.lua
 msgid "Charcoal"
 msgstr "Κάρβουνο"
@@ -615,9 +852,25 @@ msgstr "Έλεγχος τώρα"
 msgid "Check once a day"
 msgstr "Έλεγχος μία φορά την ημέρα"
 
+#: ink/sync/errors.lua
+msgid "Check that the reader's storage and the library folder are in place. Nothing was deleted."
+msgstr "Ελέγξτε ότι ο αποθηκευτικός χώρος της συσκευής και ο φάκελος της βιβλιοθήκης είναι στη θέση τους. Δεν διαγράφηκε τίποτα."
+
+#: ink/sync/errors.lua
+msgid "Check that the reader's storage is not full or damaged."
+msgstr "Ελέγξτε ότι ο αποθηκευτικός χώρος της συσκευής δεν είναι γεμάτος ή κατεστραμμένος."
+
 #: ink/view/ocrapi.lua
 msgid "Check the address in the Text sheet: it has to be a full address starting with https://."
 msgstr "Ελέγξτε τη διεύθυνση στο φύλλο Κείμενο: πρέπει να είναι πλήρης διεύθυνση που αρχίζει με https://."
+
+#: ink/sync/errors.lua
+msgid "Check the date and time on this reader, then try again."
+msgstr "Ελέγξτε την ημερομηνία και την ώρα αυτής της συσκευής και δοκιμάστε ξανά."
+
+#: ink/view/sync.lua
+msgid "Checking the cloud…"
+msgstr "Έλεγχος του cloud…"
 
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
@@ -646,6 +899,18 @@ msgstr "Επιλέξτε το είδος. Μετά μπορείτε να ορί�
 msgid "Choose its paper, a PDF or a template"
 msgstr "Επιλέξτε το χαρτί του, ένα PDF ή ένα πρότυπο"
 
+#: ink/sync/errors.lua
+msgid "Choose the old folder again, or start syncing this folder as a new library."
+msgstr "Επιλέξτε ξανά τον παλιό φάκελο ή ξεκινήστε τον συγχρονισμό αυτού του φακέλου ως νέα βιβλιοθήκη."
+
+#: ink/sync/config.lua
+msgid "Client ID"
+msgstr "Αναγνωριστικό πελάτη"
+
+#: ink/sync/config.lua
+msgid "Client secret"
+msgstr "Μυστικό πελάτη"
+
 #: ink/view/images.lua
 msgid "Clip the page"
 msgstr "Αποκοπή σελίδας"
@@ -654,6 +919,7 @@ msgstr "Αποκοπή σελίδας"
 msgid "Clips already on a page stay there."
 msgstr "Τα αποσπάσματα που βρίσκονται ήδη σε μια σελίδα μένουν εκεί."
 
+#: ink/launcher.lua
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -662,13 +928,29 @@ msgstr "Τα αποσπάσματα που βρίσκονται ήδη σε μι
 #: ink/view/notebook.lua
 #: ink/view/search.lua
 #: ink/view/sheetkit.lua
+#: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Close"
 msgstr "Κλείσιμο"
 
+#: ink/view/library.lua
+#: ink/view/sync.lua
+msgid "Cloud sync"
+msgstr "Συγχρονισμός cloud"
+
+#: ink/view/library.lua
+msgid "Cloud sync…"
+msgstr "Συγχρονισμός cloud…"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Code %1"
+msgstr "Κωδικός %1"
+
 #: ink/coverpicker.lua
 #: ink/guide.lua
 #: ink/view/selection.lua
+#: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Colour"
 msgstr "Χρώμα"
@@ -697,6 +979,37 @@ msgstr "Χρώμα…"
 #: ink/notebookcover.lua
 msgid "Composition book"
 msgstr "Σχολικό τετράδιο"
+
+#: ink/view/sync.lua
+msgid "Conflicts"
+msgstr "Συγκρούσεις"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Conflicts (%1)"
+msgstr "Συγκρούσεις (%1)"
+
+#: ink/view/sync.lua
+msgid "Connect"
+msgstr "Σύνδεση"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Connect %1"
+msgstr "Σύνδεση με %1"
+
+#: ink/view/sync.lua
+msgid "Connect again"
+msgstr "Νέα σύνδεση"
+
+#: ink/sync/errors.lua
+msgid "Connect to Wi-Fi, or allow Ink Away to turn it on in the sync settings."
+msgstr "Συνδεθείτε στο Wi-Fi ή επιτρέψτε στο Ink Away να το ενεργοποιεί από τις ρυθμίσεις συγχρονισμού."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Connecting to %1…"
+msgstr "Σύνδεση με το %1…"
 
 #: ink/view/links.lua
 msgid "Contents"
@@ -750,6 +1063,11 @@ msgstr "Αντιγράφηκε στο «%s»"
 msgid "Copy"
 msgstr "Αντιγραφή"
 
+#: ink/launcher.lua
+msgid "Copy part of the page as a picture"
+msgstr "Αντιγραφή μέρους της σελίδας ως εικόνα"
+
+#: ink/launcher.lua
 #: main.lua
 msgid "Copy part of the screen"
 msgstr "Αντιγραφή μέρους της οθόνης"
@@ -984,6 +1302,10 @@ msgstr "Αποκόψτε ή αντιγράψτε και μετά, σε οποι�
 msgid "Daily"
 msgstr "Ημερήσιο"
 
+#: ink/sync/errors.lua
+msgid "Damaged download"
+msgstr "Κατεστραμμένη λήψη"
+
 #: ink/view/settings.lua
 msgid "Dark"
 msgstr "Σκούρο"
@@ -1004,6 +1326,10 @@ msgstr "Το Σκούρο κάνει σκούρες τις γραμμές εργ
 msgid "Date"
 msgstr "Ημερομηνία"
 
+#: ink/view/sync.lua
+msgid "Day"
+msgstr "Ημέρα"
+
 #: ink/view/settings.lua
 #: ink/view/textformat.lua
 msgid "Default"
@@ -1019,6 +1345,7 @@ msgstr "Προεπιλογή (γραμματοσειρά περιεχομένο�
 #: ink/view/menus.lua
 #: ink/view/notebook.lua
 #: ink/view/selection.lua
+#: ink/view/sync.lua
 #: ink/view/trash.lua
 msgid "Delete"
 msgstr "Διαγραφή"
@@ -1042,6 +1369,14 @@ msgstr "Διαγραφή όλων των αποσπασμάτων τώρα…"
 #: ink/view/library.lua
 msgid "Delete all clips?"
 msgstr "Διαγραφή όλων των αποσπασμάτων;"
+
+#: ink/view/sync.lua
+msgid "Delete anyway?"
+msgstr "Διαγραφή ούτως ή άλλως;"
+
+#: ink/view/sync.lua
+msgid "Delete anyway…"
+msgstr "Διαγραφή ούτως ή άλλως…"
 
 #: ink/view/trash.lua
 msgid "Delete for good"
@@ -1112,9 +1447,26 @@ msgstr "Τα διαγραμμένα, και οι σημειώσεις ενός �
 msgid "Delete…"
 msgstr "Διαγραφή…"
 
+#: ink/view/sync.lua
+msgid "Details"
+msgstr "Λεπτομέρειες"
+
 #: ink/view/textformat.lua
 msgid "Direction"
 msgstr "Κατεύθυνση"
+
+#: ink/view/sync.lua
+msgid "Disconnect"
+msgstr "Αποσύνδεση"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Disconnect %1?"
+msgstr "Αποσύνδεση από το %1;"
+
+#: ink/sync/errors.lua
+msgid "Disconnect and connect again, and tap Allow when asked."
+msgstr "Αποσυνδεθείτε και συνδεθείτε ξανά, και πατήστε Να επιτρέπεται όταν σας ρωτήσει."
 
 #: ink/view/receive.lua
 msgid "Don't ask again"
@@ -1142,6 +1494,7 @@ msgstr "Να μην εμφανιστεί ξανά"
 #: ink/view/selection.lua
 #: ink/view/settings.lua
 #: ink/view/sheetkit.lua
+#: ink/view/sync.lua
 #: ink/view/textedit.lua
 #: ink/view/textformat.lua
 #: ink/view/updates.lua
@@ -1159,6 +1512,11 @@ msgstr "Οι τελείες δείχνουν πού πέφτει κάθε επα
 #: ink/view/notebook.lua
 msgid "Dotted"
 msgstr "Στικτό"
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Double tap: %1"
+msgstr "Διπλό πάτημα: %1"
 
 #: ink/view/share.lua
 msgid "Download"
@@ -1236,6 +1594,22 @@ msgstr "Ολλανδικό κυματιστό"
 msgid "Each document keeps its paper; a new one starts on the last you picked. On a dark paper black ink and text show white. Dark mode never changes the paper."
 msgstr "Κάθε έγγραφο κρατά το χαρτί του· ένα νέο ξεκινά με το τελευταίο που διαλέξατε. Σε σκούρο χαρτί το μαύρο μελάνι και το κείμενο φαίνονται λευκά. Η σκούρα λειτουργία δεν αλλάζει ποτέ το χαρτί."
 
+#: ink/view/sync.lua
+msgid "Each notebook is copied to your own cloud account. Nothing is replaced or removed without a safety copy, and when two readers change the same notebook, both versions are kept."
+msgstr "Κάθε σημειωματάριο αντιγράφεται στον δικό σας λογαριασμό cloud. Τίποτα δεν αντικαθίσταται ή αφαιρείται χωρίς αντίγραφο ασφαλείας, και όταν δύο συσκευές αλλάξουν το ίδιο σημειωματάριο, διατηρούνται και οι δύο εκδόσεις."
+
+#: ink/view/sync.lua
+msgid "Each one is tried again at the next sync. Tap Details on the sync sheet for what to do."
+msgstr "Κάθε πρόβλημα ξαναδοκιμάζεται στον επόμενο συγχρονισμό. Πατήστε Λεπτομέρειες στο φύλλο συγχρονισμού για να δείτε τι να κάνετε."
+
+#: ink/view/sync.lua
+msgid "Earlier versions"
+msgstr "Προηγούμενες εκδόσεις"
+
+#: ink/view/sync.lua
+msgid "Earlier versions of this notebook"
+msgstr "Προηγούμενες εκδόσεις αυτού του σημειωματαρίου"
+
 #: ink/framecover.lua
 msgid "Ebonised"
 msgstr "Μαυρισμένο"
@@ -1251,6 +1625,10 @@ msgstr "Επεξεργασία"
 #: ink/view/export.lua
 msgid "Editable"
 msgstr "Επεξεργάσιμο"
+
+#: ink/view/sync.lua
+msgid "Edited on this reader and on another reader since the last sync, so there are two versions. Nothing was lost."
+msgstr "Επεξεργάστηκε σε αυτή τη συσκευή και σε μια άλλη από τον τελευταίο συγχρονισμό, οπότε υπάρχουν δύο εκδόσεις. Τίποτα δεν χάθηκε."
 
 #: ink/view/receive.lua
 msgid "Either way they stay in Library › Imported. To be asked again, turn on \"Ask to open notebooks that arrive\" in Phone or computer (Wi-Fi)."
@@ -1271,6 +1649,14 @@ msgstr "Άδειασμα κάδου"
 #: ink/view/trash.lua
 msgid "Empty the trash?"
 msgstr "Να αδειάσει ο κάδος;"
+
+#: ink/view/sync.lua
+msgid "Enter details"
+msgstr "Εισαγωγή στοιχείων"
+
+#: ink/sync/errors.lua
+msgid "Enter the code on your phone and tap Allow. This screen carries on by itself."
+msgstr "Πληκτρολογήστε τον κωδικό στο κινητό σας και πατήστε Να επιτρέπεται. Αυτή η οθόνη συνεχίζει μόνη της."
 
 #: ink/view/toolbar.lua
 msgid "Erase"
@@ -1309,9 +1695,25 @@ msgstr "Κάθε σχέδιο και σημειωματάριο είναι έν�
 msgid "Everything besides ink"
 msgstr "Τα πάντα εκτός από το μελάνι"
 
+#: ink/sync/errors.lua
+msgid "Everything else works as usual."
+msgstr "Όλα τα υπόλοιπα λειτουργούν κανονικά."
+
 #: ink/view/trash.lua
 msgid "Everything in it is deleted for good."
 msgstr "Ό,τι υπάρχει μέσα του διαγράφεται οριστικά."
+
+#: ink/sync/areas.lua
+msgid "Everything in your library except the notes kept for books."
+msgstr "Όλα στη βιβλιοθήκη σας εκτός από τις σημειώσεις των βιβλίων."
+
+#: ink/view/sync.lua
+msgid "Everything is already in sync."
+msgstr "Όλα είναι ήδη συγχρονισμένα."
+
+#: ink/view/sync.lua
+msgid "Everything is already the same here and in the cloud."
+msgstr "Όλα είναι ήδη ίδια εδώ και στο cloud."
 
 #: ink/reader/inkview.lua
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
@@ -1394,6 +1796,10 @@ msgstr "Εξαγωγή του φακέλου ως PDF"
 #, lua-format
 msgid "Exporting %d page(s) to PDF"
 msgstr "Εξαγωγή %d σελίδων σε PDF"
+
+#: ink/sync/areas.lua
+msgid "Exports"
+msgstr "Εξαγωγές"
 
 #: ink/view/settings.lua
 #, lua-format
@@ -1489,6 +1895,10 @@ msgstr "Δάχτυλο στη σελίδα"
 #: ink/framepicker.lua
 msgid "Finish"
 msgstr "Τελείωμα"
+
+#: ink/view/sync.lua
+msgid "Finishing…"
+msgstr "Ολοκλήρωση…"
 
 #: ink/view/pencase.lua
 msgid "Firm"
@@ -1597,6 +2007,14 @@ msgstr "Πλαίσιο στο ράφι…"
 msgid "Free pictures from Wikimedia and Openverse. Needs Wi-Fi."
 msgstr "Ελεύθερες εικόνες από το Wikimedia και το Openverse. Χρειάζεται Wi-Fi."
 
+#: ink/sync/errors.lua
+msgid "Free some space in your account or buy more. Nothing was lost on this reader."
+msgstr "Ελευθερώστε χώρο στον λογαριασμό σας ή αγοράστε περισσότερο. Δεν χάθηκε τίποτα σε αυτή τη συσκευή."
+
+#: ink/sync/errors.lua
+msgid "Free some space on the reader and try again."
+msgstr "Ελευθερώστε χώρο στη συσκευή και δοκιμάστε ξανά."
+
 #: ink/view/trash.lua
 #, lua-format
 msgid "From %s"
@@ -1652,6 +2070,10 @@ msgstr "Οι Χειρονομίες και κουμπιά στυλό δίνου�
 #: ink/view/images.lua
 msgid "Get from your phone or computer"
 msgstr "Λήψη από το τηλέφωνο ή τον υπολογιστή σας"
+
+#: ink/view/sync.lua
+msgid "Get the latest when opening one"
+msgstr "Λήψη της τελευταίας έκδοσης κατά το άνοιγμα"
 
 #: ink/guide.lua
 msgid "Getting around"
@@ -1846,6 +2268,11 @@ msgstr "Κρατήστε πατημένο το πλαϊνό κουμπί του 
 msgid "Hold the previous or next arrow."
 msgstr "Κρατήστε πατημένο το προηγούμενο ή το επόμενο βέλος."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Hold: %1"
+msgstr "Παρατεταμένο πάτημα: %1"
+
 #: ink/view/settings.lua
 msgid "Horizontal"
 msgstr "Οριζόντια"
@@ -1853,6 +2280,14 @@ msgstr "Οριζόντια"
 #: ink/view/menus.lua
 msgid "How big the arrowheads are, in canvas pixels."
 msgstr "Πόσο μεγάλες είναι οι κεφαλές των βελών, σε pixel του καμβά."
+
+#: ink/view/settings.lua
+msgid "Icon in KOReader's top menu bar"
+msgstr "Εικονίδιο στην επάνω γραμμή μενού του KOReader"
+
+#: main.lua
+msgid "Icon in the top menu bar"
+msgstr "Εικονίδιο στην επάνω γραμμή μενού"
 
 #: ink/view/library.lua
 #, lua-format
@@ -1874,6 +2309,10 @@ msgstr "Εικόνα, Φόντο βάζει μια εικόνα πίσω από 
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Εισαγάγετε ένα PDF για να γράψετε στις σελίδες του και μετά εξαγάγετέ το πάλι σε PDF."
+
+#: ink/sync/areas.lua
+msgid "Imported PDFs and pictures"
+msgstr "Εισαγμένα PDF και εικόνες"
 
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
@@ -1903,6 +2342,7 @@ msgstr "Συμπερίληψη του χαρτιού"
 msgid "Ink"
 msgstr "Μελάνι"
 
+#: ink/launcher.lua
 #: main.lua
 msgid "Ink Away"
 msgstr "Ink Away"
@@ -1959,6 +2399,14 @@ msgstr "Βιβλιοθήκη Ink Away"
 msgid "Ink Away notebooks"
 msgstr "Σημειωματάρια Ink Away"
 
+#: ink/view/sync.lua
+msgid "Ink Away only uses its own folder in your account and cannot see anything else in it. Syncing stays off until you connect."
+msgstr "Το Ink Away χρησιμοποιεί μόνο τον δικό του φάκελο στον λογαριασμό σας και δεν μπορεί να δει τίποτα άλλο. Ο συγχρονισμός παραμένει απενεργοποιημένος μέχρι να συνδεθείτε."
+
+#: main.lua
+msgid "Ink Away's icon in this bar opens a quick menu from any screen. It shows the next time the menu is opened."
+msgstr "Το εικονίδιο του Ink Away σε αυτή τη γραμμή ανοίγει ένα γρήγορο μενού από οποιαδήποτε οθόνη. Εμφανίζεται την επόμενη φορά που θα ανοίξει το μενού."
+
 #: main.lua
 msgid "Ink Away: annotate the book"
 msgstr "Ink Away: σχολιασμός του βιβλίου"
@@ -1970,6 +2418,14 @@ msgstr "Ink Away: σημειώσεις βιβλίου (Ink Away εκτός βι�
 #: main.lua
 msgid "Ink Away: copy part of the screen"
 msgstr "Ink Away: αντιγραφή μέρους της οθόνης"
+
+#: main.lua
+msgid "Ink Away: quick menu"
+msgstr "Ink Away: γρήγορο μενού"
+
+#: ink/sync/areas.lua
+msgid "Ink on book pages"
+msgstr "Μελάνι σε σελίδες βιβλίων"
 
 #: ink/view/pencase.lua
 msgid "Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."
@@ -2010,6 +2466,10 @@ msgstr "Ισομετρικό"
 msgid "It can't be brought back."
 msgstr "Δεν μπορεί να επανέλθει."
 
+#: ink/view/sync.lua
+msgid "It replaces the other reader's version, here and on the other reader at the next sync. The version it replaces is kept in the backup folder."
+msgstr "Αντικαθιστά την έκδοση της άλλης συσκευής, εδώ και στην άλλη συσκευή στον επόμενο συγχρονισμό. Η έκδοση που αντικαθίσταται φυλάσσεται στον φάκελο αντιγράφων ασφαλείας."
+
 #: ink/guide.lua
 msgid "It saves itself"
 msgstr "Αποθηκεύεται μόνο του"
@@ -2018,6 +2478,22 @@ msgstr "Αποθηκεύεται μόνο του"
 #, lua-format
 msgid "It stays in the trash for %d days."
 msgstr "Μένει στον κάδο για %d ημέρες."
+
+#: ink/sync/errors.lua
+msgid "It will be checked again on the next sync."
+msgstr "Θα ελεγχθεί ξανά στον επόμενο συγχρονισμό."
+
+#: ink/sync/errors.lua
+msgid "It will be downloaded again on the next sync."
+msgstr "Θα ληφθεί ξανά στον επόμενο συγχρονισμό."
+
+#: ink/sync/errors.lua
+msgid "It will be sent again on the next sync."
+msgstr "Θα σταλεί ξανά στον επόμενο συγχρονισμό."
+
+#: ink/sync/errors.lua
+msgid "It will be synced next time."
+msgstr "Θα συγχρονιστεί την επόμενη φορά."
 
 #: ink/view/textformat.lua
 msgid "Italic"
@@ -2044,6 +2520,10 @@ msgstr "Διατήρηση ως εικόνες"
 msgid "Keep as pictures puts a picture of your ink over the %d page(s) that have them, so they look as you drew them. Their ink there can't be edited stroke by stroke; every other page stays editable. Leave them out writes the PDF without them."
 msgstr "Η «Διατήρηση ως εικόνες» βάζει μια εικόνα του μελανιού σας πάνω από τις %d σελίδες που τα έχουν, ώστε να μοιάζουν όπως τις σχεδιάσατε. Το μελάνι εκεί δεν μπορεί πλέον να επεξεργαστεί γραμμή προς γραμμή· όλες οι άλλες σελίδες μένουν επεξεργάσιμες. Το «Να παραλειφθούν» γράφει το PDF χωρίς αυτά."
 
+#: ink/view/sync.lua
+msgid "Keep both"
+msgstr "Διατήρηση και των δύο"
+
 #: ink/view/settings.lua
 msgid "Keep colours in night mode"
 msgstr "Διατήρηση χρωμάτων στη νυχτερινή λειτουργία"
@@ -2055,6 +2535,22 @@ msgstr "Διατήρηση για (ημέρες)"
 #: ink/view/dialogs.lua
 msgid "Keep going"
 msgstr "Συνέχεια"
+
+#: ink/view/sync.lua
+msgid "Keep the other reader's version"
+msgstr "Διατήρηση της έκδοσης της άλλης συσκευής"
+
+#: ink/view/sync.lua
+msgid "Keep this reader's version"
+msgstr "Διατήρηση της έκδοσης αυτής της συσκευής"
+
+#: ink/view/sync.lua
+msgid "Keep your notebooks and drawings the same on all your readers."
+msgstr "Διατηρήστε τα σημειωματάρια και τα σχέδιά σας ίδια σε όλες τις συσκευές σας."
+
+#: ink/view/sync.lua
+msgid "Keep your notebooks the same on all your readers, through your own cloud account."
+msgstr "Διατηρήστε τα σημειωματάριά σας ίδια σε όλες τις συσκευές σας, μέσω του δικού σας λογαριασμού cloud."
 
 #: ink/view/ocrapi.lua
 msgid "Key"
@@ -2133,6 +2629,7 @@ msgid "Legal pad"
 msgstr "Μπλοκ νομικού"
 
 #: ink/actions.lua
+#: ink/launcher.lua
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/overview.lua
@@ -2257,9 +2754,29 @@ msgstr "Μακρύ σύρσιμο προς τα πάνω με δύο δάχτυ�
 msgid "Long-press an image to add it."
 msgstr "Κρατήστε πατημένη μια εικόνα για να την προσθέσετε."
 
+#: ink/view/sync.lua
+msgid "Look at the conflicts"
+msgstr "Δείτε τις συγκρούσεις"
+
 #: ink/view/search.lua
 msgid "Look inside pages too"
 msgstr "Αναζήτηση και μέσα στις σελίδες"
+
+#: ink/view/sync.lua
+msgid "Looking at this reader…"
+msgstr "Εξέταση αυτής της συσκευής…"
+
+#: ink/view/sync.lua
+msgid "Looking at what there is to sync…"
+msgstr "Έλεγχος του τι πρέπει να συγχρονιστεί…"
+
+#: ink/view/sync.lua
+msgid "Looking for a newer version…"
+msgstr "Αναζήτηση νεότερης έκδοσης…"
+
+#: ink/view/sync.lua
+msgid "Looking for changes…"
+msgstr "Αναζήτηση αλλαγών…"
 
 #: ink/guide.lua
 msgid "Loop writing, shapes, pictures or text for its menu: cut, copy, duplicate, turn, flip, colour, size, opacity, to front, delete."
@@ -2293,6 +2810,10 @@ msgstr "Δημιουργία σελίδας περιεχομένων"
 msgid "Make a copy"
 msgstr "Δημιουργία αντιγράφου"
 
+#: ink/sync/errors.lua
+msgid "Make the notebook smaller, for example by splitting it. It stays on this reader."
+msgstr "Μικρύνετε το σημειωματάριο, για παράδειγμα χωρίζοντάς το. Παραμένει σε αυτή τη συσκευή."
+
 #: ink/guide.lua
 msgid "Make them yours"
 msgstr "Κάντε τα δικά σας"
@@ -2300,6 +2821,14 @@ msgstr "Κάντε τα δικά σας"
 #: ink/view/share.lua
 msgid "Making a notebook in Library › Imported › PDFs…"
 msgstr "Δημιουργία σημειωματαρίου στη Βιβλιοθήκη › Εισαγμένα › PDF…"
+
+#: ink/view/sync.lua
+msgid "Manual only"
+msgstr "Μόνο χειροκίνητα"
+
+#: ink/sync/errors.lua
+msgid "Many files seem to be missing"
+msgstr "Πολλά αρχεία φαίνεται να λείπουν"
 
 #: ink/view/notebook.lua
 msgid "Margin ruled"
@@ -2367,6 +2896,10 @@ msgstr "Μετακίνηση"
 #: ink/guide.lua
 msgid "Move around"
 msgstr "Μετακίνηση στην εφαρμογή"
+
+#: ink/sync/errors.lua
+msgid "Move closer to the router and try again. Syncing carries on where it stopped."
+msgstr "Πλησιάστε στον δρομολογητή και δοκιμάστε ξανά. Ο συγχρονισμός συνεχίζει από εκεί που σταμάτησε."
 
 #: ink/view/layers.lua
 #: ink/view/overview.lua
@@ -2444,9 +2977,18 @@ msgstr "Μουσική"
 msgid "Mustard"
 msgstr "Μουστάρδα"
 
+#: ink/view/sync.lua
+msgid "Name of this reader"
+msgstr "Όνομα αυτής της συσκευής"
+
 #: ink/ui/brushmaker.lua
 msgid "Name this brush"
 msgstr "Ονομάστε αυτό το πινέλο"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Name: %1"
+msgstr "Όνομα: %1"
 
 #: ink/view/pencase.lua
 msgid "Navigate"
@@ -2499,11 +3041,16 @@ msgstr "Νέα αναζήτηση"
 msgid "New shelf"
 msgstr "Νέο ράφι"
 
+#: ink/sync/errors.lua
+msgid "Newer version needed"
+msgstr "Απαιτείται νεότερη έκδοση"
+
 #: ink/view/library.lua
 msgid "Newest first"
 msgstr "Πρώτα τα νεότερα"
 
 #: ink/view/imagebrowser.lua
+#: ink/view/sync.lua
 msgid "Next"
 msgstr "Επόμενο"
 
@@ -2519,9 +3066,21 @@ msgstr "Γωνία πένας"
 msgid "No PDFs or folders here."
 msgstr "Δεν υπάρχουν PDF ή φάκελοι εδώ."
 
+#: ink/view/sync.lua
+msgid "No camera? Open this address in any browser:"
+msgstr "Δεν έχετε κάμερα; Ανοίξτε αυτή τη διεύθυνση σε οποιοδήποτε πρόγραμμα περιήγησης:"
+
 #: ink/view/overview.lua
 msgid "No colour"
 msgstr "Χωρίς χρώμα"
+
+#: ink/view/sync.lua
+msgid "No conflicts."
+msgstr "Καμία σύγκρουση."
+
+#: ink/sync/errors.lua
+msgid "No connection"
+msgstr "Καμία σύνδεση"
 
 #: ink/view/dialogs.lua
 msgid "No files or folders here."
@@ -2605,6 +3164,10 @@ msgstr "Δεν υπάρχουν ακόμη πρότυπα. Αποθηκεύστ�
 msgid "No writing could be read there."
 msgstr "Δεν διαβάστηκε γράψιμο εκεί."
 
+#: ink/sync/errors.lua
+msgid "Nobody allowed the sign-in in time, or it was refused."
+msgstr "Κανείς δεν επέτρεψε τη σύνδεση εγκαίρως, ή απορρίφθηκε."
+
 #: ink/view/export.lua
 msgid "None of the pages has ink."
 msgstr "Καμία σελίδα δεν έχει μελάνι."
@@ -2613,17 +3176,41 @@ msgstr "Καμία σελίδα δεν έχει μελάνι."
 msgid "Normal"
 msgstr "Κανονικό"
 
+#: ink/sync/errors.lua
+msgid "Not allowed"
+msgstr "Δεν επιτρέπεται"
+
+#: ink/sync/errors.lua
+msgid "Not available here"
+msgstr "Μη διαθέσιμο εδώ"
+
 #: ink/view/updates.lua
 msgid "Not checked yet."
 msgstr "Δεν έχει ελεγχθεί ακόμη."
+
+#: ink/sync/errors.lua
+msgid "Not found in the cloud"
+msgstr "Δεν βρέθηκε στο cloud"
 
 #: ink/view/updates.lua
 msgid "Not installed"
 msgstr "Δεν είναι εγκατεστημένο"
 
+#: ink/view/sync.lua
+msgid "Not now"
+msgstr "Όχι τώρα"
+
 #: ink/view/welcome.lua
 msgid "Not set up"
 msgstr "Δεν έχει ρυθμιστεί"
+
+#: ink/sync/errors.lua
+msgid "Not signed in"
+msgstr "Δεν έχει γίνει σύνδεση"
+
+#: ink/view/sync.lua
+msgid "Not synced yet."
+msgstr "Δεν έχει συγχρονιστεί ακόμη."
 
 #: ink/view/textformat.lua
 msgid "Note font"
@@ -2653,6 +3240,18 @@ msgstr "Χαρτί σημειωματαρίου"
 msgid "Notebooks"
 msgstr "Σημειωματάρια"
 
+#: ink/sync/areas.lua
+msgid "Notebooks and drawings"
+msgstr "Σημειωματάρια και σχέδια"
+
+#: ink/view/sync.lua
+msgid "Notebooks changed on two readers. Both versions are kept."
+msgstr "Σημειωματάρια που άλλαξαν σε δύο συσκευές. Διατηρούνται και οι δύο εκδόσεις."
+
+#: ink/view/sync.lua
+msgid "Notebooks on this reader and in the cloud stay as they are. This reader stops syncing. You can connect again at any time."
+msgstr "Τα σημειωματάρια σε αυτή τη συσκευή και στο cloud μένουν όπως είναι. Αυτή η συσκευή σταματά να συγχρονίζεται. Μπορείτε να συνδεθείτε ξανά οποιαδήποτε στιγμή."
+
 #: ink/actions.lua
 #: ink/view/pencase.lua
 msgid "Nothing"
@@ -2670,6 +3269,14 @@ msgstr "Τίποτα εδώ ακόμη. Φτιάξτε ένα σχέδιο, ση
 msgid "Nothing inside the loop."
 msgstr "Τίποτα μέσα στον βρόχο."
 
+#: ink/view/sync.lua
+msgid "Nothing is removed. Both stay as separate notebooks, here and on the other reader."
+msgstr "Τίποτα δεν αφαιρείται. Και οι δύο μένουν ως ξεχωριστά σημειωματάρια, εδώ και στην άλλη συσκευή."
+
+#: ink/view/sync.lua
+msgid "Nothing on this reader is replaced or removed without a safety copy first."
+msgstr "Τίποτα σε αυτή τη συσκευή δεν αντικαθίσταται ή αφαιρείται χωρίς πρώτα αντίγραφο ασφαλείας."
+
 #: ink/view/images.lua
 msgid "Nothing sent yet."
 msgstr "Δεν έχει σταλεί τίποτα ακόμη."
@@ -2681,6 +3288,10 @@ msgstr "Τίποτα για επανάληψη."
 #: ink/view.lua
 msgid "Nothing to undo."
 msgstr "Τίποτα για αναίρεση."
+
+#: ink/view/sync.lua
+msgid "Nothing yet."
+msgstr "Τίποτα ακόμη."
 
 #: ink/view/document.lua
 #, lua-format
@@ -2701,6 +3312,7 @@ msgid "Oak"
 msgstr "Δρυς"
 
 #: ink/view/settings.lua
+#: ink/view/sync.lua
 msgid "Off"
 msgstr "Απενεργοποίηση"
 
@@ -2757,6 +3369,15 @@ msgstr "Άνοιγμα"
 msgid "Open %s"
 msgstr "Άνοιγμα του %s"
 
+#: ink/sync/errors.lua
+msgid "Open Cloud sync and connect again. Your notebooks stay as they are."
+msgstr "Ανοίξτε τον συγχρονισμό cloud και συνδεθείτε ξανά. Τα σημειωματάριά σας μένουν όπως είναι."
+
+#: ink/sync/errors.lua
+msgid "Open Cloud sync and connect your account."
+msgstr "Ανοίξτε τον συγχρονισμό cloud και συνδέστε τον λογαριασμό σας."
+
+#: ink/launcher.lua
 #: main.lua
 msgid "Open Ink Away"
 msgstr "Άνοιγμα του Ink Away"
@@ -2776,6 +3397,14 @@ msgstr "Να ανοίξει τώρα το PDF;"
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Ανοίξτε τα από το μενού του αναγνώστη: Εργαλεία, Ink Away. Ή δώστε τους χειρονομία στις Ρυθμίσεις, Πατήματα και χειρονομίες, Διαχειριστής χειρονομιών: οι ενέργειες είναι «Ink Away: σχολιασμός του βιβλίου» και «Ink Away: σημειώσεις βιβλίου»."
+
+#: ink/view/sync.lua
+msgid "Opening a notebook or book can wait up to 6 seconds for the cloud."
+msgstr "Το άνοιγμα ενός σημειωματαρίου ή βιβλίου μπορεί να περιμένει έως και 6 δευτερόλεπτα το cloud."
+
+#: ink/view/settings.lua
+msgid "Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."
+msgstr "Ανοίγει το γρήγορο μενού του Ink Away από οποιαδήποτε οθόνη. Εμφανίζεται την επόμενη φορά που θα ανοίξει το μενού του KOReader."
 
 #: ink/view/imagebrowser.lua
 msgid "Openverse"
@@ -2832,6 +3461,10 @@ msgstr "Τύπος PDF"
 msgid "PDFs"
 msgstr "PDF"
 
+#: ink/sync/areas.lua
+msgid "PDFs and pictures made from your notebooks."
+msgstr "PDF και εικόνες που δημιουργήθηκαν από τα σημειωματάριά σας."
+
 #: ink/guide.lua
 msgid "PNG"
 msgstr "PNG"
@@ -2843,6 +3476,10 @@ msgstr "Εικόνες PNG"
 #: ink/guide.lua
 msgid "PNG, PDF and more"
 msgstr "PNG, PDF και άλλα"
+
+#: ink/view/settings.lua
+msgid "Page"
+msgstr "Σελίδα"
 
 #: ink/view/imagebrowser.lua
 #: ink/view/links.lua
@@ -3071,6 +3708,10 @@ msgstr "Μολύβι"
 msgid "Pens"
 msgstr "Στυλό"
 
+#: ink/sync/areas.lua
+msgid "Pens, colours and preferences"
+msgstr "Στυλό, χρώματα και προτιμήσεις"
+
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
 msgstr "Τηλέφωνο ή υπολογιστής (Wi-Fi)"
@@ -3092,6 +3733,10 @@ msgstr "Η κοινή χρήση με τηλέφωνο ή υπολογιστή �
 msgid "Pick a PDF that is already on this reader. It becomes a notebook in this folder."
 msgstr "Επιλέξτε ένα PDF που υπάρχει ήδη σε αυτή τη συσκευή. Γίνεται σημειωματάριο σε αυτόν τον φάκελο."
 
+#: ink/launcher.lua
+msgid "Pick up where you left off"
+msgstr "Συνεχίστε από εκεί που σταματήσατε"
+
 #: ink/view/share.lua
 msgid "Picture"
 msgstr "Εικόνα"
@@ -3100,10 +3745,18 @@ msgstr "Εικόνα"
 msgid "Picture on the sides"
 msgstr "Εικόνα στα πλάγια"
 
+#: ink/sync/errors.lua
+msgid "Picture or PDF is missing"
+msgstr "Λείπει εικόνα ή PDF"
+
 #: ink/guide.lua
 #: ink/view/export.lua
 msgid "Pictures"
 msgstr "Εικόνες"
+
+#: ink/sync/areas.lua
+msgid "Pictures taken of part of a page."
+msgstr "Εικόνες από ένα τμήμα μιας σελίδας."
 
 #: ink/view/exportbook.lua
 #, lua-format
@@ -3161,6 +3814,10 @@ msgstr "Προηγούμενη σελίδα"
 msgid "Previous pen"
 msgstr "Προηγούμενο στυλό"
 
+#: ink/view/sync.lua
+msgid "Problems"
+msgstr "Προβλήματα"
+
 #: ink/view/menus.lua
 msgid "Protect text from eraser"
 msgstr "Προστασία κειμένου από τη γόμα"
@@ -3187,6 +3844,10 @@ msgstr "Επαναφορά στο %s"
 #, lua-format
 msgid "Put back on %s"
 msgstr "Επαναφορά στο %s"
+
+#: ink/launcher.lua
+msgid "Quick notes for the book you're reading"
+msgstr "Γρήγορες σημειώσεις για το βιβλίο που διαβάζετε"
 
 #: ink/welcome.lua
 msgid "Quick notes for the book you're reading, in a window over the page, with a page for each chapter."
@@ -3223,6 +3884,10 @@ msgstr "Διαβάζεται προς τα κάτω"
 #: ink/view/textformat.lua
 msgid "Reads up"
 msgstr "Διαβάζεται προς τα πάνω"
+
+#: ink/view/sync.lua
+msgid "Ready to sync"
+msgstr "Έτοιμο για συγχρονισμό"
 
 #: ink/view/share.lua
 #, lua-format
@@ -3300,6 +3965,10 @@ msgstr "Μετονομασία"
 msgid "Rename layer"
 msgstr "Μετονομασία επιπέδου"
 
+#: ink/sync/errors.lua
+msgid "Rename one of them."
+msgstr "Μετονομάστε το ένα από τα δύο."
+
 #: ink/view/document.lua
 #: ink/view/layers.lua
 #: ink/view/library.lua
@@ -3360,6 +4029,7 @@ msgstr "Γυαλόχαρτο"
 #: ink/view/export.lua
 #: ink/view/notebook.lua
 #: ink/view/ocrapi.lua
+#: ink/view/sync.lua
 msgid "Save"
 msgstr "Αποθήκευση"
 
@@ -3475,6 +4145,11 @@ msgstr "Σαρώστε με τηλέφωνο ή υπολογιστή στο ίδ
 msgid "Scan with your phone"
 msgstr "Σαρώστε με το τηλέφωνό σας"
 
+#: ink/view/settings.lua
+msgid "Screen"
+msgstr "Οθόνη"
+
+#: ink/sync/areas.lua
 #: ink/view/library.lua
 msgid "Screen clips"
 msgstr "Αποσπάσματα σελίδας"
@@ -3522,6 +4197,10 @@ msgstr "Αναζήτηση…"
 #: ink/actions.lua
 msgid "Second side button"
 msgstr "Δεύτερο πλαϊνό κουμπί"
+
+#: ink/sync/errors.lua
+msgid "Secure connection failed"
+msgstr "Η ασφαλής σύνδεση απέτυχε"
 
 #: ink/guide.lua
 msgid "Select a word"
@@ -3644,6 +4323,10 @@ msgstr "Εμφάνιση της γόμας κατά το σβήσιμο"
 msgid "Show them in the library"
 msgstr "Εμφάνιση στη βιβλιοθήκη"
 
+#: ink/view/sync.lua
+msgid "Shown in the names of conflict copies, so you can tell which reader a version came from."
+msgstr "Εμφανίζεται στα ονόματα των αντιγράφων σύγκρουσης, ώστε να ξέρετε από ποια συσκευή προήλθε μια έκδοση."
+
 #: ink/guide.lua
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
 msgstr "Δείχνει πώς φτάνουν το στυλό σας, τα κουμπιά του και το χέρι σας. Χρήσιμο σε αναφορά σφάλματος."
@@ -3651,6 +4334,10 @@ msgstr "Δείχνει πώς φτάνουν το στυλό σας, τα κου
 #: ink/actions.lua
 msgid "Side button"
 msgstr "Πλαϊνό κουμπί"
+
+#: ink/sync/errors.lua
+msgid "Sign in again"
+msgstr "Συνδεθείτε ξανά"
 
 #: ink/framecover.lua
 msgid "Silver"
@@ -3713,6 +4400,10 @@ msgstr "Ορισμένες σελίδες δεν μπόρεσαν να διατ�
 msgid "Something went wrong adding that image. Please try another."
 msgstr "Κάτι πήγε στραβά κατά την προσθήκη αυτής της εικόνας. Δοκιμάστε άλλη."
 
+#: ink/sync/errors.lua
+msgid "Something went wrong inside Ink Away. Nothing was overwritten."
+msgstr "Κάτι πήγε στραβά μέσα στο Ink Away. Δεν αντικαταστάθηκε τίποτα."
+
 #: ink/view/toolbar.lua
 msgid "Something went wrong opening that tool. Please report this."
 msgstr "Κάτι πήγε στραβά κατά το άνοιγμα αυτού του εργαλείου. Παρακαλούμε αναφέρετέ το."
@@ -3752,8 +4443,33 @@ msgid "Starred pages"
 msgstr "Σελίδες με αστέρι"
 
 #: ink/guide.lua
+#: ink/view/sync.lua
 msgid "Start again"
 msgstr "Ξεκίνημα από την αρχή"
+
+#: ink/sync/errors.lua
+msgid "Start again to get a new code, and type it exactly as shown."
+msgstr "Ξεκινήστε από την αρχή για να πάρετε νέο κωδικό και πληκτρολογήστε τον ακριβώς όπως εμφανίζεται."
+
+#: ink/sync/errors.lua
+msgid "Start again to get a new code."
+msgstr "Ξεκινήστε ξανά για να πάρετε νέο κωδικό."
+
+#: ink/sync/errors.lua
+msgid "Start it again whenever you like."
+msgstr "Ξεκινήστε την ξανά όποτε θέλετε."
+
+#: ink/view/sync.lua
+msgid "Start syncing"
+msgstr "Έναρξη συγχρονισμού"
+
+#: ink/view/sync.lua
+msgid "Starting…"
+msgstr "Έναρξη…"
+
+#: ink/view/sync.lua
+msgid "Starts a sync in the background each time you close a notebook that changed."
+msgstr "Ξεκινά έναν συγχρονισμό στο παρασκήνιο κάθε φορά που κλείνετε ένα σημειωματάριο που άλλαξε."
 
 #: ink/view/pencase.lua
 msgid "Still being tested. With Palm rejection on, Ballpoint, Fountain, Calligraphy and Pencil get wider the harder you press. If it misbehaves on your reader, I'd love to hear about it on GitHub."
@@ -3765,6 +4481,7 @@ msgstr "Στίξη"
 
 #: ink/view/dialogs.lua
 #: ink/view/share.lua
+#: ink/view/sync.lua
 msgid "Stop"
 msgstr "Τερματισμός"
 
@@ -3780,6 +4497,15 @@ msgstr "Να διακοπεί η εξαγωγή; Οι εικόνες που έχ
 #: ink/view/dialogs.lua
 msgid "Stop now?"
 msgstr "Να σταματήσει τώρα;"
+
+#: ink/sync/errors.lua
+msgid "Stopped"
+msgstr "Διακόπηκε"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Stopped: %1"
+msgstr "Διακόπηκε: %1"
 
 #: ink/view/share.lua
 #, lua-format
@@ -3815,9 +4541,76 @@ msgstr "Σύρσιμο προς τα κάτω κατά μήκος της δεξ�
 msgid "Swipe up along the right edge"
 msgstr "Σύρσιμο προς τα πάνω κατά μήκος της δεξιάς άκρης"
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Swipe: %1"
+msgstr "Σύρσιμο: %1"
+
 #: ink/view/settings.lua
 msgid "Symmetry"
 msgstr "Συμμετρία"
+
+#: ink/view/sync.lua
+msgid "Sync automatically"
+msgstr "Αυτόματος συγχρονισμός"
+
+#: ink/view/sync.lua
+msgid "Sync log"
+msgstr "Αρχείο καταγραφής συγχρονισμού"
+
+#: ink/view/sync.lua
+msgid "Sync now"
+msgstr "Συγχρονισμός τώρα"
+
+#: ink/view/sync.lua
+msgid "Sync this folder as a new library"
+msgstr "Συγχρονισμός αυτού του φακέλου ως νέα βιβλιοθήκη"
+
+#: ink/view/sync.lua
+msgid "Synced"
+msgstr "Συγχρονίστηκε"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Synced %1"
+msgstr "Συγχρονίστηκε %1"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Synced %1, with %2 problem(s)"
+msgstr "Συγχρονίστηκε %1, με %2 πρόβλημα(τα)"
+
+#: ink/view/sync.lua
+msgid "Synced, with problems"
+msgstr "Συγχρονίστηκε, με προβλήματα"
+
+#: ink/view/sync.lua
+msgid "Syncing by itself can slow the reader and use battery. You choose when it runs, and \"Sync now\" runs only when you ask."
+msgstr "Ο αυτόματος συγχρονισμός μπορεί να επιβραδύνει τη συσκευή και να καταναλώνει μπαταρία. Εσείς επιλέγετε πότε εκτελείται, και το «Συγχρονισμός τώρα» εκτελείται μόνο όταν το ζητήσετε."
+
+#: ink/view/sync.lua
+msgid "Syncing by itself runs in the background but uses the processor, Wi-Fi and battery, and can slow the reader. If it does, tap Manual only and use Sync now."
+msgstr "Ο αυτόματος συγχρονισμός τρέχει στο παρασκήνιο, αλλά χρησιμοποιεί επεξεργαστή, Wi-Fi και μπαταρία και μπορεί να επιβραδύνει τη συσκευή. Αν συμβεί αυτό, πατήστε «Μόνο χειροκίνητα» και χρησιμοποιήστε το «Συγχρονισμός τώρα»."
+
+#: ink/view/sync.lua
+msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
+msgstr "Ο αυτόματος συγχρονισμός χρησιμοποιεί Wi-Fi μόνο όταν είναι ήδη ενεργό, εκτός αν το επιτρέψετε. Το «Συγχρονισμός τώρα» μπορεί πάντα να το ενεργοποιήσει."
+
+#: ink/sync/errors.lua
+msgid "Syncing waits for Wi-Fi, and Ink Away is set not to turn it on by itself."
+msgstr "Ο συγχρονισμός περιμένει Wi-Fi και το Ink Away έχει ρυθμιστεί να μην το ενεργοποιεί μόνο του."
+
+#: ink/sync/errors.lua
+msgid "Syncing was stopped."
+msgstr "Ο συγχρονισμός διακόπηκε."
+
+#: ink/sync/errors.lua
+msgid "Syncing would delete a large part of your notebooks in the cloud, so it stopped before deleting anything."
+msgstr "Ο συγχρονισμός θα διέγραφε μεγάλο μέρος των σημειωματαρίων σας στο cloud, γι' αυτό σταμάτησε πριν διαγράψει οτιδήποτε."
+
+#: ink/view/sync.lua
+msgid "Syncs just before the reader sleeps, which uses Wi-Fi and battery."
+msgstr "Συγχρονίζει λίγο πριν την αναστολή της συσκευής, χρησιμοποιώντας Wi-Fi και μπαταρία."
 
 #: ink/view/settings.lua
 msgid "System"
@@ -3860,6 +4653,11 @@ msgstr "Πατήστε για άνοιγμα, κρατήστε πατημένο 
 msgid "Tap where it should go. Format stays open while you pick styles, colours, highlights, lists, spacing and the font; on lined paper text sits on the lines."
 msgstr "Πατήστε εκεί που πρέπει να μπει. Η Μορφή μένει ανοιχτή όσο επιλέγετε στυλ, χρώματα, επισημάνσεις, λίστες, διαστήματα και γραμματοσειρά· σε χαρτί με γραμμές το κείμενο κάθεται στις γραμμές."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Tap: %1"
+msgstr "Πάτημα: %1"
+
 #: ink/coverpicker.lua
 #: ink/folderlook.lua
 msgid "Teal"
@@ -3899,6 +4697,16 @@ msgstr "Πλαίσια κειμένου: %d"
 msgid "That document is no longer there."
 msgstr "Αυτό το έγγραφο δεν υπάρχει πια."
 
+#: ink/view/sync.lua
+#, lua-format
+msgid "That does not look right. Copy it exactly as the %1 developer site shows it."
+msgstr "Αυτό δεν φαίνεται σωστό. Αντιγράψτε το ακριβώς όπως το δείχνει ο ιστότοπος προγραμματιστών του %1."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The %1 of your %2 app."
+msgstr "%1 της εφαρμογής σας %2."
+
 #: ink/guide.lua
 msgid "The + and − in the corner zoom in and out, and so does a pinch."
 msgstr "Το + και το − στη γωνία μεγεθύνουν και μικραίνουν, όπως και το τσίμπημα."
@@ -3910,6 +4718,10 @@ msgstr "Το κλειδί API από τον λογαριασμό σας στην
 #: ink/guide.lua
 msgid "The Library"
 msgstr "Η Βιβλιοθήκη"
+
+#: ink/sync/areas.lua
+msgid "The PDFs and pictures you brought into Ink Away."
+msgstr "Τα PDF και οι εικόνες που φέρατε στο Ink Away."
 
 #: ink/view/trash.lua
 #, lua-format
@@ -3933,6 +4745,58 @@ msgstr ""
 msgid "The clipboard is empty."
 msgstr "Το πρόχειρο είναι κενό."
 
+#: ink/sync/errors.lua
+msgid "The cloud answered in a way Ink Away does not understand."
+msgstr "Το cloud απάντησε με τρόπο που το Ink Away δεν καταλαβαίνει."
+
+#: ink/sync/errors.lua
+msgid "The cloud asked Ink Away to slow down."
+msgstr "Το cloud ζήτησε από το Ink Away να επιβραδύνει."
+
+#: ink/sync/errors.lua
+msgid "The cloud did not answer in time."
+msgstr "Το cloud δεν απάντησε εγκαίρως."
+
+#: ink/sync/errors.lua
+msgid "The cloud had a problem"
+msgstr "Το cloud είχε πρόβλημα"
+
+#: ink/view/sync.lua
+msgid "The cloud has no other versions."
+msgstr "Το cloud δεν έχει άλλες εκδόσεις."
+
+#: ink/sync/errors.lua
+msgid "The cloud holds notebooks saved by a newer Ink Away."
+msgstr "Το cloud περιέχει σημειωματάρια που αποθηκεύτηκαν από νεότερο Ink Away."
+
+#: ink/sync/errors.lua
+msgid "The cloud is full"
+msgstr "Το cloud είναι γεμάτο"
+
+#: ink/sync/errors.lua
+msgid "The cloud no longer accepts this reader's sign-in. It was removed or has expired."
+msgstr "Το cloud δεν δέχεται πλέον τη σύνδεση αυτής της συσκευής. Αφαιρέθηκε ή έληξε."
+
+#: ink/sync/errors.lua
+msgid "The cloud refused this request. Ink Away may be missing a permission."
+msgstr "Το cloud απέρριψε αυτό το αίτημα. Ίσως λείπει μια άδεια από το Ink Away."
+
+#: ink/sync/errors.lua
+msgid "The cloud service reported an error on its side."
+msgstr "Η υπηρεσία cloud ανέφερε σφάλμα από την πλευρά της."
+
+#: ink/sync/errors.lua
+msgid "The code was not accepted"
+msgstr "Ο κωδικός δεν έγινε δεκτός"
+
+#: ink/sync/errors.lua
+msgid "The code you typed is wrong or has already been used."
+msgstr "Ο κωδικός που πληκτρολογήσατε είναι λάθος ή έχει ήδη χρησιμοποιηθεί."
+
+#: ink/sync/errors.lua
+msgid "The connection timed out"
+msgstr "Λήξη χρόνου σύνδεσης"
+
 #: ink/view/links.lua
 msgid "The contents lists the pages that have a title. Give pages a title first: tap the page number, then Rename."
 msgstr "Τα περιεχόμενα καταχωρίζουν τις σελίδες που έχουν τίτλο. Δώστε πρώτα τίτλους στις σελίδες: πατήστε τον αριθμό σελίδας και μετά Μετονομασία."
@@ -3950,9 +4814,21 @@ msgstr "Το αντίγραφο «%s» είναι στη Βιβλιοθήκη: �
 msgid "The eraser rubs out what it touches; Erase whole strokes takes each stroke it crosses."
 msgstr "Η γόμα σβήνει ό,τι αγγίζει· το Σβήσιμο ολόκληρων γραμμών παίρνει κάθε γραμμή που διασχίζει."
 
+#: ink/sync/errors.lua
+msgid "The file is no longer in the cloud."
+msgstr "Το αρχείο δεν βρίσκεται πια στο cloud."
+
+#: ink/sync/errors.lua
+msgid "The file was changed in the cloud while it was being sent, so nothing was overwritten."
+msgstr "Το αρχείο άλλαξε στο cloud ενώ στελνόταν, οπότε δεν αντικαταστάθηκε τίποτα."
+
 #: ink/view/layers.lua
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "Το πρώτο επίπεδο έχει σβησίματα από πριν υπάρξουν επίπεδα, γι' αυτό μένει στον πάτο."
+
+#: ink/view/sync.lua
+msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
+msgstr "Ο πρώτος συγχρονισμός μελανιού σε σελίδες βιβλίων, εισαγωγών, εξαγωγών και αποκομμάτων οθόνης μπορεί να είναι μεγάλος και αργός."
 
 #: ink/view/library.lua
 msgid "The folder and everything in it go."
@@ -3970,6 +4846,14 @@ msgstr "Ο υπογραμμιστής"
 msgid "The lasso, links and text"
 msgstr "Το λάσο, οι σύνδεσμοι και το κείμενο"
 
+#: ink/sync/errors.lua
+msgid "The library folder changed"
+msgstr "Ο φάκελος βιβλιοθήκης άλλαξε"
+
+#: ink/sync/errors.lua
+msgid "The library folder is not the one that was last synced."
+msgstr "Ο φάκελος βιβλιοθήκης δεν είναι αυτός που συγχρονίστηκε τελευταίος."
+
 #: ink/view/ocrapi.lua
 msgid "The name of one of the service's models that can read pictures, as its model list writes it, for example gpt-4o-mini or paddleocr-vl."
 msgstr "Το όνομα ενός από τα μοντέλα της υπηρεσίας που διαβάζουν εικόνες, όπως το γράφει η λίστα μοντέλων της, για παράδειγμα gpt-4o-mini ή paddleocr-vl."
@@ -3978,9 +4862,27 @@ msgstr "Το όνομα ενός από τα μοντέλα της υπηρεσ�
 msgid "The new document is in Library: Imported only holds what you sent"
 msgstr "Το νέο έγγραφο είναι στη Βιβλιοθήκη: τα Εισαγμένα κρατούν μόνο ό,τι στείλατε"
 
+#: ink/view/sync.lua
+#, lua-format
+msgid "The notebook becomes the version from %1. What is on this reader now is saved in the backup folder first."
+msgstr "Το σημειωματάριο γίνεται η έκδοση της %1. Ό,τι υπάρχει τώρα σε αυτή τη συσκευή αποθηκεύεται πρώτα στον φάκελο αντιγράφων ασφαλείας."
+
+#: ink/sync/errors.lua
+msgid "The notebook is synced anyway. The picture shows when its file arrives."
+msgstr "Το σημειωματάριο συγχρονίζεται ούτως ή άλλως. Η εικόνα εμφανίζεται όταν φτάσει το αρχείο της."
+
+#: ink/sync/areas.lua
+msgid "The notebook kept for each book you read."
+msgstr "Το σημειωματάριο που αντιστοιχεί σε κάθε βιβλίο που διαβάζετε."
+
 #: ink/view/links.lua
 msgid "The notebook this leads to is no longer there."
 msgstr "Το σημειωματάριο στο οποίο οδηγεί δεν υπάρχει πια."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "The other reader's version: %1, %2"
+msgstr "Έκδοση της άλλης συσκευής: %1, %2"
 
 #: ink/view/handwriting.lua
 msgid "The page changed. Please read the writing again."
@@ -4018,6 +4920,14 @@ msgstr "Το άκρο γόμας του στυλό, όσο αγγίζει."
 msgid "The pen's eraser end."
 msgstr "Το άκρο γόμας του στυλό."
 
+#: ink/sync/errors.lua
+msgid "The reader could not make a secure connection to the cloud. Its clock may be wrong."
+msgstr "Η συσκευή δεν μπόρεσε να κάνει ασφαλή σύνδεση με το cloud. Το ρολόι της μπορεί να είναι λάθος."
+
+#: ink/sync/errors.lua
+msgid "The reader could not reach the cloud."
+msgstr "Η συσκευή δεν μπόρεσε να φτάσει στο cloud."
+
 #: ink/view/ocrapi.lua
 msgid "The recognition preview could not be opened. Your handwriting was kept."
 msgstr "Δεν άνοιξε η προεπισκόπηση αναγνώρισης. Το χειρόγραφό σας διατηρήθηκε."
@@ -4029,6 +4939,14 @@ msgstr "Η αναζήτηση δεν μπόρεσε να ολοκληρωθεί.
 #: ink/view/handwriting.lua
 msgid "The selection changed. Please read the writing again."
 msgstr "Η επιλογή άλλαξε. Διαβάστε ξανά το γράψιμο."
+
+#: ink/sync/errors.lua
+msgid "The sign-in has not been allowed yet."
+msgstr "Η σύνδεση δεν έχει επιτραπεί ακόμη."
+
+#: ink/sync/errors.lua
+msgid "The sign-in timed out"
+msgstr "Η σύνδεση έληξε"
 
 #: ink/guide.lua
 msgid "The small tab at the end of the toolbar folds it away, and brings it back."
@@ -4102,6 +5020,10 @@ msgstr "Δεν υπάρχει χειρόγραφο στην επιλογή."
 msgid "There is no layer under this one."
 msgstr "Δεν υπάρχει επίπεδο κάτω από αυτό."
 
+#: ink/sync/errors.lua
+msgid "There is no room left in the cloud account."
+msgstr "Δεν υπάρχει άλλος χώρος στον λογαριασμό cloud."
+
 #: ink/view/document.lua
 msgid "There is nothing to copy yet."
 msgstr "Δεν υπάρχει ακόμη τίποτα για αντιγραφή."
@@ -4115,6 +5037,10 @@ msgstr "Δεν υπάρχει τίποτα για εξαγωγή σε αυτόν
 msgid "There is nothing to export yet."
 msgstr "Δεν υπάρχει ακόμη τίποτα για εξαγωγή."
 
+#: ink/view/sync.lua
+msgid "These notebooks were changed on two readers. Both versions were kept: the one already in the cloud under its own name, and the one from this reader as a copy."
+msgstr "Αυτά τα σημειωματάρια άλλαξαν σε δύο συσκευές. Διατηρήθηκαν και οι δύο εκδόσεις: αυτή που ήδη υπήρχε στο cloud με το όνομά της και αυτή από τη συσκευή αυτή ως αντίγραφο."
+
 #: ink/view/settings.lua
 msgid "Thirds"
 msgstr "Τρίτα"
@@ -4126,6 +5052,23 @@ msgstr "Οι σημειώσεις αυτού του βιβλίου περιμέ�
 #: ink/reader/book.lua
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr "Το μελάνι αυτού του βιβλίου αποθηκεύτηκε από νεότερο Ink Away. Ενημερώστε το Ink Away για να το αλλάξετε."
+
+#: ink/sync/errors.lua
+msgid "This cloud service does not offer that."
+msgstr "Αυτή η υπηρεσία cloud δεν το προσφέρει."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "This copy of Ink Away is not registered with %1 yet. If you made an app of your own at the %1 developer site, enter its details to continue."
+msgstr "Αυτό το αντίγραφο του Ink Away δεν είναι ακόμη καταχωρισμένο στο %1. Αν δημιουργήσατε δική σας εφαρμογή στον ιστότοπο προγραμματιστών του %1, εισαγάγετε τα στοιχεία της για να συνεχίσετε."
+
+#: ink/sync/errors.lua
+msgid "This file is larger than the cloud sync can send."
+msgstr "Αυτό το αρχείο είναι μεγαλύτερο από όσο μπορεί να στείλει ο συγχρονισμός cloud."
+
+#: ink/view/sync.lua
+msgid "This is the version you have."
+msgstr "Αυτή είναι η έκδοση που έχετε."
 
 #: ink/view/layers.lua
 msgid "This layer is already at the bottom."
@@ -4151,9 +5094,22 @@ msgstr "Αυτή η συσκευή δεν μπορεί να μοιραστεί �
 msgid "This reader has no address on a network yet. Connect it to Wi-Fi and try again."
 msgstr "Αυτή η συσκευή δεν έχει ακόμη διεύθυνση σε δίκτυο. Συνδέστε την στο Wi-Fi και δοκιμάστε ξανά."
 
+#: ink/sync/errors.lua
+msgid "This reader is not connected to a cloud account."
+msgstr "Αυτή η συσκευή δεν είναι συνδεδεμένη με λογαριασμό cloud."
+
 #: ink/view/settings.lua
 msgid "This reader needs no special settings for Ink Away."
 msgstr "Αυτή η συσκευή δεν χρειάζεται ειδικές ρυθμίσεις για το Ink Away."
+
+#: ink/view/sync.lua
+msgid "This reader's version is removed, here and on the other reader at the next sync. It is kept in the backup folder."
+msgstr "Η έκδοση αυτής της συσκευής αφαιρείται, εδώ και στην άλλη συσκευή στον επόμενο συγχρονισμό. Φυλάσσεται στον φάκελο αντιγράφων ασφαλείας."
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "This reader's version: %1, %2"
+msgstr "Έκδοση αυτής της συσκευής: %1, %2"
 
 #: ink/reader/hlcolour.lua
 msgid "This version of KOReader can't keep colours of your own on a highlight."
@@ -4174,6 +5130,14 @@ msgstr "Μπροστά"
 #: ink/view/library.lua
 msgid "To keep notebooks and drawings together"
 msgstr "Για να μένουν μαζί σημειωματάρια και σχέδια"
+
+#: ink/sync/errors.lua
+msgid "Too large"
+msgstr "Πολύ μεγάλο"
+
+#: ink/sync/errors.lua
+msgid "Too many requests"
+msgstr "Πάρα πολλά αιτήματα"
 
 #: ink/reader/inkview.lua
 msgid "Toolbar"
@@ -4235,6 +5199,22 @@ msgstr "Οι πραγματικά διαφανείς εικόνες είναι �
 msgid "Try %1?"
 msgstr "Να δοκιμαστεί το %1;"
 
+#: ink/view/sync.lua
+msgid "Try again"
+msgstr "Δοκιμάστε ξανά"
+
+#: ink/sync/errors.lua
+msgid "Try again later. Your notebooks are safe."
+msgstr "Δοκιμάστε ξανά αργότερα. Τα σημειωματάριά σας είναι ασφαλή."
+
+#: ink/sync/errors.lua
+msgid "Try again. If it keeps happening, report the code and the sync log."
+msgstr "Δοκιμάστε ξανά. Αν συνεχίσει να συμβαίνει, αναφέρετε τον κωδικό και το αρχείο καταγραφής συγχρονισμού."
+
+#: ink/sync/errors.lua
+msgid "Try again. If it keeps happening, update Ink Away."
+msgstr "Δοκιμάστε ξανά. Αν συνεχίσει να συμβαίνει, ενημερώστε το Ink Away."
+
 #: ink/view/updates.lua
 msgid "Try it"
 msgstr "Δοκιμή"
@@ -4242,6 +5222,10 @@ msgstr "Δοκιμή"
 #: ink/view/layers.lua
 msgid "Turn layers off?"
 msgstr "Να απενεργοποιηθούν τα επίπεδα;"
+
+#: ink/sync/errors.lua
+msgid "Turn on Wi-Fi and try again. Your notebooks are safe and nothing was lost."
+msgstr "Ενεργοποιήστε το Wi-Fi και δοκιμάστε ξανά. Τα σημειωματάριά σας είναι ασφαλή και δεν χάθηκε τίποτα."
 
 #: ink/view/ocrapi.lua
 msgid "Turn on Wi-Fi to convert online."
@@ -4259,6 +5243,14 @@ msgstr "Αλλαγή σελίδων"
 msgid "Turn text"
 msgstr "Περιστροφή κειμένου"
 
+#: ink/sync/errors.lua
+msgid "Two files differ only in capital letters, which the cloud treats as one."
+msgstr "Δύο αρχεία διαφέρουν μόνο σε κεφαλαία γράμματα, κάτι που το cloud αντιμετωπίζει ως ένα."
+
+#: ink/sync/errors.lua
+msgid "Two names look the same"
+msgstr "Δύο ονόματα μοιάζουν ίδια"
+
 #: ink/actions.lua
 msgid "Two-finger double tap"
 msgstr "Διπλό πάτημα με δύο δάχτυλα"
@@ -4266,6 +5258,11 @@ msgstr "Διπλό πάτημα με δύο δάχτυλα"
 #: ink/guide.lua
 msgid "Two-finger double tap."
 msgstr "Διπλό πάτημα με δύο δάχτυλα."
+
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger swipe %1"
+msgstr "Σύρσιμο με δύο δάχτυλα %1"
 
 #: ink/welcome.lua
 msgid "Two-finger swipe from the bottom right to the top left"
@@ -4299,9 +5296,27 @@ msgstr "Πάτημα με δύο δάχτυλα"
 msgid "Two-finger tap."
 msgstr "Πάτημα με δύο δάχτυλα."
 
+#: ink/launcher.lua
+#, lua-format
+msgid "Two-finger tap: %1"
+msgstr "Πάτημα με δύο δάχτυλα: %1"
+
 #: ink/view/notebook.lua
 msgid "Type a page number…"
 msgstr "Πληκτρολογήστε έναν αριθμό σελίδας…"
+
+#: ink/view/sync.lua
+msgid "Type the code"
+msgstr "Πληκτρολογήστε τον κωδικό"
+
+#: ink/view/sync.lua
+#, lua-format
+msgid "Type the code %1 showed after you tapped Allow."
+msgstr "Πληκτρολογήστε τον κωδικό που έδειξε το %1 αφού πατήσατε Να επιτρέπεται."
+
+#: ink/view/sync.lua
+msgid "Type the code instead"
+msgstr "Πληκτρολόγηση του κωδικού"
 
 #: ink/view/textformat.lua
 msgid "Underline"
@@ -4311,6 +5326,14 @@ msgstr "Υπογράμμιση"
 #: ink/view/toolbar.lua
 msgid "Undo"
 msgstr "Αναίρεση"
+
+#: ink/sync/errors.lua
+msgid "Unexpected answer"
+msgstr "Μη αναμενόμενη απάντηση"
+
+#: ink/sync/errors.lua
+msgid "Unexpected problem"
+msgstr "Μη αναμενόμενο πρόβλημα"
 
 #: ink/view/notebook.lua
 #: ink/view/overview.lua
@@ -4325,6 +5348,10 @@ msgstr "Χωρίς τίτλο"
 #: ink/view/links.lua
 msgid "Up"
 msgstr "Επάνω"
+
+#: ink/sync/errors.lua
+msgid "Update Ink Away on this reader, then sync again. Nothing was changed."
+msgstr "Ενημερώστε το Ink Away σε αυτή τη συσκευή και συγχρονίστε ξανά. Δεν άλλαξε τίποτα."
 
 #: ink/view/updates.lua
 #, lua-format
@@ -4361,6 +5388,14 @@ msgstr "Κάθετα"
 msgid "View"
 msgstr "Προβολή"
 
+#: ink/sync/errors.lua
+msgid "Wait a few minutes. Syncing will carry on by itself."
+msgstr "Περιμένετε λίγα λεπτά. Ο συγχρονισμός θα συνεχιστεί μόνος του."
+
+#: ink/sync/errors.lua
+msgid "Waiting for you"
+msgstr "Αναμονή για εσάς"
+
 #: ink/view/share.lua
 msgid "Waiting for your phone or computer…"
 msgstr "Αναμονή για το τηλέφωνο ή τον υπολογιστή σας…"
@@ -4387,9 +5422,25 @@ msgstr "Εβδομαδιαίο"
 msgid "What Ink Away can do that a glance doesn't show."
 msgstr "Τι μπορεί να κάνει το Ink Away και δεν φαίνεται με μια ματιά."
 
+#: ink/sync/errors.lua
+msgid "What arrived was incomplete or damaged, so it was thrown away."
+msgstr "Ό,τι ήρθε ήταν ελλιπές ή κατεστραμμένο, οπότε απορρίφθηκε."
+
+#: ink/view/sync.lua
+msgid "What to do"
+msgstr "Τι να κάνετε"
+
 #: ink/guide.lua
 msgid "What to set on this reader for quicker ink."
 msgstr "Τι να ρυθμίσετε σε αυτή τη συσκευή για πιο γρήγορο μελάνι."
+
+#: ink/view/sync.lua
+msgid "What to sync"
+msgstr "Τι θα συγχρονίζεται"
+
+#: ink/sync/areas.lua
+msgid "What you draw or write on the pages of a book. KOReader's own highlights are not included."
+msgstr "Ό,τι σχεδιάζετε ή γράφετε στις σελίδες ενός βιβλίου. Οι δικές του επισημάνσεις του KOReader δεν περιλαμβάνονται."
 
 #: ink/view/updates.lua
 msgid "What's new"
@@ -4402,6 +5453,10 @@ msgstr "Όταν ανοίγει το Ink Away"
 #: ink/actions.lua
 msgid "When the page is zoomed in wider than the screen, sideways swipes move the page instead."
 msgstr "Όταν η σελίδα είναι μεγεθυμένη πιο πλατιά από την οθόνη, το σύρσιμο προς τα πλάγια μετακινεί τη σελίδα."
+
+#: ink/view/sync.lua
+msgid "When the reader goes to sleep"
+msgstr "Όταν η συσκευή μπαίνει σε αναστολή"
 
 #: ink/guide.lua
 msgid "Where to start"
@@ -4420,6 +5475,10 @@ msgstr "Λευκό και χρυσό"
 #: ink/framecover.lua
 msgid "White sides"
 msgstr "Λευκές πλευρές"
+
+#: ink/sync/errors.lua
+msgid "Wi-Fi is off"
+msgstr "Το Wi-Fi είναι απενεργοποιημένο"
 
 #: ink/view/imagebrowser.lua
 msgid "Wikimedia"
@@ -4457,6 +5516,10 @@ msgstr "Γράψτε"
 msgid "Write and draw on the book's pages. Your ink stays with the words when the font changes."
 msgstr "Γράψτε και σχεδιάστε στις σελίδες του βιβλίου. Το μελάνι σας μένει με τις λέξεις όταν αλλάζει η γραμματοσειρά."
 
+#: ink/launcher.lua
+msgid "Write and draw on this page"
+msgstr "Γράψτε και σχεδιάστε σε αυτή τη σελίδα"
+
 #: ink/view/library.lua
 msgid "Write on a PDF from this reader…"
 msgstr "Γράψτε σε ένα PDF από αυτή τη συσκευή…"
@@ -4492,6 +5555,10 @@ msgstr "Τα δικά σας πινέλα"
 #: ink/view/pencase.lua
 msgid "Your pens on the page"
 msgstr "Τα στυλό σας στη σελίδα"
+
+#: ink/sync/areas.lua
+msgid "Your pens, colours, paper, text and snapping choices. Not the folders, screen or pen settings that belong to one reader."
+msgstr "Οι επιλογές σας για στυλό, χρώματα, χαρτί, κείμενο και κούμπωμα. Όχι οι φάκελοι, η οθόνη ή οι ρυθμίσεις γραφίδας που ανήκουν σε μία συσκευή."
 
 #: ink/guide.lua
 msgid "Your pens, kinds and pressure"
@@ -4533,6 +5600,11 @@ msgstr "μια έκδοση"
 msgid "a test build"
 msgstr "μια δοκιμαστική δημιουργία"
 
+#: ink/view/sync.lua
+#, lua-format
+msgid "and %1 more, see the sync log"
+msgstr "και %1 ακόμη, δείτε το αρχείο καταγραφής συγχρονισμού"
+
 #: ink/view/settings.lua
 msgid "blank"
 msgstr "κενό"
@@ -4573,6 +5645,10 @@ msgstr "κρατήστε πατημένο για επιλογή χρώματος
 msgid "isometric"
 msgstr "ισομετρικό"
 
+#: ink/view/sync.lua
+msgid "just now"
+msgstr "μόλις τώρα"
+
 #: ink/view/settings.lua
 msgid "lined"
 msgstr "με γραμμές"
@@ -4592,6 +5668,10 @@ msgstr "μηνιαίο"
 #: ink/view/settings.lua
 msgid "music"
 msgstr "μουσική"
+
+#: ink/view/sync.lua
+msgid "now"
+msgstr "τώρα"
 
 #: ink/view/settings.lua
 msgid "off"

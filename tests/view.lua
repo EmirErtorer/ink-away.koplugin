@@ -3867,7 +3867,10 @@ do
     -- a new folder from the header's + Folder, then a new drawing made inside it
     local plus_new
     for _, a in ipairs(lib.actions) do if a[1] == "+ New" then plus_new = a end end
-    ok(plus_new and plus_new[3] and #lib.actions == 3, "lib: one filled + New sits in the header, with Search and the menu")
+    ok(plus_new and plus_new[3] and #lib.actions == 4, "lib: one filled + New sits in the header, with Search, the cloud and the menu")
+    local cloud_btn
+    for _, a in ipairs(lib.actions) do if a.icon and a.icon:find("cloud.svg", 1, true) then cloud_btn = a end end
+    ok(cloud_btn ~= nil, "lib: a cloud icon opens the sync sheet, next to the menu")
     plus_new[2]()
     local new_sheet = view._library_new
     ok(new_sheet and findButton(new_sheet, "Drawing") and findButton(new_sheet, "Notebook") and findButton(new_sheet, "Folder"),
@@ -5392,6 +5395,7 @@ do
         ok(Palette.sameColor(view:paperRGB(), black), "paper: a tap puts the notebook on it")
         ok(view._paper_colour ~= nil, "paper: the sheet stays to try another")
         view:closeSheet("_paper_colour")
+        G_reader_settings.data.inkaway_settings_tab = "page"
         view:openSettings()
         local seen, label = {}, nil
         local function find(w)
@@ -5499,6 +5503,7 @@ do
     UIManager:show(view)
     ok(Accent.get().key == "159,214,101" and Accent.get().chromatic and Accent.get().text == BB.COLOR_BLACK,
         "accent: Ink Away green until another is chosen, with black text on it")
+    G_reader_settings.data.inkaway_settings_tab = "colour"
     view:openSettings()
     ok(says(view._settings_dialog, "Theme Color"), "accent: a colour screen's settings offer it")
     view:chooseAccent()
@@ -6816,6 +6821,7 @@ do
     view = dofile("ink/view.lua"):new{}
     UIManager:show(view)
     ok(view.live_colour == true, "live colour: on by default")
+    G_reader_settings.data.inkaway_settings_tab = "colour"
     view:openSettings()
     local t = find(view._settings_dialog, labelled("Colour while drawing"))
     ok(t ~= nil and t.callback ~= nil, "live colour: offered on a colour screen")
@@ -6824,6 +6830,37 @@ do
     view:closeSheet("_settings_dialog")
     UIManager:close(view)
     G_reader_settings.data.inkaway_live_colour = nil
+    -- Settings is four short tabs (three on a grey screen), so it never scrolls
+    G_reader_settings.data.inkaway_settings_tab = nil
+    UIManager.reset()
+    view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    view:openSettings()
+    local dlg = view._settings_dialog
+    for _i, tab in ipairs({ "Screen", "Colour", "Page", "Files" }) do
+        ok(find(dlg, labelled(tab)) ~= nil, "settings tabs: " .. tab .. " on a colour screen")
+    end
+    ok(find(dlg, labelled("Toolbar side")) ~= nil and find(dlg, labelled("Ghosting")) ~= nil, "settings tabs: Screen opens first, with the toolbar and ghosting")
+    ok(find(dlg, labelled("Symmetry")) == nil and find(dlg, labelled("Theme Color")) == nil, "settings tabs: and not the other tabs' choices")
+    ok(find(dlg, labelled("Gestures and pen buttons")) ~= nil, "settings tabs: the gestures and Updates stay on every tab")
+    pressIn(dlg, "Page")
+    dlg = view._settings_dialog
+    ok(find(dlg, labelled("Symmetry")) ~= nil and find(dlg, labelled("Toolbar side")) == nil, "settings tabs: tapping Page shows the page choices")
+    ok(G_reader_settings.data.inkaway_settings_tab == "page", "settings tabs: the last one is remembered")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    Device.hasColorScreen = function() return false end
+    UIManager.reset()
+    view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    G_reader_settings.data.inkaway_settings_tab = "colour"
+    view:openSettings()
+    dlg = view._settings_dialog
+    ok(find(dlg, labelled("Colour")) == nil and find(dlg, labelled("Page")) ~= nil, "settings tabs: no Colour tab on a grey screen")
+    ok(find(dlg, labelled("Toolbar side")) ~= nil, "settings tabs: and a remembered Colour tab falls back to Screen")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_settings_tab = nil
     Device.hasColorScreen = had
     require("ink/accent").set(nil)
     UIManager.reset()

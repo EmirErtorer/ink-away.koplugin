@@ -418,6 +418,7 @@ do
         ["ink/view/input.lua"] = true,
         ["ink/view/pencase.lua"] = true,
         ["ink/view/settings.lua"] = true,
+        ["ink/launcher.lua"] = true,   -- (the gesture phrases of ink/welcome.lua, which are in the template)
         ["ink/view/welcome.lua"] = true,
         ["ink/welcome.lua"] = true,
     }

@@ -18,6 +18,7 @@ local Theme = require("ink/ui/theme")
 local Palette = require("ink/palette")
 local Storage = require("ink/storage")
 local Stylus = require("ink/stylus")
+local Topbar = require("ink/topbar")
 local SliderRow = require("ink/ui/controls").SliderRow
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
@@ -260,6 +261,7 @@ function InkAwayView:openSettings()
         local function add(w) table.insert(content, w) end
 
         add(self:sheetTitle(_("Settings"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "cloud", cb = function() closeSelf(); self:openSync() end },
             { icon = "coffee", cb = function() self:openSupport() end },
             { icon = "appearance", cb = function() self:openAppearance() end },
             { label = _("Guide"), cb = function() self:openGuide() end } }))
@@ -270,39 +272,62 @@ function InkAwayView:openSettings()
             add(vspan(16))
         end
 
-        -- orientation: picking one closes the sheet, as the screen size changes
-        if self:orientationSupported() then
-            add(self:sheetLabel(_("Orientation"), true))
-            add(vspan(6))
-            add(self:segmentedRow({ { "portrait", _("Portrait") }, { "landscape", _("Landscape") } },
-                self:orientationClass(), content_w,
-                function(v) closeSelf(); self:setOrientation(v) end))
-            add(vspan(16))
-        end
-
-        -- the toolbar: across the top, or down the left or right of the screen
-        add(self:sheetLabel(_("Toolbar side"), true))
-        add(vspan(6))
-        add(self:segmentedRow({ { "top", _("Top") }, { "left", _("Left") }, { "right", _("Right") } },
-            self:canvasBarSide(), content_w, function(side)
-                closeSelf(); self:setCanvasBarSide(side); self:openSettings()
-            end))
+        -- the choices are in four short tabs (Colour only on a colour screen), so
+        -- the sheet never scrolls; the tab last used opens first
+        local tabs = { { "screen", _("Screen") } }
+        if self:colorScreen() then tabs[#tabs + 1] = { "colour", _("Colour") } end
+        tabs[#tabs + 1] = { "page", _("Page") }
+        tabs[#tabs + 1] = { "files", _("Files") }
+        local tab = self:getSetting("inkaway_settings_tab", "screen")
+        local known = false
+        for _i, t in ipairs(tabs) do if t[1] == tab then known = true end end
+        if not known then tab = "screen" end
+        add(self:segmentedRow(tabs, tab, content_w, function(v)
+            self:setSetting("inkaway_settings_tab", v); self:openSettings()
+        end))
         add(vspan(16))
 
-        -- the zoom and Pan buttons: at either side, or none (pinch and two
-        -- fingers do the same)
-        add(self:sheetLabel(_("Zoom and Pan buttons"), true))
-        add(vspan(6))
-        add(self:segmentedRow({ { "right", _("Right") }, { "left", _("Left") }, { "hidden", _("Hidden") } },
-            self.fab_side, content_w, function(side) self:setFabSide(side) end))
-        if self.fab_side == "hidden" then
+        local half = math.floor((content_w - Screen:scaleBySize(12)) / 2)
+        if tab == "screen" then
+            -- orientation: picking one closes the sheet, as the screen size changes
+            if self:orientationSupported() then
+                add(self:labelledRow(_("Orientation"), { { "portrait", _("Portrait") }, { "landscape", _("Landscape") } },
+                    self:orientationClass(), content_w,
+                    function(v) closeSelf(); self:setOrientation(v) end))
+                add(vspan(14))
+            end
+
+            -- the toolbar: across the top, or down the left or right of the screen
+            add(self:labelledRow(_("Toolbar side"), { { "top", _("Top") }, { "left", _("Left") }, { "right", _("Right") } },
+                self:canvasBarSide(), content_w, function(side)
+                    closeSelf(); self:setCanvasBarSide(side); self:openSettings()
+                end))
+            add(vspan(14))
+
+            -- the zoom and Pan buttons: at either side, or none (pinch and two
+            -- fingers do the same)
+            add(self:labelledRow(_("Zoom and Pan buttons"),
+                { { "right", _("Right") }, { "left", _("Left") }, { "hidden", _("Hidden") } },
+                self.fab_side, content_w, function(side) self:setFabSide(side) end))
+            if self.fab_side == "hidden" then
+                add(vspan(4))
+                add(self:sheetHint(_("Pinch to zoom, and drag with two fingers to move around the page."), content_w))
+            end
+            add(vspan(14))
+
+            -- ghosting cleanup: a full refresh every N strokes, 0 (off) to 50 in steps of 5
+            add(SliderRow:new{ label = _("Ghosting"), value = math.min(50, self.ghost_clean or 0), min = 0, max = 50, step = 5,
+                width = content_w, parent = menu,
+                format = function(v) return v == 0 and _("off") or string.format(_("%d strokes"), v) end,
+                on_set = function(v) self.ghost_clean = v; self:setSetting("inkaway_ghost", v)
+                    self._strokes_since_full = 0 end })
             add(vspan(4))
-            add(self:sheetHint(_("Pinch to zoom, and drag with two fingers to move around the page."), content_w))
-        end
-        add(vspan(16))
-
-        -- the theme colour, on a colour screen
-        if self:colorScreen() then
+            add(self:sheetHint(_("Fast strokes leave faint marks; a full refresh clears them this often."), content_w))
+            add(vspan(10))
+            -- one full refresh now, as the "Refresh the screen" gesture does
+            add(act(_("Refresh the screen"), content_w, function() self:refreshScreen() end, nil, "refresh"))
+        elseif tab == "colour" then
+            -- the theme colour, on a colour screen
             add(self:sheetLabel(_("Theme Color"), true))
             add(vspan(6))
             add(self:accentRow(content_w))
@@ -322,95 +347,87 @@ function InkAwayView:openSettings()
             add(vspan(4))
             add(self:sheetHint(_("In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."), content_w))
             add(vspan(16))
-        end
-
-        -- grid (canvas) or paper (notebook), and beside it the paper's colour
-        local half = math.floor((content_w - Screen:scaleBySize(12)) / 2)
-        local paper_name = Palette.paperName(self:paperRGB())
-        if self.notebook then
-            local t = self.notebook.template
-            add(HorizontalGroup:new{ align = "center",
-                act(string.format(_("Paper: %s"), TEMPLATE_LABEL[t.style or "lines"] or t.style), half, function()
-                    self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
-                        t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
-                        self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
-                    end }
-                end, nil, "page"),
-                HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-                self:paperColourButton(string.format(_("Colour: %s"), paper_name), half, function() self:openPaperColour() end) })
-            add(vspan(12))
-            add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
-                width = content_w, parent = menu, format = pxfmt,
-                on_set = function(v) t.size = v; self.nb_size = v; self:setSetting("inkaway_nb_size", v)
-                    self:markDirty(); self:composeCanvas(); self:renderView(); self:refreshArea() end })
-            add(vspan(10))
-            add(SliderRow:new{ label = _("Line strength"), value = t.strength or 45, min = 5, max = 100, step = 5,
-                width = content_w, parent = menu,
-                on_set = function(v) t.strength = v; self.nb_strength = v; self:setSetting("inkaway_nb_strength", v)
-                    self:markDirty(); self:composeCanvas(); self:renderView(); self:refreshArea() end })
+        elseif tab == "page" then
+            -- grid (canvas) or paper (notebook), and beside it the paper's colour
+            local paper_name = Palette.paperName(self:paperRGB())
+            if self.notebook then
+                local t = self.notebook.template
+                add(HorizontalGroup:new{ align = "center",
+                    act(string.format(_("Paper: %s"), TEMPLATE_LABEL[t.style or "lines"] or t.style), half, function()
+                        self:openPaperSheet{ title = _("Notebook paper"), current = t.style, onpick = function(v)
+                            t.style = v; self.nb_style = v; self:setSetting("inkaway_nb_style", v); self:markDirty()
+                            self:composeCanvas(); self:renderView(); self:refreshArea(); self:openSettings()
+                        end }
+                    end, nil, "page"),
+                    HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+                    self:paperColourButton(string.format(_("Colour: %s"), paper_name), half, function() self:openPaperColour() end) })
+                add(vspan(12))
+                add(SliderRow:new{ label = _("Line spacing"), value = t.size or 40, min = 12, max = 200, step = 2,
+                    width = content_w, parent = menu, format = pxfmt,
+                    on_set = function(v) t.size = v; self.nb_size = v; self:setSetting("inkaway_nb_size", v)
+                        self:markDirty(); self:composeCanvas(); self:renderView(); self:refreshArea() end })
+                add(vspan(10))
+                add(SliderRow:new{ label = _("Line strength"), value = t.strength or 45, min = 5, max = 100, step = 5,
+                    width = content_w, parent = menu,
+                    on_set = function(v) t.strength = v; self.nb_strength = v; self:setSetting("inkaway_nb_strength", v)
+                        self:markDirty(); self:composeCanvas(); self:renderView(); self:refreshArea() end })
         else
-            -- one button to the grid sub-sheet, labelled with the current grid
-            local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
-                lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds"), checklist = _("Checklist"),
-                twocol = _("2 columns"), weekly = _("Weekly"), monthly = _("Monthly"),
-                storyboard = _("Storyboard"), music = _("Music"), handwriting = _("Handwriting"),
-                daily = _("Daily"), weekcols = _("Week columns"), meeting = _("Meeting notes"),
-                habits = _("Habit tracker"), cornell = _("Cornell") }
-            local cur = self.grid_on and self.grid_style or "off"
+                -- one button to the grid sub-sheet, labelled with the current grid
+                local GRID_LABEL = { off = _("Off"), square = _("Square"), dots = _("Dots"),
+                    lines = _("Lines"), iso = _("Isometric"), thirds = _("Thirds"), checklist = _("Checklist"),
+                    twocol = _("2 columns"), weekly = _("Weekly"), monthly = _("Monthly"),
+                    storyboard = _("Storyboard"), music = _("Music"), handwriting = _("Handwriting"),
+                    daily = _("Daily"), weekcols = _("Week columns"), meeting = _("Meeting notes"),
+                    habits = _("Habit tracker"), cornell = _("Cornell") }
+                local cur = self.grid_on and self.grid_style or "off"
+                add(HorizontalGroup:new{ align = "center",
+                    act(string.format(_("Grid: %s"), GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end, nil, "grid"),
+                    HorizontalSpan:new{ width = Screen:scaleBySize(12) },
+                    self:paperColourButton(string.format(_("Paper: %s"), paper_name), half, function() self:openPaperColour() end) })
+            end
+            add(vspan(16))
+
+            -- symmetry rebuilds the sheet in place with the highlight moved
+            add(self:sheetLabel(_("Symmetry"), true))
+            add(vspan(6))
+            add(self:segmentedRow({ { "off", _("Off") }, { "vert", _("Vertical") }, { "horiz", _("Horizontal") },
+                    { "quad", _("Four-way") } }, self.symmetry, content_w,
+                function(v) self.symmetry = v; self:setSetting("inkaway_symmetry", v); self:openSettings() end))
+        else
+            -- where documents are kept, and what opening Ink Away shows
+            -- the library and export folders side by side, each named for its folder
             add(HorizontalGroup:new{ align = "center",
-                act(string.format(_("Grid: %s"), GRID_LABEL[cur] or cur), half, function() self:openGridSettings() end, nil, "grid"),
+                act(string.format(_("Library: %s"), Storage.baseName(self:libraryDir())), half,
+                    function() self:chooseLibraryRoot() end, nil, "library"),
                 HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-                self:paperColourButton(string.format(_("Paper: %s"), paper_name), half, function() self:openPaperColour() end) })
+                act(string.format(_("Exports: %s"), Storage.baseName(self:defaultExportDir())), half,
+                    function() self:chooseExportRoot() end, nil, "export") })
+            add(vspan(10))
+            add(self:sheetLabel(_("When Ink Away opens")))
+            add(vspan(6))
+            add(self:segmentedRow({ { "last", _("Last document") }, { "library", _("Library") },
+                    { "notebooks", _("Notebooks") } },
+                self:getSetting("inkaway_start", "last"), content_w,
+                function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
+            -- Ink Away's icon in KOReader's top menu bar (its quick menu)
+            add(vspan(14))
+            add(ToggleRow:new{ label = _("Icon in KOReader's top menu bar"),
+                is_on = Topbar.enabled(function(k) return self:getSetting(k) end),
+                width = content_w, parent = menu,
+                callback = function(on) self:setSetting(Topbar.SETTING, on) end })
+            add(vspan(4))
+            add(self:sheetHint(_("Opens Ink Away's quick menu from any screen. It shows the next time KOReader's menu is opened."), content_w))
+            -- (palm rejection, the stabilizer and the pen test are in the Pen
+            -- sheet's Pen and input, set from where the pen is)
         end
-        add(vspan(16))
-
-        -- symmetry rebuilds the sheet in place with the highlight moved
-        add(self:sheetLabel(_("Symmetry"), true))
-        add(vspan(6))
-        add(self:segmentedRow({ { "off", _("Off") }, { "vert", _("Vertical") }, { "horiz", _("Horizontal") },
-                { "quad", _("Four-way") } }, self.symmetry, content_w,
-            function(v) self.symmetry = v; self:setSetting("inkaway_symmetry", v); self:openSettings() end))
-        add(vspan(14))
-
-        -- ghosting cleanup: a full refresh every N strokes, 0 (off) to 50 in steps of 5
-        add(SliderRow:new{ label = _("Ghosting"), value = math.min(50, self.ghost_clean or 0), min = 0, max = 50, step = 5,
-            width = content_w, parent = menu,
-            format = function(v) return v == 0 and _("off") or string.format(_("%d strokes"), v) end,
-            on_set = function(v) self.ghost_clean = v; self:setSetting("inkaway_ghost", v)
-                self._strokes_since_full = 0 end })
-        add(vspan(4))
-        add(self:sheetHint(_("Fast strokes leave faint marks; a full refresh clears them this often."), content_w))
-        add(vspan(10))
-        -- one full refresh now, as the "Refresh the screen" gesture does
-        add(act(_("Refresh the screen"), content_w, function() self:refreshScreen() end, nil, "refresh"))
-        add(vspan(16))
-
-        -- where documents are kept, and what opening Ink Away shows
-        add(self:sheetLabel(_("Files"), true))
-        add(vspan(6))
-        -- the library and export folders side by side, each named for its folder
-        add(HorizontalGroup:new{ align = "center",
-            act(string.format(_("Library: %s"), Storage.baseName(self:libraryDir())), half,
-                function() self:chooseLibraryRoot() end, nil, "library"),
-            HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-            act(string.format(_("Exports: %s"), Storage.baseName(self:defaultExportDir())), half,
-                function() self:chooseExportRoot() end, nil, "export") })
-        add(vspan(10))
-        add(self:sheetLabel(_("When Ink Away opens")))
-        add(vspan(6))
-        add(self:segmentedRow({ { "last", _("Last document") }, { "library", _("Library") },
-                { "notebooks", _("Notebooks") } },
-            self:getSetting("inkaway_start", "last"), content_w,
-            function(v) self:setSetting("inkaway_start", v); self:openSettings() end))
-        -- (palm rejection, the stabilizer and the pen test are in the Pen
-        -- sheet's Pen and input, set from where the pen is)
         add(vspan(16))
         -- the gestures, and beside them Updates (what is new, when there is news)
+        local upd_w = math.floor(content_w * 0.34)
         add(HorizontalGroup:new{ align = "center",
-            act(_("Gestures and pen buttons"), half, function()
+            act(_("Gestures and pen buttons"), content_w - upd_w - Screen:scaleBySize(12), function()
                 self:closeSheet("_settings_dialog"); self:openGestureSettings() end, nil, "ges_tap"),
             HorizontalSpan:new{ width = Screen:scaleBySize(12) },
-            self:actionButton(_("Updates"), half, function() closeSelf(); self:openUpdates() end, nil, nil, "update") })
+            self:actionButton(_("Updates"), upd_w, function() closeSelf(); self:openUpdates() end, nil, nil, "update") })
         return content
     end
     self:showSheet("_settings_dialog", build)

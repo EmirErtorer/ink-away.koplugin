@@ -35,6 +35,13 @@ function InkAway:onDispatcherRegisterActions()
         title = _("Ink Away: annotate the book"),
         reader = true,
     })
+    -- the quick menu of the icon in the top menu bar (see ink/launcher.lua)
+    Dispatcher:registerAction("inkaway_launcher", {
+        category = "none",
+        event = "InkAwayLauncher",
+        title = _("Ink Away: quick menu"),
+        general = true,
+    })
     Dispatcher:registerAction("inkaway_capture", {
         category = "none",
         event = "InkAwayCapture",
@@ -49,13 +56,22 @@ function InkAway:onDispatcherRegisterActions()
     })
 end
 
+-- The Ink Away module of each KOReader screen (the file browser, each open book),
+-- found from the screen's menu. (KOReader names a plugin after its folder, which
+-- is not always the same, so ui.inkaway cannot be relied on.)
+InkAway.by_ui = setmetatable({}, { __mode = "k" })
+
 function InkAway:init()
+    InkAway.by_ui[self.ui] = self
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- Ink Away's gesture actions reach it even when another window covers the
     -- file browser (a home screen plugin): KOReader gives such windows' unused
     -- events to the modules listed here, as it does for screenshots
     if type(self.ui.active_widgets) == "table" then table.insert(self.ui.active_widgets, self) end
+    -- cloud sync: set up once for the whole session (nothing happens unless the person connected)
+    local sok, SyncManager = pcall(require, "ink/sync/manager")
+    if sok and not SyncManager.started then pcall(SyncManager.start) end
     -- book ink follows its book when KOReader moves, copies or deletes it
     local bok, BookInk = pcall(require, "ink/reader/bookink")
     if bok then BookInk.installFollow() end
@@ -66,6 +82,7 @@ function InkAway:init()
         if ok then
             self.book = Book.new(self.ui)
             self.book.plugin = self
+            UIManager:nextTick(function() self:syncBook() end)   -- (cloud sync: match its ink with the other readers')
             self.ui.view:registerViewModule("inkaway", self.book:overlay())
             -- highlighting with the pen's button while reading (see there)
             local hok, PenHighlight = pcall(require, "ink/reader/penhighlight")
@@ -86,6 +103,26 @@ function InkAway:init()
                 self:openPdfAsNotebook(file)
             end } }
         end)
+    end
+    -- Ink Away's icon in KOReader's top menu bar, once for both menus (the file
+    -- browser's and the reader's); see ink/topbar.lua
+    if not InkAway._topbar then
+        InkAway._topbar = true
+        pcall(function()
+            local lfs = require("libs/libkoreader-lfs")
+            local dir = debug.getinfo(1, "S").source:match("^@(.*/)main%.lua$") or "./"
+            require("ink/topbar").installIcon(lfs, dir, require("datastorage"):getDataDir(), lfs.currentdir())
+        end)
+        local Topbar = require("ink/topbar")
+        local function get(k) return G_reader_settings:readSetting(k) end
+        local function tap(menu)
+            local plugin = menu.ui and InkAway.by_ui[menu.ui]
+            if plugin then require("ink/launcher").show(plugin) end
+        end
+        for _i, mod in ipairs({ "apps/filemanager/filemanagermenu", "apps/reader/modules/readermenu" }) do
+            local ok, class = pcall(require, mod)
+            if ok then Topbar.patch(class, get, tap) end
+        end
     end
     -- the book gestures, once, after every plugin (the gesture manager too) is up
     if (tonumber(G_reader_settings:readSetting("inkaway_gestures_setup")) or 0) < 3 then
@@ -133,6 +170,14 @@ function InkAway:addToMainMenu(menu_items)
                   callback = function() self:onInkAwayExportBook() end },
                 { text = _("Open Ink Away"), keep_menu_open = false,
                   callback = function() self:openCanvas() end },
+                { text = _("Icon in the top menu bar"), keep_menu_open = true,
+                  help_text = _("Ink Away's icon in this bar opens a quick menu from any screen. It shows the next time the menu is opened."),
+                  checked_func = function() return require("ink/topbar").enabled(function(k) return G_reader_settings:readSetting(k) end) end,
+                  callback = function()
+                      local Topbar = require("ink/topbar")
+                      local on = not Topbar.enabled(function(k) return G_reader_settings:readSetting(k) end)
+                      G_reader_settings:saveSetting(Topbar.SETTING, on)
+                  end },
             },
         }
         local file = self.ui.document and self.ui.document.file
@@ -217,6 +262,12 @@ function InkAway:setupEntryGestures()
     G_reader_settings:saveSetting("inkaway_gestures_setup", 3)
 end
 
+-- The quick menu: from the icon in the top menu bar, or a gesture set to it.
+function InkAway:onInkAwayLauncher()
+    require("ink/launcher").show(self)
+    return true
+end
+
 -- The reader's gesture action uses the same quiet capture mode as the menu.
 function InkAway:onInkAwayCapture()
     if self.book and require("device"):isTouchDevice() then
@@ -253,14 +304,44 @@ function InkAway:onInkAwayBookNotes()
     return true
 end
 
+-- The reader is going to sleep: cloud sync sends what is waiting, if the person asked for that.
+function InkAway:onSuspend()
+    local ok, SyncManager = pcall(require, "ink/sync/manager")
+    if ok then pcall(SyncManager.noteSleep) end
+end
+
 -- The screen turned (or was resized) under the book: what Ink Away had open
 -- over it was laid out for the old size, so it closes, keeping everything.
 function InkAway:onSetDimensions()
     if self.book then self.book:closeViews() end
 end
 
+-- Cloud sync, for a book: newer ink from the other readers (a few seconds at most,
+-- only if the person turned it on), then keep the sync's hands off the ink while
+-- the book is open. The book is matched with the other readers' by its checksum.
+function InkAway:syncBook()
+    local ok, SyncManager = pcall(require, "ink/sync/manager")
+    local book, ui = self.book, self.ui
+    if not (ok and book and ui.document and book.sidecar) then return end
+    local md5
+    pcall(function() md5 = ui.doc_settings:readSetting("partial_md5_checksum") end)
+    if not md5 then pcall(function() md5 = require("util").partialMD5(ui.document.file) end) end
+    if not md5 then return end
+    self.sync_md5 = md5
+    pcall(SyncManager.preOpenBook, md5, book.sidecar, ui.document.file, function(fetched)
+        if self.book ~= book then return end
+        if fetched then pcall(book.reload, book) end
+        pcall(SyncManager.bookOpened, md5, book.sidecar, ui.document.file)
+    end)
+end
+
 -- The book is closing: leave nothing of ours open over it.
 function InkAway:onCloseDocument()
+    if self.sync_md5 then
+        local ok, SyncManager = pcall(require, "ink/sync/manager")
+        if ok then pcall(SyncManager.bookClosed) end
+        self.sync_md5 = nil
+    end
     if self.book then self.book:close() end
     -- (after the views over the book, which give the pen back as they close)
     if self.pen_highlight then self.pen_highlight:detach() end

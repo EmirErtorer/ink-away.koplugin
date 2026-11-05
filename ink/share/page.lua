@@ -85,6 +85,7 @@ function Page.render(o)
     end
     add("</header><main>")
     if o.upload then add(Page.uploadCard(o.upload)) end
+    if o.card then add(o.card) end   -- (a page's own part, already escaped: see ink/share/codepage.lua)
     if #(o.folders or {}) > 0 then
         add('<h2>Folders</h2><div class="folders">')
         for _, f in ipairs(o.folders) do
@@ -117,7 +118,7 @@ function Page.render(o)
         add('<h2>Pictures</h2>')
         cards(o.pictures)
     end
-    if #(o.docs or {}) == 0 and #(o.pictures or {}) == 0 and #(o.folders or {}) == 0 then
+    if #(o.docs or {}) == 0 and #(o.pictures or {}) == 0 and #(o.folders or {}) == 0 and not o.card then
         add('<p class="empty">Nothing here yet.</p>')
     end
     if #(o.exports or {}) > 0 then
