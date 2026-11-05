@@ -223,40 +223,79 @@ add("postit_torn", "notes", 100, 100, "pastel", "tone", function()
     return paper({ poly = b, shadow = shifted(b, 3, 4) })
 end)
 
--- Creased paper: a flat note that was folded and opened again. A thin crease and a
--- slightly different tint on each side of it, as paper looks after a fold.
+-- Creased paper, as a photograph of it looks: the note is cut into uneven facets,
+-- each a slightly different tint, and a thin crease (a dark line with a light one
+-- beside it) runs along every edge where the tints differ most. Nothing is random:
+-- the same seed gives the same paper each time.
+local function creasedMesh()
+    local seed = 11
+    local function rnd() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end
+    local N = 3
+    local P = {}
+    for j = 0, N do
+        P[j] = {}
+        for i = 0, N do
+            local x, y = 100 * i / N, 100 * j / N
+            if i > 0 and i < N then x = x + (rnd() - 0.5) * 16 end
+            if j > 0 and j < N then y = y + (rnd() - 0.5) * 16 end
+            P[j][i] = { x, y }
+        end
+    end
+    local tris, edges = {}, {}
+    local function edge(p, q, k)
+        local a, b = string.format("%.2f,%.2f", p[1], p[2]), string.format("%.2f,%.2f", q[1], q[2])
+        local key = a < b and (a .. "|" .. b) or (b .. "|" .. a)
+        local e = edges[key]
+        if e then e.k2 = k else edges[key] = { p = p, q = q, k1 = k } end
+    end
+    local function tri(a, b, c)
+        local k = 1 + math.floor(rnd() * 5)
+        tris[#tris + 1] = { poly = { a[1], a[2], b[1], b[2], c[1], c[2] }, k = k }
+        edge(a, b, k); edge(b, c, k); edge(c, a, k)
+    end
+    for j = 0, N - 1 do
+        for i = 0, N - 1 do
+            local a, b, c, d = P[j][i], P[j][i + 1], P[j + 1][i + 1], P[j + 1][i]
+            if (i + j) % 2 == 0 then tri(a, b, c); tri(a, c, d) else tri(a, b, d); tri(b, c, d) end
+        end
+    end
+    return tris, edges
+end
+
 add("postit_creased", "notes", 100, 100, "pastel", "tone", function()
     local b = rect(0, 0, 100, 100)
-    return paper({ poly = b, shadow = shifted(b, 3, 4) }, {
-        part({ 50, 0, 50, 100 }, { fill = "lo2", closed = false, w = 1 }),
-        part({ 51.8, 0, 51.8, 100 }, { fill = "hi", closed = false, w = 0.9 }),
-        part({ 0, 50, 100, 50 }, { fill = "lo2", closed = false, w = 1 }),
-        part({ 0, 51.8, 100, 51.8 }, { fill = "hi", closed = false, w = 0.9 }),
-        part(b, { fill = false, edge = "tone" }),
-    })
+    local out = paper({ poly = b, shadow = shifted(b, 3, 4) })
+    local tris, edges = creasedMesh()
+    for _, t in ipairs(tris) do out[#out + 1] = part(t.poly, { fill = "t" .. t.k, edge = "none" }) end
+    local keys = {}
+    for key in pairs(edges) do keys[#keys + 1] = key end
+    table.sort(keys)   -- (the same order each time)
+    for _, key in ipairs(keys) do
+        local e = edges[key]
+        if e.k2 and math.abs(e.k1 - e.k2) >= 2 then
+            out[#out + 1] = part({ e.p[1], e.p[2], e.q[1], e.q[2] }, { fill = "lo2", closed = false, w = 0.6 })
+            out[#out + 1] = part({ e.p[1] + 1, e.p[2] + 1, e.q[1] + 1, e.q[2] + 1 }, { fill = "t1", closed = false, w = 0.5 })
+        end
+    end
+    out[#out + 1] = part(b, { fill = false, edge = "tone" })
+    return out
 end)
 
--- Folded in half: one crease across, the lower half a shade deeper.
+-- Folded once and opened again, as a sheet looks: an uneven crease across, the part
+-- below a shade deeper, and a short crease running up from it.
 add("postit_creased_half", "notes", 100, 100, "pastel", "tone", function()
     local b = rect(0, 0, 100, 100)
+    local fold = { 0, 47, 22, 50, 41, 46, 63, 51, 82, 49, 100, 53 }
+    local lower = join(fold, { 100, 100, 0, 100 })
     return paper({ poly = b, shadow = shifted(b, 3, 4) }, {
-        part(rect(0, 50, 100, 50), { fill = "lo", edge = "none" }),
-        part({ 0, 50, 100, 50 }, { fill = "lo2", closed = false, w = 1.2 }),
-        part({ 0, 51.6, 100, 51.6 }, { fill = "hi", closed = false, w = 0.8 }),
+        part({ 70, 0, 100, 0, 100, 53, 82, 49, 72, 50, 74, 30 }, { fill = "t2", edge = "none" }),
+        part(lower, { fill = "t4", edge = "none" }),
+        part({ 0, 100, 38, 66, 41, 46, 63, 51, 58, 100 }, { fill = "t5", edge = "none" }),
+        part(fold, { fill = "lo2", closed = false, w = 0.9 }),
+        part({ 0, 45.6, 22, 48.6, 41, 44.6, 63, 49.6, 82, 47.6, 100, 51.6 }, { fill = "t1", closed = false, w = 0.9 }),
+        part({ 74, 0, 74, 30, 72, 50 }, { fill = "lo2", closed = false, w = 0.6 }),
+        part({ 41, 46, 38, 66, 0, 100 }, { fill = "lo2", closed = false, w = 0.6 }),
         part(b, { fill = false, edge = "tone" }),
-    })
-end)
-
--- Worn paper: a few thin creases where it was folded and unfolded, no shading.
-add("postit_worn", "notes", 100, 100, "pastel", "tone", function()
-    local b = rect(0, 0, 100, 100)
-    return paper({ poly = b, shadow = shifted(b, 3, 4) }, {
-        part({ 0, 34, 100, 30 }, { fill = "lo2", closed = false, w = 0.8 }),
-        part({ 0, 68, 100, 72 }, { fill = "lo2", closed = false, w = 0.8 }),
-        part({ 38, 0, 42, 100 }, { fill = "lo2", closed = false, w = 0.8 }),
-        part({ 70, 0, 66, 100 }, { fill = "lo2", closed = false, w = 0.6 }),
-        part({ 0, 35.4, 100, 31.4 }, { fill = "hi", closed = false, w = 0.7 }),
-        part({ 39.4, 0, 43.4, 100 }, { fill = "hi", closed = false, w = 0.7 }),
     })
 end)
 

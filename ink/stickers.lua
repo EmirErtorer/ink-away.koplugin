@@ -68,6 +68,11 @@ local function colour(role, body)
     if role == "body" then return body end
     if role == "dark" then return darker(body, 0.82) end
     if role == "light" then return lighter(body, 0.55) end
+    if role == "t1" then return lighter(body, 0.16) end      -- the tints of creased paper, light to dark
+    if role == "t2" then return lighter(body, 0.07) end
+    if role == "t3" then return body end
+    if role == "t4" then return darker(body, 0.965) end
+    if role == "t5" then return darker(body, 0.925) end
     if role == "hi" then return lighter(body, 0.3) end       -- a facet catching the light
     if role == "lo" then return darker(body, 0.95) end         -- a facet turned away
     if role == "lo2" then return darker(body, 0.82) end
