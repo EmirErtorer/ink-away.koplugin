@@ -117,7 +117,7 @@ function InkAway:init()
         local function get(k) return G_reader_settings:readSetting(k) end
         local function tap(menu)
             local plugin = menu.ui and InkAway.by_ui[menu.ui]
-            if plugin then require("ink/launcher").show(plugin) end
+            if plugin then plugin:onInkAwayLauncher() end
         end
         for _i, mod in ipairs({ "apps/filemanager/filemanagermenu", "apps/reader/modules/readermenu" }) do
             local ok, class = pcall(require, mod)
@@ -263,8 +263,14 @@ function InkAway:setupEntryGestures()
 end
 
 -- The quick menu: from the icon in the top menu bar, or a gesture set to it.
+-- A quick menu that can't be built (a partly copied install, say) must never take
+-- KOReader down with it: it is logged, and Ink Away opens as usual instead.
 function InkAway:onInkAwayLauncher()
-    require("ink/launcher").show(self)
+    local ok, err = pcall(function() require("ink/launcher").show(self) end)
+    if not ok then
+        require("logger").warn("InkAway: quick menu:", err)
+        pcall(function() self:openCanvas() end)
+    end
     return true
 end
 
