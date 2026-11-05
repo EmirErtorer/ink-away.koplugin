@@ -15,3 +15,6 @@ tests/performance/out/
 
 # Python caches of the dev tools
 __pycache__/
+
+# Local test registrations for the cloud sync (see ink/sync/config.lua)
+ink/sync/localkeys.lua

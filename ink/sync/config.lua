@@ -48,10 +48,21 @@ function Config.fields(id)
     return FIELDS[id] or {}
 end
 
+-- A developer's own registrations for a local test build: ink/sync/localkeys.lua,
+-- which git ignores and the release build leaves out. The tests switch it off.
+local function localKeys()
+    if rawget(_G, "INKAWAY_NO_LOCALKEYS") then return {} end
+    local ok, t = pcall(require, "ink/sync/localkeys")
+    return ok and type(t) == "table" and t or {}
+end
+
 local BUILT_IN = {
-    dropbox = function() return Config.DROPBOX_APP_KEY, nil end,
-    gdrive = function() return Config.GDRIVE_CLIENT_ID, Config.GDRIVE_CLIENT_SECRET end,
-    onedrive = function() return Config.ONEDRIVE_CLIENT_ID, nil end,
+    dropbox = function() return localKeys().dropbox_key or Config.DROPBOX_APP_KEY, nil end,
+    gdrive = function()
+        local l = localKeys()
+        return l.gdrive_id or Config.GDRIVE_CLIENT_ID, l.gdrive_secret or Config.GDRIVE_CLIENT_SECRET
+    end,
+    onedrive = function() return localKeys().onedrive_id or Config.ONEDRIVE_CLIENT_ID, nil end,
 }
 
 -- The key (and secret, where the service has one) to use: the person's own if
