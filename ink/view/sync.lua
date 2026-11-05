@@ -142,7 +142,7 @@ function InkAwayView:openSync()
             add(vspan(8))
             add(self:sheetHint(_("Syncing by itself can slow the reader and use battery. You choose when it runs, and \"Sync now\" runs only when you ask."), content_w, 14))
             add(vspan(14))
-            for _i, p in ipairs(Providers.list()) do
+            for _i, p in ipairs(Providers.offered(Manager.get)) do
                 add(self:actionButton(T(_("Connect %1"), p.name), content_w, function() self:syncSignIn(p.id) end, true, nil, "cloud"))
                 add(vspan(6))
             end

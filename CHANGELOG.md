@@ -15,7 +15,7 @@ versions marked *Prerelease* were test builds.
   phone, tap Open Dropbox, tap Allow, paste the code on that page, and the reader
   carries on by itself. The page lives only while the sign-in screen is open and
   takes one code. With no Wi-Fi address, or if you prefer, "Type the code instead"
-  works as before. Google Drive and OneDrive only ask for a short code on the phone.
+  works as before. Google Drive only asks for a short code on the phone.
 - Cloud sync can carry more than notebooks, and each part is turned on or off on
   its own under "What to sync": notebooks and drawings, book notes, ink on book
   pages, imported PDFs and pictures, exports, screen clips, and your pens, colours
@@ -26,12 +26,11 @@ versions marked *Prerelease* were test builds.
   checksum, whatever the file is called; if two readers drew on the same book
   while apart, the ink from both is combined (a stroke erased on only one of them
   can come back). KOReader's own highlights are not included.
-- Cloud sync also works with Google Drive and OneDrive (a personal Microsoft
-  account). These show a short code on the reader: scan the QR code, type the
-  code on the phone, tap Allow, and the reader carries on by itself. Ink Away
-  asks only for access to its own folder, and files it removes go to the
-  service's bin. Everything else, the safety rules included, is the same as with
-  Dropbox.
+- Cloud sync also works with Google Drive. It shows a short code on the reader:
+  scan the QR code, type the code on the phone, tap Allow, and the reader carries
+  on by itself. Ink Away asks only for access to its own folder, and files it
+  removes go to the service's bin. Everything else, the safety rules included, is
+  the same as with Dropbox.
 - Cloud sync, with Dropbox first (Library, ..., Cloud sync). Connect on the
   reader itself: scan a QR code with a phone, tap Allow, type the short code
   Dropbox shows. Notebooks and drawings are kept the same on all your readers,

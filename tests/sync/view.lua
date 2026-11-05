@@ -129,7 +129,14 @@ view.startCodePage, view.stopCodePage = nil, nil
 G_reader_settings.data.inkaway_sync_dropbox_key = nil
 
 -- the other services are offered too, and sign in by showing a code on the reader
-ok(findButton(sheet, "Connect Google Drive") and findButton(sheet, "Connect OneDrive"), "Google Drive and OneDrive are offered")
+ok(findButton(sheet, "Connect Google Drive") and not findButton(sheet, "Connect OneDrive"), "Google Drive is offered, OneDrive stays hidden until it has a key")
+G_reader_settings.data.inkaway_sync_onedrive_key = "12345678-1234-1234-1234-123456789abc"
+view:closeSheet("_sync"); view:openSync()
+sheet = view._sync
+ok(findButton(sheet, "Connect OneDrive"), "OneDrive appears once there is a key for it")
+G_reader_settings.data.inkaway_sync_onedrive_key = nil
+view:closeSheet("_sync"); view:openSync()
+sheet = view._sync
 press(sheet, "Connect Google Drive")
 ok(view._sync_key ~= nil and textIn(view._sync_key):find("not registered with Google Drive yet", 1, true), "Google Drive without a registration asks for one")
 press(view._sync_key, "Enter details")

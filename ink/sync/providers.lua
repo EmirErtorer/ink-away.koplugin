@@ -50,6 +50,22 @@ function Providers.list()
     return out
 end
 
+-- Services kept in the code but not offered yet (no registration for them). One
+-- shows up on its own once Ink Away has a key for it (ink/sync/config.lua) or the
+-- person already entered their own; delete it from this list to always offer it.
+Providers.HIDDEN = { onedrive = true }
+
+-- The services to offer on the connect screen: all of them, but a hidden one that
+-- has no key. `get(setting)` reads a setting (the person's own keys are kept there).
+function Providers.offered(get)
+    local Config = require("ink/sync/config")
+    local out = {}
+    for _i, p in ipairs(Providers.list()) do
+        if not Providers.HIDDEN[p.id] or Config.appKey(p.id, get) then out[#out + 1] = p end
+    end
+    return out
+end
+
 -- The module for service `id`, or nil.
 function Providers.get(id)
     for _i, p in ipairs(LIST) do
