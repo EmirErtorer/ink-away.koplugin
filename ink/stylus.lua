@@ -66,6 +66,12 @@ function Stylus.facts(input, learned_slot, android)
     }
 end
 
+-- Master switch for the "input.lua has been replaced" note (see
+-- InkAwayView:inputFileDue). Off for now: the check itself stays (and is tested),
+-- but nobody is told. Set to true to test it on a reader before a stable release;
+-- then also restore its README sentence and CHANGELOG entry (git history, #75).
+Stylus.INPUT_NOTICE = false
+
 -- Is KOReader's input.lua (frontend/device/input.lua) replaced by another
 -- plugin's copy? Older pen plugins (pencil.koplugin up to 0.5) shipped one made
 -- from an older KOReader, which turning the plugin off doesn't undo. KOReader's

@@ -511,18 +511,24 @@ end
 
 -- Said yet, since KOReader started, that input.lua is another plugin's copy?
 local input_file_told = false
+local INPUT_NEVER = "inkaway_input_notice_never"   -- the reader asked never to be told again
 
 -- Is KOReader's input.lua replaced (see Stylus.foreignInput) and not yet said
 -- since KOReader started? Said each start until it is put back, as nothing
--- else tells the reader why the pen acts oddly.
+-- else tells the reader why the pen acts oddly, unless the switch
+-- Stylus.INPUT_NOTICE is off or the reader chose "Don't show this again", which
+-- is kept in KOReader's settings, so neither a restart nor an update undoes it.
 function InkAwayView:inputFileDue()
-    return not input_file_told and Stylus.foreignInput(Device.input)
+    return Stylus.INPUT_NOTICE and not input_file_told and not self:getSetting(INPUT_NEVER)
+        and Stylus.foreignInput(Device.input)
 end
 
 -- Say that input.lua is replaced, and how to put KOReader's own back.
 function InkAwayView:inputFileNotice()
     input_file_told = true
-    self:tell(_("KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."))
+    self:tell(_("KOReader's input.lua has been replaced, most likely by another pen plugin, so the pen may act oddly in Ink Away. Updating or reinstalling KOReader puts its own back, or copy frontend/device/input.lua from the KOReader download for your version. Use Ink Away and other pen plugins one at a time."), {
+        toggle = { label = _("Don't show this again"), is_on = false,
+            on_change = function(on) self:setSetting(INPUT_NEVER, on or nil) end } })
 end
 
 -- The pen and touch test, full screen. The canvas stops drawing from fingers

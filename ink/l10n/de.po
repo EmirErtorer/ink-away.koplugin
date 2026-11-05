@@ -1120,6 +1120,10 @@ msgstr "Richtung"
 msgid "Don't ask again"
 msgstr "Nicht mehr fragen"
 
+#: ink/view/settings.lua
+msgid "Don't show this again"
+msgstr "Nicht mehr anzeigen"
+
 #: ink/coverpicker.lua
 #: ink/framepicker.lua
 #: ink/reader/hlcolour.lua

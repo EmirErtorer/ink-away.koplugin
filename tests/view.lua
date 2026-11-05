@@ -2176,6 +2176,9 @@ end
 
 -- ---- input.lua replaced by another pen plugin: said on open, once each start ----
 do
+    local Stylus = require("ink/stylus")
+    ok(Stylus.INPUT_NOTICE == false, "input.lua: the note is switched off in the file for now")
+    Stylus.INPUT_NOTICE = true   -- (the rest of this block is the note as it will be when switched on)
     UIManager.reset()
     G_reader_settings.data.inkaway_welcome_seen = true
     local inp = require("device").input
@@ -2197,6 +2200,37 @@ do
     UIManager:show(view3)
     ok(not said(), "input.lua: said once each start, not each time Ink Away opens")
     view3:onCloseWidget()
+    -- "Don't show this again": kept in the settings, so no later start says it either
+    local function fresh()   -- (a new KOReader start: the told flag is per start, so reload the part)
+        UIManager.reset()
+        package.loaded["ink/view/settings"] = nil
+        local v = dofile("ink/view.lua"):new{}
+        UIManager:show(v)
+        return v
+    end
+    local v4 = fresh()
+    ok(said(), "input.lua: said again on a new start")
+    ok(v4._message and v4._message.text, "input.lua: and held as a message sheet")
+    local toggled
+    local function press_toggle(w, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return end
+        seen[w] = true
+        if w.label == "Don't show this again" and w.callback and not toggled then toggled = true; w.callback(true); return end
+        for k, c in pairs(w) do if k ~= "parent" and k ~= "show_parent" then press_toggle(c, seen) end end
+    end
+    press_toggle(v4._message)
+    ok(toggled and G_reader_settings.data.inkaway_input_notice_never == true, "input.lua: the switch is kept in KOReader's settings")
+    v4:onCloseWidget()
+    local v5 = fresh()
+    ok(not said(), "input.lua: after Don't show this again, a later start says nothing")
+    v5:onCloseWidget()
+    G_reader_settings.data.inkaway_input_notice_never = nil
+    -- the switch in the file off: nothing said whatever the file looks like
+    Stylus.INPUT_NOTICE = false
+    local v6 = fresh()
+    ok(not said(), "input.lua: switched off in the file, nothing is said")
+    v6:onCloseWidget()
     inp.routeStylusEvents = nil
     G_reader_settings.data.inkaway_welcome_seen = nil
 end
