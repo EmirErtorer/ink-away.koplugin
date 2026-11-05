@@ -13,7 +13,8 @@ local Config = {}
 -- Ink Away's registrations. Register an app at each service's developer site and
 -- put its keys here:
 --   Dropbox     dropbox.com/developers: "App folder" access, permissions
---               files.content.read, files.content.write, account_info.read
+--               files.metadata.read (listing and versions), files.content.read,
+--               files.content.write (upload, delete, restore), account_info.read
 --   Google      console.cloud.google.com: enable the Drive API, an OAuth client of
 --               the type "TVs and Limited Input devices", the scope drive.file, and
 --               publish the consent screen (in testing it signs out after 7 days)
