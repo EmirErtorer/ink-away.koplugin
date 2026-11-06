@@ -2627,6 +2627,10 @@ msgstr ""
 msgid "Legal pad"
 msgstr ""
 
+#: ink/view/selection.lua
+msgid "Let it follow the text"
+msgstr ""
+
 #: ink/actions.lua
 #: ink/launcher.lua
 #: ink/view/document.lua
@@ -3778,6 +3782,10 @@ msgstr ""
 #: ink/view/exportbook.lua
 #, lua-format
 msgid "Pictures: %d"
+msgstr ""
+
+#: ink/view/selection.lua
+msgid "Pin to this page"
 msgstr ""
 
 #: ink/view/settings.lua

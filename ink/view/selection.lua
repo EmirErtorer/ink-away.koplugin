@@ -691,6 +691,24 @@ function InkAwayView:closeSelectionMenu()
     end
 end
 
+-- Can the selection be pinned to its page of the book (never follow the text)? Only
+-- over a reflowing book, see ink/reader/inkview.lua.
+function InkAwayView:canPinSelection() return false end
+
+-- Is everything selected pinned?
+function InkAwayView:selectionPinned()
+    local ops = self:selectionOps()
+    if #ops == 0 then return false end
+    for _i, op in ipairs(ops) do if not op.pin then return false end end
+    return true
+end
+
+-- Pin the selection to its page, or let it follow the text again. The book keeps
+-- it when the annotation mode closes (see Book:setPageOps).
+function InkAwayView:selSetPin(on)
+    self:transformSelection(function(op) op.pin = on and true or nil end)
+end
+
 -- Open the selection's menu beside it. `panel` shows the colour, opacity or
 -- size controls in its place.
 function InkAwayView:openSelectionMenu(panel)
@@ -789,6 +807,12 @@ function InkAwayView:openSelectionMenu(panel)
             elseif not self.reader_mode then   -- over a book there are no pages to link to
                 add(self:actionButton(_("Link to page\u{2026}"), content_w, function() self:selLink() end,
                     false, "small", "link"))
+            end
+            if self:canPinSelection() then
+                local pinned = self:selectionPinned()
+                add(self:actionButton(pinned and _("Let it follow the text") or _("Pin to this page"), content_w, function()
+                    self:selSetPin(not pinned); again()
+                end, pinned, "small"))
             end
             if k.n == 1 and k.image == 1 then
                 add(self:actionButton(_("Remove background"), content_w, function()

@@ -2652,6 +2652,10 @@ msgstr "À gauche"
 msgid "Legal pad"
 msgstr "Bloc-notes"
 
+#: ink/view/selection.lua
+msgid "Let it follow the text"
+msgstr "Lui faire suivre le texte"
+
 #: ink/actions.lua
 #: ink/launcher.lua
 #: ink/view/document.lua
@@ -3815,6 +3819,10 @@ msgstr "Images d'une partie de page."
 #, lua-format
 msgid "Pictures: %d"
 msgstr "Images : %d"
+
+#: ink/view/selection.lua
+msgid "Pin to this page"
+msgstr "Épingler à cette page"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."

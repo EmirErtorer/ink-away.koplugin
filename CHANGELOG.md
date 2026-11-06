@@ -10,6 +10,13 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Over a reflowing book, anything you select (ink, shapes, pictures, a sticker with
+  what is written on it) can be pinned to its page: the selection menu has "Pin to this
+  page". A pinned item does not follow the text when the font, margins or screen change:
+  it stays at the same spot on the same page number, as a fraction of the screen, so a
+  bigger screen keeps it in the same place. Everything else still follows its word, and
+  "Let it follow the text" takes the pin off. It is not offered in a PDF or other
+  fixed-page book (they never reflow), in continuous scroll, or with two pages side by side.
 - Stickers: ready-made notes, speech bubbles, marks, tape and little pictures, each
   shown as a preview, a few to a page. Post-its come in many shapes, flat, curled,
   torn, taped or pinned, and in any colour (the colour is remembered,

@@ -2652,6 +2652,10 @@ msgstr "Links"
 msgid "Legal pad"
 msgstr "Notizblock"
 
+#: ink/view/selection.lua
+msgid "Let it follow the text"
+msgstr "Dem Text wieder folgen lassen"
+
 #: ink/actions.lua
 #: ink/launcher.lua
 #: ink/view/document.lua
@@ -3815,6 +3819,10 @@ msgstr "Bilder von einem Teil einer Seite."
 #, lua-format
 msgid "Pictures: %d"
 msgstr "Bilder: %d"
+
+#: ink/view/selection.lua
+msgid "Pin to this page"
+msgstr "An diese Seite heften"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."

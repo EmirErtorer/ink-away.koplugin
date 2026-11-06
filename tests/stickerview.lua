@@ -256,6 +256,25 @@ view:setStickersInToolbar(false)
 ok(not view:stickersInToolbar(), "and where the button is")
 view:setStickersInToolbar(true)
 
+------------------------------------------------------------------------------
+-- pinning to the page (over a reflowing book)
+------------------------------------------------------------------------------
+view:dropSelection()
+view:placeSticker(Stickers.get("postit"), nil)
+ok(view._sel_dialog and not findButton(view._sel_dialog, "Pin to this page"), "outside a book there is nothing to pin to")
+view:closeSelectionMenu()
+view.canPinSelection = function() return true end   -- (a reflowing book, as ReaderInkView says)
+view:openSelectionMenu()
+local pin = findButton(view._sel_dialog, "Pin to this page")
+ok(pin ~= nil, "over a reflowing book the selection menu offers to pin")
+pin.callback()
+local all_pinned = view:selectionPinned()
+ok(all_pinned, "pinned: every part of the sticker and what is on it is pinned")
+ok(view._sel_dialog and findButton(view._sel_dialog, "Let it follow the text"), "and the button says how to undo it")
+findButton(view._sel_dialog, "Let it follow the text").callback()
+ok(not view:selectionPinned(), "unpinned again")
+view.canPinSelection = nil
+
 print(string.format("stickerview: %d checks, %d failures", checks, fails))
 TestEnv.cleanup()
 os.exit(fails == 0 and 0 or 1)

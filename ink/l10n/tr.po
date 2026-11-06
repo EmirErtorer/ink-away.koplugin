@@ -2652,6 +2652,10 @@ msgstr "Sol"
 msgid "Legal pad"
 msgstr "Hukuk bloknotu"
 
+#: ink/view/selection.lua
+msgid "Let it follow the text"
+msgstr "Metni takip etsin"
+
 #: ink/actions.lua
 #: ink/launcher.lua
 #: ink/view/document.lua
@@ -3815,6 +3819,10 @@ msgstr "Bir sayfanın bir bölümünden alınan resimler."
 #, lua-format
 msgid "Pictures: %d"
 msgstr "Resimler: %d"
+
+#: ink/view/selection.lua
+msgid "Pin to this page"
+msgstr "Bu sayfaya sabitle"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."

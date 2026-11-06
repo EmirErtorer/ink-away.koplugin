@@ -2652,6 +2652,10 @@ msgstr "Слева"
 msgid "Legal pad"
 msgstr "Блокнот для заметок"
 
+#: ink/view/selection.lua
+msgid "Let it follow the text"
+msgstr "Пусть следует за текстом"
+
 #: ink/actions.lua
 #: ink/launcher.lua
 #: ink/view/document.lua
@@ -3815,6 +3819,10 @@ msgstr "Изображения части страницы."
 #, lua-format
 msgid "Pictures: %d"
 msgstr "Изображения: %d"
+
+#: ink/view/selection.lua
+msgid "Pin to this page"
+msgstr "Закрепить на этой странице"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."

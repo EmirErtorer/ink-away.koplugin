@@ -112,6 +112,11 @@ function Book:doc()
     else
         d.kind = "rolling"
         function d.width() return Screen:getWidth() end
+        function d.size() return Screen:getWidth(), Screen:getHeight() end
+        function d.pageCount()
+            local ok, n = pcall(document.getPageCount, document)
+            return ok and n or nil
+        end
         function d.wordAt(_, x, y)
             local ok, w = pcall(document.getWordFromPosition, document, { x = x, y = y }, true)
             if ok and w and w.sbox and w.pos0 then return { xp0 = w.pos0, xp1 = w.pos1, box = w.sbox } end
@@ -158,6 +163,15 @@ function Book:currentPage()
     if ui.paging then return ui.view.state and ui.view.state.page or ui.paging.current_page end
     local ok, p = pcall(ui.document.getCurrentPage, ui.document)
     return ok and p or nil
+end
+
+-- Can what is drawn be pinned to its page (kept at its spot on that page number
+-- whatever the text does)? Only in a reflowing book showing one page at a time.
+function Book:canPin()
+    local ui = self.ui
+    if ui.paging then return false end
+    if ui.view and ui.view.view_mode == "scroll" then return false end
+    return #self:visiblePages() == 1
 end
 
 -- Every page on the screen: one, or two side by side, or the pages a
@@ -274,6 +288,9 @@ function Book:setPageOps(ops, came_from, shown)
                 shape_anchor[src] = a
             end
             if a then item = Place.anchorWith(op, doc, a) end
+        end
+        if item == nil and op.pin and self:canPin() then
+            item = Place.pinned(op, doc, self:visiblePages()[1])   -- pinned: it keeps this page number
         end
         if item == nil then
             item = Place.anchor(op, doc)

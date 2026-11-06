@@ -511,6 +511,12 @@ function ReaderInkView:buildToolbar()
     self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side, self:toolbarFit())
 end
 
+-- A selection can be pinned to its page: it then stays at its spot on that page
+-- number when the text reflows (see Place.pinned).
+function ReaderInkView:canPinSelection()
+    return self.book ~= nil and self.book:canPin()
+end
+
 -- The Stickers button comes or goes: the toolbar is built again.
 function ReaderInkView:stickersBarChanged()
     self:flushPending()

@@ -2652,6 +2652,10 @@ msgstr "Αριστερά"
 msgid "Legal pad"
 msgstr "Μπλοκ νομικού"
 
+#: ink/view/selection.lua
+msgid "Let it follow the text"
+msgstr "Να ακολουθεί ξανά το κείμενο"
+
 #: ink/actions.lua
 #: ink/launcher.lua
 #: ink/view/document.lua
@@ -3815,6 +3819,10 @@ msgstr "Εικόνες από ένα τμήμα μιας σελίδας."
 #, lua-format
 msgid "Pictures: %d"
 msgstr "Εικόνες: %d"
+
+#: ink/view/selection.lua
+msgid "Pin to this page"
+msgstr "Καρφίτσωμα σε αυτή τη σελίδα"
 
 #: ink/view/settings.lua
 msgid "Pinch to zoom, and drag with two fingers to move around the page."

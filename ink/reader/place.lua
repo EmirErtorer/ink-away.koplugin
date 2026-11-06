@@ -29,6 +29,9 @@ An item is { op = <op in anchor space>, a = <anchor> }:
                   hyphen splits over two lines: the part the ink is by (2 for
                   the part on the second line), whose box it is measured from
   rolling, page:  a = { pxp, dx, dy }              dx, dy on the screen
+  rolling, pinned: a = { pg, fx, fy }              page number pg of the book, and the
+                  top-left as a fraction of the screen: it does not follow the text at all,
+                  it stays on that page number at that spot whatever the layout does
   paging:         a = { page, x, y }               page units
 ]]
 
@@ -112,6 +115,7 @@ end
 function Place.anchorWith(op, doc, a)
     local x0, y0 = origin(op)
     if not x0 then return nil end
+    if a and a.pg then return Place.pinned(op, doc, a.pg) end   -- (a piece of a pinned shape stays pinned)
     if doc.kind == "paging" or not (a and a.xp0) then return Place.anchor(op, doc) end
     local box = doc:boxOf(a.xp0, a.xp1, a.seg)
     if not box then return Place.anchor(op, doc) end
@@ -123,10 +127,28 @@ function Place.anchorWith(op, doc, a)
     return { op = Place.moved(op, -x0, -y0), a = na }
 end
 
+-- Pin an op to page `page` of a reflowing book (see the top): it keeps that page
+-- number and that spot on the screen (as fractions of its size, so another screen
+-- keeps it in the same place) when the text is laid out again. A fixed-page book
+-- has nothing to pin to: it is anchored as usual.
+function Place.pinned(op, doc, page)
+    if doc.kind == "paging" or not (page and doc.size) then return Place.anchor(op, doc) end
+    local x0, y0 = origin(op)
+    if not x0 then return nil end
+    local W, H = doc:size()
+    if not (W and H and W > 0 and H > 0) then return Place.anchor(op, doc) end
+    return { op = Place.moved(op, -x0, -y0), a = { pg = page, fx = x0 / W, fy = y0 / H } }
+end
+
 -- Which page an item is on, for this layout (nil if it cannot be placed).
 function Place.pageOf(item, doc)
     local a = item.a
     if a.page then return a.page end
+    if a.pg then
+        -- (a book laid out shorter than the page it was pinned to: its last page)
+        local n = doc.pageCount and doc:pageCount()
+        return (n and n > 0 and a.pg > n) and n or a.pg
+    end
     -- (the second part of a split word can be on the next page: where it ends)
     if a.xp0 then return doc:pageOf((a.seg or 1) > 1 and a.xp1 or a.xp0) end
     if a.pxp then return doc:pageOf(a.pxp) end
@@ -140,6 +162,10 @@ function Place.place(item, doc)
         local sx, sy, zoom = doc:toScreen(a.page, a.x, a.y)
         if not sx then return nil end
         return Place.moved(item.op, sx, sy, zoom)
+    end
+    if a.pg then
+        local W, H = doc:size()
+        return Place.moved(item.op, floor(a.fx * W + 0.5), floor(a.fy * H + 0.5))
     end
     if a.xp0 then
         local box = doc:boxOf(a.xp0, a.xp1, a.seg)

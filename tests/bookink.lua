@@ -760,5 +760,97 @@ do
     ok(#pb:highlightsAt({ 120, 175 }, 4) == 0, "highlights (PDF): the reach is in page coordinates, not more")
 end
 
+-- ---- pinned ink: it keeps its page number and its spot on the screen --------------------------
+do
+    local doc = rollingDoc()
+    doc.size = function() return 1000, 1400 end
+    doc.pageCount = function() return 200 end
+    local note = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 200, 700, 260, 760 }, pin = true }
+    local item = Place.pinned(note, doc, 3)
+    ok(item and item.a.pg == 3 and math.abs(item.a.fx - 0.2) < 0.01 and math.abs(item.a.fy - 0.5) < 0.01,
+        "pin: kept as a page number and fractions of the screen")
+    ok(item.a.xp0 == nil, "pin: with no word to follow")
+    ok(item.op.pin == true, "pin: the item remembers it is pinned (the button shows it)")
+    local back = Place.place(item, doc)
+    local bx, by = bbox(back)
+    local ox, oy = bbox(note)
+    ok(math.abs(bx - ox) < 1.5 and math.abs(by - oy) < 1.5, "pin: placed back where it was drawn")
+    ok(Place.pageOf(item, doc) == 3, "pin: on page 3")
+    -- the text is laid out again, a bigger font: every word moves to other pages. It stays
+    doc.words.w1.page, doc.words.w1.box = 4, { x = 40, y = 520, w = 90, h = 30 }
+    doc.words.w2.page = 5
+    ok(Place.pageOf(item, doc) == 3, "pin: still on page 3 after a reflow")
+    local again = Place.place(item, doc)
+    local ax, ay = bbox(again)
+    ok(math.abs(ax - bx) < 1 and math.abs(ay - by) < 1, "pin: and at the same spot")
+    -- another screen: the same place by fractions
+    doc.size = function() return 2000, 2800 end
+    local big = Place.place(item, doc)
+    local Canvas = require("ink/canvas")
+    local sx0, sy0 = Canvas.opBox(back)
+    local gx, gy = Canvas.opBox(big)
+    ok(math.abs(gx - 2 * sx0) <= 1 and math.abs(gy - 2 * sy0) <= 1, "pin: a bigger screen keeps it in the same place")
+    doc.size = function() return 1000, 1400 end
+    -- a book laid out shorter than the page it was pinned to
+    doc.pageCount = function() return 2 end
+    ok(Place.pageOf(item, doc) == 2, "pin: past the last page it is on the last page, not lost")
+    doc.pageCount = function() return 200 end
+    -- a piece cut from a pinned shape stays pinned
+    local piece = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 210, 710, 230, 730 } }
+    local pa = Place.anchorWith(piece, doc, item.a)
+    ok(pa and pa.a.pg == 3, "pin: a piece cut from it stays pinned")
+    -- no pin without a screen to take fractions of: anchored as usual
+    local plain = rollingDoc()
+    ok(Place.pinned({ kind = "ink", width = 3, pts = { 100, 205, 150, 205 } }, plain, 3).a.xp0 == "w1",
+        "pin: a book that cannot say its size anchors to the word as usual")
+    -- a fixed-page book has nothing to pin to
+    local pdf = { kind = "paging", zoom = 1 }
+    function pdf:toPage(x, y) return 7, x, y, 1 end
+    ok(Place.pinned({ kind = "ink", width = 3, pts = { 10, 10, 20, 20 } }, pdf, 7).a.page == 7, "pin: a PDF is anchored by page as usual")
+    -- the pin comes off: anchored to the nearest word at the spot it has now
+    local free = Place.anchor({ kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 300, 405, 380, 405 } }, rollingDoc())
+    ok(free.a.xp0 == "w2" and free.a.pg == nil, "pin: unpinned, it follows a word again")
+end
+
+-- ---- the book: what can be pinned, and what saving keeps pinned ---------------------------
+do
+    local Book = require("ink/reader/book")
+    local doc = rollingDoc()
+    doc.size = function() return 1000, 1400 end
+    doc.pageCount = function() return 200 end
+    local function newBook(view_mode, count)
+        local ui = { paging = false, view = { view_mode = view_mode },
+            document = { getCurrentPage = function() return 3 end, getPageCount = function() return 200 end,
+                getVisiblePageCount = function() return count or 1 end } }
+        local b = setmetatable({ ui = ui, rev = 0, has_file = true }, Book)
+        b._doc = doc
+        b._data = { version = 1, items = {} }
+        return b
+    end
+    ok(newBook("page"):canPin(), "book: a reflowing book showing one page can pin")
+    ok(not newBook("scroll"):canPin(), "book: not in continuous scroll")
+    ok(not newBook("page", 2):canPin(), "book: not with two pages side by side")
+    local pdf = setmetatable({ ui = { paging = true, view = {} }, rev = 0 }, Book)
+    ok(not pdf:canPin(), "book: not a fixed-page book")
+    local b = newBook("page")
+    local pinned = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 200, 700, 260, 760 }, pin = true }
+    local loose = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 100, 205, 150, 205 } }
+    local map = b:setPageOps({ pinned, loose }, {}, {})
+    ok(map[pinned].a.pg == 3, "book: a pinned drawing is saved against its page")
+    ok(map[loose].a.xp0 == "w1", "book: another is saved against its word")
+    -- shown again (as the reader opens it), the button still reads pinned
+    local placed = b:pageOps()
+    local pins = 0
+    for _, op in ipairs(placed.ops) do if op.pin then pins = pins + 1 end end
+    ok(pins == 1, "book: shown again, the pinned one still says it is pinned")
+    -- unpinned in the annotation mode (the button), it is saved against a word
+    local copy = {}
+    for k, v in pairs(placed.ops[1]) do copy[k] = v end
+    local was_pinned = copy.pin
+    copy.pin = nil
+    local m2 = b:setPageOps({ copy }, {}, placed.items)
+    ok(was_pinned and m2[copy].a.pg == nil and m2[copy].a.xp0 ~= nil, "book: unpinned, it is saved against a word again")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
