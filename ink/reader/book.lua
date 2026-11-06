@@ -552,7 +552,21 @@ function Book:relayout()
     self.rev = self.rev + 1
     local Event = require("ui/event")
     self.ui:handleEvent(Event:new("ApplyStyleSheet"))
-    pcall(self.ui.document.getPageCount, self.ui.document)
+    local document = self.ui.document
+    pcall(document.getPageCount, document)
+    -- With KOReader's partial re-layout (on by default), a part of the book is
+    -- laid out again only when a page of it is drawn, and until then everything
+    -- asked of it is from the old layout. The page shown is drawn here (off the
+    -- screen), and KOReader is told, as after its own drawing.
+    local dok, delayed = pcall(document.isRerenderingDelayed, document)
+    local view, rolling = self.ui.view, self.ui.rolling
+    if dok and delayed and view and view.visible_area and rolling and rolling.handlePartialRerendering then
+        pcall(function()
+            self._scratch_bb = self._scratch_bb or require("ffi/blitbuffer").new(1, 1)
+            document:drawCurrentView(self._scratch_bb, 0, 0, view.visible_area)
+            rolling:handlePartialRerendering()
+        end)
+    end
 end
 
 -- Keep `rooms` (and whether they are hidden) and lay the book out with them.
@@ -597,7 +611,10 @@ local function took(r, before, after, area)
         return before.gap and after.gap and after.gap - before.gap >= r.h * 0.9 - 2
     end
     if r.side == "left" then
-        return before.x and after.x and after.x - before.x >= r.w * 0.9 - 2
+        if not (before.x and after.x) then return false end
+        -- moved along by the room, or (a centred line moves half as far) now
+        -- starting past it; x is from the text area's left edge
+        return after.x - before.x >= r.w * 0.9 - 2 or (after.x > before.x and after.x >= r.w * 0.9 - 2)
     end
     if not (before.right and after.right) then return true end
     if before.right < area.x1 - r.w then return true end   -- (a short first line)

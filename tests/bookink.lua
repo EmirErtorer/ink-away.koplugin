@@ -852,5 +852,43 @@ do
     ok(was_pinned and m2[copy].a.pg == nil and m2[copy].a.xp0 ~= nil, "book: unpinned, it is saved against a word again")
 end
 
+-- ---- the book laid out again for its rooms, with KOReader's partial re-layout -------------
+-- (on by default on readers: a part of the book is laid out again only when one of
+-- its pages is drawn, so the page shown is drawn before the room is checked)
+do
+    local Book = require("ink/reader/book")
+    local function newBook(delayed)
+        local seen = { events = {}, drawn = 0, told = 0 }
+        local document = {
+            getPageCount = function() return 200 end,
+            isRerenderingDelayed = function() return delayed end,
+            drawCurrentView = function(_d, target, x, y, rect)
+                seen.drawn = seen.drawn + 1
+                seen.target, seen.rect = target, rect
+            end,
+        }
+        local ui = { paging = false, document = document,
+            view = { visible_area = { x = 0, y = 0, w = 600, h = 800 } },
+            rolling = { handlePartialRerendering = function()
+                ok(seen.drawn > 0, "rooms: KOReader is told after the page was drawn")
+                seen.told = seen.told + 1
+            end },
+            handleEvent = function(_ui, ev) seen.events[#seen.events + 1] = tostring(ev.handler or ev.name) end }
+        local b = setmetatable({ ui = ui, rev = 0 }, Book)
+        return b, seen
+    end
+    local b, seen = newBook(true)
+    b._blocks = { key = "old" }
+    b:relayout()
+    ok(seen.events[1] and seen.events[1]:find("ApplyStyleSheet", 1, true) ~= nil, "rooms: the book's style rules are applied again")
+    ok(seen.drawn == 1 and seen.told == 1, "rooms: with the partial re-layout, the page shown is drawn and KOReader told")
+    ok(seen.rect and seen.rect.w == 600 and seen.target and seen.target:getWidth() == 1,
+        "rooms: drawn off the screen, at the page's size")
+    ok(b._blocks == nil and b.rev == 1, "rooms: what was found in the old layout is forgotten")
+    local b2, seen2 = newBook(false)
+    b2:relayout()
+    ok(seen2.drawn == 0 and seen2.told == 0, "rooms: laid out whole at once, nothing is drawn")
+end
+
 print(("bookink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
