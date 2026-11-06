@@ -151,6 +151,11 @@ msgstr "%d fichiers envoyés"
 msgid "%d item(s) can't be kept editable. You'll choose what to do when you export."
 msgstr "%d élément(s) ne peuvent pas rester modifiables. Vous choisirez quoi faire au moment d’exporter."
 
+#: ink/reader/roomsui.lua
+#, lua-format
+msgid "%d item(s) in it"
+msgstr "%d élément(s) dedans"
+
 #: ink/view/lasso.lua
 #, lua-format
 msgid "%d item(s) on the clipboard"
@@ -339,6 +344,10 @@ msgstr "90°"
 #, lua-format
 msgid "A PNG holds the page shown, page %d."
 msgstr "Un PNG contient la page affichée, page %d."
+
+#: ink/reader/roomtool.lua
+msgid "A band across the page, before the paragraph nearest the box's top."
+msgstr "Une bande sur toute la largeur de la page, avant le paragraphe le plus proche du haut du cadre."
 
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -632,6 +641,7 @@ msgstr "Automatique"
 msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
 msgstr "La synchronisation automatique peut ralentir la liseuse et consommer de la batterie. « Synchroniser maintenant » ne s’exécute que lorsque vous le demandez."
 
+#: ink/reader/roomtool.lua
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
@@ -663,6 +673,10 @@ msgstr "Stylo à bille"
 #: ink/guide.lua
 msgid "Ballpoint, Fountain, Calligraphy and Pencil can follow how hard you press: Pen and input, Pen pressure (Beta), with Palm rejection on."
 msgstr "Le stylo à bille, le stylo plume, la calligraphie et le crayon peuvent suivre la force d’appui : Stylo et saisie, Pression du stylo (bêta), avec le rejet de la paume activé."
+
+#: ink/reader/roomsui.lua
+msgid "Band across the page"
+msgstr "Bande sur toute la page"
 
 #: ink/framecover.lua
 #: ink/palette.lua
@@ -793,6 +807,7 @@ msgid "Calligraphy"
 msgstr "Calligraphie"
 
 #: ink/reader/capture.lua
+#: ink/reader/roomtool.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -924,6 +939,8 @@ msgid "Clips already on a page stay there."
 msgstr "Les extraits déjà sur une page y restent."
 
 #: ink/launcher.lua
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1391,6 +1408,10 @@ msgstr "Supprimer quand même…"
 msgid "Delete for good"
 msgstr "Supprimer définitivement"
 
+#: ink/reader/roomtool.lua
+msgid "Delete it"
+msgstr "Le supprimer"
+
 #: ink/view/library.lua
 msgid "Delete old clips"
 msgstr "Supprimer les anciens extraits"
@@ -1493,6 +1514,7 @@ msgstr "Ne plus afficher"
 #: ink/framepicker.lua
 #: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
+#: ink/reader/roomsui.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
 #: ink/view/gestures.lua
@@ -1551,6 +1573,22 @@ msgstr "Tracez un cadre autour de la partie à exporter. Un simple appui garde t
 #: ink/guide.lua
 msgid "Drag the ring above an open text box to turn it to any angle, or pick Reads down or Reads up in Format, Paragraph, for a book's margins."
 msgstr "Faites glisser l’anneau au-dessus d’une zone de texte ouverte pour la tourner à l’angle voulu, ou choisissez Lecture vers le bas ou Lecture vers le haut dans Format, Paragraphe, pour les marges d’un livre."
+
+#: ink/reader/roomsui.lua
+msgid "Draw a box and the text moves out of it"
+msgstr "Tracez un cadre et le texte s’en écarte"
+
+#: ink/reader/roomtool.lua
+msgid "Draw a box where the text should move away, or tap a room to change it."
+msgstr "Tracez un cadre là où le texte doit s’écarter, ou touchez un espace pour le modifier."
+
+#: ink/reader/roomtool.lua
+msgid "Draw a box where the text should move away."
+msgstr "Tracez un cadre là où le texte doit s’écarter."
+
+#: ink/reader/roomtool.lua
+msgid "Draw again"
+msgstr "Retracer"
 
 #: ink/view/images.lua
 msgid "Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF."
@@ -2209,9 +2247,14 @@ msgstr "Hardcover"
 msgid "Hatch"
 msgstr "Hachures"
 
+#: ink/reader/roomsui.lua
 #: ink/view/settings.lua
 msgid "Hidden"
 msgstr "Masqué"
+
+#: ink/reader/roomsui.lua
+msgid "Hidden, the book reads as it was made, and what is in the rooms hides with them."
+msgstr "Masqués, le livre se lit tel qu’il a été fait, et ce qui est dans les espaces est masqué avec eux."
 
 #: ink/view/layers.lua
 #: ink/view/stickers.lua
@@ -2523,6 +2566,10 @@ msgstr "Il sera synchronisé la prochaine fois."
 msgid "Italic"
 msgstr "Italique"
 
+#: ink/reader/roomsui.lua
+msgid "Items pinned to later pages may now sit over other text."
+msgstr "Les éléments épinglés aux pages suivantes peuvent maintenant se trouver sur un autre texte."
+
 #: ink/framecover.lua
 msgid "Ivory and silver"
 msgstr "Ivoire et argent"
@@ -2598,6 +2645,7 @@ msgstr "Paysage"
 
 #: ink/actions.lua
 #: ink/guide.lua
+#: ink/reader/roomsui.lua
 #: ink/view/toolbar.lua
 msgid "Lasso"
 msgstr "Lasso"
@@ -2652,6 +2700,7 @@ msgstr "À gauche"
 msgid "Legal pad"
 msgstr "Bloc-notes"
 
+#: ink/reader/roomtool.lua
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Lui faire suivre le texte"
@@ -2837,6 +2886,16 @@ msgstr "Créer un sommaire"
 #: ink/view/pencase.lua
 msgid "Make a copy"
 msgstr "Faire une copie"
+
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
+#: ink/view/selection.lua
+msgid "Make room"
+msgstr "Faire de la place"
+
+#: ink/reader/roomsui.lua
+msgid "Make room works in books whose text reflows, shown one page at a time."
+msgstr "Faire de la place fonctionne dans les livres dont le texte se recompose, affichés une page à la fois."
 
 #: ink/sync/errors.lua
 msgid "Make the notebook smaller, for example by splitting it. It stays on this reader."
@@ -3171,6 +3230,11 @@ msgstr "Aucun autre carnet ici"
 msgid "No pages match the chosen range."
 msgstr "Aucune page ne correspond à la plage choisie."
 
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
+msgid "No paragraph starts on this page, so there is nowhere to put a band."
+msgstr "Aucun paragraphe ne commence sur cette page, il n’y a donc pas où mettre une bande."
+
 #: ink/pentest.lua
 msgid ""
 "No pen has been seen since Ink Away opened, so with palm rejection on your finger moves the page.\n"
@@ -3313,6 +3377,10 @@ msgstr "Rien ici pour l’instant. Créez un dessin, un carnet ou un dossier ave
 #: ink/view/stickers.lua
 msgid "Nothing here. Hidden stickers come back in the sticker options."
 msgstr "Rien ici. Les autocollants masqués reviennent dans les options des autocollants."
+
+#: ink/reader/roomsui.lua
+msgid "Nothing in it yet"
+msgstr "Encore vide"
 
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
@@ -3534,6 +3602,7 @@ msgstr "PNG, PDF et plus"
 msgid "Page"
 msgstr "Page"
 
+#: ink/reader/roomsui.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/links.lua
 #: ink/view/notebook.lua
@@ -4003,6 +4072,10 @@ msgstr "Supprimer le surlignage"
 msgid "Remove link"
 msgstr "Supprimer le lien"
 
+#: ink/reader/roomtool.lua
+msgid "Remove room"
+msgstr "Supprimer l’espace"
+
 #: ink/view/images.lua
 msgid "Remove the background picture"
 msgstr "Supprimer l’image d’arrière-plan"
@@ -4070,6 +4143,19 @@ msgstr "Redémarrez KOReader pour utiliser %1"
 msgid "Right"
 msgstr "À droite"
 
+#: ink/reader/roomtool.lua
+msgid "Room"
+msgstr "Espace"
+
+#: ink/reader/roomsui.lua
+msgid "Rooms in this book"
+msgstr "Espaces dans ce livre"
+
+#: ink/reader/roomsui.lua
+#, lua-format
+msgid "Rooms in this book (%d)"
+msgstr "Espaces dans ce livre (%d)"
+
 #: main.lua
 msgid "Run the pen's eraser end over a highlight or over Ink Away's ink on the page: it goes, without opening the annotation mode. The eraser settings of the annotation mode apply. The part of the pen is the one set to Eraser in Gestures and pen buttons."
 msgstr "Passez le bout gomme du stylo sur un surlignage ou sur l’encre d’Ink Away dans la page : il disparaît, sans ouvrir le mode annotation. Les réglages de gomme du mode annotation s’appliquent. Cette partie du stylo est celle réglée sur Gomme dans Gestes et boutons du stylo."
@@ -4106,6 +4192,10 @@ msgstr "Enregistrer comme modèle…"
 #: ink/ui/brushmaker.lua
 msgid "Save brush"
 msgstr "Enregistrer le pinceau"
+
+#: ink/reader/roomtool.lua
+msgid "Save changes"
+msgstr "Enregistrer les modifications"
 
 #: ink/view/export.lua
 #, lua-format
@@ -4386,6 +4476,10 @@ msgstr "Me montrer"
 msgid "Show the eraser while erasing"
 msgstr "Afficher la gomme pendant l’effacement"
 
+#: ink/reader/roomsui.lua
+msgid "Show the rooms"
+msgstr "Afficher les espaces"
+
 #: ink/view/receive.lua
 msgid "Show them in the library"
 msgstr "Les afficher dans la bibliothèque"
@@ -4483,6 +4577,22 @@ msgstr "Un problème est survenu à la lecture de l’écriture."
 #, lua-format
 msgid "Source: %s"
 msgstr "Source : %s"
+
+#: ink/reader/roomsui.lua
+msgid "Space on the left"
+msgstr "Espace à gauche"
+
+#: ink/reader/roomtool.lua
+msgid "Space on the left, beside the paragraphs the box covers."
+msgstr "Espace à gauche, à côté des paragraphes que couvre le cadre."
+
+#: ink/reader/roomsui.lua
+msgid "Space on the right"
+msgstr "Espace à droite"
+
+#: ink/reader/roomtool.lua
+msgid "Space on the right, beside the paragraphs the box covers."
+msgstr "Espace à droite, à côté des paragraphes que couvre le cadre."
 
 #: ink/brushes.lua
 msgid "Spread"
@@ -4733,6 +4843,10 @@ msgstr "Touchez une zone pour la remplir ; maintenez le pot dans le menu des for
 #: ink/guide.lua
 msgid "Tap one of your saved pens in the pen menu. Changing its size or colour changes that pen."
 msgstr "Touchez l’un de vos stylos enregistrés dans le menu des stylos. Changer sa taille ou sa couleur modifie ce stylo."
+
+#: ink/reader/roomsui.lua
+msgid "Tap one to go to it and change it."
+msgstr "Touchez-en un pour y aller et le modifier."
 
 #: ink/guide.lua
 msgid "Tap the page number: go to a page, rename, star, insert, duplicate, move, paper, templates, paste or delete."
@@ -5029,6 +5143,10 @@ msgstr "La liseuse n'a pas pu joindre le cloud."
 msgid "The recognition preview could not be opened. Your handwriting was kept."
 msgstr "L’aperçu de reconnaissance n’a pas pu s’ouvrir. Votre écriture a été conservée."
 
+#: ink/reader/roomsui.lua
+msgid "The rooms are hidden: tap one to show them and go to it."
+msgstr "Les espaces sont masqués : touchez-en un pour les afficher et y aller."
+
 #: ink/view/search.lua
 msgid "The search could not finish."
 msgstr "La recherche n’a pas pu aboutir."
@@ -5121,6 +5239,11 @@ msgstr "Il n’y a pas de calque sous celui-ci."
 msgid "There is no room left in the cloud account."
 msgstr "Il n'y a plus de place dans le compte cloud."
 
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
+msgid "There is no text here to move."
+msgstr "Il n’y a pas de texte à déplacer ici."
+
 #: ink/view/document.lua
 msgid "There is nothing to copy yet."
 msgstr "Il n’y a encore rien à copier."
@@ -5146,9 +5269,17 @@ msgstr "Tiers"
 msgid "This book's annotations wait in Ink Away's trash for 30 days. To put them back: Ink Away's library, its menu, Trash."
 msgstr "Les annotations de ce livre attendent 30 jours dans la corbeille d’Ink Away. Pour les remettre : bibliothèque d’Ink Away, son menu, Corbeille."
 
+#: ink/reader/roomsui.lua
+msgid "This book's annotations were saved by a newer Ink Away, so they can't be changed here."
+msgstr "Les annotations de ce livre ont été enregistrées par un Ink Away plus récent, elles ne peuvent donc pas être modifiées ici."
+
 #: ink/reader/book.lua
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr "L’encre de ce livre a été enregistrée par une version plus récente d’Ink Away. Mettez Ink Away à jour pour la modifier."
+
+#: ink/reader/roomsui.lua
+msgid "This book's layout could not make room there. Try a box at another paragraph."
+msgstr "La mise en page de ce livre n’a pas pu faire de la place ici. Essayez un cadre à un autre paragraphe."
 
 #: ink/sync/errors.lua
 msgid "This cloud service does not offer that."
@@ -5523,6 +5654,10 @@ msgstr "Ce qu’Ink Away sait faire et qu’un coup d’œil ne montre pas."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Ce qui est arrivé était incomplet ou endommagé et a été jeté."
+
+#: ink/reader/roomtool.lua
+msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
+msgstr "Ce qui est dans cet espace : le supprimer, ou le laisser où il est et lui faire suivre le texte ?"
 
 #: ink/view/sync.lua
 msgid "What to do"

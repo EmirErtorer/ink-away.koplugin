@@ -695,6 +695,10 @@ end
 -- over a reflowing book, see ink/reader/inkview.lua.
 function InkAwayView:canPinSelection() return false end
 
+-- Can the text move out of the selection's way (ink/reader/roomsui.lua)? Only over
+-- a reflowing book.
+function InkAwayView:canMakeRoom() return false end
+
 -- Is everything selected pinned?
 function InkAwayView:selectionPinned()
     local ops = self:selectionOps()
@@ -813,6 +817,11 @@ function InkAwayView:openSelectionMenu(panel)
                 add(self:actionButton(pinned and _("Let it follow the text") or _("Pin to this page"), content_w, function()
                     self:selSetPin(not pinned); again()
                 end, pinned, "small"))
+            end
+            if self:canMakeRoom() then
+                add(self:actionButton(_("Make room"), content_w, function()
+                    self:makeRoomForSelection()
+                end, false, "small", "room"))
             end
             if k.n == 1 and k.image == 1 then
                 add(self:actionButton(_("Remove background"), content_w, function()

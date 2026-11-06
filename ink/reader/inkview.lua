@@ -30,6 +30,7 @@ local InkAwayView = require("ink/view")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 local VBar = require("ink/reader/vbar")
 local HLColour = require("ink/reader/hlcolour")
+local RoomsUI = require("ink/reader/roomsui")
 
 local Screen = Device.screen
 
@@ -41,6 +42,7 @@ local ReaderInkView = InkAwayView:extend{
 }
 VBar.into(ReaderInkView)
 HLColour.into(ReaderInkView)
+RoomsUI.into(ReaderInkView)
 
 ------------------------------------------------------------------------------
 -- Start and layout
@@ -486,7 +488,10 @@ function ReaderInkView:buildToolbar()
         { id = "erase", icon = "eraser", tool = true, cb = function()
             if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
         end },
-        { id = "lasso", icon = "lasso", tool = true, cb = function() self:setTool("lasso") end },
+        -- (tapped again: its sheet, with Make room)
+        { id = "lasso", icon = "lasso", tool = true, cb = function()
+            if self.tool == "lasso" then self:openLassoMenu() else self:setTool("lasso") end
+        end },
         { id = "shape", icon = "shape", tool = true, cb = function()
             if self.tool == "shape" then self:openShapePicker() else self:setTool("shape") end
         end },

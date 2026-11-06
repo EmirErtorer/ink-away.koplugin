@@ -333,7 +333,7 @@ function InkAwayView:ensureUserIcons()
                                 "undo", "redo", "menu", "library", "file", "exit",
                                 "sh_line", "sh_rect", "sh_ellipse", "sh_triangle",
                                 "sh_curve", "sh_arrow", "sh_darrow", "sh_carrow", "sh_cdarrow",
-                                "bucket", "lasso", "caret", "highlighter", "booknotes", "sticker", "nav_prev", "nav_next",
+                                "bucket", "lasso", "caret", "highlighter", "booknotes", "sticker", "nav_prev", "nav_next", "room",
                                 "newpage", "fullscreen" }) do
             local src = src_dir .. name .. ".svg"
             local dst = dst_dir .. "/inkaway." .. name .. ".svg"

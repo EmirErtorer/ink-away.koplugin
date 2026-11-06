@@ -713,5 +713,75 @@ do
     Device.hasKeys, Device.input.group = hasKeys, group
 end
 
+-- Make room (ink/reader/roomsui.lua): a second tap on the Lasso opens its sheet
+-- with the Make room tool, the selection's menu offers Make room, and a change to
+-- the rooms keeps the page's ink first and shows the page again.
+do
+    local W, H = 1072, 1448
+    Screen:setSize(W, H)
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    package.loaded["ink/reader/inkview"] = nil
+    local ReaderInkView = require("ink/reader/inkview")
+    local book = standInBook()
+    local rooms, page, pinned = {}, 7, false
+    function book:canRoom() return self.can ~= false end
+    function book:rooms() return rooms end
+    function book:roomsShown() return true end
+    function book:roomItems() return {} end
+    function book:roomPage() return page end
+    function book:currentPage() return self.at or 7 end
+    function book:gotoPage(p) self.at = p end
+    function book:pinnedFrom() return pinned end
+    local view = ReaderInkView:new{ book = book }
+    local lasso
+    for _i, e in ipairs(view._toolbar_icons or {}) do if e.id == "lasso" then lasso = e.button end end
+    ok(lasso ~= nil, "room: the book toolbar has the Lasso")
+    lasso.callback()
+    ok(view.tool == "lasso" and view._lasso_dialog == nil, "room: a first tap takes the lasso")
+    lasso.callback()
+    ok(view._lasso_dialog ~= nil and findButton(view._lasso_dialog, "Make room") ~= nil,
+        "room: a second tap opens the Lasso's sheet with Make room")
+    ok(findButton(view._lasso_dialog, "Show the rooms") == nil, "room: no rooms, no switch for them")
+    view:closeSheet("_lasso_dialog")
+    rooms[1] = { id = "r1", kind = "band", xp = "/p", h = 100 }
+    view:openLassoMenu()
+    ok(findButton(view._lasso_dialog, "Rooms in this book (1)") ~= nil, "room: with rooms, their list")
+    view:closeSheet("_lasso_dialog")
+    book.can = false
+    view:openLassoMenu()
+    ok(findButton(view._lasso_dialog, "Make room") == nil, "room: not offered where it cannot work (a PDF)")
+    view:closeSheet("_lasso_dialog")
+    book.can = nil
+    -- the selection's menu
+    view:selectOps({ 1 }, "lasso")
+    view:openSelectionMenu()
+    ok(findButton(view._sel_dialog, "Make room") ~= nil, "room: the selection's menu offers Make room")
+    view:closeSelectionMenu()
+    view:dropSelection()
+    -- a change: the page's ink kept first, the room's page shown after
+    local saved = book.saved
+    view.canvas:placeOp({ kind = "ink", style = "solid", width = 4, alpha = 255, color = { 0, 0, 0 }, pts = { 300, 900, 500, 900 } })
+    view:markDirty()
+    page = 9
+    local got = view:changeRooms(function(b) ok(b == book, "room: the change is given the book"); return { id = "r2" } end)
+    ok(got and got.id == "r2" and book.saved > saved, "room: the page's ink is kept before the layout changes")
+    ok(book.at == 9, "room: the room's page is shown")
+    pinned = true
+    local notices = 0
+    local orig = view.showNotice
+    view.showNotice = function() notices = notices + 1 end
+    view:changeRooms(function() return { id = "r3" } end)
+    ok(notices == 1, "room: a note when pinned items come after it")
+    view.showNotice = orig
+    local told
+    local tell = view.tell
+    view.tell = function(_self, text) told = text end
+    view:changeRooms(function() return nil, "failed" end)
+    ok(told ~= nil, "room: said so when the book's layout could not take it")
+    view.tell = tell
+    view:onCloseWidget()
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -604,33 +604,45 @@ local function took(r, before, after, area)
     return after.right <= area.x1 - r.w * 0.9 + 2
 end
 
--- Add room `r` (from Rooms.plan) and lay the book out with it. A band before a
--- paragraph that already has one takes its place. Returns the room, or nil and
--- why ("failed": the book's layout did not take it, so it was taken back).
-function Book:addRoom(r)
-    local rooms = {}
-    for _i, o in ipairs(self:rooms()) do
-        if not (r.kind == "band" and o.kind == "band" and o.xp == r.xp) then rooms[#rooms + 1] = o end
-    end
+-- Add room `r` (from Rooms.plan), or change the room with its id, and lay the
+-- book out with it (the rooms shown, if they were hidden). A band before a
+-- paragraph that already has one takes its place. A room on a paragraph it was
+-- not on is checked: if the book's layout did not take it, everything is put back.
+-- Returns the room, or nil and why ("failed", "read_only").
+function Book:putRoom(r)
     r.id = r.id or Rooms.newId()
+    local rooms, was = {}, nil
+    for _i, o in ipairs(self:rooms()) do
+        if o.id == r.id then was = o
+        elseif not (r.kind == "band" and o.kind == "band" and o.xp == r.xp) then rooms[#rooms + 1] = o end
+    end
+    -- (a new paragraph is checked; the same one resized needs not be)
+    local check = not (was and was.xp == r.xp and was.kind == r.kind)
     local area = self:textArea()
-    local before = self:roomProbe(r)
-    rooms[#rooms + 1] = r
+    local before = check and self:roomProbe(r)
+    -- in its old place in the list, or last
+    local placed = false
+    if was then
+        for i, o in ipairs(self:rooms()) do
+            if o.id == r.id then table.insert(rooms, math.min(i, #rooms + 1), r); placed = true; break end
+        end
+    end
+    if not placed then rooms[#rooms + 1] = r end
     local old, old_off = self:data().rooms, self:data().rooms_off
     if not self:setRooms(rooms, nil) then return nil, "read_only" end
-    if not took(r, before, self:roomProbe(r), area) then
+    if check and not took(r, before, self:roomProbe(r), area) then
         logger.warn("Ink Away: the room did not take in this book:", r.xp)
         self:setRooms(old, old_off)
         return nil, "failed"
     end
     return r
 end
+Book.addRoom = Book.putRoom
 
--- Change a room (the same id) to `r`: its size, or what it covers.
-function Book:changeRoom(r)
-    local rooms = {}
-    for _i, o in ipairs(self:rooms()) do rooms[#rooms + 1] = o.id == r.id and r or o end
-    return self:setRooms(rooms, self:data().rooms_off)
+-- Go to page `p` of the book.
+function Book:gotoPage(p)
+    local Event = require("ui/event")
+    self.ui:handleEvent(Event:new("GotoPage", p))
 end
 
 -- Show or hide every room (hidden, the book reads as it was made, and the ink
@@ -1107,25 +1119,30 @@ function Book:trashInk(root)
         { name = self:notesInfo().title, book = self.ui.document and self.ui.document.file })
     if not item then return nil, err end
     local notes = data.notes
+    local css = self:roomsCss() or false
     self._data = BookInk.new()
     self.has_file = false
     if notes then
         self._data.notes = notes
         self:save()
     end
-    self:reload(true)
+    self:reload(true, css)
     return item
 end
 
--- Read the book's ink again (it came back from the trash), or with `keep` just
--- show what is in memory now.
-function Book:reload(keep)
+-- Read the book's ink again (it came back from the trash, or from the cloud), or
+-- with `keep` just show what is in memory now. When that changes the rooms made
+-- in the text, the book is laid out again.
+function Book:reload(keep, css_before)
+    local before = css_before
+    if before == nil then before = self:roomsCss() or false end
     if not keep then
         self._data = nil
         self.has_file = self.sidecar ~= nil and BookInk.exists(self.sidecar)
     end
     self.rev = self.rev + 1
     self._placed, self._index, self._index_key = nil, nil, nil
+    if (self:roomsCss() or false) ~= before then self:relayout() end
     self:repaint()
 end
 

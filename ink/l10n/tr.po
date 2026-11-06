@@ -151,6 +151,11 @@ msgstr "%d dosya gönderildi"
 msgid "%d item(s) can't be kept editable. You'll choose what to do when you export."
 msgstr "%d öğe düzenlenebilir kalamaz. Dışa aktarırken ne yapılacağını seçersiniz."
 
+#: ink/reader/roomsui.lua
+#, lua-format
+msgid "%d item(s) in it"
+msgstr "İçinde %d öğe"
+
 #: ink/view/lasso.lua
 #, lua-format
 msgid "%d item(s) on the clipboard"
@@ -339,6 +344,10 @@ msgstr "90°"
 #, lua-format
 msgid "A PNG holds the page shown, page %d."
 msgstr "PNG, gösterilen sayfayı, yani %d. sayfayı içerir."
+
+#: ink/reader/roomtool.lua
+msgid "A band across the page, before the paragraph nearest the box's top."
+msgstr "Sayfa boyunca bir şerit, kutunun üst kenarına en yakın paragraftan önce."
 
 #: ink/view/document.lua
 #: ink/view/library.lua
@@ -632,6 +641,7 @@ msgstr "Otomatik"
 msgid "Automatic sync can slow the reader and use battery. \"Sync now\" runs only when you ask."
 msgstr "Otomatik eşitleme okuyucuyu yavaşlatabilir ve pil harcayabilir. “Şimdi eşitle” yalnızca siz istediğinizde çalışır."
 
+#: ink/reader/roomtool.lua
 #: ink/view/gestures.lua
 #: ink/view/guide.lua
 #: ink/view/menus.lua
@@ -663,6 +673,10 @@ msgstr "Tükenmez kalem"
 #: ink/guide.lua
 msgid "Ballpoint, Fountain, Calligraphy and Pencil can follow how hard you press: Pen and input, Pen pressure (Beta), with Palm rejection on."
 msgstr "Tükenmez, Dolma, Kaligrafi ve Kurşun kalem ne kadar bastığınızı izleyebilir: Kalem ve girdi, Kalem basıncı (Beta), Avuç içi reddi açıkken."
+
+#: ink/reader/roomsui.lua
+msgid "Band across the page"
+msgstr "Sayfa boyunca şerit"
 
 #: ink/framecover.lua
 #: ink/palette.lua
@@ -793,6 +807,7 @@ msgid "Calligraphy"
 msgstr "Kaligrafi"
 
 #: ink/reader/capture.lua
+#: ink/reader/roomtool.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/dialogs.lua
@@ -924,6 +939,8 @@ msgid "Clips already on a page stay there."
 msgstr "Zaten bir sayfada olan kırpıntılar orada kalır."
 
 #: ink/launcher.lua
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
 #: ink/ui/pentestscreen.lua
 #: ink/ui/thumbgrid.lua
 #: ink/view/dialogs.lua
@@ -1391,6 +1408,10 @@ msgstr "Yine de sil…"
 msgid "Delete for good"
 msgstr "Kalıcı olarak sil"
 
+#: ink/reader/roomtool.lua
+msgid "Delete it"
+msgstr "Sil"
+
 #: ink/view/library.lua
 msgid "Delete old clips"
 msgstr "Eski kırpıntıları sil"
@@ -1493,6 +1514,7 @@ msgstr "Bunu bir daha gösterme"
 #: ink/framepicker.lua
 #: ink/reader/hlcolour.lua
 #: ink/reader/inkview.lua
+#: ink/reader/roomsui.lua
 #: ink/view/dialogs.lua
 #: ink/view/document.lua
 #: ink/view/gestures.lua
@@ -1551,6 +1573,22 @@ msgstr "Dışa aktarılacak bölümün çevresine bir kutu çizin. Tek bir dokun
 #: ink/guide.lua
 msgid "Drag the ring above an open text box to turn it to any angle, or pick Reads down or Reads up in Format, Paragraph, for a book's margins."
 msgstr "Açık bir metin kutusunun üstündeki halkayı sürükleyerek istediğiniz açıya çevirin ya da kitap kenar boşlukları için Biçim, Paragraf'ta Aşağı okunur veya Yukarı okunur'u seçin."
+
+#: ink/reader/roomsui.lua
+msgid "Draw a box and the text moves out of it"
+msgstr "Bir kutu çiz, metin oradan çekilsin"
+
+#: ink/reader/roomtool.lua
+msgid "Draw a box where the text should move away, or tap a room to change it."
+msgstr "Metnin çekilmesi gereken yere bir kutu çiz ya da değiştirmek için bir boşluğa dokun."
+
+#: ink/reader/roomtool.lua
+msgid "Draw a box where the text should move away."
+msgstr "Metnin çekilmesi gereken yere bir kutu çiz."
+
+#: ink/reader/roomtool.lua
+msgid "Draw again"
+msgstr "Yeniden çiz"
 
 #: ink/view/images.lua
 msgid "Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF."
@@ -2209,9 +2247,14 @@ msgstr "Hardcover"
 msgid "Hatch"
 msgstr "Tarama"
 
+#: ink/reader/roomsui.lua
 #: ink/view/settings.lua
 msgid "Hidden"
 msgstr "Gizli"
+
+#: ink/reader/roomsui.lua
+msgid "Hidden, the book reads as it was made, and what is in the rooms hides with them."
+msgstr "Gizliyken kitap yapıldığı gibi okunur, boşluklardakiler de onlarla birlikte gizlenir."
 
 #: ink/view/layers.lua
 #: ink/view/stickers.lua
@@ -2523,6 +2566,10 @@ msgstr "Bir dahaki sefere eşitlenecek."
 msgid "Italic"
 msgstr "Yatık"
 
+#: ink/reader/roomsui.lua
+msgid "Items pinned to later pages may now sit over other text."
+msgstr "Sonraki sayfalara sabitlenmiş öğeler artık başka metnin üstünde kalabilir."
+
 #: ink/framecover.lua
 msgid "Ivory and silver"
 msgstr "Fildişi ve gümüş"
@@ -2598,6 +2645,7 @@ msgstr "Yatay"
 
 #: ink/actions.lua
 #: ink/guide.lua
+#: ink/reader/roomsui.lua
 #: ink/view/toolbar.lua
 msgid "Lasso"
 msgstr "Kement"
@@ -2652,6 +2700,7 @@ msgstr "Sol"
 msgid "Legal pad"
 msgstr "Hukuk bloknotu"
 
+#: ink/reader/roomtool.lua
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Metni takip etsin"
@@ -2837,6 +2886,16 @@ msgstr "İçindekiler sayfası oluştur"
 #: ink/view/pencase.lua
 msgid "Make a copy"
 msgstr "Kopya oluştur"
+
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
+#: ink/view/selection.lua
+msgid "Make room"
+msgstr "Yer aç"
+
+#: ink/reader/roomsui.lua
+msgid "Make room works in books whose text reflows, shown one page at a time."
+msgstr "Yer aç, metni akan ve sayfa sayfa gösterilen kitaplarda çalışır."
 
 #: ink/sync/errors.lua
 msgid "Make the notebook smaller, for example by splitting it. It stays on this reader."
@@ -3171,6 +3230,11 @@ msgstr "Burada başka defter yok"
 msgid "No pages match the chosen range."
 msgstr "Seçilen aralıkla eşleşen sayfa yok."
 
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
+msgid "No paragraph starts on this page, so there is nowhere to put a band."
+msgstr "Bu sayfada başlayan bir paragraf yok, bu yüzden şerit koyacak yer yok."
+
 #: ink/pentest.lua
 msgid ""
 "No pen has been seen since Ink Away opened, so with palm rejection on your finger moves the page.\n"
@@ -3313,6 +3377,10 @@ msgstr "Henüz burada bir şey yok. + Yeni ile bir çizim, defter veya klasör o
 #: ink/view/stickers.lua
 msgid "Nothing here. Hidden stickers come back in the sticker options."
 msgstr "Burada bir şey yok. Gizlenen çıkartmalar çıkartma seçeneklerinde geri gelir."
+
+#: ink/reader/roomsui.lua
+msgid "Nothing in it yet"
+msgstr "Henüz boş"
 
 #: ink/view/lasso.lua
 msgid "Nothing inside the loop."
@@ -3534,6 +3602,7 @@ msgstr "PNG, PDF ve daha fazlası"
 msgid "Page"
 msgstr "Sayfa"
 
+#: ink/reader/roomsui.lua
 #: ink/view/imagebrowser.lua
 #: ink/view/links.lua
 #: ink/view/notebook.lua
@@ -4003,6 +4072,10 @@ msgstr "Vurguyu kaldır"
 msgid "Remove link"
 msgstr "Bağlantıyı kaldır"
 
+#: ink/reader/roomtool.lua
+msgid "Remove room"
+msgstr "Boşluğu kaldır"
+
 #: ink/view/images.lua
 msgid "Remove the background picture"
 msgstr "Arka plan resmini kaldır"
@@ -4070,6 +4143,19 @@ msgstr "%1 kullanmak için KOReader'ı yeniden başlatın"
 msgid "Right"
 msgstr "Sağ"
 
+#: ink/reader/roomtool.lua
+msgid "Room"
+msgstr "Boşluk"
+
+#: ink/reader/roomsui.lua
+msgid "Rooms in this book"
+msgstr "Bu kitaptaki boşluklar"
+
+#: ink/reader/roomsui.lua
+#, lua-format
+msgid "Rooms in this book (%d)"
+msgstr "Bu kitaptaki boşluklar (%d)"
+
 #: main.lua
 msgid "Run the pen's eraser end over a highlight or over Ink Away's ink on the page: it goes, without opening the annotation mode. The eraser settings of the annotation mode apply. The part of the pen is the one set to Eraser in Gestures and pen buttons."
 msgstr "Kalemin silgi ucunu sayfadaki bir vurgunun veya Ink Away'in mürekkebinin üzerinde gezdirin: not alma kipini açmadan gider. Not alma kipinin silgi ayarları geçerlidir. Kalemin bu kısmı, Hareketler ve kalem düğmeleri bölümünde Silgi olarak ayarlanandır."
@@ -4106,6 +4192,10 @@ msgstr "Şablon olarak kaydet…"
 #: ink/ui/brushmaker.lua
 msgid "Save brush"
 msgstr "Fırçayı kaydet"
+
+#: ink/reader/roomtool.lua
+msgid "Save changes"
+msgstr "Değişiklikleri kaydet"
 
 #: ink/view/export.lua
 #, lua-format
@@ -4386,6 +4476,10 @@ msgstr "Bana göster"
 msgid "Show the eraser while erasing"
 msgstr "Silerken silgiyi göster"
 
+#: ink/reader/roomsui.lua
+msgid "Show the rooms"
+msgstr "Boşlukları göster"
+
 #: ink/view/receive.lua
 msgid "Show them in the library"
 msgstr "Kitaplıkta göster"
@@ -4483,6 +4577,22 @@ msgstr "Yazı okunurken bir şeyler ters gitti."
 #, lua-format
 msgid "Source: %s"
 msgstr "Kaynak: %s"
+
+#: ink/reader/roomsui.lua
+msgid "Space on the left"
+msgstr "Solda boşluk"
+
+#: ink/reader/roomtool.lua
+msgid "Space on the left, beside the paragraphs the box covers."
+msgstr "Solda boşluk, kutunun kapladığı paragrafların yanında."
+
+#: ink/reader/roomsui.lua
+msgid "Space on the right"
+msgstr "Sağda boşluk"
+
+#: ink/reader/roomtool.lua
+msgid "Space on the right, beside the paragraphs the box covers."
+msgstr "Sağda boşluk, kutunun kapladığı paragrafların yanında."
 
 #: ink/brushes.lua
 msgid "Spread"
@@ -4733,6 +4843,10 @@ msgstr "Doldurmak için bir alana dokunun; rengini seçmek için şekiller menü
 #: ink/guide.lua
 msgid "Tap one of your saved pens in the pen menu. Changing its size or colour changes that pen."
 msgstr "Kalem menüsünde kayıtlı kalemlerinizden birine dokunun. Boyutunu veya rengini değiştirmek o kalemi değiştirir."
+
+#: ink/reader/roomsui.lua
+msgid "Tap one to go to it and change it."
+msgstr "Gitmek ve değiştirmek için birine dokun."
 
 #: ink/guide.lua
 msgid "Tap the page number: go to a page, rename, star, insert, duplicate, move, paper, templates, paste or delete."
@@ -5029,6 +5143,10 @@ msgstr "Okuyucu buluta ulaşamadı."
 msgid "The recognition preview could not be opened. Your handwriting was kept."
 msgstr "Tanıma önizlemesi açılamadı. El yazınız saklandı."
 
+#: ink/reader/roomsui.lua
+msgid "The rooms are hidden: tap one to show them and go to it."
+msgstr "Boşluklar gizli: göstermek ve oraya gitmek için birine dokun."
+
 #: ink/view/search.lua
 msgid "The search could not finish."
 msgstr "Arama bitirilemedi."
@@ -5121,6 +5239,11 @@ msgstr "Bunun altında katman yok."
 msgid "There is no room left in the cloud account."
 msgstr "Bulut hesabında yer kalmadı."
 
+#: ink/reader/roomsui.lua
+#: ink/reader/roomtool.lua
+msgid "There is no text here to move."
+msgstr "Burada kaydırılacak metin yok."
+
 #: ink/view/document.lua
 msgid "There is nothing to copy yet."
 msgstr "Henüz kopyalanacak bir şey yok."
@@ -5146,9 +5269,17 @@ msgstr "Üçte bir"
 msgid "This book's annotations wait in Ink Away's trash for 30 days. To put them back: Ink Away's library, its menu, Trash."
 msgstr "Bu kitabın notları Ink Away'in çöp kutusunda 30 gün bekler. Geri koymak için: Ink Away kitaplığı, menüsü, Çöp kutusu."
 
+#: ink/reader/roomsui.lua
+msgid "This book's annotations were saved by a newer Ink Away, so they can't be changed here."
+msgstr "Bu kitabın notları daha yeni bir Ink Away ile kaydedilmiş, bu yüzden burada değiştirilemez."
+
 #: ink/reader/book.lua
 msgid "This book's ink was saved by a newer Ink Away. Update Ink Away to change it."
 msgstr "Bu kitabın mürekkebi daha yeni bir Ink Away tarafından kaydedildi. Değiştirmek için Ink Away'i güncelleyin."
+
+#: ink/reader/roomsui.lua
+msgid "This book's layout could not make room there. Try a box at another paragraph."
+msgstr "Bu kitabın düzeni oraya yer açamadı. Başka bir paragrafta bir kutu dene."
 
 #: ink/sync/errors.lua
 msgid "This cloud service does not offer that."
@@ -5523,6 +5654,10 @@ msgstr "Ink Away'in bir bakışta görünmeyen yapabildikleri."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Gelen veri eksik veya bozuktu, bu yüzden atıldı."
+
+#: ink/reader/roomtool.lua
+msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
+msgstr "Bu boşluktakiler: silinsin mi, yoksa olduğu yerde kalıp metni mi takip etsin?"
 
 #: ink/view/sync.lua
 msgid "What to do"
