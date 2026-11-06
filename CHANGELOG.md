@@ -12,7 +12,7 @@ versions marked *Prerelease* were test builds.
 
 - Stickers: ready-made notes, speech bubbles, marks, tape and little pictures, each
   shown as a preview, a few to a page. Post-its come in many shapes, flat, curled,
-  torn, taped, pinned or creased like real paper, and in any colour (the colour is remembered,
+  torn, taped or pinned, and in any colour (the colour is remembered,
   and so is the last one used); tap one to put it on the page, ready to move, resize
   or turn. What you write on a note, with the pen or the Text tool, moves, turns and
   resizes with it. Hold a sticker to hide it (it comes back in the sticker options)
