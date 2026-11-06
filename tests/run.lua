@@ -39,7 +39,7 @@ if exists(EMU .. "/luajit") then
         "tests/realbb/android.lua", "tests/realbb/wash.lua", "tests/realbb/smudge.lua", "tests/realbb/greylive.lua",
         "tests/realbb/theme.lua", "tests/realbb/paper.lua", "tests/realbb/layers.lua",
         "tests/realbb/update.lua", "tests/realbb/text.lua",
-    "tests/realbb/notebookcover.lua", "tests/realbb/framecover.lua", "tests/realbb/folderlook.lua", "tests/realbb/share.lua", "tests/realbb/erasecursor.lua", "tests/realbb/rotation.lua", "tests/realbb/lift.lua", "tests/realbb/ocrjob.lua", "tests/realbb/capture.lua", "tests/realbb/captureui.lua" }) do
+    "tests/realbb/notebookcover.lua", "tests/realbb/framecover.lua", "tests/realbb/folderlook.lua", "tests/realbb/share.lua", "tests/realbb/erasecursor.lua", "tests/realbb/rotation.lua", "tests/realbb/lift.lua", "tests/realbb/ocrjob.lua", "tests/realbb/capture.lua", "tests/realbb/captureui.lua", "tests/realbb/boox.lua" }) do
         suites[#suites + 1] = t
         REAL[t] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. t .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
     end

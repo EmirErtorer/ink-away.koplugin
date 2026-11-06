@@ -392,7 +392,9 @@ end
 
 function InkAwayView:onShow()
     self:installRawFinger()
+    self:startAndroidWindow()
     self:startEinkDrive()
+    self:startBooxInk()
     self:startElipsaDrive()
     UIManager:setDirty(self, "full")
     -- opened here rather than a tick later, so its refresh joins the canvas's and
@@ -428,12 +430,15 @@ end
 function InkAwayView:onSuspend()
     self:cancelOcrApi()
     self:stopElipsaDrive()
+    self:stopBooxInk()      -- (the firmware never inks on a sleeping screen)
     self:stopSendForSleep()
 end
 
--- The reader wakes with Ink Away open: the display helper comes back.
+-- The reader wakes with Ink Away open: the display helper comes back, and so
+-- does Boox's pen layer.
 function InkAwayView:onResume()
     self:startElipsaDrive()
+    self:startBooxInk()
 end
 
 function InkAwayView:onCloseWidget()
@@ -441,7 +446,9 @@ function InkAwayView:onCloseWidget()
     self:cancelOcrApi()
     self:updatesOnClose()
     self:uninstallRawFinger()
+    self:stopBooxInk()
     self:stopEinkDrive()
+    self:stopAndroidWindow()
     self:stopElipsaDrive()
     self:removePenBridge()
     self:releaseStylus()   -- the pen goes back to the view under this one, if any
@@ -945,6 +952,9 @@ function InkAwayView:paintTo(bb, x, y)
     local v = self.view
     -- rebuild area_bb if the screen's pixel order changed (see view/display.lua)
     self:matchAreaTarget()
+    -- a Boox's pen layer follows the tool, the pen and the layout, which every
+    -- change of them paints (it sends nothing when nothing changed)
+    if self._boox_ink and not self.capturing then self:booxInkUpdate() end
     -- During a stroke or shape drag only `_blit_rect` changed, and an area-only
     -- refresh (areaScreenRect) never covers the toolbar or the notebook bar, so
     -- both skip the chrome; on a software-rotated screen redrawing it is slow.

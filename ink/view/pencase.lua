@@ -576,6 +576,28 @@ function InkAwayView:openPenInput()
             add(vspan(4))
             add(self:sheetHint(_("Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."), content_w))
         end
+        -- a Boox whose firmware inks the pen itself (see ink/booxink.lua)
+        if self:booxInkAvailable() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Draw with Boox's pen layer"), is_on = self:getSetting("inkaway_boox_native", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_boox_native", on)
+                    if on then self:startBooxInk() else self:stopBooxInk() end
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."), content_w))
+        end
+        -- any Android reader: only what changed goes to the screen (see ink/androidwindow.lua)
+        if self:onAndroid() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Lighter screen updates"), is_on = self:getSetting("inkaway_android_partial", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_android_partial", on)
+                    if on then self:startAndroidWindow() else self:stopAndroidWindow() end
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("Sends only the part of the screen that changed, not the whole screen, each time ink is drawn. Turn it off if parts of the screen show old content."), content_w))
+        end
         add(vspan(12))
         add(SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,
             width = content_w, parent = menu, format = function(v) return tostring(v) end,

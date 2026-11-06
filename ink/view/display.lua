@@ -10,6 +10,8 @@ local GeomUI = require("ui/geometry")
 local RenderImage = require("ui/renderimage")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
+local AndroidWindow = require("ink/androidwindow")
+local BooxDrive = require("ink/booxdrive")
 local EinkDrive = require("ink/einkdrive")
 local ElipsaDrive = require("ink/elipsadrive")
 local InkGeom = require("ink/geom")
@@ -355,6 +357,104 @@ function InkAwayView:stopEinkDrive()
     EinkDrive.release()
 end
 
+-- On Android, refreshes post only what changed to the app's window while Ink
+-- Away is open, rather than the whole screen (see ink/androidwindow.lua), unless
+-- the reader turned it off.
+function InkAwayView:startAndroidWindow()
+    if self._android_window or self.closing or not self:onAndroid() then return end
+    if self:getSetting("inkaway_android_partial", true) == false then return end
+    local ok, android = pcall(require, "android")
+    local okf, ffi = pcall(require, "ffi")
+    if not (ok and okf) then return end
+    if AndroidWindow.acquire(Screen, { android = android, ffi = ffi, BB = Blitbuffer,
+            log = function(...) logger.warn(...) end }) then
+        self._android_window = true
+    end
+end
+
+function InkAwayView:stopAndroidWindow()
+    if not self._android_window then return end
+    self._android_window = nil
+    AndroidWindow.release()
+end
+
+-- On a Boox, the firmware inks the pen's strokes itself while it moves (see
+-- ink/booxink.lua and ink/booxdrive.lua), unless the reader turned it off.
+function InkAwayView:startBooxInk()
+    if self._boox_ink or self.closing or not self:onAndroid() then return end
+    if self:getSetting("inkaway_boox_native", true) == false then return end
+    local c = BooxDrive.client(function()
+        return require("ink/booxink").new(nil, nil, function(...) logger.warn(...) end)
+    end, true)
+    if not c then return end
+    self._boox_ink = BooxDrive.join(self, c)
+    BooxDrive.watch(UIManager)
+    self:booxInkUpdate()
+end
+
+function InkAwayView:stopBooxInk()
+    if not self._boox_ink then return end
+    self._boox_ink = nil
+    BooxDrive.leave(self)
+end
+
+-- Has this Boox the pen layer (for the setting)?
+function InkAwayView:booxInkAvailable()
+    if not self:onAndroid() then return false end
+    return BooxDrive.client(function()
+        return require("ink/booxink").new(nil, nil, function(...) logger.warn(...) end)
+    end, true) ~= nil
+end
+
+-- What the firmware may ink now: nil, or where and how (BooxDrive:apply). Only a
+-- pen that draws opaque dark ink with nothing open over the page, the screen in
+-- the buffer's own orientation; where Ink Away takes the pen for its controls
+-- (penOnUI) the firmware does not ink.
+function InkAwayView:booxInkWant()
+    if self.closing or self.tool ~= "pen" or self.editing_text then return nil end
+    -- (see-through pens have alpha below 255)
+    if (self.pen_alpha or 255) < 255 or self.pen_style == "smudge" then return nil end
+    if Screen.night_mode then return nil end
+    local ok_rot, rot = pcall(function() return Screen.bb:getRotation() end)
+    if not ok_rot or rot ~= 0 then return nil end
+    if self:touchTarget() ~= self then return nil end
+    local c = self:shownInk(self.pen_color or { 0, 0, 0 }, self:paperRGB())
+    if (0.3 * c[1] + 0.59 * c[2] + 0.11 * c[3]) > 140 then return nil end
+    local v = self.view
+    if not (v and v.area_w and v.area_w > 0) then return nil end
+    local exclude = {}
+    for _i, name in ipairs({ "back", "zoom", "pan", "pens", "layers", "nbbar", "bar" }) do
+        local okr, r = pcall(self.fabRect, self, name)
+        if okr and r and r.w and r.w > 0 then exclude[#exclude + 1] = r end
+    end
+    return { limit = { { x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h } }, exclude = exclude,
+        width = math.max(1, (self.pen_width or 3) * (v.zoom or 1)), color = -16777216, style = 0 }
+end
+
+-- Tell the firmware what it may ink now (after a tool, pen or layout change).
+function InkAwayView:booxInkUpdate()
+    if not self._boox_ink then return end
+    BooxDrive.want(self, self:booxInkWant())
+end
+
+-- After a pen contact where a Boox's firmware may have inked: that part of the
+-- screen as Ink Away has it, so a tap, a gesture or a stroke Ink Away changed
+-- (straightened, taken as a highlight) leaves no firmware ink behind.
+function InkAwayView:booxInkSweep()
+    local b = self._hw_box
+    self._hw_box = nil
+    if not (b and self._boox_ink) then return end
+    local x0, y0 = math.max(0, math.floor(b.x0)), math.max(0, math.floor(b.y0))
+    local x1, y1 = math.min(Screen:getWidth(), math.ceil(b.x1)), math.min(Screen:getHeight(), math.ceil(b.y1))
+    if x1 <= x0 or y1 <= y0 then return end
+    UIManager:setDirty(self, "fast", GeomUI:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+end
+
+-- Is the firmware inking the pen now (for this view)?
+function InkAwayView:booxInking()
+    return self._boox_ink ~= nil and BooxDrive.inkingFor(self)
+end
+
 -- On the original Elipsa the fast updates go to a helper process, so waiting on
 -- the panel never holds up the pen or a finger (see ink/elipsadrive.lua).
 function InkAwayView:startElipsaDrive()
@@ -546,6 +646,12 @@ end
 -- joins the pending one, which is sent at a bounded pace (see LIVE_*_MS): the
 -- first sample shows at once, later ones go with the next update.
 function InkAwayView:liveDirty(mode, r, pad)
+    -- (a pen stroke a Boox's firmware inks: kept for the lift, see beginStroke)
+    if self._hw_stroke then
+        local x0, y0, x1, y1 = clipToArea(self.view, r, pad)
+        if x0 then self._hw_rect = growRect(self._hw_rect, x0, y0, x1, y1) end
+        return
+    end
     local android = self:onAndroid()
     if not (android or self:colourPanel() or self:mtkPen() or self:sunxiPanel()) then
         return self:dirtyAreaRect(mode, r, pad)
