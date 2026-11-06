@@ -309,6 +309,8 @@ function Rooms.planBox(rect, page)
     local area, blocks = page.area, page.blocks or {}
     local t = math.max(rect.y, area.y0)
     local b = math.min(rect.y + rect.h, page.bottom or area.y1)
+    -- (below the page's last line there is no text to move)
+    if t >= (page.bottom or area.y1) - 1 then return nil, "no_text" end
     if b - t < Rooms.MIN_BOX then return nil, "small" end
     local others = page.rooms or {}
     -- across, or from the nearer side of the column to the box's far edge; the

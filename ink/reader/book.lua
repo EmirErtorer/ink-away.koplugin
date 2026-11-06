@@ -539,6 +539,17 @@ function Book:pageLines()
     return c.segs
 end
 
+-- Fit box room `r`'s float to the text laid out beside it (Book:calibrateBox), as
+-- many times as the text asks, a few at most: text that re-wraps around a wider
+-- float can come up to it again (ragged text shows its column's edge only where
+-- a line reaches it).
+function Book:fitBox(r)
+    for _i = 1, 4 do
+        if not self:calibrateBox(r) then return end
+        self:setRooms(self:rooms(), self:data().rooms_off)
+    end
+end
+
 -- The lines beside box `box` (the room's side of them): where each starts, for a
 -- box at the left, or ends, for one at the right.
 local function besideEdges(lines, side, box)
@@ -591,7 +602,7 @@ function Book:calibrateBox(r)
     if r.side == "left" then
         local m = math.huge
         for _i, e in ipairs(edges) do m = math.min(m, e) end
-        if m < d - 1 then grow = d - m
+        if m < d - 1 then grow = d - m + 1
         else
             local most = mostAt(edges)
             if most and most > d + 1 then grow = d - most end
@@ -599,7 +610,7 @@ function Book:calibrateBox(r)
     else
         local m = -math.huge
         for _i, e in ipairs(edges) do m = math.max(m, e) end
-        if m > d + 1 then grow = m - d
+        if m > d + 1 then grow = m - d + 1
         else
             local most = mostAt(edges)
             if most and most < d - 1 then grow = most - d end
@@ -1016,7 +1027,7 @@ function Book:putRoom(r)
         local document = self.ui.document
         local tok, top = pcall(document.getPageXPointer, document, page)
         self:setRooms(rooms, nil)
-        if self:calibrateBox(r) then self:setRooms(rooms, nil) end
+        self:fitBox(r)
         if not self:boxTook(r, page, tok and top) then
             logger.warn("Ink Away: the room did not take in this book:", r.xp)
             self:setRooms(old, old_off)

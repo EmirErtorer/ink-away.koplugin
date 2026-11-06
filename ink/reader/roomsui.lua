@@ -72,11 +72,11 @@ function RoomsUI:changeRooms(fn, keep)
     if why == "reload" and room then
         if keep then keep(room) end
         self:saveDocument()
-        local page, id = book:currentPage(), room.id
+        local id = room.id
         book:reloadForRooms(function(again)
             again:annotate()
             local view = again._view
-            if view and view.afterRoomsReload then view:afterRoomsReload(id, page) end
+            if view and view.afterRoomsReload then view:afterRoomsReload(id) end
         end)
         return room, why
     end
@@ -95,13 +95,16 @@ end
 
 -- After the book was loaded again for its first exact room: is it there, with no
 -- text across it? If not, it goes (what was put in it stays and follows the text).
-function RoomsUI:afterRoomsReload(id, page)
+function RoomsUI:afterRoomsReload(id)
     local book = self.book
+    -- (on the room's page: KOReader keeps the place read, but the page numbers can
+    -- move by one when the book is laid out with its markers)
+    local page = book:roomPage(id)
     if page and book:currentPage() ~= page then book:gotoPage(page) end
     local room
     for _i, r in ipairs(book:rooms()) do if r.id == id then room = r end end
     -- (its column measured now that it is laid out)
-    if room and book:calibrateBox(room) then book:setRooms(book:rooms(), nil) end
+    if room then book:fitBox(room) end
     if room and not book:boxTook(room, book:currentPage(), nil) then
         logger.warn("Ink Away: the room did not take in this book:", room.xp)
         book:removeRoom(id, "follow")
