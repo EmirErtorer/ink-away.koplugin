@@ -1575,6 +1575,10 @@ msgid "Drag the ring above an open text box to turn it to any angle, or pick Rea
 msgstr "Açık bir metin kutusunun üstündeki halkayı sürükleyerek istediğiniz açıya çevirin ya da kitap kenar boşlukları için Biçim, Paragraf'ta Aşağı okunur veya Yukarı okunur'u seçin."
 
 #: ink/reader/roomsui.lua
+msgid "Draw a bigger box."
+msgstr "Daha büyük bir kutu çizin."
+
+#: ink/reader/roomsui.lua
 msgid "Draw a box and the text moves out of it"
 msgstr "Bir kutu çiz, metin oradan çekilsin"
 
@@ -2384,6 +2388,10 @@ msgstr "İçe aktarılan PDF'ler ve resimler"
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "KOReader'ın gece modunda mürekkep rengini korur: mavi mavi kalır, koyu mürekkep koyu sayfada okunsun diye açılır."
+
+#: ink/reader/roomtool.lua
+msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
+msgstr "Bu görüntüleme kipinde boşluklar bütün paragraflardan oluşur. \"Kitap\" ve \"Web\" kipleri onları tam yapar."
 
 #: ink/view/export.lua
 msgid "Include the PDF page"
@@ -3231,6 +3239,9 @@ msgid "No pages match the chosen range."
 msgstr "Seçilen aralıkla eşleşen sayfa yok."
 
 #: ink/reader/roomsui.lua
+msgid "No paragraph starts on this page below the box's top, so the room has nowhere to start."
+msgstr "Bu sayfada kutunun üst kenarının altında hiçbir paragraf başlamıyor, bu yüzden boşluğun başlayacak yeri yok."
+
 #: ink/reader/roomtool.lua
 msgid "No paragraph starts on this page, so there is nowhere to put a band."
 msgstr "Bu sayfada başlayan bir paragraf yok, bu yüzden şerit koyacak yer yok."
@@ -3927,6 +3938,10 @@ msgstr "Dikey"
 msgid "Preparing %s"
 msgstr "%s hazırlanıyor"
 
+#: ink/reader/book.lua
+msgid "Preparing this book for rooms…"
+msgstr "Kitap boşluklar için hazırlanıyor…"
+
 #: ink/view/updates.lua
 msgid "Prerelease"
 msgstr "Ön sürüm"
@@ -4146,6 +4161,10 @@ msgstr "Sağ"
 #: ink/reader/roomtool.lua
 msgid "Room"
 msgstr "Boşluk"
+
+#: ink/reader/roomsui.lua
+msgid "Rooms can't overlap. Draw this one beside the other room or away from it."
+msgstr "Boşluklar üst üste binemez. Bunu diğer boşluğun yanına ya da ondan uzağa çizin."
 
 #: ink/reader/roomsui.lua
 msgid "Rooms in this book"
@@ -5037,6 +5056,10 @@ msgstr "Dosya gönderilirken bulutta değişti, bu yüzden hiçbir şeyin üzeri
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "İlk katman, katmanlar açılmadan önceki silmeleri içerir, bu yüzden en altta kalır."
 
+#: ink/reader/roomtool.lua
+msgid "The first room in a book loads it again, once."
+msgstr "Bir kitaptaki ilk boşluk onu bir kez yeniden yükler."
+
 #: ink/view/sync.lua
 msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
 msgstr "Kitap sayfalarındaki mürekkebin, içe aktarmaların, dışa aktarmaların ve ekran kırpıntılarının ilk eşitlemesi büyük ve yavaş olabilir."
@@ -5115,6 +5138,10 @@ msgstr "Bunun işaret ettiği sayfa artık yok."
 msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
 msgstr "Sayfalar, altlarında metinleriyle birlikte resim olarak kaydedilir; böylece metin aranabilir ve seçilebilir. Şu an okuduğunuz gibi yerleştirilirler: yazı tipiniz, kenar boşluklarınız ve sayfa boyutunuz."
 
+#: ink/reader/roomtool.lua
+msgid "The paragraph at its top began on the page before, so the room starts where the next one does."
+msgstr "Üst kenarındaki paragraf önceki sayfada başladı, bu yüzden boşluk bir sonraki paragrafın başladığı yerden başlar."
+
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."
 msgstr "Elinizdeki kalem kalemlerinizden biri değil: + onu yeni bir kalem olarak saklar."
@@ -5189,6 +5216,18 @@ msgstr "Sağ kenar boyunca kaydırmalar okuyucunuzda zaten bir iş yapıyor (%1)
 msgid "The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes."
 msgstr "Sağ kenar boyunca kaydırmalar okuyucunuzda zaten bir iş yapıyor; bu yüzden Ink Away iki parmakla kaydırmaları kullanır."
 
+#: ink/reader/roomtool.lua
+msgid "The text moves above and below the box."
+msgstr "Metin kutunun üstüne ve altına kayar."
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the left of the box."
+msgstr "Metin kutunun soluna kayar."
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the right of the box."
+msgstr "Metin kutunun sağına kayar."
+
 #: ink/reader/inkview.lua
 msgid "The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."
 msgstr "Araç çubuğu, kendi yanındaki kitap kenar boşluğunun genişliğini alır ve simgeleri ona göre boyutlanır; böylece metinden uzak kalır. Daha fazla yer vermek için okuyucunun ayarlarında kenar boşluklarını genişletin. PDF'ler ve çizgi romanlar olağan boyutu korur."
@@ -5240,7 +5279,6 @@ msgid "There is no room left in the cloud account."
 msgstr "Bulut hesabında yer kalmadı."
 
 #: ink/reader/roomsui.lua
-#: ink/reader/roomtool.lua
 msgid "There is no text here to move."
 msgstr "Burada kaydırılacak metin yok."
 
@@ -5313,6 +5351,10 @@ msgstr "Bu defterin henüz içindekiler sayfası yok: sayfa menüsü bir tane ya
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Bu sayfa"
+
+#: ink/reader/roomsui.lua
+msgid "This paragraph already holds a room. Draw this one where another paragraph begins, or change that room."
+msgstr "Bu paragrafta zaten bir boşluk var. Bunu başka bir paragrafın başladığı yere çizin ya da o boşluğu değiştirin."
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

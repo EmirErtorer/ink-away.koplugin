@@ -1575,6 +1575,10 @@ msgid "Drag the ring above an open text box to turn it to any angle, or pick Rea
 msgstr "Faites glisser l’anneau au-dessus d’une zone de texte ouverte pour la tourner à l’angle voulu, ou choisissez Lecture vers le bas ou Lecture vers le haut dans Format, Paragraphe, pour les marges d’un livre."
 
 #: ink/reader/roomsui.lua
+msgid "Draw a bigger box."
+msgstr "Dessinez un cadre plus grand."
+
+#: ink/reader/roomsui.lua
 msgid "Draw a box and the text moves out of it"
 msgstr "Tracez un cadre et le texte s’en écarte"
 
@@ -2384,6 +2388,10 @@ msgstr "PDF et images importés"
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "Dans le mode nuit de KOReader, l’encre garde sa couleur : le bleu reste bleu, et l’encre sombre devient claire pour se lire sur la page sombre."
+
+#: ink/reader/roomtool.lua
+msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
+msgstr "Dans ce mode de rendu, les espaces sont faits de paragraphes entiers. Les modes « Livre » et « Web » les rendent exacts."
 
 #: ink/view/export.lua
 msgid "Include the PDF page"
@@ -3231,6 +3239,9 @@ msgid "No pages match the chosen range."
 msgstr "Aucune page ne correspond à la plage choisie."
 
 #: ink/reader/roomsui.lua
+msgid "No paragraph starts on this page below the box's top, so the room has nowhere to start."
+msgstr "Aucun paragraphe ne commence sur cette page sous le haut du cadre : l'espace n'a nulle part où commencer."
+
 #: ink/reader/roomtool.lua
 msgid "No paragraph starts on this page, so there is nowhere to put a band."
 msgstr "Aucun paragraphe ne commence sur cette page, il n’y a donc pas où mettre une bande."
@@ -3927,6 +3938,10 @@ msgstr "Portrait"
 msgid "Preparing %s"
 msgstr "Préparation de %s"
 
+#: ink/reader/book.lua
+msgid "Preparing this book for rooms…"
+msgstr "Préparation de ce livre pour les espaces…"
+
 #: ink/view/updates.lua
 msgid "Prerelease"
 msgstr "Préversion"
@@ -4146,6 +4161,10 @@ msgstr "À droite"
 #: ink/reader/roomtool.lua
 msgid "Room"
 msgstr "Espace"
+
+#: ink/reader/roomsui.lua
+msgid "Rooms can't overlap. Draw this one beside the other room or away from it."
+msgstr "Les espaces ne peuvent pas se chevaucher. Dessinez celui-ci à côté de l'autre espace ou loin de lui."
 
 #: ink/reader/roomsui.lua
 msgid "Rooms in this book"
@@ -5037,6 +5056,10 @@ msgstr "Le fichier a été modifié dans le cloud pendant l'envoi, rien n'a donc
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "Le premier calque contient des effacements d’avant les calques, il reste donc tout en bas."
 
+#: ink/reader/roomtool.lua
+msgid "The first room in a book loads it again, once."
+msgstr "Le premier espace d'un livre le recharge, une seule fois."
+
 #: ink/view/sync.lua
 msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
 msgstr "La première synchronisation de l’encre sur les pages de livres, des imports, des exports et des captures d’écran peut être volumineuse et lente."
@@ -5115,6 +5138,10 @@ msgstr "La page vers laquelle cela mène n’existe plus."
 msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
 msgstr "Les pages sont enregistrées en images avec leur texte dessous, pour pouvoir le chercher et le sélectionner. Elles sont mises en page comme vous les lisez maintenant : votre police, vos marges et la taille de page."
 
+#: ink/reader/roomtool.lua
+msgid "The paragraph at its top began on the page before, so the room starts where the next one does."
+msgstr "Le paragraphe en haut du cadre a commencé à la page précédente : l'espace commence là où commence le suivant."
+
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."
 msgstr "Le stylo en main n’est pas l’un de vos stylos : + le garde comme un nouveau."
@@ -5189,6 +5216,18 @@ msgstr "Les balayages le long du bord droit font déjà quelque chose sur votre 
 msgid "The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes."
 msgstr "Les balayages le long du bord droit font déjà quelque chose sur votre liseuse, Ink Away utilise donc les balayages à deux doigts."
 
+#: ink/reader/roomtool.lua
+msgid "The text moves above and below the box."
+msgstr "Le texte s'écarte au-dessus et au-dessous du cadre."
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the left of the box."
+msgstr "Le texte s'écarte à gauche du cadre."
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the right of the box."
+msgstr "Le texte s'écarte à droite du cadre."
+
 #: ink/reader/inkview.lua
 msgid "The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."
 msgstr "La barre d’outils prend la largeur de la marge du livre de son côté, avec des icônes à l’échelle, pour rester à l’écart du texte. Élargissez les marges dans les réglages du lecteur pour lui donner plus de place. Les PDF et les bandes dessinées gardent la taille habituelle."
@@ -5240,7 +5279,6 @@ msgid "There is no room left in the cloud account."
 msgstr "Il n'y a plus de place dans le compte cloud."
 
 #: ink/reader/roomsui.lua
-#: ink/reader/roomtool.lua
 msgid "There is no text here to move."
 msgstr "Il n’y a pas de texte à déplacer ici."
 
@@ -5313,6 +5351,10 @@ msgstr "Ce carnet n’a pas encore de sommaire : le menu de la page en crée un.
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Cette page"
+
+#: ink/reader/roomsui.lua
+msgid "This paragraph already holds a room. Draw this one where another paragraph begins, or change that room."
+msgstr "Ce paragraphe a déjà un espace. Dessinez celui-ci là où commence un autre paragraphe, ou modifiez cet espace."
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

@@ -1575,6 +1575,10 @@ msgid "Drag the ring above an open text box to turn it to any angle, or pick Rea
 msgstr "Потяните кольцо над открытым текстовым полем, чтобы повернуть его на любой угол, или выберите «Читается сверху вниз» либо «Читается снизу вверх» в разделе «Формат», «Абзац» — для полей книги."
 
 #: ink/reader/roomsui.lua
+msgid "Draw a bigger box."
+msgstr "Нарисуйте рамку побольше."
+
+#: ink/reader/roomsui.lua
 msgid "Draw a box and the text moves out of it"
 msgstr "Нарисуйте рамку, и текст отодвинется от неё"
 
@@ -2384,6 +2388,10 @@ msgstr "Импортированные PDF и изображения"
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "В ночном режиме KOReader чернила сохраняют цвет: синий остаётся синим, а тёмные чернила светлеют, чтобы читаться на тёмной странице."
+
+#: ink/reader/roomtool.lua
+msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
+msgstr "В этом режиме отображения место состоит из целых абзацев. Режимы «Книга» и «Веб» делают его точным."
 
 #: ink/view/export.lua
 msgid "Include the PDF page"
@@ -3231,6 +3239,9 @@ msgid "No pages match the chosen range."
 msgstr "Нет страниц в выбранном диапазоне."
 
 #: ink/reader/roomsui.lua
+msgid "No paragraph starts on this page below the box's top, so the room has nowhere to start."
+msgstr "Ниже верхнего края рамки на этой странице не начинается ни один абзац, поэтому месту негде начаться."
+
 #: ink/reader/roomtool.lua
 msgid "No paragraph starts on this page, so there is nowhere to put a band."
 msgstr "На этой странице не начинается ни один абзац, поэтому полосу поставить некуда."
@@ -3927,6 +3938,10 @@ msgstr "Портретная"
 msgid "Preparing %s"
 msgstr "Подготовка: %s"
 
+#: ink/reader/book.lua
+msgid "Preparing this book for rooms…"
+msgstr "Подготовка книги к местам…"
+
 #: ink/view/updates.lua
 msgid "Prerelease"
 msgstr "Предварительная версия"
@@ -4146,6 +4161,10 @@ msgstr "Справа"
 #: ink/reader/roomtool.lua
 msgid "Room"
 msgstr "Место"
+
+#: ink/reader/roomsui.lua
+msgid "Rooms can't overlap. Draw this one beside the other room or away from it."
+msgstr "Места не могут перекрываться. Нарисуйте это рядом с другим местом или подальше от него."
 
 #: ink/reader/roomsui.lua
 msgid "Rooms in this book"
@@ -5037,6 +5056,10 @@ msgstr "Файл изменился в облаке во время отправ
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr "В первом слое — стирания, сделанные до появления слоёв, поэтому он остаётся внизу."
 
+#: ink/reader/roomtool.lua
+msgid "The first room in a book loads it again, once."
+msgstr "Первое место в книге один раз перезагружает её."
+
 #: ink/view/sync.lua
 msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
 msgstr "Первая синхронизация чернил на страницах книг, импорта, экспорта и снимков экрана может быть большой и медленной."
@@ -5115,6 +5138,10 @@ msgstr "Страницы, на которую ведёт ссылка, боль�
 msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
 msgstr "Страницы сохраняются как изображения с текстом под ними, чтобы его можно было искать и выделять. Они выглядят так, как вы читаете их сейчас: ваш шрифт, поля и размер страницы."
 
+#: ink/reader/roomtool.lua
+msgid "The paragraph at its top began on the page before, so the room starts where the next one does."
+msgstr "Абзац у её верхнего края начался на предыдущей странице, поэтому место начинается там, где начинается следующий."
+
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."
 msgstr "Ручка в руке — не одна из ваших ручек: «+» сохранит её как новую."
@@ -5189,6 +5216,18 @@ msgstr "Смахивания вдоль правого края на вашей 
 msgid "The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes."
 msgstr "Смахивания вдоль правого края на вашей читалке уже что-то делают, поэтому Ink Away использует смахивания двумя пальцами."
 
+#: ink/reader/roomtool.lua
+msgid "The text moves above and below the box."
+msgstr "Текст отступает над рамкой и под ней."
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the left of the box."
+msgstr "Текст отступает влево от рамки."
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the right of the box."
+msgstr "Текст отступает вправо от рамки."
+
 #: ink/reader/inkview.lua
 msgid "The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."
 msgstr "Панель инструментов занимает ширину поля книги со своей стороны, а значки подгоняются под неё, чтобы не мешать тексту. Расширьте поля в настройках читалки, чтобы дать ей больше места. PDF и комиксы сохраняют обычный размер."
@@ -5240,7 +5279,6 @@ msgid "There is no room left in the cloud account."
 msgstr "В облачном аккаунте не осталось места."
 
 #: ink/reader/roomsui.lua
-#: ink/reader/roomtool.lua
 msgid "There is no text here to move."
 msgstr "Здесь нет текста, который можно сдвинуть."
 
@@ -5313,6 +5351,10 @@ msgstr "В этом блокноте ещё нет страницы оглавл
 #: ink/view/export.lua
 msgid "This page"
 msgstr "Эта страница"
+
+#: ink/reader/roomsui.lua
+msgid "This paragraph already holds a room. Draw this one where another paragraph begins, or change that room."
+msgstr "В этом абзаце уже есть место. Нарисуйте это там, где начинается другой абзац, или измените то место."
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."

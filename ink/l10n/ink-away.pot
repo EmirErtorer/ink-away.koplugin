@@ -1564,6 +1564,10 @@ msgid "Drag the ring above an open text box to turn it to any angle, or pick Rea
 msgstr ""
 
 #: ink/reader/roomsui.lua
+msgid "Draw a bigger box."
+msgstr ""
+
+#: ink/reader/roomsui.lua
 msgid "Draw a box and the text moves out of it"
 msgstr ""
 
@@ -2358,6 +2362,10 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
+msgstr ""
+
+#: ink/reader/roomtool.lua
+msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
 msgstr ""
 
 #: ink/view/export.lua
@@ -3204,6 +3212,9 @@ msgid "No pages match the chosen range."
 msgstr ""
 
 #: ink/reader/roomsui.lua
+msgid "No paragraph starts on this page below the box's top, so the room has nowhere to start."
+msgstr ""
+
 #: ink/reader/roomtool.lua
 msgid "No paragraph starts on this page, so there is nowhere to put a band."
 msgstr ""
@@ -3891,6 +3902,10 @@ msgstr ""
 msgid "Preparing %s"
 msgstr ""
 
+#: ink/reader/book.lua
+msgid "Preparing this book for rooms…"
+msgstr ""
+
 #: ink/view/updates.lua
 msgid "Prerelease"
 msgstr ""
@@ -4109,6 +4124,10 @@ msgstr ""
 
 #: ink/reader/roomtool.lua
 msgid "Room"
+msgstr ""
+
+#: ink/reader/roomsui.lua
+msgid "Rooms can't overlap. Draw this one beside the other room or away from it."
 msgstr ""
 
 #: ink/reader/roomsui.lua
@@ -4989,6 +5008,10 @@ msgstr ""
 msgid "The first layer has erasing from before layers were on, so it stays at the bottom."
 msgstr ""
 
+#: ink/reader/roomtool.lua
+msgid "The first room in a book loads it again, once."
+msgstr ""
+
 #: ink/view/sync.lua
 msgid "The first sync of ink on book pages, imports, exports and screen clips can be large and slow."
 msgstr ""
@@ -5067,6 +5090,10 @@ msgstr ""
 msgid "The pages are saved as pictures with their text under them, so it can be searched and selected. They are laid out as you read them now: your font, margins and page size."
 msgstr ""
 
+#: ink/reader/roomtool.lua
+msgid "The paragraph at its top began on the page before, so the room starts where the next one does."
+msgstr ""
+
 #: ink/view/pencase.lua
 msgid "The pen in hand is not one of your pens: + keeps it as a new one."
 msgstr ""
@@ -5137,6 +5164,18 @@ msgstr ""
 msgid "The swipes along the right edge already do something on your reader, so Ink Away uses two-finger swipes."
 msgstr ""
 
+#: ink/reader/roomtool.lua
+msgid "The text moves above and below the box."
+msgstr ""
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the left of the box."
+msgstr ""
+
+#: ink/reader/roomtool.lua
+msgid "The text moves to the right of the box."
+msgstr ""
+
 #: ink/reader/inkview.lua
 msgid "The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."
 msgstr ""
@@ -5185,7 +5224,6 @@ msgid "There is no room left in the cloud account."
 msgstr ""
 
 #: ink/reader/roomsui.lua
-#: ink/reader/roomtool.lua
 msgid "There is no text here to move."
 msgstr ""
 
@@ -5257,6 +5295,10 @@ msgstr ""
 
 #: ink/view/export.lua
 msgid "This page"
+msgstr ""
+
+#: ink/reader/roomsui.lua
+msgid "This paragraph already holds a room. Draw this one where another paragraph begins, or change that room."
 msgstr ""
 
 #: ink/view/share.lua
