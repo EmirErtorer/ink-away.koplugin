@@ -514,7 +514,8 @@ end
 -- A selection can be pinned to its page: it then stays at its spot on that page
 -- number when the text reflows (see Place.pinned).
 function ReaderInkView:canPinSelection()
-    return self.book ~= nil and self.book:canPin()
+    local book = self.book
+    return book ~= nil and type(book.canPin) == "function" and book:canPin() == true
 end
 
 -- The Stickers button comes or goes: the toolbar is built again.
