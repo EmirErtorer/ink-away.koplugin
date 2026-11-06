@@ -91,6 +91,22 @@ function InkAway:init()
                 if not (ok and extra) then return css end
                 return (css and css ~= "" and (css .. "\n") or "") .. extra
             end
+            -- KOReader's "Zoom (dpi)" scales the book's pixels: the rules are written
+            -- again so the rooms keep their size on the screen (the reader's own
+            -- handler takes the event, so it is followed here)
+            local Typeset = require("apps/reader/modules/readertypeset")
+            local orig_dpi = Typeset.onSetRenderDPI
+            Typeset.onSetRenderDPI = function(typeset, ...)
+                local r = orig_dpi(typeset, ...)
+                local plugin = typeset.ui and InkAway.by_ui[typeset.ui]
+                local book = plugin and plugin.book
+                if book and #book:rooms() > 0 then
+                    UIManager:nextTick(function()
+                        if plugin.book == book then book:relayout() end
+                    end)
+                end
+                return r
+            end
         end)
     end
     -- in the reader: the book's ink, painted over its pages (a book without ink
@@ -336,17 +352,6 @@ end
 
 -- The screen turned (or was resized) under the book: what Ink Away had open
 -- over it was laid out for the old size, so it closes, keeping everything.
--- KOReader's "Zoom (dpi)" scales the book's pixels: the rooms' rules are written
--- again so they keep their size on the screen.
-function InkAway:onSetRenderDPI()
-    local book = self.book
-    if book and #book:rooms() > 0 then
-        UIManager:nextTick(function()
-            if self.book == book then book:relayout() end
-        end)
-    end
-end
-
 function InkAway:onSetDimensions()
     if self.book then self.book:closeViews() end
 end
