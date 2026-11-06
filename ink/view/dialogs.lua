@@ -27,7 +27,8 @@ local InkAwayView = {}
 
 -- A message, with OK to close it. `o` may hold a title (OK then sits beside
 -- it), timeout (seconds until it closes by itself), wait (a "working on it"
--- note with no OK, closed by the caller) and field. Returns a function that
+-- note with no OK, closed by the caller), toggle ({ label, is_on, on_change(on) }: a
+-- switch under the text) and field. Returns a function that
 -- closes it.
 function InkAwayView:tell(text, o)
     o = o or {}
@@ -35,13 +36,20 @@ function InkAwayView:tell(text, o)
     self:closeSheet(field)
     local content_w = self:sheetWidth()
     local function close() self:closeSheet(field) end
-    local build = function()
+    local toggle_on = o.toggle and o.toggle.is_on and true or false
+    local build = function(menu)
         local g = VerticalGroup:new{ align = "left" }
         if o.title then
             table.insert(g, self:sheetTitle(o.title, content_w, _("OK"), close))
             table.insert(g, vspan(8))
         end
         table.insert(g, TextBoxWidget:new{ text = text, width = content_w, face = Font:getFace("cfont", 17) })
+        if o.toggle then   -- a switch under the text: { label, is_on, on_change(on) }
+            local ToggleRow = require("ink/ui/controls").ToggleRow
+            table.insert(g, vspan(10))
+            table.insert(g, ToggleRow:new{ label = o.toggle.label, is_on = toggle_on, width = content_w, parent = menu,
+                callback = function(on) toggle_on = on; o.toggle.on_change(on) end })
+        end
         if not (o.title or o.wait) then
             table.insert(g, vspan(14))
             table.insert(g, self:actionButton(_("OK"), content_w, close))

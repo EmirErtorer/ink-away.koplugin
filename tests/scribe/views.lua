@@ -71,6 +71,9 @@ input.wacom_protocol = true                    -- KindleScribe:init
 input.pen_slot = input.pen_slot or 4
 local mock_input = Device.input
 Device.input = input
+-- KOReader's own input.lua is never taken for another plugin's copy: a rename
+-- of stylus_eraser_active would show everyone the "replaced" notice (#38)
+ok(require("ink/stylus").foreignInput(input) == false, "input.lua: KOReader's real one is its own")
 UIManager.reset()
 local InkAwayView = dofile("ink/view.lua")
 local T = 1000.0

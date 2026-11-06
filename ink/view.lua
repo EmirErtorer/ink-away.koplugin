@@ -409,6 +409,8 @@ function InkAwayView:onShow()
         self._note_on_show = nil
     elseif self:welcomeDue() then
         self:showWelcome()       -- once: the book features and their gestures
+    elseif self:inputFileDue() then
+        self:inputFileNotice()   -- once each start: input.lua is another plugin's copy
     elseif self:onAndroid() then
         self:deviceTips(false)   -- once, on readers that still need it
     end
@@ -459,6 +461,7 @@ function InkAwayView:onCloseWidget()
         self._export_job = nil
     end
     self:stopSend()   -- the reader stops sharing over Wi-Fi with Ink Away
+    self:stopCodePage()
     if self._search_job then self._search_job.abort(); self._search_job = nil end
     self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
     local tm = self._text_btn_metrics
@@ -747,7 +750,8 @@ function InkAwayView:onIaTap(_, ges)
         local nav = self._finger_nav
         self._finger_nav = nil
         local link = nav.mode == "navigate" and ges and ges.pos and self:linkAtScreen(ges.pos.x, ges.pos.y)
-        if link then self:followLink(link) end
+        if link then self:followLink(link)
+        elseif nav.mode == "navigate" and ges and ges.pos and self.highlightTap then self:highlightTap(ges.pos) end
         return true
     end
     if self._clip_press then
@@ -780,6 +784,11 @@ function InkAwayView:onIaTap(_, ges)
         local link = self._link_press
         self._link_press, self.pan_last = nil, nil
         self:followLink(link)
+        return true
+    end
+    -- a tap on a highlight with Pan offers its colours (in a book)
+    if self.tool == "pan" and self.highlightTap and not self.sel_drag and ges and ges.pos
+       and self:highlightTap(ges.pos) then
         return true
     end
     -- a tap on the selection (its touch began a drag that never moved) opens its
@@ -1038,7 +1047,7 @@ end
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "exportbook", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "ocrapi", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
-    "paper", "updates", "layers", "keys", "share", "receive", "dialogs", "erasecursor" }
+    "paper", "updates", "layers", "keys", "share", "codepage", "receive", "dialogs", "erasecursor", "sync" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

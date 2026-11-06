@@ -139,18 +139,53 @@ function InkAwayView:reshapeToScreen()
     local W, H = Screen:getWidth(), Screen:getHeight()
     local v = self.view
     if not v then return false end
+    -- a notebook from a reader with another screen keeps its own page size: it is
+    -- fitted to the screen instead (see pageNeedsFit)
+    if self.nb_fit and self.notebook then return false end
     if v.canvas_w == W and v.canvas_h == H then return false end   -- already that shape
     -- a PDF-backed notebook's pages are the imported PDF at its own size
     if self.notebook and self.notebook.template and self.notebook.template.pdf_path then
         return false
     end
-    v.canvas_w, v.canvas_h = W, H
-    self.canvas.w, self.canvas.h = W, H
     if self.notebook then self.notebook.w, self.notebook.h = W, H end
-    if self.canvas_bb then self.canvas_bb:free() end
-    self.canvas_bb = Blitbuffer.new(W, H, Screen.bb:getType())
+    self:resizePage(W, H)
     self:composeCanvas()   -- marks past the new bounds are just not drawn (kept in ops)
     return true
+end
+
+-- Give the page (the canvas and its master) the size W x H; the caller composes.
+function InkAwayView:resizePage(W, H)
+    local v = self.view
+    v.canvas_w, v.canvas_h = W, H
+    self.canvas.w, self.canvas.h = W, H
+    if self.canvas_bb then self.canvas_bb:free() end
+    self.canvas_bb = Blitbuffer.new(W, H, Screen.bb:getType())
+end
+
+-- Does a page of w x h belong to another screen than this one (neither this
+-- screen's size nor this screen turned)? Such a notebook was made on another
+-- reader: it keeps its own page size, so what is written stays where it was, and
+-- the screen shows the whole page, smaller or larger.
+function InkAwayView:pageNeedsFit(w, h)
+    if type(w) ~= "number" or type(h) ~= "number" or w < 200 or h < 200 then return false end
+    local sw, sh = Screen:getWidth(), Screen:getHeight()
+    local function near(a, b) return math.abs(a - b) <= 2 end
+    return not ((near(w, sw) and near(h, sh)) or (near(w, sh) and near(h, sw)))
+end
+
+-- A notebook just read takes this screen's size unless it is to be fitted.
+-- Returns whether it is to be fitted.
+function InkAwayView:adoptScreenSize(nb)
+    if self:pageNeedsFit(nb.w, nb.h) then return true end
+    nb.w, nb.h = self.screen_w, self.screen_h
+    return false
+end
+
+-- The smallest zoom: the whole page in the area for a fitted notebook (with
+-- margins where the shapes differ), else the page covering the area.
+function InkAwayView:minZoom()
+    if self.nb_fit and self.notebook then return InkGeom.fitZoom(self.view) end
+    return InkGeom.coverZoom(self.view)
 end
 
 -- Lay out again after the screen size changed, from the orientation setting or
@@ -182,7 +217,7 @@ end
 -- undrawable margin; a zoomed-in view is kept.
 function InkAwayView:refitArea()
     local v = self.view
-    self.zoom_min = InkGeom.coverZoom(v)   -- zooming out stops where the page fills the area
+    self.zoom_min = self:minZoom()   -- zooming out stops where the page fills the area
     v.zoom = math.max(self.zoom_min, math.min(ZOOM_MAX, v.zoom))
     InkGeom.clampPan(v)
     if self.area_bb then self.area_bb:free() end
@@ -291,7 +326,7 @@ function InkAwayView:recomputeArea()
     self.area_bb = self:newAreaBuffer()
     -- cover the whole area, as for a drawing, even when the page shape differs
     -- from the screen after a rotation; zooming out stops there too
-    self.zoom_min = InkGeom.coverZoom(v)
+    self.zoom_min = self:minZoom()
     v.zoom = self.zoom_min
     InkGeom.clampPan(v)
 end

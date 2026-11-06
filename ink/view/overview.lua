@@ -112,7 +112,7 @@ function InkAwayView:overviewDoc(path)
     local doc = { data = data }
     if data and Project.isNotebook(data) then
         doc.nb = Notebook.fromData(data)
-        doc.nb.w, doc.nb.h = self.screen_w, self.screen_h
+        self:adoptScreenSize(doc.nb)
     end
     ov.docs[path] = doc
     return doc
@@ -125,7 +125,7 @@ function InkAwayView:notebookFileDoc(path)
     local doc = { data = data }
     if data and Project.isNotebook(data) then
         doc.nb = Notebook.fromData(data)
-        doc.nb.w, doc.nb.h = self.screen_w, self.screen_h
+        self:adoptScreenSize(doc.nb)
     end
     return doc
 end

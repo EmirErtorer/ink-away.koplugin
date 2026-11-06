@@ -11,6 +11,86 @@ versions marked *Prerelease* were test builds.
 
 - Add Simplified Chinese (zh_CN) translation by adding file `ink/l10n/zh_CN.po`
 
+### Added
+
+- Connecting Dropbox no longer means typing a 40-letter code on the reader. When
+  the reader is on Wi-Fi, the QR code leads to a page the reader serves: on the
+  phone, tap Open Dropbox, tap Allow, paste the code on that page, and the reader
+  carries on by itself. The page lives only while the sign-in screen is open and
+  takes one code. With no Wi-Fi address, or if you prefer, "Type the code instead"
+  works as before. Google Drive only asks for a short code on the phone.
+- Cloud sync can carry more than notebooks, and each part is turned on or off on
+  its own under "What to sync": notebooks and drawings, book notes, ink on book
+  pages, imported PDFs and pictures, exports, screen clips, and your pens, colours
+  and preferences (only the choices that suit every reader, not folders or
+  screen and pen settings). Notebooks and
+  book notes stay on as before; the rest start off. A part that is off is left
+  alone on both sides. The ink on a book is matched across readers by the book's
+  checksum, whatever the file is called; if two readers drew on the same book
+  while apart, the ink from both is combined (a stroke erased on only one of them
+  can come back). KOReader's own highlights are not included.
+- Cloud sync also works with Google Drive. It shows a short code on the reader:
+  scan the QR code, type the code on the phone, tap Allow, and the reader carries
+  on by itself. Ink Away asks only for access to its own folder, and files it
+  removes go to the service's bin. Everything else, the safety rules included, is
+  the same as with Dropbox.
+- Cloud sync, with Dropbox first (Library, ..., Cloud sync). Connect on the
+  reader itself: scan a QR code with a phone, tap Allow, type the short code
+  Dropbox shows. Notebooks and drawings are kept the same on all your readers,
+  each through your own account and only in Ink Away's own folder. A newer
+  version is fetched when you open a notebook, and changes are sent after closing
+  a notebook, after a pause in drawing, on a timer, when the reader sleeps, or
+  with Sync now; all of those are yours to choose, and Wi-Fi is turned on by
+  itself only if you allow it. Syncing runs in the background, and a notebook
+  open in the editor is never replaced.
+- Cloud sync never loses work. The version on this reader is copied to a backup
+  folder (kept 30 days) before anything replaces or removes it, a file changed on
+  two readers is kept twice (the cloud's under its own name, this reader's as
+  "Name (conflict Reader date)") to settle from the Conflicts list, a deletion
+  never wins over an edit, a run that would delete much of the library stops, and
+  earlier versions of a notebook can be brought back. Every problem has a code
+  (IA-S101 and so on) with what happened and what to do, and a sync log.
+- A notebook made on another reader keeps its own page size and is fitted to the
+  screen, instead of taking the screen's size and cropping what was written
+  beyond it. Notebooks made for the same screen are unchanged. The pictures and
+  PDF a notebook uses are found on the other reader, and those outside the
+  library are brought along by the sync.
+- Copy a rectangular part of a book page, from the Image tool of the annotation
+  mode (Clip the page) or from Tools, Ink Away, Copy part of the screen, by
+  dragging the pen or tapping two opposite corners. Check the outlined area,
+  select it again or cancel before copying, then paste the picture into a
+  notebook with the lasso or page menu.
+- Screen clips left in the "screen clips" folder are deleted after a week. In that
+  folder, the ... button of the library sets it: turn it off, keep clips for 1, 3,
+  7, 14 or 30 days, or delete them all now. A clip you paste or add to a page, or
+  use as a background, is copied into it first, so it stays.
+  Capture activates immediately, with a small corner symbol instead of an
+  instruction dialog.
+- Start a screen clip with a two-finger swipe from the top left to the bottom
+  right while reading. The shortcut is assigned only if free, and the action
+  can be assigned to another gesture in KOReader's gesture manager.
+- Change a highlight's colour by tapping it in the annotation mode. A tap with a
+  navigating finger, the lasso or Pan, or a single tap with the highlighter on text
+  already highlighted, opens a sheet of colours (hold still offers to remove it).
+  The list is yours: hold a colour to take it off, add colours of your own from the
+  colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
+
+- Ink Away has an icon in KOReader's own top menu bar, next to the main menu, in the file browser and in a book. It opens a quick menu: annotate the book, the book's notes, copy part of the page, open Ink Away and its library, and the cloud sync, each with the gesture that does the same on that reader (the one Ink Away set or the one the reader chose). The icon is the annotate pen, an SVG, so it draws the same on grey and colour screens. It can be switched off in Settings (Files) or Tools, Ink Away, and the quick menu can also be put on a gesture.
+- Settings no longer scrolls, on colour or grey screens, in portrait or landscape: it is four short tabs (Screen, Colour on colour screens, Page, Files), and the one last used opens first. The Gestures and Updates buttons stay on every tab.
+- The cloud sync screens now say, and keep saying, that syncing by itself can slow the reader and use battery: on the connect screen, on the main sheet while anything is automatic, and on Sync automatically, where each switch says what it costs and a Manual only button turns them all off. Getting the latest when opening a notebook is now off until you turn it on, since it is the one setting that can make opening wait (up to 6 seconds).
+- A cloud icon opens the cloud sync from the library's top bar and from the settings sheets (next to the coffee in Settings, and in the book ink settings). The sync sheet no longer scrolls: when to sync and what to sync each have a screen of their own.
+- Cloud sync: on a reader whose data folder is a relative path (a Kindle's), the safety copy made before a downloaded notebook replaces yours could not be created, so those downloads failed with IA-S402 ("Cannot write a file"). Fixed.
+- Cloud sync: tapping Sync now while a sync was already going (the one a closing
+  book starts) no longer says "Not signed in"; the sheet just shows it going. A stop
+  request now belongs to one run, so an old one can never stop a later run. The
+  sync log and the list of problems say what went wrong, not only the code (the system's own reason when a file cannot be written). The conflict screen says which version is this reader's and which is the other reader's (with sizes), and what each choice does here and on the other reader. Ink on a book is joined by a
+  small file named after the book, so its folder in the cloud says which book it is.
+
+### Fixed
+
+- The screen clip confirmation stays above the selected area, and small pen
+  movements no longer cancel the capture.
+
 ## [4.4.0] - 2026-10-31
 
 Your annotations leave the reader: any book can be exported with its ink and

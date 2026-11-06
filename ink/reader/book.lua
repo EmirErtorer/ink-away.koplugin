@@ -64,6 +64,10 @@ function Book:save()
         end
     end
     self.has_file = kept ~= nil and (#data.items > 0 or data.notes ~= nil)
+    if kept then
+        local ok, Sync = pcall(require, "ink/sync/manager")   -- (cloud sync: a change is waiting to be sent)
+        if ok then pcall(Sync.bookSaved) end
+    end
     return kept ~= nil
 end
 
@@ -433,6 +437,51 @@ function Book:removeHighlight(item)
     return false
 end
 
+-- The reader's custom highlight colours (name -> { code }), or nil where the
+-- reader has none (an older one).
+function Book:customColours()
+    local hl = self.ui and self.ui.highlight
+    local t = hl and hl.custom_colors
+    return type(t) == "table" and t or nil
+end
+
+-- Is `item` still one of the book's highlights (it is not once deleted).
+function Book:hasHighlight(item)
+    for _i, it in ipairs(self.ui and self.ui.annotation and self.ui.annotation.annotations or {}) do
+        if it == item then return true end
+    end
+    return false
+end
+
+-- Give a highlight another colour, as the reader's own colour menu does: the
+-- PDF's annotation is written again (a PDF keeps its highlights in the file),
+-- the boxes the reader drew are dropped, and the reader is told the item
+-- changed. `name` is a colour name the reader knows (nil, with `clear`, puts back
+-- a highlight that had none). Returns whether it was set.
+function Book:setHighlightColour(item, name, clear)
+    local ui = self.ui
+    if not (item and (name or clear) and ui and ui.highlight and self:hasHighlight(item)) then return false end
+    local hl = ui.highlight
+    local pdf = ui.paging and hl.writePdfAnnotation
+    local ok, err = pcall(function()
+        if pdf then hl:writePdfAnnotation("delete", item) end
+        item.color = name
+        if pdf then
+            hl:writePdfAnnotation("save", item)
+            if item.note then hl:writePdfAnnotation("content", item, item.note) end
+        end
+    end)
+    if not ok then
+        logger.warn("Ink Away: could not recolour the highlight:", err)
+        return false
+    end
+    -- (each of these is the reader's own, and an older one may not have it)
+    if ui.view and ui.view.resetHighlightBoxesCache then pcall(ui.view.resetHighlightBoxesCache, ui.view) end
+    local Event = require("ui/event")
+    pcall(ui.handleEvent, ui, Event:new("AnnotationsModified", { item }))
+    return true
+end
+
 -- The highlights the path `pts` (flat x, y, ... on the screen, the canvas's own
 -- points in annotation mode) comes within `r` px of: their annotation items,
 -- each once. It uses what KOReader drew on the page shown and its own tap test
@@ -572,12 +621,14 @@ end
 -- Close what Ink Away has open over the book (keeping everything): the screen
 -- turned, and they were laid out for the old one.
 function Book:closeViews()
+    if self._capture then self._capture:onCancel() end
     if self._view then pcall(function() self._view:closeCanvas() end) end
     if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
 end
 
 -- The book is closing: close the annotation mode (keeping its ink) and let go.
 function Book:close()
+    if self._capture then self._capture:onCancel() end
     if self._view then pcall(function() self._view:closeCanvas() end) end
     if self._notes_view then pcall(function() self._notes_view:closeCanvas() end) end
     self._view, self._notes_view = nil, nil
@@ -602,6 +653,7 @@ function Book:snapshot(bb, with_ink)
     local ok, err = pcall(self.ui.view.paintTo, self.ui.view, bb, 0, 0)
     ov.hidden = false
     if not ok then logger.warn("Ink Away: could not draw the page:", err) end
+    return ok
 end
 
 ------------------------------------------------------------------------------
@@ -634,7 +686,12 @@ end
 
 -- The book's notebook, as last saved (nil before it has one).
 function Book:notesPath()
-    return self:data().notes
+    local path = self:data().notes
+    -- a notebook path from another reader (the ink came with the cloud sync) is found again
+    local ok, Portable = pcall(require, "ink/sync/portable")
+    local root = ok and Portable.root and Portable.root()
+    if path and root then return Portable.resolve(path, root) end
+    return path
 end
 
 function Book:setNotesPath(path)

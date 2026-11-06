@@ -34,6 +34,11 @@ Open it from Top menu, **Tools** tab, "Ink Away (drawing canvas)". After that it
 
 If your reader already uses the right edge, use a two-finger swipe from the bottom right corner toward the top left (and from the top right toward the bottom left on a book). Every gesture can be changed in Settings, Gestures and pen buttons.
 
+To copy part of a book page, swipe two fingers from the top left toward the bottom
+right, then drag to select an area. This shortcut is assigned only if it is free.
+You can choose another in KOReader's Settings, Taps and gestures, Gesture manager:
+assign **Ink Away: copy part of the screen** to a gesture while reading.
+
 <table>
   <tr>
     <td width="33%" valign="top"><a href="assets/screenshots/book-annotate.gif"><img src="assets/screenshots/book-annotate.gif" alt="Annotating a book"></a><br><sub>Swipe down the right edge and write on the page.</sub></td>
@@ -60,6 +65,7 @@ The full list, with every setting and gesture, is in [docs/FEATURES.md](docs/FEA
 ## Notes
 
 - Palm rejection needs KOReader 2026.07+.
+- **Other pen plugins:** use Ink Away and other pen plugins (pencil.koplugin, for one) one at a time. They share KOReader's one pen hook; Ink Away hands it back when it closes. Some pen plugins, older pencil.koplugin releases among them, replace KOReader's `frontend/device/input.lua` with their own copy, and turning the plugin off doesn't put the original back, so the pen can act oddly in Ink Away. To fix it, update KOReader to 2026.07 or newer, or reinstall it: either puts KOReader's own `input.lua` back. Or download the zip of the KOReader version you have and copy its `koreader/frontend/device/input.lua` over the one on the reader.
 - Drawings and notebooks are saved automatically in an "ink away" folder. Exports go to "ink away/exports" unless you pick another folder.
 
 ## How it's made

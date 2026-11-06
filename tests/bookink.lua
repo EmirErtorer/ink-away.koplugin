@@ -444,8 +444,8 @@ do
         "gestures: book notes along the right edge, in the reader and the file browser")
     ok(data.gesture_reader[R_DOWN].inkaway_annotate and data.gesture_fm[R_DOWN] == nil,
         "gestures: annotating along the right edge, in a book only")
-    ok(n == 3 and #busy == 0 and placed.booknotes.gesture_reader == R_UP and placed.annotate.gesture_reader == R_DOWN,
-        "gestures: all three placed, nothing in the way")
+    ok(n == 4 and #busy == 0 and placed.booknotes.gesture_reader == R_UP and placed.annotate.gesture_reader == R_DOWN,
+        "gestures: all four placed, nothing in the way")
     local p2, b2, n2 = EntryGestures.apply(data)
     ok(n2 == 0 and #b2 == 0 and p2.booknotes.gesture_fm == R_UP, "gestures: running again changes nothing")
     local c = Welcome.content({ placed = placed, held = {} })
@@ -482,7 +482,8 @@ do
 
     -- everything taken: nothing set, a warning naming what holds them
     data = { gesture_fm = { [R_UP] = warm, [NW] = { toc = true } },
-        gesture_reader = { [R_UP] = warm, [R_DOWN] = cool, [NW] = { toc = true }, [SW] = { bookmarks = true } } }
+        gesture_reader = { [R_UP] = warm, [R_DOWN] = cool, [NW] = { toc = true }, [SW] = { bookmarks = true },
+            two_finger_swipe_southeast = { screenshot = true } } }
     placed, busy, n = EntryGestures.apply(data)
     ok(n == 0 and placed.booknotes.gesture_reader == nil and placed.annotate.gesture_reader == nil,
         "full: nothing set over the reader's gestures")

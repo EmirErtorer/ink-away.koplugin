@@ -28,6 +28,9 @@ emulator built in it:
   KOReader's real input and gesture code.
 - `realbb/*.lua` check real pixels with KOReader's C blitter, using the
   emulator's LuaJIT.
+- `realbb/captureui.lua` also uses KOReader's real widgets and window stack,
+  with SDL's dummy video driver and a temporary settings folder, to check the
+  capture confirmation's visibility and pen gesture handling.
 
 `run.lua` looks for the checkout in `~/koreader-emulator` and finds the emulator
 folder inside it. If yours are somewhere else, set `KO_SRC` to the checkout, or

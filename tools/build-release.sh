@@ -29,6 +29,8 @@ mkdir -p "$OUT/$NAME"
 cp -R _meta.lua main.lua ink README.md NOTICE.md LICENSE "$OUT/$NAME/"
 
 # Belt and suspenders: make sure nothing heavy or dev-only slipped in.
+# Local test registrations (ink/sync/localkeys.lua) go only into test builds.
+[ "${1:-}" = "test" ] || rm -f "$OUT/$NAME/ink/sync/localkeys.lua"
 rm -rf "$OUT/$NAME/assets" "$OUT/$NAME/tests" "$OUT/$NAME/tools" "$OUT/$NAME/dist"
 find "$OUT/$NAME" -name '.DS_Store' -delete 2>/dev/null || true
 

@@ -1,5 +1,5 @@
 --[[
-The two book gestures, set up once in KOReader's gesture manager: book notes
+The book gestures, set up once in KOReader's gesture manager: book notes
 (Ink Away itself outside a book) and annotating the book. Each has a first
 choice along the right edge and, where that already does something (readers
 with warmth light keep it there), a two-finger diagonal swipe instead:
@@ -8,6 +8,8 @@ with warmth light keep it there), a two-finger diagonal swipe instead:
               bottom right to the top left
   annotate    swipe down along the right edge, else a two-finger swipe from
               the top right to the bottom left (in a book only)
+  capture     a two-finger swipe from the top left to the bottom right
+              (in a book only)
 
 A gesture is only taken when it does nothing yet. One that can't be placed is
 reported, with what holds its gestures, in the notice shown the first time Ink
@@ -20,11 +22,15 @@ out when told it changed. Plain Lua: the headless tests drive it.
 
 local EntryGestures = {}
 
+EntryGestures.CAPTURE = { id = "capture", action = "inkaway_capture", sections = { "gesture_reader" },
+    gestures = { "two_finger_swipe_southeast" } }
+
 EntryGestures.FEATURES = {
     { id = "booknotes", action = "inkaway_booknotes", sections = { "gesture_reader", "gesture_fm" },
       gestures = { "one_finger_swipe_right_edge_up", "two_finger_swipe_northwest" } },
     { id = "annotate", action = "inkaway_annotate", sections = { "gesture_reader" },
       gestures = { "one_finger_swipe_right_edge_down", "two_finger_swipe_southwest" } },
+    EntryGestures.CAPTURE,
 }
 
 local function empty(t)
@@ -46,9 +52,10 @@ end
 -- and how many gestures it set.
 -- A feature takes one gesture free in all its sections when it can, so it is
 -- the same everywhere; else each section the first one free there.
-function EntryGestures.apply(data)
+-- `features` limits an upgrade to new actions without rebinding older ones.
+function EntryGestures.apply(data, features)
     local placed, busy, n = {}, {}, 0
-    for _i, f in ipairs(EntryGestures.FEATURES) do
+    for _i, f in ipairs(features or EntryGestures.FEATURES) do
         local where = {}
         placed[f.id] = where
         local open = {}

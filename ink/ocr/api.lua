@@ -270,4 +270,9 @@ function Api.request(config, png_bytes)
     return text
 end
 
+-- The verified-TLS pieces, for the other features that talk to a service with a
+-- secret (the cloud sync, see ink/sync/http.lua).
+Api.verifiedTLS = createTLS
+Api.caBundle = caBundle
+
 return Api

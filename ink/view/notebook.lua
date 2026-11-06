@@ -601,8 +601,13 @@ function InkAwayView:nbDeletePage()
 end
 
 -- Make `nb` the open notebook and show its current page.
-function InkAwayView:enterNotebook(nb)
+function InkAwayView:enterNotebook(nb, fit)
     self.notebook = nb
+    self.nb_fit = fit and true or nil
+    -- the page is the notebook's own size when fitted, else the screen's
+    local W, H = nb.w, nb.h
+    if not fit then W, H = self.screen_w, self.screen_h end
+    if self.view.canvas_w ~= W or self.view.canvas_h ~= H then self:resizePage(W, H) end
     self.nb_bar_h = self:nbBarHeight()
     self:recomputeArea()
     self:nbLoad()
@@ -623,9 +628,10 @@ function InkAwayView:openNotebookData(data)
     self:clearBackground()
     self.save_area = nil
     local nb = Notebook.fromData(data)
-    -- pages were drawn at their own screen size; treat them at this screen size
-    nb.w, nb.h = self.screen_w, self.screen_h
-    self:enterNotebook(nb)
+    -- pages made on this screen's size are the screen's; those from another reader
+    -- keep their size and are fitted to the screen (see pageNeedsFit)
+    local fit = self:adoptScreenSize(nb)
+    self:enterNotebook(nb, fit)
     -- warn if the source PDF of a PDF-backed notebook is gone (the ink is safe;
     -- only the page images are missing until it is back)
     if self.notebook.template.pdf_path and not self._nb_pdf_doc then
@@ -641,6 +647,11 @@ function InkAwayView:exitNotebook()
     self:closeNotebookPDF()
     self.notebook = nil
     self.nb_bar_h = 0
+    if self.nb_fit then   -- back to a page the size of the screen
+        self.nb_fit = nil
+        self:resizePage(self.screen_w, self.screen_h)
+        self:composeCanvas()
+    end
     self:recomputeArea()
 end
 
