@@ -10,6 +10,18 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Boox: the firmware draws the pen's ink (#37). On a Boox with Onyx's pen layer, the
+  firmware now draws the pen's strokes on the screen itself while the pen moves, as
+  Boox's own notes app does, and Ink Away puts the stroke as it really is
+  (its colour, texture and pressure) in place when the pen lifts. It only works for
+  pens that draw opaque, dark ink, inside the drawing area and away from its floating
+  buttons; the eraser, the lasso, text, see-through or light pens, night mode, a turned
+  screen and anything shown over the page pause it first, so the firmware never inks
+  where Ink Away would not. If anything fails it turns itself off and the pen draws as
+  before. Pen and input, Draw with Boox's pen layer turns it off.
+- Android: drawing sends only the part of the screen that changed to the screen, not
+  the whole screen each time (10 to 18 MB per piece of ink on a Boox), while Ink Away is
+  open. Pen and input, Lighter screen updates turns it off.
 - Handwritten notes on highlights (#77): select words and pick Handwritten note in
   KOReader's menu, next to Add note. The words are highlighted as KOReader does, and
   a small writing window opens over the page. The note is a page of the book's notes,
