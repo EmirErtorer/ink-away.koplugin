@@ -223,23 +223,31 @@ add("postit_torn", "notes", 100, 100, "pastel", "tone", function()
     return paper({ poly = b, shadow = shifted(b, 3, 4) })
 end)
 
--- Creased paper, as a photograph of it looks: the note is cut into uneven facets,
--- each a slightly different tint, and a thin crease (a dark line with a light one
--- beside it) runs along every edge where the tints differ most. Nothing is random:
--- the same seed gives the same paper each time.
+-- Creased paper, as a photograph of it looks: soft light and shade over the note in
+-- uneven patches, deeper in the hollows, with a thin crease where the shade turns
+-- sharply. The note is cut into small uneven facets, each tinted by a smooth
+-- pattern (a few waves laid over each other), so neighbours differ only a little
+-- and the patches read as one soft surface. Nothing is random: the same paper
+-- every time.
 local function creasedMesh()
-    local seed = 11
+    local seed = 5
     local function rnd() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end
-    local N = 3
+    local N = 5
     local P = {}
     for j = 0, N do
         P[j] = {}
         for i = 0, N do
             local x, y = 100 * i / N, 100 * j / N
-            if i > 0 and i < N then x = x + (rnd() - 0.5) * 16 end
-            if j > 0 and j < N then y = y + (rnd() - 0.5) * 16 end
+            if i > 0 and i < N then x = x + (rnd() - 0.5) * 11 end
+            if j > 0 and j < N then y = y + (rnd() - 0.5) * 11 end
             P[j][i] = { x, y }
         end
+    end
+    local function tint(x, y)
+        local v = 0.55 * sin(x * 0.075 + 1.3) + 0.45 * sin(y * 0.09 + 0.4) + 0.6 * sin((x + y) * 0.052 + 2)
+            + 0.5 * sin((x * 1.7 - y) * 0.046) + 0.3 * sin((x - y * 1.3) * 0.11 + 0.8) + (rnd() - 0.5) * 0.35
+        local k = math.floor(5 + v * 2.5 + 0.5)
+        return math.max(1, math.min(9, k))
     end
     local tris, edges = {}, {}
     local function edge(p, q, k)
@@ -249,7 +257,7 @@ local function creasedMesh()
         if e then e.k2 = k else edges[key] = { p = p, q = q, k1 = k } end
     end
     local function tri(a, b, c)
-        local k = 1 + math.floor(rnd() * 5)
+        local k = tint((a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3)
         tris[#tris + 1] = { poly = { a[1], a[2], b[1], b[2], c[1], c[2] }, k = k }
         edge(a, b, k); edge(b, c, k); edge(c, a, k)
     end
@@ -266,15 +274,15 @@ add("postit_creased", "notes", 100, 100, "pastel", "tone", function()
     local b = rect(0, 0, 100, 100)
     local out = paper({ poly = b, shadow = shifted(b, 3, 4) })
     local tris, edges = creasedMesh()
-    for _, t in ipairs(tris) do out[#out + 1] = part(t.poly, { fill = "t" .. t.k, edge = "none" }) end
+    for _, t in ipairs(tris) do out[#out + 1] = part(t.poly, { fill = "s" .. t.k, edge = "none" }) end
     local keys = {}
     for key in pairs(edges) do keys[#keys + 1] = key end
     table.sort(keys)   -- (the same order each time)
     for _, key in ipairs(keys) do
         local e = edges[key]
-        if e.k2 and math.abs(e.k1 - e.k2) >= 2 then
-            out[#out + 1] = part({ e.p[1], e.p[2], e.q[1], e.q[2] }, { fill = "lo2", closed = false, w = 0.6 })
-            out[#out + 1] = part({ e.p[1] + 1, e.p[2] + 1, e.q[1] + 1, e.q[2] + 1 }, { fill = "t1", closed = false, w = 0.5 })
+        if e.k2 and math.abs(e.k1 - e.k2) >= 3 then
+            out[#out + 1] = part({ e.p[1], e.p[2], e.q[1], e.q[2] }, { fill = "s9", closed = false, w = 0.7 })
+            out[#out + 1] = part({ e.p[1] + 0.9, e.p[2] + 0.9, e.q[1] + 0.9, e.q[2] + 0.9 }, { fill = "s1", closed = false, w = 0.5 })
         end
     end
     out[#out + 1] = part(b, { fill = false, edge = "tone" })

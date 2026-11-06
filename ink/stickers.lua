@@ -68,6 +68,11 @@ local function colour(role, body)
     if role == "body" then return body end
     if role == "dark" then return darker(body, 0.82) end
     if role == "light" then return lighter(body, 0.55) end
+    local step = type(role) == "string" and role:match("^s(%d)$")
+    if step then   -- nine tints of creased paper, s1 the lightest and s9 the deepest
+        local f = 0.22 - 0.42 * (tonumber(step) - 1) / 8
+        return f >= 0 and lighter(body, f) or darker(body, 1 + f)
+    end
     if role == "t1" then return lighter(body, 0.16) end      -- the tints of creased paper, light to dark
     if role == "t2" then return lighter(body, 0.07) end
     if role == "t3" then return body end

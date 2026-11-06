@@ -151,7 +151,7 @@ function Launcher.show(plugin)
     host = newHost()
     Launcher.host = host
     host:ensureUserIcons()
-    local content_w = host:sheetWidth()
+    local content_w = math.floor(host:sheetWidth() * 0.86)   -- (a small menu, not a full sheet)
     local function close() host:closeSheet(FIELD) end
     local function vspan(n) return VerticalSpan:new{ width = Screen:scaleBySize(n) } end
     local build = function()
@@ -159,12 +159,13 @@ function Launcher.show(plugin)
         local function add(w) g[#g + 1] = w end
         add(host:sheetTitle(_("Ink Away"), content_w, _("Close"), close, nil, {
             { icon = "cloud", cb = function() close(); host:openSync() end } }))
-        for _i, t in ipairs(Launcher.tiles(plugin, _, fillIn)) do
-            add(vspan(10))
+        for i, t in ipairs(Launcher.tiles(plugin, _, fillIn)) do
+            add(vspan(i == 1 and 8 or 6))
+            -- the first is the main thing to do, in the theme colour; the others are quiet
             add(host:actionTile(t.icon, t.title, t.note, content_w, function()
                 close()
                 UIManager:nextTick(t.run)
-            end, nil, t.glyph))
+            end, nil, t.glyph, i == 1 and "compact" or "quiet"))
         end
         return g
     end
