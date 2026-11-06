@@ -231,6 +231,10 @@ msgstr "%s, diğerleri geldikten sonra açılır"
 msgid "%s · page %d"
 msgstr "%s · sayfa %d"
 
+#: ink/reader/book.lua
+msgid "(Handwritten note)"
+msgstr "(El yazısı not)"
+
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
 msgstr "Kalem menüsündeki + önce türünü (İnce uçlu, Tükenmez, Dolma kalem, Kurşun kalem, Keçeli kalem, Vurgulayıcı, Suluboya...), sonra boyutunu ve rengini sorar."
@@ -2242,6 +2246,10 @@ msgstr "Alışkanlık takibi"
 #: ink/view/settings.lua
 msgid "Handwriting"
 msgstr "El yazısı"
+
+#: ink/reader/hlnotes.lua
+msgid "Handwritten note"
+msgstr "El yazısı not"
 
 #: ink/notebookcover.lua
 msgid "Hardcover"

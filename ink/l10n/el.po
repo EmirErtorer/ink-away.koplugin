@@ -231,6 +231,10 @@ msgstr "Το %s ανοίγει όταν φτάσουν τα υπόλοιπα"
 msgid "%s · page %d"
 msgstr "%s · σελίδα %d"
 
+#: ink/reader/book.lua
+msgid "(Handwritten note)"
+msgstr "(Χειρόγραφη σημείωση)"
+
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
 msgstr "Το + στο μενού των στυλό ρωτά το είδος (λεπτός μαρκαδόρος, στυλό διαρκείας, πένα, μολύβι, μαρκαδόρος, υπογραμμιστής, νερομπογιά…) και μετά το μέγεθος και το χρώμα."
@@ -2242,6 +2246,10 @@ msgstr "Παρακολούθηση συνηθειών"
 #: ink/view/settings.lua
 msgid "Handwriting"
 msgstr "Χειρόγραφο"
+
+#: ink/reader/hlnotes.lua
+msgid "Handwritten note"
+msgstr "Χειρόγραφη σημείωση"
 
 #: ink/notebookcover.lua
 msgid "Hardcover"

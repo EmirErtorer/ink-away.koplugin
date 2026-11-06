@@ -230,6 +230,10 @@ msgstr ""
 msgid "%s · page %d"
 msgstr ""
 
+#: ink/reader/book.lua
+msgid "(Handwritten note)"
+msgstr ""
+
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
 msgstr ""
@@ -2216,6 +2220,10 @@ msgstr ""
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
 msgid "Handwriting"
+msgstr ""
+
+#: ink/reader/hlnotes.lua
+msgid "Handwritten note"
 msgstr ""
 
 #: ink/notebookcover.lua

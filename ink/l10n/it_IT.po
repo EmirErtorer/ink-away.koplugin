@@ -231,6 +231,10 @@ msgstr "%s si apre quando saranno arrivati gli altri"
 msgid "%s · page %d"
 msgstr "%s · pagina %d"
 
+#: ink/reader/book.lua
+msgid "(Handwritten note)"
+msgstr "(Nota scritta a mano)"
+
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
 msgstr "Il + nel menu delle penne chiede il tipo (pennarello a punta fine, penna a sfera, stilografica, matita, pennarello, evidenziatore, acquerello…), poi dimensione e colore."
@@ -2242,6 +2246,10 @@ msgstr "Monitor delle abitudini"
 #: ink/view/settings.lua
 msgid "Handwriting"
 msgstr "Scrittura a mano"
+
+#: ink/reader/hlnotes.lua
+msgid "Handwritten note"
+msgstr "Nota scritta a mano"
 
 #: ink/notebookcover.lua
 msgid "Hardcover"

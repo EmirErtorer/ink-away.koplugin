@@ -231,6 +231,10 @@ msgstr "%s otworzy się, gdy dotrze reszta"
 msgid "%s · page %d"
 msgstr "%s · strona %d"
 
+#: ink/reader/book.lua
+msgid "(Handwritten note)"
+msgstr "(Notatka odręczna)"
+
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
 msgstr "Plus w menu piór pyta o rodzaj (cienkopis, długopis, pióro wieczne, ołówek, marker, zakreślacz, akwarela…), a potem o rozmiar i kolor."
@@ -2242,6 +2246,10 @@ msgstr "Tracker nawyków"
 #: ink/view/settings.lua
 msgid "Handwriting"
 msgstr "Pismo odręczne"
+
+#: ink/reader/hlnotes.lua
+msgid "Handwritten note"
+msgstr "Notatka odręczna"
 
 #: ink/notebookcover.lua
 msgid "Hardcover"

@@ -231,6 +231,10 @@ msgstr "%s откроется, когда придут остальные"
 msgid "%s · page %d"
 msgstr "%s · страница %d"
 
+#: ink/reader/book.lua
+msgid "(Handwritten note)"
+msgstr "(Рукописная заметка)"
+
 #: ink/guide.lua
 msgid "+ in the pen menu asks for its kind (Fineliner, Ballpoint, Fountain, Pencil, Marker, Highlighter, Watercolor...), then its size and colour."
 msgstr "Кнопка + в меню ручек спрашивает вид (тонкий линер, шариковая ручка, перьевая ручка, карандаш, маркер, текстовыделитель, акварель…), затем размер и цвет."
@@ -2242,6 +2246,10 @@ msgstr "Трекер привычек"
 #: ink/view/settings.lua
 msgid "Handwriting"
 msgstr "Рукописный текст"
+
+#: ink/reader/hlnotes.lua
+msgid "Handwritten note"
+msgstr "Рукописная заметка"
 
 #: ink/notebookcover.lua
 msgid "Hardcover"
