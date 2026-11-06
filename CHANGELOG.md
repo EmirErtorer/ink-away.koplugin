@@ -10,6 +10,25 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Make room in a book's text, for stickers, pictures and notes: the text moves out of
+  the way, and the font stays the same. Tap the Lasso a second time for its sheet and
+  pick Make room, then draw a box on the page. Move it or drag its corners, and the page
+  shows what it will make before you make it. A box across the text makes a band of
+  empty space before the nearest paragraph. A box near a side, and not too wide, makes
+  space at that side, beside the paragraphs it covers. The menu of anything selected
+  (a sticker, a picture, a shape, writing) also has Make room: the text moves out of
+  its way at once, and it goes into the room. A room keeps its size whatever the font,
+  and what you draw or place in it stays in it when the text moves, even to another
+  page. Tap a room in the tool to resize it or remove it; when it holds something you
+  choose to delete that or let it follow the text. The Lasso's sheet lists the rooms
+  in the book and has a switch to hide them all, so the book reads as it was made.
+  The book's file is never changed: the rooms are a few style rules kept with the
+  book's ink (so they move with the book and go with cloud sync), and they work in
+  every render mode. A band that does not fit at the foot of a page moves whole to the
+  next one. Ink on later pages still follows its words; items pinned to later pages
+  stay on their page number, so a note says when a room may have put other text under
+  them. Not offered in a PDF or other fixed-page book, in continuous scroll, or with
+  two pages side by side.
 - Over a reflowing book, anything you select (ink, shapes, pictures, a sticker with
   what is written on it) can be pinned to its page: the selection menu has "Pin to this
   page". A pinned item does not follow the text when the font, margins or screen change:
