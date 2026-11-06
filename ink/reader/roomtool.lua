@@ -1,10 +1,11 @@
 --[[
 The Make room tool (from the Lasso's sheet, over a reflowing book): draw a box on
 the page and the text moves out of it (ink/reader/rooms.lua). The box can be moved
-and its corners dragged; what it will make shows under it as it goes: a band
-across the page before the nearest paragraph, or space at a side beside the
-paragraphs it covers. A tap on a room already made picks it, to change its size or
-remove it.
+and its corners dragged; what it will free shows shaded as it goes: the box itself,
+from the text column's nearer side (or across, when too little text would be left
+beside it). In a render mode that does not float things (legacy, flat) a room is
+made of whole paragraphs. A tap on a room already made picks it, to change its
+size or remove it: the page is laid out without it meanwhile.
 
 It is a layer over the annotation mode with a clean picture of the page (and its
 ink), like the screen clip (ink/reader/capture.lua). Its sheet stays open while the
@@ -25,7 +26,6 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("ink/l10n")
-local Rooms = require("ink/reader/rooms")
 
 local Screen = Device.screen
 local S = function(px) return Screen:scaleBySize(px) end
@@ -86,41 +86,28 @@ function RoomTool:cornerAt(x, y)
     end
 end
 
--- The page's paragraphs as they would be without the room being changed (a band
--- pushes everything under it down by its height).
-function RoomTool:planBlocks()
-    local room, box = self.room, self.room_box
-    if not (room and room.kind == "band" and box) then return self.blocks end
-    local out = {}
-    for i, b in ipairs(self.blocks) do
-        if b.y0 >= box.y + box.h - 1 then
-            out[i] = { xp = b.xp, y0 = b.y0 - room.h, y1 = b.y1 - room.h, starts = b.starts }
-        else
-            out[i] = b
-        end
-    end
-    return out
-end
-
--- What the box makes, and where it shows.
+-- What the box makes: the room, the box it keeps and the area it frees.
 function RoomTool:replan()
-    self.plan, self.pbox, self.why = nil, nil, nil
+    self.plan, self.pbox, self.pfree, self.why = nil, nil, nil, nil
     if not self.rect then return end
-    local plan, box = Rooms.plan(self.rect, self:planBlocks(), self.area)
+    local plan, box, free = self.book:planRoom(self.rect, self.room and self.room.id)
     if plan then
-        -- (a changed band shows where it will be: the text under it moves with it)
-        self.plan, self.pbox = plan, box
+        self.plan, self.pbox, self.pfree = plan, box, free
     else
         self.why = box
     end
 end
 
--- Pick a room made before: its box becomes the box to change.
+-- Pick a room made before: its box becomes the box to change, and the page is
+-- laid out without it while it changes.
 function RoomTool:pick(room)
     for _i, e in ipairs(self.boxes) do
         if e.room.id == room.id then
             self.room, self.room_box = room, e.box
             self.rect = { x = e.box.x, y = e.box.y, w = e.box.w, h = e.box.h }
+            self.book:hideRoom(room.id)
+            pcall(self.book.snapshot, self.book, self.page, true)
+            self.blocks = self.book:pageBlocks()
             self:replan()
             return true
         end
@@ -250,8 +237,8 @@ function RoomTool:paintTo(bb, x, y)
             dashed(bb, x + b.x, y + b.y, b.w, b.h, S(2), GREY)
         end
     end
-    -- what the box will make: shaded, with a dashed edge
-    local pb = self.pbox
+    -- what the box will free: shaded, with a dashed edge
+    local pb = self.pfree or self.pbox
     if pb then
         local px0, py0 = math.max(0, pb.x), math.max(0, pb.y)
         local px1, py1 = math.min(self.dimen.w, pb.x + pb.w), math.min(self.dimen.h, pb.y + pb.h)
@@ -285,12 +272,27 @@ function RoomTool:describe()
         return _("Draw a box where the text should move away.")
     end
     if not p then
-        if self.why == "no_break" then return _("No paragraph starts on this page, so there is nowhere to put a band.") end
-        return _("There is no text here to move.")
+        if self.why == "no_break" and not self.book:floats() then
+            return _("No paragraph starts on this page, so there is nowhere to put a band.")
+        end
+        return require("ink/reader/roomsui").whyNot(self.why)
     end
-    if p.kind == "band" then return _("A band across the page, before the paragraph nearest the box's top.") end
-    if p.side == "left" then return _("Space on the left, beside the paragraphs the box covers.") end
-    return _("Space on the right, beside the paragraphs the box covers.")
+    local first = p.kind == "box" and not self.book:roomsReady()
+        and ("\n" .. _("The first room in a book loads it again, once.")) or ""
+    if p.kind == "box" then
+        local text
+        if p.side == "full" then text = _("The text moves above and below the box.")
+        elseif p.side == "left" then text = _("The text moves to the right of the box.")
+        else text = _("The text moves to the left of the box.") end
+        if self.pbox and self.rect and self.pbox.y > self.rect.y + 1 and self.pbox.y > self.area.y0 + 1 then
+            text = text .. "\n" .. _("The paragraph at its top began on the page before, so the room starts where the next one does.")
+        end
+        return text .. first
+    end
+    local note = "\n" .. _("In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact.")
+    if p.kind == "band" then return _("A band across the page, before the paragraph nearest the box's top.") .. note end
+    if p.side == "left" then return _("Space on the left, beside the paragraphs the box covers.") .. note end
+    return _("Space on the right, beside the paragraphs the box covers.") .. note
 end
 
 function RoomTool:closeSheet()
@@ -350,7 +352,7 @@ function RoomTool:showSheet()
 end
 
 function RoomTool:drawAgain()
-    self.rect, self.plan, self.pbox, self.why, self.room, self.room_box = nil, nil, nil, nil, nil, nil
+    self.rect, self.plan, self.pbox, self.pfree, self.why, self.room, self.room_box = nil, nil, nil, nil, nil, nil, nil
     UIManager:setDirty(self, "ui")
     self:showSheet()
 end
@@ -363,6 +365,8 @@ end
 -- and returns the room to show (or nil and why it could not).
 function RoomTool:commit(fn)
     local view = self.view
+    -- (the room laid out of the way comes back with the change, not before it)
+    self.book._hidden_room = nil
     self:closeSheet()
     UIManager:close(self)
     if view then view:changeRooms(fn) end
@@ -423,6 +427,7 @@ RoomTool.onCloseDocument = RoomTool.onCancel
 
 function RoomTool:onCloseWidget()
     if self.page then self.page:free(); self.page = nil end
+    if self.book and self.book._hidden_room then self.book:hideRoom(nil) end
     if self.book and self.book._room_tool == self then self.book._room_tool = nil end
     UIManager:setDirty(nil, "ui")
 end

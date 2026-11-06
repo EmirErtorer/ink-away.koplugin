@@ -4,21 +4,41 @@ notes have somewhere to go. Nothing in the book's file changes. Ink Away adds a
 few style rules to the book, next to KOReader's own style tweaks, and the book is
 laid out again with the space in it.
 
+Exact rooms (the book and web render modes, which float things):
+
+  * a box room, { kind = "box", side = "left" | "right" | "full", x, w, h, xp,
+    sp, spp, sh, off, cw }: the space from the text column's side (or across it)
+    to the box's far edge, as tall as the box, at the pixel where it was drawn (cw:
+    its float's width, when the laid-out text asked for another, Book:calibrateBox).
+
+The book is laid out once with markers (Rooms.MARKERS): before and after every
+block element, an empty float of no size. A room sizes two of them. The one
+before its paragraph (xp) is the box (its width and, as padding, its height: the
+book mode sizes nothing else on a float). An earlier one, of no width, pushes it
+down to its top: the end of the paragraph just before (sp, spp "after", from the
+top of that paragraph's last line) or the start of one before that (spp "before",
+from its top), by sh pixels; the box clears it. The box's top is off pixels below
+where its marker sits: -1 when pushed (one pixel lower, or crengine shortens the
+line just above too), more in a paragraph's first line (the marker starts there).
+crengine lays out a book's elements when it loads it, so the first exact room
+loads the book again (Book:reloadForRooms); after that a room is only sized. A
+float across a page's foot moves the page break before it, so both markers are
+on the room's page; a paragraph holds one room, and two rooms on a side keep their
+markers in the order of their tops (Rooms.planBox).
+
+Rooms of whole paragraphs (legacy and flat, which do not float things, and the
+rooms made before exact ones):
+
   * a band across the page: empty space before a paragraph
     (its padding-top), { kind = "band", xp = <paragraph>, h = <px> };
   * space at a side: the paragraphs it covers are narrower on that side
     (their padding-left or padding-right), { kind = "side", side = "left" |
     "right", xps = { <paragraph>, ... }, w = <px> }.
 
-Every room also has an id and xp (its first paragraph). Sizes are in screen pixels
-and stay the same whatever the font: the rules are written in the book's own CSS
+Every room also has an id and xp (its paragraph). Sizes are in screen pixels and
+stay the same whatever the font: the rules are written in the book's own CSS
 pixels, which KOReader's "Zoom (dpi)" setting scales (Rooms.css takes the scale).
-
-Padding is the only thing used, as the prototype showed: a margin at the top of a
-page is dropped, and a box or float added before a paragraph changes the book's
-element tree, so KOReader asks to reload the whole book. Padding also works in every
-render mode (legacy, flat, book, web), keeps its size at any font, and a band that
-does not fit at the foot of a page moves whole to the next one.
+A margin at the top of a page is dropped, so the paragraph rooms use padding.
 
 crengine matches nothing above a book's DocFragment (the element KOReader puts
 around each file of an EPUB), so a paragraph's rule names the path from there:
@@ -44,6 +64,25 @@ for w in ([[a abbr b bdi bdo big br cite code del dfn em font i img ins kbd mark
 end
 -- Elements that hold a whole file or the book: never a room's paragraph.
 local OUTER = { DocFragment = true, body = true, html = true, FictionBook = true }
+
+-- The block elements that carry a marker, before and after their content: an
+-- empty float of no size, which a box room sizes (see the top).
+Rooms.HOST_TAGS = { "p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "dd", "dt",
+    "pre", "section", "article", "aside", "header", "footer", "figure", "figcaption", "address",
+    "center", "td", "th", "v", "stanza", "epigraph", "subtitle", "text-author", "poem" }
+local HOSTS = {}
+for _i, t in ipairs(Rooms.HOST_TAGS) do HOSTS[t] = true end
+do
+    local sels = {}
+    for _i, t in ipairs(Rooms.HOST_TAGS) do sels[#sels + 1] = t .. "::before, " .. t .. "::after" end
+    Rooms.MARKERS = table.concat(sels, ", ") .. ' { content: ""; float: right; width: 0; height: 0; }'
+end
+
+-- Does the paragraph (an element xpointer) carry markers?
+function Rooms.hostable(elem_xp)
+    local name = type(elem_xp) == "string" and elem_xp:match("/([%w_%-]+)%[?%d*%]?$")
+    return name ~= nil and HOSTS[name:lower()] == true
+end
 
 -- The steps of an xpointer's element path: { { name = "p", idx = 10 }, ... }
 -- (idx nil when the xpointer names no index: the only, or first, of its name).
@@ -108,33 +147,66 @@ end
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 local function round(v) return math.floor(v + 0.5) end
 
+-- A box room as a room of whole paragraphs, for the render modes that do not
+-- float anything (legacy and flat): across the page, a band before its paragraph;
+-- at a side, space beside that paragraph.
+function Rooms.asParagraphs(r)
+    if r.kind ~= "box" then return r end
+    if r.side == "full" then return { id = r.id, kind = "band", xp = r.xp, h = r.h, from = r } end
+    return { id = r.id, kind = "side", side = r.side, xp = r.xp, xps = { r.xp }, w = r.w, from = r }
+end
+
+local function px(v, scale)
+    -- (two decimals: the box keeps its size to the pixel at any zoom)
+    local s = string.format("%.2f", math.max(0, v * scale)):gsub("0+$", ""):gsub("%.$", "")
+    return s .. "px"
+end
+
 -- The style rules for `rooms`. `scale` is CSS pixels per screen pixel (96 / the
 -- render dpi; 1 when KOReader does not scale). One rule per paragraph, so two
--- rooms on one paragraph (a band and side space) add up.
-function Rooms.css(rooms, scale)
+-- rooms on one paragraph (a band and side space) add up. With `opts.ready` the
+-- book has its markers (Rooms.MARKERS); with `opts.floats` its render mode floats
+-- them, and a box room is one of them sized (else it is made of paragraphs).
+function Rooms.css(rooms, scale, opts)
     scale = scale or 1
+    opts = opts or {}
     local by, order = {}, {}
-    local function prop(xp, name, px)
+    local function prop(xp, name, v)
         local sel = Rooms.selector(xp)
         if not sel then return end
         local r = by[sel]
         if not r then r = {}; by[sel] = r; order[#order + 1] = sel end
-        r[name] = math.max(r[name] or 0, px)
+        r[name] = math.max(r[name] or 0, v)
     end
+    local out = {}
+    if opts.ready then out[#out + 1] = Rooms.MARKERS end
     for _i, room in ipairs(rooms or {}) do
+        if room.kind == "box" and not (opts.floats and opts.ready) then room = Rooms.asParagraphs(room) end
         if room.kind == "band" and room.xp and room.h then
             prop(room.xp, "padding-top", room.h)
         elseif room.kind == "side" and room.w then
             local name = room.side == "left" and "padding-left" or "padding-right"
             for _j, xp in ipairs(room.xps or { room.xp }) do prop(xp, name, room.w) end
+        elseif room.kind == "box" then
+            local side = room.side == "right" and "right" or "left"
+            local clear = room.side == "full" and "both" or side
+            local box = Rooms.selector(room.xp)
+            local spacer = room.sp and Rooms.selector(room.sp)
+            if box and (spacer or not room.sp) then
+                if spacer then
+                    out[#out + 1] = string.format("%s::%s { float: %s !important; padding-bottom: %s !important; }",
+                        spacer, room.spp == "before" and "before" or "after", side, px(room.sh or 0, scale))
+                end
+                out[#out + 1] = string.format("%s::before { float: %s !important; clear: %s !important; width: %s !important; padding-bottom: %s !important; }",
+                    box, side, clear, px(room.cw or room.w, scale), px(room.h + (room.off or 0), scale))
+            end
         end
     end
-    local out = {}
     for _i, sel in ipairs(order) do
         local parts = {}
         for _j, name in ipairs({ "padding-top", "padding-left", "padding-right" }) do
-            local px = by[sel][name]
-            if px then parts[#parts + 1] = string.format("%s: %dpx !important;", name, math.max(1, round(px * scale))) end
+            local v = by[sel][name]
+            if v then parts[#parts + 1] = string.format("%s: %dpx !important;", name, math.max(1, round(v * scale))) end
         end
         out[#out + 1] = sel .. " { " .. table.concat(parts, " ") .. " }"
     end
@@ -145,20 +217,28 @@ end
 -- { xp, y, h }, y the top of its line on the screen): { { xp = <paragraph>,
 -- y0, y1, starts = <its first line is on this page> }, ... }. The first one may
 -- have begun on the page before: `starts_here(paragraph, first_word_xp)` says.
-function Rooms.blocksFromWords(words, starts_here)
+--
+-- Each also has l1 (the bottom of its first line here), lt and lb (the top and
+-- bottom of its last line here) and ends (its last line is on this page: true but
+-- for the last one, which `ends_here(paragraph)` says, when given).
+function Rooms.blocksFromWords(words, starts_here, ends_here)
     local out, last = {}, nil
     for _i, w in ipairs(words) do
         local b = Rooms.blockOf(w.xp)
         if b then
+            local bottom = w.y + (w.h or 0)
             if not (last and last.xp == b) then
-                last = { xp = b, y0 = w.y, y1 = w.y + (w.h or 0), starts = true }
+                last = { xp = b, y0 = w.y, y1 = bottom, starts = true, l1 = bottom, lt = w.y, lb = bottom, ends = true }
                 if #out == 0 and starts_here then last.starts = starts_here(b, w.xp) and true or false end
                 out[#out + 1] = last
             else
-                last.y1 = math.max(last.y1, w.y + (w.h or 0))
+                last.y1 = math.max(last.y1, bottom)
+                if w.y > last.lt then last.lt, last.lb = w.y, bottom end
+                if w.y == last.y0 then last.l1 = math.max(last.l1, bottom) end
             end
         end
     end
+    if last and ends_here then last.ends = ends_here(last.xp) and true or false end
     return out
 end
 
@@ -204,6 +284,123 @@ function Rooms.plan(rect, blocks, area)
         { x = side == "left" and area.x0 or (area.x1 - w), y = y0, w = w, h = y1 - y0 }
 end
 
+Rooms.MIN_BOX = 12     -- a box room's smallest side, in pixels
+Rooms.MIN_TEXT = 0.2   -- text narrower than this (of the column) beside a box: none, the box goes across
+
+-- The exact room a box drawn on the page makes (see the top), where the render
+-- mode floats the markers. `page` describes the page shown: { area = { x0, y0,
+-- x1, y1 }, blocks (Rooms.blocksFromWords), cl, cr (the left and right of its text
+-- column), bottom (the bottom of its last line), used (the markers other rooms
+-- size: [xp .. "::before"] = true), rooms (the other box rooms on it: { side,
+-- top, bottom (where their markers sit), x0, x1, s, b (where their markers are in
+-- the page's order, Rooms.slot) }) }. Returns the room (without an id), the box it
+-- keeps (where ink in it goes: the box drawn, cut to the text column and the page)
+-- and the area it frees (from the box's edge to the column's, from where its
+-- marker sits to the box's bottom); or nil and why ("small", "no_break", "overlap",
+-- "taken").
+--
+-- A box room is two markers: the one before its paragraph holds the box, and an
+-- earlier one, of no width, pushes it down to its top ("clear"). A marker that
+-- pushes clears every earlier one on its side, so two rooms on a side are kept in
+-- order: the one higher on the page has its markers first.
+function Rooms.slot(i, pseudo) return i * 2 + (pseudo == "after" and 1 or 0) end
+
+function Rooms.planBox(rect, page)
+    local area, blocks = page.area, page.blocks or {}
+    local t = math.max(rect.y, area.y0)
+    local b = math.min(rect.y + rect.h, page.bottom or area.y1)
+    if b - t < Rooms.MIN_BOX then return nil, "small" end
+    local others = page.rooms or {}
+    -- across, or from the nearer side of the column to the box's far edge; the
+    -- column is the holding paragraph's own (its marker is in it), else the page's
+    local side, bx, bw, why
+    local function across(P)
+        local cl = P and P.cl or page.cl or area.x0
+        local cr = P and P.cr or page.cr or area.x1
+        local cw = cr - cl
+        local x0, x1 = math.max(rect.x, cl), math.min(rect.x + rect.w, cr)
+        if cw <= 0 or x1 - x0 < Rooms.MIN_BOX then why = "small"; return false end
+        local rest_l, rest_r, least = x0 - cl, cr - x1, Rooms.MIN_TEXT * cw
+        if rest_l <= rest_r then side = rest_r < least and "full" or "left"
+        else side = rest_l < least and "full" or "right" end
+        if side == "left" then bx, bw = cl, x1 - cl
+        elseif side == "right" then bx, bw = x0, cr - x0
+        else bx, bw = cl, cw end
+        -- not over another room
+        for _i, e in ipairs(others) do
+            if e.x0 < bx + bw and e.x1 > bx and e.top < b and e.bottom > t then why = "overlap"; return false end
+        end
+        return true
+    end
+    if not across(nil) then return nil, why end
+    local used = page.used or {}
+    local function free(xp, pseudo) return Rooms.hostable(xp) and not used[xp .. "::" .. pseudo] end
+    local function floatSide(sd) return sd == "right" and "right" or "left" end
+    local function clears(sd, fs) return sd == "full" or floatSide(sd) == fs end
+    -- the markers in this order keep the other rooms where they are, and this one
+    local function inOrder(s_key, b_key, top)
+        for _i, e in ipairs(others) do
+            if e.s and e.s < b_key and clears(side, floatSide(e.side)) and e.top > top then return false end
+            if s_key and s_key < e.b and clears(e.side, floatSide(side)) and top > e.top then return false end
+        end
+        return true
+    end
+    local function made(top, xp, sp, spp, sh, off)
+        local h = b - top
+        local room = { kind = "box", side = side, x = bx, w = bw, h = h, xp = xp, sp = sp, spp = spp, sh = sh, off = off }
+        local css_top = top - (off or 0)
+        return room, { x = bx, y = top, w = bw, h = h }, { x = bx, y = css_top, w = bw, h = b - css_top }
+    end
+    local taken = false
+    -- the last paragraph starting at or above the box's top holds it (or one
+    -- before it, when its marker is taken)
+    for i = #blocks, 1, -1 do
+        local P = blocks[i]
+        if P.starts and P.y0 <= t then
+            if not free(P.xp, "before") then
+                taken = true
+            elseif not across(P) then
+                return nil, why
+            else
+                local bk = Rooms.slot(i, "before")
+                -- at its top, or in its first line: the marker starts that line, and
+                -- so does the box's effect on the text (the box is where it was drawn)
+                if t < P.l1 then
+                    if inOrder(nil, bk, P.y0) then return made(t, P.xp, nil, nil, nil, t - P.y0) end
+                else
+                    -- pushed down by a marker above it on this page: the end of the
+                    -- paragraph just before (the top of its last line), or the start of
+                    -- one before that; one pixel lower, so the line just above keeps
+                    -- its width
+                    local O = blocks[i - 1]
+                    if O and O.ends and O.lt >= area.y0 and free(O.xp, "after")
+                        and inOrder(Rooms.slot(i - 1, "after"), bk, t + 1) then
+                        return made(t, P.xp, O.xp, "after", t + 1 - O.lt, -1)
+                    end
+                    for j = i - 1, 1, -1 do
+                        local X = blocks[j]
+                        if X.starts and X.y0 >= area.y0 and free(X.xp, "before")
+                            and inOrder(Rooms.slot(j, "before"), bk, t + 1) then
+                            return made(t, P.xp, X.xp, "before", t + 1 - X.y0, -1)
+                        end
+                    end
+                    -- nothing above it on this page: from the paragraph's top
+                    if inOrder(nil, bk, P.y0) then return made(t, P.xp, nil, nil, nil, t - P.y0) end
+                end
+            end
+        end
+    end
+    -- above every paragraph starting on this page (in one that began before): from
+    -- the first one starting below it
+    for i, P in ipairs(blocks) do
+        if P.starts and P.y0 > t and free(P.xp, "before") and across(P) and inOrder(nil, Rooms.slot(i, "before"), P.y0) then
+            if b - P.y0 < Rooms.MIN_BOX then break end
+            return made(P.y0, P.xp, nil, nil, nil, 0)
+        end
+    end
+    return nil, taken and "taken" or "no_break"
+end
+
 -- A copy of a room (the same id), safe to change.
 function Rooms.copy(room)
     local c = {}
@@ -232,6 +429,14 @@ end
 function Rooms.valid(r)
     if type(r) ~= "table" or type(r.id) ~= "string" or type(r.xp) ~= "string" then return false end
     if r.kind == "band" then return type(r.h) == "number" and r.h > 0 end
+    if r.kind == "box" then
+        local function num(v) return type(v) == "number" end
+        return num(r.h) and r.h > 0 and num(r.w) and r.w > 0 and num(r.x)
+            and (r.side == "left" or r.side == "right" or r.side == "full")
+            and (r.sp == nil or (type(r.sp) == "string" and num(r.sh)))
+            and (r.spp == nil or r.spp == "before" or r.spp == "after")
+            and (r.off == nil or num(r.off)) and (r.cw == nil or (num(r.cw) and r.cw > 0))
+    end
     if r.kind == "side" then
         return type(r.w) == "number" and r.w > 0 and (r.side == "left" or r.side == "right")
             and (r.xps == nil or type(r.xps) == "table")

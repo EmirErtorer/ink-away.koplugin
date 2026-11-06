@@ -25,8 +25,12 @@ local Screen = Device.screen
 local Book = {}
 Book.__index = Book
 
+-- The book open in each reader (weakly: a closed reader goes).
+Book.by_ui = setmetatable({}, { __mode = "k" })
+
 function Book.new(ui)
     local self = setmetatable({ ui = ui, rev = 0 }, Book)
+    Book.by_ui[ui] = self
     -- the book's KOReader folder (see ink/reader/bookink.lua for where)
     local file = ui.document and ui.document.file
     local ok, where = pcall(BookInk.locate, file)
@@ -366,10 +370,34 @@ function Book:roomsShown()
     return not self:data().rooms_off
 end
 
--- The room with this id, if it is shown.
+-- The room with this id as the book lays it out now, if it is shown: a box room
+-- is made of paragraphs in a render mode that does not float (Rooms.asParagraphs).
 function Book:roomById(id)
     if not self:roomsShown() then return nil end
-    for _i, r in ipairs(self:rooms()) do if r.id == id then return r end end
+    for _i, r in ipairs(self:rooms()) do
+        if r.id == id then
+            if r.kind == "box" and not (self:floats() and self:roomsReady()) then return Rooms.asParagraphs(r) end
+            return r
+        end
+    end
+end
+
+-- Does the book's render mode float things (book and web do; legacy and flat lay
+-- floats out as plain blocks)? Box rooms are exact there.
+function Book:floats()
+    local ts = self.ui.typeset
+    local mode = ts and tonumber(ts.block_rendering_mode)
+    if mode == nil then
+        local c = self.ui.document and self.ui.document.configurable
+        mode = tonumber(c and c.block_rendering_mode)
+    end
+    return mode == nil or mode >= 2
+end
+
+-- Has the book its markers (laid out once with them, see ink/reader/rooms.lua)?
+function Book:roomsReady()
+    if self.ui.paging or not (self.has_file or self._data) then return false end
+    return self:data().rooms_ready == true
 end
 
 -- CSS pixels per screen pixel: KOReader's "Zoom (dpi)" scales the book's pixels
@@ -386,9 +414,26 @@ end
 function Book:roomsCss()
     if self.ui.paging or not (self.has_file or self._data) then return nil end
     local data = self:data()
-    if data.rooms_off or not data.rooms or #data.rooms == 0 then return nil end
-    local css = Rooms.css(data.rooms, self:cssScale())
+    local ready = data.rooms_ready == true
+    local shown = not data.rooms_off and data.rooms and #data.rooms > 0
+    if not (shown or ready) then return nil end
+    -- (a book with markers keeps them, its rooms hidden or gone: taking them out
+    -- would need the book loaded again)
+    local list = shown and data.rooms or {}
+    if self._hidden_room and shown then
+        list = {}
+        for _i, r in ipairs(data.rooms or {}) do if r.id ~= self._hidden_room then list[#list + 1] = r end end
+    end
+    local css = Rooms.css(list, self:cssScale(), { ready = ready, floats = self:floats() })
     return css ~= "" and css or nil
+end
+
+-- Lay the book out without room `id` (nil: with all of them again), while the
+-- Make room tool changes it: its box and what is in it stay where they are.
+function Book:hideRoom(id)
+    if self._hidden_room == id then return end
+    self._hidden_room = id
+    self:relayout()
 end
 
 -- Can room be made here? In a reflowing book showing one page at a time (as
@@ -438,6 +483,7 @@ function Book:pageBlocks()
     local document = self.ui.document
     local area = self:textArea()
     local words = {}
+    local beyond   -- (the first word after the page's: in which paragraph it is)
     pcall(function()
         local start = document:getPageXPointer(page)
         local stop = page < document:getPageCount() and document:getPageXPointer(page + 1) or nil
@@ -448,9 +494,9 @@ function Book:pageBlocks()
         local lh
         for _n = 1, 4000 do
             if not xp then break end
-            if stop and (document:compareXPointers(xp, stop) or 0) <= 0 then break end
+            if stop and (document:compareXPointers(xp, stop) or 0) <= 0 then beyond = xp; break end
             local y = document:getScreenPositionFromXPointer(xp)
-            if y and y > area.y1 then break end
+            if y and y > area.y1 then beyond = xp; break end
             if y and y >= area.y0 - 2 then
                 if not lh then
                     local bok, boxes = pcall(document.getScreenBoxesFromPositions, document, xp,
@@ -467,15 +513,250 @@ function Book:pageBlocks()
     local list = Rooms.blocksFromWords(words, function(elem, first)
         -- the page's first paragraph began here if its first word is the page's first
         return self:textStartOf(elem) == first
+    end, function(elem)
+        return not beyond or Rooms.blockOf(beyond) ~= elem
     end)
-    self._blocks = { key = key, list = list }
+    self._blocks = { key = key, list = list, first = words[1] and words[1].xp, last = words[#words] and words[#words].xp }
     return list
+end
+
+-- The lines of text on the page shown, as the reader lays them out: { { x, y, w,
+-- h }, ... } (a line split by something beside it can be two). Found once per page
+-- and layout.
+function Book:pageLines()
+    self:pageBlocks()
+    local c = self._blocks
+    if not c then return {} end
+    if c.segs then return c.segs end
+    c.segs = {}
+    if c.first and c.last then
+        local document = self.ui.document
+        pcall(function()
+            local stop = document:getNextVisibleWordEnd(c.last) or c.last
+            c.segs = document:getScreenBoxesFromPositions(c.first, stop, true) or {}
+        end)
+    end
+    return c.segs
+end
+
+-- The lines beside box `box` (the room's side of them): where each starts, for a
+-- box at the left, or ends, for one at the right.
+local function besideEdges(lines, side, box)
+    local out = {}
+    for _i, b in ipairs(lines) do
+        if b.y < box.y + box.h and b.y + b.h > box.y then
+            out[#out + 1] = math.floor((side == "left" and b.x or (b.x + b.w)) + 0.5)
+        end
+    end
+    return out
+end
+
+-- Where most of `edges` are, a pixel either way (glyphs end a little apart), when
+-- at least two and most of them are there (ragged text ends anywhere).
+local function mostAt(edges)
+    local count = {}
+    for _i, e in ipairs(edges) do count[e] = (count[e] or 0) + 1 end
+    local best, bn
+    for e in pairs(count) do
+        local n = (count[e - 1] or 0) + count[e] + (count[e + 1] or 0)
+        if not bn or n > bn or (n == bn and e < best) then best, bn = e, n end
+    end
+    return (bn or 0) >= math.max(2, math.ceil(#edges * 0.6)) and best or nil
+end
+
+-- Where the side of a box room's float is, from the lines beside its box `box`:
+-- they start just after a box at the left, and end just before one at the right
+-- (most of them: a paragraph's last line ends short, a first line may be
+-- indented). nil when no line says.
+function Book:floatEdge(r, box)
+    if r.side ~= "left" and r.side ~= "right" then return nil end
+    return mostAt(besideEdges(self:pageLines(), r.side, box))
+end
+
+-- Box room `r` laid out now: does the text keep out of its box, and come up to it?
+-- A paragraph's own column (side margins, a hanging indent that takes its first
+-- line further out) is only known once laid out: the float is widened where text
+-- still reaches into the box, or narrowed where most lines stop short of it. Its
+-- box stays the box drawn. Returns whether it changed (the book is then to be laid
+-- out again).
+function Book:calibrateBox(r)
+    if r.side ~= "left" and r.side ~= "right" then return false end
+    local box = self:boxRect(r, true)
+    if not box then return false end
+    local edges = besideEdges(self:pageLines(), r.side, box)
+    if #edges == 0 then return false end
+    local cw = r.cw or r.w
+    local d = r.side == "left" and (box.x + box.w) or box.x
+    local grow = 0
+    if r.side == "left" then
+        local m = math.huge
+        for _i, e in ipairs(edges) do m = math.min(m, e) end
+        if m < d - 1 then grow = d - m
+        else
+            local most = mostAt(edges)
+            if most and most > d + 1 then grow = d - most end
+        end
+    else
+        local m = -math.huge
+        for _i, e in ipairs(edges) do m = math.max(m, e) end
+        if m > d + 1 then grow = m - d
+        else
+            local most = mostAt(edges)
+            if most and most < d - 1 then grow = most - d end
+        end
+    end
+    if grow == 0 or cw + grow < Rooms.MIN_BOX then return false end
+    r.cw = cw + grow
+    return true
+end
+
+-- The page shown, as Rooms.planBox takes it: its text area, paragraphs, the left
+-- and right of its text column (where most lines start, where the longest end),
+-- the bottom of its last line, and the markers rooms use (but room `except`'s).
+function Book:pageModel(except)
+    local area = self:textArea()
+    local blocks = self:pageBlocks()
+    local c = self._blocks or {}
+    local model = { area = area, blocks = blocks, cl = area.x0, cr = area.x1, bottom = area.y1, used = {} }
+    local document = self.ui.document
+    if c.first and c.last then
+        pcall(function()
+            local segs = self:pageLines()
+            local lefts, best, right, bottom = {}, nil, nil, nil
+            for _i, b in ipairs(segs) do
+                local l = math.floor(b.x + 0.5)
+                lefts[l] = (lefts[l] or 0) + 1
+                if not best or lefts[l] > lefts[best] or (lefts[l] == lefts[best] and l < best) then best = l end
+                right = math.max(right or 0, b.x + b.w)
+                bottom = math.max(bottom or 0, b.y + b.h)
+            end
+            if best then model.cl = math.max(area.x0, best) end
+            if right then model.cr = math.min(area.x1, math.floor(right + 0.5)) end
+            if bottom then model.bottom = math.min(area.y1, bottom) end
+            -- each paragraph's own column (a box room's marker sits in it: a
+            -- paragraph in a block with side margins is narrower than the page's)
+            for _i, bl in ipairs(blocks) do
+                local ls, n, lb, rmax = {}, 0, nil, nil
+                for _j, b in ipairs(segs) do
+                    if b.y >= bl.y0 - 1 and b.y < bl.y1 - 1 then
+                        n = n + 1
+                        if b.y > bl.y0 + 1 or not bl.starts then   -- (a first line may be indented)
+                            local l = math.floor(b.x + 0.5)
+                            ls[l] = (ls[l] or 0) + 1
+                            if not lb or ls[l] > ls[lb] or (ls[l] == ls[lb] and l < lb) then lb = l end
+                        end
+                        rmax = math.max(rmax or 0, b.x + b.w)
+                    end
+                end
+                if n >= 2 and lb then
+                    bl.cl = math.max(area.x0, lb)
+                    bl.cr = math.min(area.x1, math.floor(rmax + 0.5))
+                end
+            end
+        end)
+    end
+    -- the other box rooms: their markers, and where those are in the page's order
+    -- (before it: -1; after it: past every one on it)
+    local index = {}
+    for i, b in ipairs(blocks) do index[b.xp] = i end
+    local function key(xp, pseudo)
+        local i = index[xp]
+        if i then return Rooms.slot(i, pseudo) end
+        local ok, below = pcall(function()
+            return document:compareXPointers(c.last or c.first, self:textStartOf(xp) or xp) == 1
+        end)
+        return (ok and below) and math.huge or -1
+    end
+    model.rooms = {}
+    for _i, r in ipairs(self:rooms()) do
+        if r.kind == "box" and r.id ~= except then
+            model.used[r.xp .. "::before"] = true
+            if r.sp then model.used[r.sp .. "::" .. (r.spp or "after")] = true end
+            local box = self:roomBox(r.id)
+            if box then
+                local top = box.y - (r.off or 0)
+                model.rooms[#model.rooms + 1] = { side = r.side, top = top, bottom = box.y + box.h,
+                    x0 = box.x, x1 = box.x + box.w, b = key(r.xp, "before"),
+                    s = r.sp and key(r.sp, r.spp or "after") or nil }
+            end
+        end
+    end
+    return model
+end
+
+-- What a box drawn on the page makes (Rooms.planBox where the render mode floats,
+-- else a room of whole paragraphs, Rooms.plan), with `except` the room being
+-- changed. Returns the room, the box it keeps, the area it frees; or nil and why.
+function Book:planRoom(rect, except)
+    if self:floats() then return Rooms.planBox(rect, self:pageModel(except)) end
+    local room, box = Rooms.plan(rect, self:pageBlocks(), self:textArea())
+    return room, box, box
+end
+
+-- Where a box room's marker is pushed down from: the last word of the paragraph
+-- before its own (the top of that line), or its own paragraph's first word.
+function Book:boxAnchor(r)
+    -- (with nothing pushing it down, the marker is at the top of its paragraph:
+    -- the paragraph's own top, which stays where it is when a box across the
+    -- page moves its first line below it)
+    if not r.sp then return r.xp, 0 end
+    -- (pushed from the start of a paragraph above: that paragraph's top)
+    if r.spp == "before" then return r.sp, r.sh or 0 end
+    local ts = self:textStartOf(r.xp)
+    if not ts then return nil end
+    local document = self.ui.document
+    local ok, prev = pcall(document.getPrevVisibleWordStart, document, ts)
+    if not (ok and prev) then return nil end
+    return prev, r.sh or 0
+end
+
+-- The page a box room's top is on.
+function Book:boxPage(r)
+    local anchor, push = self:boxAnchor(r)
+    if not anchor then return nil end
+    local document = self.ui.document
+    local ok, p = pcall(function()
+        local top = document:getPosFromXPointer(anchor) + push + (r.off or 0)
+        local page = document:getPageFromXPointer(anchor)
+        local n = document:getPageCount()
+        for _i = 1, 4 do
+            if page >= n then break end
+            local nxt = document:getPosFromXPointer(document:getPageXPointer(page + 1))
+            if not nxt or nxt > top then break end
+            page = page + 1
+        end
+        return page
+    end)
+    return ok and p or nil
+end
+
+-- A box room's box on the screen, wherever its page is: { x, y, w, h }.
+-- On the page shown, a side box goes where its float is (the lines beside it
+-- say: the column can move with the font), unless `as_kept`.
+function Book:boxRect(r, as_kept)
+    local anchor, push = self:boxAnchor(r)
+    if not anchor then return nil end
+    local document = self.ui.document
+    local ok, y = pcall(document.getScreenPositionFromXPointer, document, anchor)
+    if not (ok and y) then return nil end
+    local box = { x = r.x, y = y + push + (r.off or 0), w = r.w, h = r.h }
+    if not as_kept and r.id ~= self._hidden_room and (r.side == "left" or r.side == "right") then
+        local area = self:textArea()
+        if box.y >= area.y0 - 1 and box.y < area.y1 then
+            -- (the float is cw wide; the box keeps its far edge, w from the column's)
+            local e = self:floatEdge(r, box)
+            local cw = r.cw or r.w
+            if e then box.x = r.side == "left" and (e - cw) or (e + cw - r.w) end
+        end
+    end
+    return box
 end
 
 -- The page a room is on (its first paragraph's), or nil when it is hidden.
 function Book:roomPage(id)
     local r = self:roomById(id)
     if not r then return nil end
+    if r.kind == "box" then return self:boxPage(r) end
     local ts = self:textStartOf(r.xp)
     if not ts then return nil end
     local ok, p = pcall(self.ui.document.getPageFromXPointer, self.ui.document, ts)
@@ -486,6 +767,7 @@ end
 function Book:roomX(id)
     local r = self:roomById(id)
     if not r then return nil end
+    if r.kind == "box" then return r.x end
     local a = self:textArea()
     if r.kind == "side" and r.side == "right" then return a.x1 - r.w end
     return a.x0
@@ -496,6 +778,11 @@ end
 function Book:roomBox(id)
     local r = self:roomById(id)
     if not r then return nil end
+    if r.kind == "box" then
+        local cur = self:currentPage()
+        if not cur or self:boxPage(r) ~= cur then return nil end
+        return self:boxRect(r)
+    end
     local a = self:textArea()
     if r.kind == "band" then
         local ts = self:textStartOf(r.xp)
@@ -567,6 +854,23 @@ function Book:relayout()
             rolling:handlePartialRerendering()
         end)
     end
+    -- (markers that came with the rooms, from the cloud: the book loaded again)
+    if self:roomsReady() then
+        local sok, stale = pcall(document.isBuiltDomStale, document)
+        if sok and stale then UIManager:nextTick(function() self:checkMarkers() end) end
+    end
+end
+
+-- A book whose rooms need markers it is not laid out with (KOReader builds a
+-- book's elements when it loads it) is loaded again with them.
+function Book:checkMarkers()
+    if not self:roomsReady() or self._reloading then return end
+    local document = self.ui.document
+    local ok, stale = pcall(document.isBuiltDomStale, document)
+    if ok and stale then
+        self._reloading = true
+        self:reloadForRooms()
+    end
 end
 
 -- Keep `rooms` (and whether they are hidden) and lay the book out with them.
@@ -621,6 +925,58 @@ local function took(r, before, after, area)
     return after.right <= area.x1 - r.w * 0.9 + 2
 end
 
+-- Did box room `r` take, made on page `page` whose top was `top`: the page still
+-- begins where it did (nothing before it moved), the room is on it, and no line of
+-- text crosses its box?
+function Book:boxTook(r, page, top)
+    local document = self.ui.document
+    if top then
+        local ok, now = pcall(document.getPageXPointer, document, page)
+        if not ok or now ~= top then logger.dbg("Ink Away: room: the page moved", top, now); return false end
+    end
+    if self:currentPage() ~= page then logger.dbg("Ink Away: room: on another page", page, self:currentPage()); return false end
+    local box = self:roomBox(r.id)
+    if not box then logger.dbg("Ink Away: room: not on the page", self:roomPage(r.id)); return false end
+    self:pageBlocks()
+    local c = self._blocks or {}
+    if not (c.first and c.last) then return true end
+    local clear = true
+    pcall(function()
+        for _i, b in ipairs(self:pageLines()) do
+            -- (a line's measured end varies by a pixel or two with the glyphs)
+            if b.x < box.x + box.w - 3 and b.x + b.w > box.x + 3 and b.y < box.y + box.h - 1 and b.y + b.h > box.y + 1 then
+                logger.dbg("Ink Away: room: text across it", b.x, b.y, b.w, b.h)
+                clear = false
+            end
+        end
+    end)
+    return clear
+end
+
+-- Lay the book out again with its markers, the first time it has a box room: the
+-- book is loaded again (KOReader builds its elements once, when it loads it), with
+-- a notice meanwhile, and `after(book)` is called on the book loaded again.
+function Book:reloadForRooms(after)
+    local ui = self.ui
+    local document = ui.document
+    local _ = require("ink/l10n")
+    local InfoMessage = require("ui/widget/infomessage")
+    local note = InfoMessage:new{ text = _("Preparing this book for rooms…"), dismissable = false }
+    UIManager:show(note)
+    UIManager:forceRePaint()
+    pcall(document.invalidateCacheFile, document)
+    UIManager:nextTick(function()
+        ui:reloadDocument(nil, true, function(new_ui)
+            UIManager:close(note)
+            local book = new_ui and Book.by_ui[new_ui]
+            if book and after then
+                -- (once the reader is up and has drawn its page)
+                UIManager:scheduleIn(0.2, function() after(book) end)
+            end
+        end)
+    end)
+end
+
 -- Add room `r` (from Rooms.plan), or change the room with its id, and lay the
 -- book out with it (the rooms shown, if they were hidden). A band before a
 -- paragraph that already has one takes its place. A room on a paragraph it was
@@ -645,7 +1001,29 @@ function Book:putRoom(r)
         end
     end
     if not placed then rooms[#rooms + 1] = r end
-    local old, old_off = self:data().rooms, self:data().rooms_off
+    local data = self:data()
+    local old, old_off = data.rooms, data.rooms_off
+    if r.kind == "box" then
+        if data.read_only then return nil, "read_only" end
+        -- the book's first exact room: kept now, laid out when the book is loaded
+        -- again with its markers (Book:reloadForRooms)
+        if not data.rooms_ready then
+            data.rooms, data.rooms_off, data.rooms_ready = rooms, nil, true
+            self:save()
+            return r, "reload"
+        end
+        local page = self:currentPage()
+        local document = self.ui.document
+        local tok, top = pcall(document.getPageXPointer, document, page)
+        self:setRooms(rooms, nil)
+        if self:calibrateBox(r) then self:setRooms(rooms, nil) end
+        if not self:boxTook(r, page, tok and top) then
+            logger.warn("Ink Away: the room did not take in this book:", r.xp)
+            self:setRooms(old, old_off)
+            return nil, "failed"
+        end
+        return r
+    end
     if not self:setRooms(rooms, nil) then return nil, "read_only" end
     if check and not took(r, before, self:roomProbe(r), area) then
         logger.warn("Ink Away: the room did not take in this book:", r.xp)

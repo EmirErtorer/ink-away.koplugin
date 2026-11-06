@@ -32,8 +32,8 @@ An item is { op = <op in anchor space>, a = <anchor> }:
   rolling, pinned: a = { pg, fx, fy }              page number pg of the book, and the
                   top-left as a fraction of the screen: it does not follow the text at all,
                   it stays on that page number at that spot whatever the layout does
-  rolling, room:  a = { room, rx, ry }             in a band made across the page (see
-                  ink/reader/rooms.lua): from the band's top-left, so it stays in the band
+  rolling, room:  a = { room, rx, ry }             in a box room or a band made across the
+                  page (see ink/reader/rooms.lua): from its top-left, so it stays in it
                   wherever the text takes it; in side space: the word anchor above, with
                   rx (from the room's left edge) in place of dx, so it stays in the room
   paging:         a = { page, x, y }               page units
@@ -81,7 +81,7 @@ function Place.anchor(op, doc)
     -- in room made in the text: kept with the room
     local room, rbox
     if doc.roomAt then room, rbox = doc:roomAt(x0, y0, x1, y1) end
-    if room and room.kind == "band" then
+    if room and (room.kind == "band" or room.kind == "box") then
         return { op = Place.moved(op, -x0, -y0), a = { room = room.id, rx = x0 - rbox.x, ry = y0 - rbox.y } }
     end
     local cx, cy = floor((x0 + x1) / 2), floor((y0 + y1) / 2)

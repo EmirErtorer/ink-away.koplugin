@@ -107,6 +107,22 @@ function InkAway:init()
                 end
                 return r
             end
+            -- the render mode decides how a box room is made (exact where the mode
+            -- floats things, of whole paragraphs where it does not): its rules again
+            local orig_mode = Typeset.onSetBlockRenderingMode
+            if orig_mode then
+                Typeset.onSetBlockRenderingMode = function(typeset, ...)
+                    local r = orig_mode(typeset, ...)
+                    local plugin = typeset.ui and InkAway.by_ui[typeset.ui]
+                    local book = plugin and plugin.book
+                    if book and #book:rooms() > 0 then
+                        UIManager:nextTick(function()
+                            if plugin.book == book then book:relayout() end
+                        end)
+                    end
+                    return r
+                end
+            end
         end)
     end
     -- in the reader: the book's ink, painted over its pages (a book without ink
@@ -373,6 +389,16 @@ function InkAway:syncBook()
         if fetched then pcall(book.reload, book) end
         pcall(SyncManager.bookOpened, md5, book.sidecar, ui.document.file)
     end)
+end
+
+-- The book is up: one whose rooms need markers it was not laid out with (they
+-- came with the cloud sync, or its saved layout is older) is loaded again with them.
+function InkAway:onReaderReady()
+    if self.book and self.book.checkMarkers then
+        UIManager:scheduleIn(0.5, function()
+            if self.book then pcall(self.book.checkMarkers, self.book) end
+        end)
+    end
 end
 
 -- The book is closing: leave nothing of ours open over it.

@@ -3,9 +3,10 @@ A book's ink, kept as inkaway.lua in the book's own KOReader folder: the same
 ".sdr" folder as the reader's settings for the book, wherever the "Book metadata
 location" setting puts it (next to the book, in KOReader's docsettings folder,
 or by the book's hash). { version, items = { { op, a }, ... }, notes, rooms,
-rooms_off } (see ink/reader/place.lua for the items; notes is the path of the
+rooms_off, rooms_ready } (see ink/reader/place.lua for the items; notes is the path of the
 book's notebook, see ink/reader/booknotes.lua; rooms the space made in its text and
-rooms_off whether it is hidden, see ink/reader/rooms.lua).
+rooms_off whether it is hidden, rooms_ready whether the book is laid out with the
+markers its exact rooms need, see ink/reader/rooms.lua).
 
 The folder is KOReader's. Ink Away only adds its own file to it and never
 touches the reader's files, so a book that already has a folder keeps
@@ -134,7 +135,7 @@ end
 local function encode(data)
     local rooms = data.rooms and #data.rooms > 0 and data.rooms or nil
     local head = Project.encode({ version = BookInk.VERSION, notes = data.notes, rooms = rooms,
-        rooms_off = rooms and data.rooms_off or nil })   -- "return {...,}"
+        rooms_off = rooms and data.rooms_off or nil, rooms_ready = data.rooms_ready or nil })   -- "return {...,}"
     local parts = {}
     for i, item in ipairs(data.items) do parts[i] = itemText(item) end
     return head:sub(1, -2) .. '["items"]={' .. table.concat(parts, ",") .. "},}"
@@ -173,12 +174,14 @@ function BookInk.merge(first_path, second_path)
         end
     end
     return encode({ items = items, notes = b.notes or a.notes, rooms = Rooms.merge(b.rooms, a.rooms),
-        rooms_off = b.rooms_off })
+        rooms_off = b.rooms_off, rooms_ready = (a.rooms_ready or b.rooms_ready) or nil })
 end
 
--- Is there anything to keep: ink, book notes or room made in the text?
+-- Is there anything to keep: ink, book notes, room made in the text, or the
+-- markers the book was laid out with for rooms (it keeps them once it had one:
+-- see ink/reader/rooms.lua)?
 function BookInk.empty(data)
-    return #data.items == 0 and not data.notes and not (data.rooms and #data.rooms > 0)
+    return #data.items == 0 and not data.notes and not (data.rooms and #data.rooms > 0) and not data.rooms_ready
 end
 
 -- Keep it. One with no ink, no book notes and no room removes the files, so such
@@ -275,6 +278,7 @@ local function merge(into, from)
         if not seen[Project.encode(item)] then into.items[#into.items + 1] = item end
     end
     if from.rooms then into.rooms = Rooms.merge(into.rooms, from.rooms) end
+    if from.rooms_ready then into.rooms_ready = true end
     return into
 end
 

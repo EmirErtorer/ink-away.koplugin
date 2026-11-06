@@ -21,7 +21,6 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local _ = require("ink/l10n")
 local Canvas = require("ink/canvas")
-local Rooms = require("ink/reader/rooms")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 
 local Screen = Device.screen
@@ -57,17 +56,33 @@ function RoomsUI:reloadAfterRooms(page)
 end
 
 -- Change the book's rooms with `fn(book)`, which returns the room to show (or
--- nil and why it could not), then show its page laid out again.
-function RoomsUI:changeRooms(fn)
+-- nil and why it could not), then show its page laid out again. `keep(room)`
+-- puts back what goes into the room (Make room for a selection), before the page
+-- is saved. The book's first exact room loads the book again (Book:reloadForRooms):
+-- the annotation mode closes, keeping everything, and opens again after it.
+function RoomsUI:changeRooms(fn, keep)
     self:settleForRooms()
     local book = self.book
+    if book._hidden_room then book._hidden_room = nil end
     local ok, room, why = pcall(fn, book)
     if not ok then
         logger.warn("Ink Away: could not change the rooms:", room)
         room, why = nil, "failed"
     end
+    if why == "reload" and room then
+        if keep then keep(room) end
+        self:saveDocument()
+        local page, id = book:currentPage(), room.id
+        book:reloadForRooms(function(again)
+            again:annotate()
+            local view = again._view
+            if view and view.afterRoomsReload then view:afterRoomsReload(id, page) end
+        end)
+        return room, why
+    end
     local page = room and room.id and book:roomPage(room.id) or nil
     self:reloadAfterRooms(page)
+    if keep then keep(room) end
     if why == "failed" then
         self:tell(_("This book's layout could not make room there. Try a box at another paragraph."))
     elseif why == "read_only" then
@@ -76,6 +91,28 @@ function RoomsUI:changeRooms(fn)
         self:showNotice(_("Items pinned to later pages may now sit over other text."))
     end
     return room, why
+end
+
+-- After the book was loaded again for its first exact room: is it there, with no
+-- text across it? If not, it goes (what was put in it stays and follows the text).
+function RoomsUI:afterRoomsReload(id, page)
+    local book = self.book
+    if page and book:currentPage() ~= page then book:gotoPage(page) end
+    local room
+    for _i, r in ipairs(book:rooms()) do if r.id == id then room = r end end
+    -- (its column measured now that it is laid out)
+    if room and book:calibrateBox(room) then book:setRooms(book:rooms(), nil) end
+    if room and not book:boxTook(room, book:currentPage(), nil) then
+        logger.warn("Ink Away: the room did not take in this book:", room.xp)
+        book:removeRoom(id, "follow")
+        room = nil
+    end
+    self:reloadAfterRooms()
+    if not room then
+        self:tell(_("This book's layout could not make room there. Try a box at another paragraph."))
+    elseif book:pinnedFrom(book:currentPage()) then
+        self:showNotice(_("Items pinned to later pages may now sit over other text."))
+    end
 end
 
 -- Open the Make room tool (on `room`, to change it).
@@ -200,14 +237,13 @@ function RoomsUI:makeRoomForSelection()
     local b = sel and sel.bbox
     if not (b and self:canMakeRoom()) then return end
     local book = self.book
-    local pad = S(12)
+    -- (a hair of space, so the text does not touch it)
+    local pad = S(4)
     local rect = { x = math.floor(b.x0) - pad, y = math.floor(b.y0) - pad,
                    w = math.ceil(b.x1 - b.x0) + 2 * pad, h = math.ceil(b.y1 - b.y0) + 2 * pad }
-    local plan, pbox = Rooms.plan(rect, book:pageBlocks(), book:textArea())
+    local plan, pbox = book:planRoom(rect)
     if not plan then
-        self:tell(pbox == "no_break"
-            and _("No paragraph starts on this page, so there is nowhere to put a band.")
-            or _("There is no text here to move."))
+        self:tell(RoomsUI.whyNot(pbox))
         return
     end
     -- what is selected, lifted off the page while the text moves
@@ -215,38 +251,47 @@ function RoomsUI:makeRoomForSelection()
     for _i, op in ipairs(self:selectionOps()) do copies[#copies + 1] = Canvas.cloneOp(nil, op) end
     self:closeSelectionMenu()
     self:selDelete()
-    local room
-    self:changeRooms(function(bk)
-        local r, why = bk:addRoom(plan)
-        room = r
-        return r, why
-    end)
-    local dx, dy = 0, 0
-    local box = room and book:roomBox(room.id)
-    if box then
-        local w = b.x1 - b.x0
-        if plan.kind == "band" then
-            dy = (box.y + pad) - b.y0
-        else
-            local tx = plan.side == "right" and (box.x + pad) or (box.x + box.w - pad - w)
-            dx = math.max(box.x, tx) - b.x0
-            dy = (box.y + (b.y0 - pbox.y)) - b.y0
-        end
-    end
-    -- back on the page: in the room, or where it was if no room could be made
-    -- (the layout was put back then)
     local idxs = {}
-    for _i, c in ipairs(copies) do
-        if dx ~= 0 or dy ~= 0 then Canvas.translateOp(c, dx, dy) end
-        local _op, at = self.canvas:placeOp(c)
-        idxs[#idxs + 1] = at
+    -- back on the page: in the room (where it was, unless the room had to start
+    -- lower), or where it was if no room could be made (the layout was put back)
+    local function keep(room)
+        local dx, dy = 0, 0
+        local box = room and book:roomBox(room.id)
+        if box and plan.kind == "box" then
+            dy = box.y - rect.y   -- (nothing, unless the room starts lower)
+        elseif box then
+            local w = b.x1 - b.x0
+            if plan.kind == "band" then
+                dy = (box.y + pad) - b.y0
+            else
+                local tx = plan.side == "right" and (box.x + pad) or (box.x + box.w - pad - w)
+                dx = math.max(box.x, tx) - b.x0
+                dy = (box.y + (b.y0 - pbox.y)) - b.y0
+            end
+        end
+        for _i, c in ipairs(copies) do
+            if dx ~= 0 or dy ~= 0 then Canvas.translateOp(c, dx, dy) end
+            local _op, at = self.canvas:placeOp(c)
+            idxs[#idxs + 1] = at
+        end
+        self:markDirty()
     end
-    self:markDirty()
+    local _room, why = self:changeRooms(function(bk) return bk:addRoom(plan) end, keep)
+    if why == "reload" then return end
     self:selectOps(idxs, "lasso")
     self:composeCanvas()
     self:renderView()
     UIManager:setDirty(self, "ui")
     if self.selection then self:openSelectionMenu() end
+end
+
+-- What to say when a box makes no room (Rooms.planBox, Rooms.plan say why).
+function RoomsUI.whyNot(why)
+    if why == "small" then return _("Draw a bigger box.") end
+    if why == "no_break" then return _("No paragraph starts on this page below the box's top, so the room has nowhere to start.") end
+    if why == "overlap" then return _("Rooms can't overlap. Draw this one beside the other room or away from it.") end
+    if why == "taken" then return _("This paragraph already holds a room. Draw this one where another paragraph begins, or change that room.") end
+    return _("There is no text here to move.")
 end
 
 function RoomsUI.into(Class)

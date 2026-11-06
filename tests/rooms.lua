@@ -208,10 +208,105 @@ do
     for _i, r in ipairs(merged.rooms or {}) do ids[#ids + 1] = r.id end
     table.sort(ids)
     ok(table.concat(ids, ",") == "r2,r3", "file: merged rooms, each once")
+    -- a book laid out with markers keeps them, its rooms gone
+    BookInk.save(dir, { version = 1, items = {}, rooms_ready = true })
+    ok(BookInk.exists(dir) and BookInk.load(dir).rooms_ready == true, "file: the markers are kept with no room left")
+    BookInk.save(other, { version = 1, items = {}, rooms = { { id = "r3", kind = "band", xp = "/c", h = 50 } } })
+    merged = assert(load(BookInk.merge(BookInk.path(other), BookInk.path(dir))))()
+    ok(merged.rooms_ready == true, "file: merged, the markers kept if either had them")
     -- no rooms, no ink, no notes: no file
     BookInk.save(dir, { version = 1, items = {} })
     ok(not BookInk.exists(dir), "file: nothing left, no file")
     os.execute("rm -rf '" .. dir .. "' '" .. other .. "'")
+end
+
+-- ---- exact rooms: the planner (Rooms.planBox) -------------------------------------------
+do
+    local area = { x0 = 30, y0 = 45, x1 = 2114, y1 = 1640 }
+    local P0 = "/body/DocFragment[11]/body/p[30]"
+    local P1 = "/body/DocFragment[11]/body/p[31]"
+    local P2 = "/body/DocFragment[11]/body/p[32]"
+    -- lines of 92 px: p[30] began on the page before and ends at 229; p[31] runs
+    -- 321..1517; p[32] starts at 1517
+    local blocks = {
+        { xp = P0, y0 = 45, y1 = 321, starts = false, l1 = 137, lt = 229, lb = 321, ends = true },
+        { xp = P1, y0 = 321, y1 = 1517, starts = true, l1 = 413, lt = 1425, lb = 1517, ends = true },
+        { xp = P2, y0 = 1517, y1 = 1609, starts = true, l1 = 1609, lt = 1517, lb = 1609, ends = false },
+    }
+    local page = { area = area, blocks = blocks, cl = 30, cr = 2114, bottom = 1609 }
+    -- a box at the right, inside a line of p[31]: pushed down from p[30]'s last line
+    local r, box, free = Rooms.planBox({ x = 1694, y = 535, w = 420, h = 300 }, page)
+    ok(r and r.kind == "box" and r.side == "right" and r.xp == P1 and r.sp == P0 and r.spp == "after",
+        "box: held by its paragraph's marker, pushed by the one before")
+    ok(r and r.sh == 535 + 1 - 229 and r.off == -1, "box: pushed to one pixel under its top (the line above keeps its width)")
+    ok(box and box.x == 1694 and box.y == 535 and box.w == 420 and box.h == 300, "box: the box drawn, exactly")
+    ok(free and free.y == 536 and free.h == 299, "box: its marker from one pixel lower, to the same bottom")
+    -- at the left, from the edge to the box's far side
+    r, box = Rooms.planBox({ x = 60, y = 700, w = 300, h = 200 }, page)
+    ok(r and r.side == "left" and box.x == 30 and box.w == 330, "box: at the left, from the column's edge")
+    -- wide, or with too little text beside: across
+    r = Rooms.planBox({ x = 300, y = 700, w = 1500, h = 200 }, page)
+    ok(r and r.side == "full" and r.w == 2084, "box: wide, across the column")
+    -- in a paragraph's first line: its marker at the line's top, the box as drawn
+    r, box, free = Rooms.planBox({ x = 1694, y = 340, w = 420, h = 100 }, page)
+    ok(r and r.sp == nil and r.off == 19 and box.y == 340 and free.y == 321, "box: in a first line, from its top")
+    -- at a paragraph's top exactly
+    r = Rooms.planBox({ x = 1694, y = 321, w = 420, h = 100 }, page)
+    ok(r and r.sp == nil and r.off == 0, "box: at a paragraph's top, nothing pushes it")
+    -- in a paragraph from the page before: from the next one starting on the page
+    r, box = Rooms.planBox({ x = 1694, y = 100, w = 420, h = 400 }, page)
+    ok(r and r.xp == P1 and box.y == 321 and box.h == 179, "box: above every start, from the next paragraph's")
+    -- cut to the page's last line and the column
+    r, box = Rooms.planBox({ x = 1694, y = 1400, w = 600, h = 600 }, page)
+    ok(box and box.y + box.h == 1609 and box.x + box.w == 2114, "box: cut to the page and the column")
+    ok(Rooms.planBox({ x = 1694, y = 700, w = 5, h = 200 }, page) == nil, "box: too thin, none")
+    -- another room: its paragraph is taken, and boxes do not overlap
+    local used = { [P1 .. "::before"] = true, [P0 .. "::after"] = true }
+    local others = { { side = "right", top = 536, bottom = 835, x0 = 1694, x1 = 2114, b = Rooms.slot(2, "before"), s = Rooms.slot(1, "after") } }
+    local busy = { area = area, blocks = blocks, cl = 30, cr = 2114, bottom = 1609, used = used, rooms = others }
+    local none, why = Rooms.planBox({ x = 30, y = 1000, w = 300, h = 100 }, busy)
+    ok(none == nil and why == "taken", "box: one room to a paragraph")
+    none, why = Rooms.planBox({ x = 1600, y = 600, w = 500, h = 100 }, busy)
+    ok(none == nil and why == "overlap", "box: not over another room")
+    r = Rooms.planBox({ x = 30, y = 1517, w = 300, h = 80 }, busy)
+    ok(r and r.xp == P2 and r.side == "left", "box: the next paragraph's start is free")
+    -- markers in order: a right room under another right room cannot be pushed by a
+    -- marker before the higher one's box
+    local blocks4 = {
+        { xp = P0, y0 = 45, y1 = 321, starts = true, l1 = 137, lt = 229, lb = 321, ends = true },
+        { xp = P1, y0 = 321, y1 = 1517, starts = true, l1 = 413, lt = 1425, lb = 1517, ends = true },
+    }
+    local high = { { side = "right", top = 1000, bottom = 1100, x0 = 1694, x1 = 2114, b = Rooms.slot(2, "before"), s = Rooms.slot(1, "after") } }
+    local used4 = { [P1 .. "::before"] = true, [P0 .. "::after"] = true }
+    r, why = Rooms.planBox({ x = 1694, y = 160, w = 420, h = 60 },
+        { area = area, blocks = blocks4, cl = 30, cr = 2114, bottom = 1609, used = used4, rooms = high })
+    ok(r and r.xp == P0 and r.sp == nil, "box: higher on the page, its markers come first")
+end
+
+-- ---- exact rooms: the style rules ----------------------------------------------------------
+do
+    local P = "/body/DocFragment[9]/body/p[10]"
+    local O = "/body/DocFragment[9]/body/p[9]"
+    local room = { id = "a", kind = "box", side = "right", x = 1694, w = 420, h = 300, xp = P, sp = O, spp = "after", sh = 307, off = -1 }
+    local css = Rooms.css({ room }, 1, { ready = true, floats = true })
+    ok(css:find(Rooms.MARKERS, 1, true) == 1, "css: the markers first")
+    ok(css:find("p:nth-of-type(9)::after { float: right !important; padding-bottom: 307px !important; }", 1, true) ~= nil,
+        "css: the marker that pushes, with no width")
+    ok(css:find("p:nth-of-type(10)::before { float: right !important; clear: right !important; width: 420px !important; padding-bottom: 299px !important; }", 1, true) ~= nil,
+        "css: the box, its height from one pixel under its top")
+    css = Rooms.css({ room }, 96 / 300, { ready = true, floats = true })
+    ok(css:find("width: 134.4px", 1, true) ~= nil, "css: in the book's own pixels, to a hundredth")
+    room.side = "full"
+    ok(Rooms.css({ room }, 1, { ready = true, floats = true }):find("float: left !important; clear: both", 1, true) ~= nil,
+        "css: across, it clears both sides")
+    room.side = "right"
+    css = Rooms.css({ room }, 1, { ready = true, floats = false })
+    ok(css:find("padding-right: 420px", 1, true) ~= nil and not css:find("clear", 1, true),
+        "css: a render mode with no floats, made of paragraphs")
+    ok(Rooms.css({}, 1, { ready = true }) == Rooms.MARKERS, "css: no rooms, the markers stay")
+    ok(Rooms.hostable(P) and Rooms.hostable("/body/div[2]") and not Rooms.hostable("/body/p/span"), "markers: block elements only")
+    ok(Rooms.valid(room) and not Rooms.valid({ id = "b", kind = "box", xp = P, side = "up", x = 1, w = 2, h = 3 }),
+        "valid: a box room, and one with no side")
 end
 
 print(("rooms: %d checks, %d failures"):format(checks, failures))
