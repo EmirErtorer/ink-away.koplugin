@@ -10,6 +10,16 @@ versions marked *Prerelease* were test builds.
 
 ### Added
 
+- Handwritten notes on highlights (#77): select words and pick Handwritten note in
+  KOReader's menu, next to Add note. The words are highlighted as KOReader does, and
+  a small writing window opens over the page. The note is a page of the book's notes,
+  titled with the highlighted words and kept after its chapter's pages, so it has
+  every pen, layer and tool, and goes with the notebook's search, export and sync.
+  Tap the highlight later to see the note again and write more; tap the window's
+  title strip for KOReader's menu for that highlight, whose "…" also has Handwritten
+  note. While the note has ink, the highlight's KOReader note reads "(Handwritten
+  note)" (unless it has a typed one), so it shows as a highlight with a note in
+  KOReader's lists and exports. A note left empty is not kept.
 - Make room in a book's text, for stickers, pictures and notes: the text moves out of
   the way, and the font stays the same. Tap the Lasso a second time for its sheet and
   pick Make room, then draw a box on the page. Move it or drag its corners; the page
