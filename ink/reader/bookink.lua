@@ -2,9 +2,10 @@
 A book's ink, kept as inkaway.lua in the book's own KOReader folder: the same
 ".sdr" folder as the reader's settings for the book, wherever the "Book metadata
 location" setting puts it (next to the book, in KOReader's docsettings folder,
-or by the book's hash). { version, items = { { op, a }, ... }, notes } (see
-ink/reader/place.lua for the items; notes is the path of the book's notebook,
-see ink/reader/booknotes.lua).
+or by the book's hash). { version, items = { { op, a }, ... }, notes, rooms,
+rooms_off } (see ink/reader/place.lua for the items; notes is the path of the
+book's notebook, see ink/reader/booknotes.lua; rooms the space made in its text and
+rooms_off whether it is hidden, see ink/reader/rooms.lua).
 
 The folder is KOReader's. Ink Away only adds its own file to it and never
 touches the reader's files, so a book that already has a folder keeps
@@ -22,6 +23,7 @@ changed), so no stray folder is left behind.
 ]]
 
 local Project = require("ink/project")
+local Rooms = require("ink/reader/rooms")
 local Storage = require("ink/storage")
 local logger = require("logger")
 
@@ -68,7 +70,17 @@ end
 
 local function decode(s)
     local ok, data = pcall(Project.decode, s)
-    if ok and type(data) == "table" and type(data.items) == "table" then return data end
+    if ok and type(data) == "table" and type(data.items) == "table" then
+        -- (a room this version cannot read is left out, not an error)
+        if data.rooms ~= nil then
+            local rooms = {}
+            if type(data.rooms) == "table" then
+                for _i, r in ipairs(data.rooms) do if Rooms.valid(r) then rooms[#rooms + 1] = r end end
+            end
+            data.rooms = #rooms > 0 and rooms or nil
+        end
+        return data
+    end
 end
 
 -- Make the folder and any missing parents (the docsettings location mirrors
@@ -120,7 +132,9 @@ end
 
 -- The file's text: the head, then the items from their kept text.
 local function encode(data)
-    local head = Project.encode({ version = BookInk.VERSION, notes = data.notes })   -- "return {...,}"
+    local rooms = data.rooms and #data.rooms > 0 and data.rooms or nil
+    local head = Project.encode({ version = BookInk.VERSION, notes = data.notes, rooms = rooms,
+        rooms_off = rooms and data.rooms_off or nil })   -- "return {...,}"
     local parts = {}
     for i, item in ipairs(data.items) do parts[i] = itemText(item) end
     return head:sub(1, -2) .. '["items"]={' .. table.concat(parts, ",") .. "},}"
@@ -158,15 +172,21 @@ function BookInk.merge(first_path, second_path)
             seen[t] = true
         end
     end
-    return encode({ items = items, notes = b.notes or a.notes })
+    return encode({ items = items, notes = b.notes or a.notes, rooms = Rooms.merge(b.rooms, a.rooms),
+        rooms_off = b.rooms_off })
 end
 
--- Keep it. One with no ink and no book notes removes the files, so such a book
--- leaves none. Returns whether it is kept.
+-- Is there anything to keep: ink, book notes or room made in the text?
+function BookInk.empty(data)
+    return #data.items == 0 and not data.notes and not (data.rooms and #data.rooms > 0)
+end
+
+-- Keep it. One with no ink, no book notes and no room removes the files, so such
+-- a book leaves none. Returns whether it is kept.
 function BookInk.save(sidecar_dir, data)
     local p = BookInk.path(sidecar_dir)
     if not p or data.read_only then return false end
-    if #data.items == 0 and not data.notes then
+    if BookInk.empty(data) then
         os.remove(p)
         os.remove(p .. ".old")
         return true
@@ -247,13 +267,14 @@ local function tidy(dir)
     else pcall(os.remove, dir) end
 end
 
--- Two ink files as one: every item of both, once.
+-- Two ink files as one: every item and room of both, once.
 local function merge(into, from)
     local seen = {}
     for _i, item in ipairs(into.items) do seen[Project.encode(item)] = true end
     for _i, item in ipairs(from.items) do
         if not seen[Project.encode(item)] then into.items[#into.items + 1] = item end
     end
+    if from.rooms then into.rooms = Rooms.merge(into.rooms, from.rooms) end
     return into
 end
 

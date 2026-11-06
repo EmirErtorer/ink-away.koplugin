@@ -75,6 +75,24 @@ function InkAway:init()
     -- book ink follows its book when KOReader moves, copies or deletes it
     local bok, BookInk = pcall(require, "ink/reader/bookink")
     if bok then BookInk.installFollow() end
+    -- room made in a book's text: its style rules go with KOReader's style tweaks
+    -- (plugins start before the book is first laid out, so they are in from the start)
+    if not InkAway._rooms_css then
+        InkAway._rooms_css = true
+        pcall(function()
+            local StyleTweak = require("apps/reader/modules/readerstyletweak")
+            local orig = StyleTweak.getCssText
+            StyleTweak.getCssText = function(tweak, ...)
+                local css = orig(tweak, ...)
+                local plugin = tweak.ui and InkAway.by_ui[tweak.ui]
+                local book = plugin and plugin.book
+                if not book then return css end
+                local ok, extra = pcall(book.roomsCss, book)
+                if not (ok and extra) then return css end
+                return (css and css ~= "" and (css .. "\n") or "") .. extra
+            end
+        end)
+    end
     -- in the reader: the book's ink, painted over its pages (a book without ink
     -- costs a file check here and nothing per page)
     if self.ui.document and self.ui.view and self.ui.view.registerViewModule then
@@ -318,6 +336,17 @@ end
 
 -- The screen turned (or was resized) under the book: what Ink Away had open
 -- over it was laid out for the old size, so it closes, keeping everything.
+-- KOReader's "Zoom (dpi)" scales the book's pixels: the rooms' rules are written
+-- again so they keep their size on the screen.
+function InkAway:onSetRenderDPI()
+    local book = self.book
+    if book and #book:rooms() > 0 then
+        UIManager:nextTick(function()
+            if self.book == book then book:relayout() end
+        end)
+    end
+end
+
 function InkAway:onSetDimensions()
     if self.book then self.book:closeViews() end
 end

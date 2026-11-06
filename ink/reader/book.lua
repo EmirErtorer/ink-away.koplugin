@@ -17,6 +17,7 @@ local logger = require("logger")
 local BookInk = require("ink/reader/bookink")
 local Canvas = require("ink/canvas")
 local Place = require("ink/reader/place")
+local Rooms = require("ink/reader/rooms")
 local Snap = require("ink/reader/snap")
 
 local Screen = Device.screen
@@ -63,7 +64,7 @@ function Book:save()
             require("ink/view").tellAnywhere(_("Ink Away could not save this book's ink: its folder can't be written to."))
         end
     end
-    self.has_file = kept ~= nil and (#data.items > 0 or data.notes ~= nil)
+    self.has_file = kept ~= nil and not BookInk.empty(data)
     if kept then
         local ok, Sync = pcall(require, "ink/sync/manager")   -- (cloud sync: a change is waiting to be sent)
         if ok then pcall(Sync.bookSaved) end
@@ -152,6 +153,11 @@ function Book:doc()
             if not (ok and boxes and #boxes > 0) then return nil end
             return boxes[math.min(seg or 1, #boxes)]
         end
+        -- room made in the text (see "Room" below)
+        function d.roomAt(_, x0, y0, x1, y1) return self:roomAt(x0, y0, x1, y1) end
+        function d.roomBox(_, id) return self:roomBox(id) end
+        function d.roomPage(_, id) return self:roomPage(id) end
+        function d.roomX(_, id) return self:roomX(id) end
     end
     self._doc = d
     return d
@@ -342,6 +348,355 @@ function Book:setPageOps(ops, came_from, shown)
     if idx and self._ikey_base then self._index_key = self._ikey_base .. "#" .. self.rev end
     self._placed = nil
     return map, keep
+end
+
+------------------------------------------------------------------------------
+-- Room made in the text (see ink/reader/rooms.lua)
+------------------------------------------------------------------------------
+
+-- The rooms made in this book (none in a fixed-page one).
+function Book:rooms()
+    if self.ui.paging or not (self.has_file or self._data) then return {} end
+    return self:data().rooms or {}
+end
+
+-- Are the rooms shown (they can all be hidden for plain reading)?
+function Book:roomsShown()
+    if not (self.has_file or self._data) then return true end
+    return not self:data().rooms_off
+end
+
+-- The room with this id, if it is shown.
+function Book:roomById(id)
+    if not self:roomsShown() then return nil end
+    for _i, r in ipairs(self:rooms()) do if r.id == id then return r end end
+end
+
+-- CSS pixels per screen pixel: KOReader's "Zoom (dpi)" scales the book's pixels
+-- (1 at its default of 96, or when it is off).
+function Book:cssScale()
+    local c = self.ui.document and self.ui.document.configurable
+    local dpi = tonumber(c and c.render_dpi)
+    if not dpi or dpi <= 0 or dpi == 96 then return 1 end
+    return 96 / dpi
+end
+
+-- The style rules that make the rooms, for KOReader's style tweaks (main.lua
+-- adds them), or nil. Reads the book's ink file only when there is one.
+function Book:roomsCss()
+    if self.ui.paging or not (self.has_file or self._data) then return nil end
+    local data = self:data()
+    if data.rooms_off or not data.rooms or #data.rooms == 0 then return nil end
+    local css = Rooms.css(data.rooms, self:cssScale())
+    return css ~= "" and css or nil
+end
+
+-- Can room be made here? In a reflowing book showing one page at a time (as
+-- pinning).
+function Book:canRoom()
+    return not self.ui.paging and self:canPin()
+end
+
+-- The page's text area on the screen: { x0, y0, x1, y1 }.
+function Book:textArea()
+    local document = self.ui.document
+    local W, H = Screen:getWidth(), Screen:getHeight()
+    local ok, m = pcall(document.getPageMargins, document)
+    m = ok and type(m) == "table" and m or {}
+    local hok, header = pcall(document.getHeaderHeight, document)
+    header = hok and tonumber(header) or 0
+    return { x0 = m.left or 0, y0 = (m.top or 0) + header, x1 = W - (m.right or 0), y1 = H - (m.bottom or 0) }
+end
+
+-- Where a paragraph's text starts (its first word), as an xpointer. The same
+-- in any layout, so it is kept.
+function Book:textStartOf(elem)
+    self._text_starts = self._text_starts or {}
+    local c = self._text_starts[elem]
+    if c ~= nil then return c or nil end
+    local document = self.ui.document
+    local found
+    local ok, x = pcall(document.getNextVisibleWordStart, document, elem)
+    if ok and type(x) == "string" and x:sub(1, #elem + 1) == elem .. "/" then found = x end
+    if not found then
+        local cand = elem .. "/text().0"
+        local iok, inside = pcall(document.isXPointerInDocument, document, cand)
+        if iok and inside then found = cand end
+    end
+    self._text_starts[elem] = found or false
+    return found
+end
+
+-- The paragraphs on the page shown, top to bottom (Rooms.blocksFromWords), found
+-- once per page and layout from its words.
+function Book:pageBlocks()
+    local page = self:currentPage()
+    if not page or self.ui.paging then return {} end
+    local key = self:layoutKey() .. "#" .. page
+    local c = self._blocks
+    if c and c.key == key then return c.list end
+    local document = self.ui.document
+    local area = self:textArea()
+    local words = {}
+    pcall(function()
+        local start = document:getPageXPointer(page)
+        local stop = page < document:getPageCount() and document:getPageXPointer(page + 1) or nil
+        -- (the page may begin inside a word: from that word's start)
+        local xp = document:getNextVisibleWordStart(start)
+        local before = xp and document:getPrevVisibleWordStart(xp)
+        if before then xp = before end
+        local lh
+        for _n = 1, 4000 do
+            if not xp then break end
+            if stop and (document:compareXPointers(xp, stop) or 0) <= 0 then break end
+            local y = document:getScreenPositionFromXPointer(xp)
+            if y and y > area.y1 then break end
+            if y and y >= area.y0 - 2 then
+                if not lh then
+                    local bok, boxes = pcall(document.getScreenBoxesFromPositions, document, xp,
+                        document:getNextVisibleWordEnd(xp), false)
+                    lh = bok and boxes and boxes[1] and boxes[1].h or nil
+                end
+                words[#words + 1] = { xp = xp, y = y, h = lh or 0 }
+            end
+            local nxt = document:getNextVisibleWordStart(xp)
+            if not nxt or nxt == xp then break end
+            xp = nxt
+        end
+    end)
+    local list = Rooms.blocksFromWords(words, function(elem, first)
+        -- the page's first paragraph began here if its first word is the page's first
+        return self:textStartOf(elem) == first
+    end)
+    self._blocks = { key = key, list = list }
+    return list
+end
+
+-- The page a room is on (its first paragraph's), or nil when it is hidden.
+function Book:roomPage(id)
+    local r = self:roomById(id)
+    if not r then return nil end
+    local ts = self:textStartOf(r.xp)
+    if not ts then return nil end
+    local ok, p = pcall(self.ui.document.getPageFromXPointer, self.ui.document, ts)
+    return ok and p or nil
+end
+
+-- The left edge of a side room on the screen (the band's too).
+function Book:roomX(id)
+    local r = self:roomById(id)
+    if not r then return nil end
+    local a = self:textArea()
+    if r.kind == "side" and r.side == "right" then return a.x1 - r.w end
+    return a.x0
+end
+
+-- A room's box on the page shown: { x, y, w, h }, or nil when it is not on it.
+-- Side space shows beside the paragraphs it covers on this page.
+function Book:roomBox(id)
+    local r = self:roomById(id)
+    if not r then return nil end
+    local a = self:textArea()
+    if r.kind == "band" then
+        local ts = self:textStartOf(r.xp)
+        if not ts then return nil end
+        local document = self.ui.document
+        local ok, p = pcall(document.getPageFromXPointer, document, ts)
+        if not (ok and p) then return nil end
+        local shown = false
+        for _i, v in ipairs(self:visiblePages()) do if v == p then shown = true end end
+        if not shown then return nil end
+        local yok, y = pcall(document.getScreenPositionFromXPointer, document, ts)
+        if not (yok and y) then return nil end
+        return { x = a.x0, y = y - r.h, w = a.x1 - a.x0, h = r.h }
+    end
+    local want = {}
+    for _i, x in ipairs(r.xps or { r.xp }) do want[x] = true end
+    local y0, y1
+    for _i, b in ipairs(self:pageBlocks()) do
+        if want[b.xp] then
+            y0 = y0 and math.min(y0, b.y0) or b.y0
+            y1 = y1 and math.max(y1, b.y1) or b.y1
+        end
+    end
+    if not y0 then return nil end
+    return { x = self:roomX(id), y = y0, w = r.w, h = y1 - y0 }
+end
+
+-- The boxes of the rooms on the page shown: { { room, box }, ... }.
+function Book:roomBoxes()
+    local out = {}
+    if not self:roomsShown() then return out end
+    for _i, r in ipairs(self:rooms()) do
+        local b = self:roomBox(r.id)
+        if b then out[#out + 1] = { room = r, box = b } end
+    end
+    return out
+end
+
+-- The room whose box holds the middle of the box (x0, y0)-(x1, y1), and that box.
+function Book:roomAt(x0, y0, x1, y1)
+    local rooms = self:rooms()
+    if #rooms == 0 or not self:roomsShown() then return nil end
+    local cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    for _i, e in ipairs(self:roomBoxes()) do
+        local b = e.box
+        if e.room.id ~= self._no_rooms and cx >= b.x and cx <= b.x + b.w and cy >= b.y and cy <= b.y + b.h then return e.room, b end
+    end
+end
+
+-- Lay the book out again with the rooms as they are now (KOReader keeps the
+-- reading position), and forget what was placed for the old layout.
+function Book:relayout()
+    self._blocks, self._index, self._placed = nil, nil, nil
+    self.rev = self.rev + 1
+    local Event = require("ui/event")
+    self.ui:handleEvent(Event:new("ApplyStyleSheet"))
+    pcall(self.ui.document.getPageCount, self.ui.document)
+end
+
+-- Keep `rooms` (and whether they are hidden) and lay the book out with them.
+function Book:setRooms(rooms, off)
+    local data = self:data()
+    if data.read_only then return false end
+    data.rooms = rooms and #rooms > 0 and rooms or nil
+    data.rooms_off = data.rooms and off or nil
+    self:save()
+    self:relayout()
+    return true
+end
+
+-- Where a room's first paragraph is now: the gap above its text (to the word
+-- before it, in the book's own pixels) and its first line's right end.
+function Book:roomProbe(r)
+    local document = self.ui.document
+    local ts = self:textStartOf(r.xp)
+    if not ts then return nil end
+    local out = {}
+    pcall(function()
+        local y, x = document:getPosFromXPointer(ts)
+        local prev = document:getPrevVisibleWordStart(ts)
+        local py = prev and document:getPosFromXPointer(prev)
+        out.gap = py and (y - py) or nil
+        out.x = x
+        local stop = ts
+        for _n = 1, 12 do stop = document:getNextVisibleWordEnd(stop) or stop end
+        local boxes = document:getScreenBoxesFromPositions(ts, stop, false)
+        local b = boxes and boxes[1]
+        out.right = b and (b.x + b.w) or nil
+    end)
+    return out
+end
+
+-- Did room `r` take, from before (Book:roomProbe) to now? A band moves its
+-- paragraph down by its height; side space narrows its first line (or moves it
+-- along, on the left). A paragraph too short to tell counts as taken.
+local function took(r, before, after, area)
+    if not (before and after) then return false end
+    if r.kind == "band" then
+        return before.gap and after.gap and after.gap - before.gap >= r.h * 0.9 - 2
+    end
+    if r.side == "left" then
+        return before.x and after.x and after.x - before.x >= r.w * 0.9 - 2
+    end
+    if not (before.right and after.right) then return true end
+    if before.right < area.x1 - r.w then return true end   -- (a short first line)
+    return after.right <= area.x1 - r.w * 0.9 + 2
+end
+
+-- Add room `r` (from Rooms.plan) and lay the book out with it. A band before a
+-- paragraph that already has one takes its place. Returns the room, or nil and
+-- why ("failed": the book's layout did not take it, so it was taken back).
+function Book:addRoom(r)
+    local rooms = {}
+    for _i, o in ipairs(self:rooms()) do
+        if not (r.kind == "band" and o.kind == "band" and o.xp == r.xp) then rooms[#rooms + 1] = o end
+    end
+    r.id = r.id or Rooms.newId()
+    local area = self:textArea()
+    local before = self:roomProbe(r)
+    rooms[#rooms + 1] = r
+    local old, old_off = self:data().rooms, self:data().rooms_off
+    if not self:setRooms(rooms, nil) then return nil, "read_only" end
+    if not took(r, before, self:roomProbe(r), area) then
+        logger.warn("Ink Away: the room did not take in this book:", r.xp)
+        self:setRooms(old, old_off)
+        return nil, "failed"
+    end
+    return r
+end
+
+-- Change a room (the same id) to `r`: its size, or what it covers.
+function Book:changeRoom(r)
+    local rooms = {}
+    for _i, o in ipairs(self:rooms()) do rooms[#rooms + 1] = o.id == r.id and r or o end
+    return self:setRooms(rooms, self:data().rooms_off)
+end
+
+-- Show or hide every room (hidden, the book reads as it was made, and the ink
+-- in the rooms hides with them).
+function Book:showRooms(on)
+    local rooms = self:rooms()
+    if #rooms == 0 then return end
+    self:setRooms(rooms, not on or nil)
+end
+
+-- The items kept in room `id`.
+function Book:roomItems(id)
+    local out = {}
+    for _i, it in ipairs(self:hasInk() and self:data().items or {}) do
+        if it.a and it.a.room == id then out[#out + 1] = it end
+    end
+    return out
+end
+
+-- Remove room `id`. What is in it goes (`ink` "delete") or stays where it is on
+-- the page now and follows the text from there ("follow").
+function Book:removeRoom(id, ink)
+    local data = self:data()
+    local doc = self:doc()
+    local items = {}
+    for _i, it in ipairs(data.items) do
+        local a = it.a
+        if a and a.room == id then
+            if ink ~= "delete" then
+                local ok, op = pcall(Place.place, it, doc)
+                local kept
+                if ok and op then
+                    local saved = self._no_rooms
+                    self._no_rooms = id
+                    local aok, item = pcall(Place.anchor, op, doc)
+                    self._no_rooms = saved
+                    if aok and item then kept = item end
+                end
+                if not kept and a.xp0 then
+                    -- (not on this page: side space ink keeps its word, in the margin it was in)
+                    local na = {}
+                    for k, v in pairs(a) do na[k] = v end
+                    na.room, na.rx = nil, nil
+                    local x = (self:roomX(id) or 0) + (a.rx or 0)
+                    if x > Screen:getWidth() / 2 then na.mr = Screen:getWidth() - x else na.ml = x end
+                    kept = { op = it.op, a = na }
+                end
+                if kept then items[#items + 1] = kept end
+            end
+        else
+            items[#items + 1] = it
+        end
+    end
+    data.items = items
+    local rooms = {}
+    for _i, o in ipairs(self:rooms()) do if o.id ~= id then rooms[#rooms + 1] = o end end
+    return self:setRooms(rooms, data.rooms_off)
+end
+
+-- Are there pinned items on pages from `page` on (a room before them changes the
+-- text under them)?
+function Book:pinnedFrom(page)
+    for _i, it in ipairs(self:hasInk() and self:data().items or {}) do
+        if it.a and it.a.pg and it.a.pg >= (page or 1) then return true end
+    end
+    return false
 end
 
 ------------------------------------------------------------------------------
