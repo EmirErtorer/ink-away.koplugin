@@ -3,10 +3,12 @@ A book's ink, kept as inkaway.lua in the book's own KOReader folder: the same
 ".sdr" folder as the reader's settings for the book, wherever the "Book metadata
 location" setting puts it (next to the book, in KOReader's docsettings folder,
 or by the book's hash). { version, items = { { op, a }, ... }, notes, rooms,
-rooms_off, rooms_ready } (see ink/reader/place.lua for the items; notes is the path of the
+rooms_off, rooms_ready, hl_notes } (see ink/reader/place.lua for the items; notes is the path of the
 book's notebook, see ink/reader/booknotes.lua; rooms the space made in its text and
 rooms_off whether it is hidden, rooms_ready whether the book is laid out with the
-markers its exact rooms need, see ink/reader/rooms.lua).
+markers its exact rooms need, see ink/reader/rooms.lua; hl_notes the reader's
+highlights that have a handwritten note in the book's notes, by their date and time,
+with the KOReader note Ink Away gave them, see ink/reader/hlnotes.lua).
 
 The folder is KOReader's. Ink Away only adds its own file to it and never
 touches the reader's files, so a book that already has a folder keeps
@@ -135,7 +137,8 @@ end
 local function encode(data)
     local rooms = data.rooms and #data.rooms > 0 and data.rooms or nil
     local head = Project.encode({ version = BookInk.VERSION, notes = data.notes, rooms = rooms,
-        rooms_off = rooms and data.rooms_off or nil, rooms_ready = data.rooms_ready or nil })   -- "return {...,}"
+        rooms_off = rooms and data.rooms_off or nil, rooms_ready = data.rooms_ready or nil,
+        hl_notes = data.hl_notes and next(data.hl_notes) and data.hl_notes or nil })   -- "return {...,}"
     local parts = {}
     for i, item in ipairs(data.items) do parts[i] = itemText(item) end
     return head:sub(1, -2) .. '["items"]={' .. table.concat(parts, ",") .. "},}"
@@ -148,6 +151,17 @@ function BookInk.valid(path)
     local data = s and decode(s)
     if not data then return false, "not a book's ink" end
     return true
+end
+
+-- The highlights with a handwritten note in both copies (dt -> its KOReader note).
+local function mergeMarks(a, b)
+    local out
+    for _i, t in ipairs({ a, b }) do
+        if type(t) == "table" then
+            for k, v in pairs(t) do out = out or {}; out[k] = v end
+        end
+    end
+    return out
 end
 
 -- Two copies of a book's ink in one (for the cloud sync, when two readers drew on
@@ -174,14 +188,16 @@ function BookInk.merge(first_path, second_path)
         end
     end
     return encode({ items = items, notes = b.notes or a.notes, rooms = Rooms.merge(b.rooms, a.rooms),
-        rooms_off = b.rooms_off, rooms_ready = (a.rooms_ready or b.rooms_ready) or nil })
+        rooms_off = b.rooms_off, rooms_ready = (a.rooms_ready or b.rooms_ready) or nil,
+        hl_notes = mergeMarks(a.hl_notes, b.hl_notes) })
 end
 
--- Is there anything to keep: ink, book notes, room made in the text, or the
+-- Is there anything to keep: ink, book notes, room made in the text, the
 -- markers the book was laid out with for rooms (it keeps them once it had one:
--- see ink/reader/rooms.lua)?
+-- see ink/reader/rooms.lua), or highlights with a handwritten note?
 function BookInk.empty(data)
     return #data.items == 0 and not data.notes and not (data.rooms and #data.rooms > 0) and not data.rooms_ready
+        and not (data.hl_notes and next(data.hl_notes))
 end
 
 -- Keep it. One with no ink, no book notes and no room removes the files, so such
@@ -279,6 +295,7 @@ local function merge(into, from)
     end
     if from.rooms then into.rooms = Rooms.merge(into.rooms, from.rooms) end
     if from.rooms_ready then into.rooms_ready = true end
+    into.hl_notes = mergeMarks(into.hl_notes, from.hl_notes)
     return into
 end
 

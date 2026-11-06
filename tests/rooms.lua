@@ -214,6 +214,13 @@ do
     BookInk.save(other, { version = 1, items = {}, rooms = { { id = "r3", kind = "band", xp = "/c", h = 50 } } })
     merged = assert(load(BookInk.merge(BookInk.path(other), BookInk.path(dir))))()
     ok(merged.rooms_ready == true, "file: merged, the markers kept if either had them")
+    -- the highlights with a handwritten note are kept, and merged
+    BookInk.save(dir, { version = 1, items = {}, hl_notes = { ["2026-11-06 22:31:23"] = "(Handwritten note)" } })
+    ok(BookInk.load(dir).hl_notes["2026-11-06 22:31:23"] == "(Handwritten note)", "file: highlights with handwritten notes are kept")
+    BookInk.save(other, { version = 1, items = {}, hl_notes = { ["2026-11-07 09:00:00"] = "(Handwritten note)" } })
+    merged = assert(load(BookInk.merge(BookInk.path(other), BookInk.path(dir))))()
+    ok(merged.hl_notes and merged.hl_notes["2026-11-06 22:31:23"] and merged.hl_notes["2026-11-07 09:00:00"],
+        "file: merged, the handwritten notes of both")
     -- no rooms, no ink, no notes: no file
     BookInk.save(dir, { version = 1, items = {} })
     ok(not BookInk.exists(dir), "file: nothing left, no file")

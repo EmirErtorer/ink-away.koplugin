@@ -1452,7 +1452,7 @@ end
 
 -- What the notes need to know: the book's title and author, its checksum, and
 -- the chapter shown ({ key = its place in the contents, chapter = its title }).
-function Book:notesInfo()
+function Book:notesInfo(at)
     local ui = self.ui
     local props = ui.doc_props or {}
     local file = ui.document and ui.document.file or ""
@@ -1463,7 +1463,7 @@ function Book:notesInfo()
     local info = { title = title, author = props.authors, md5 = md5 }
     local toc = ui.toc
     if toc and toc.getTocIndexByPage then
-        local pos = ui.rolling and ui.document:getXPointer() or self:currentPage()
+        local pos = at or (ui.rolling and ui.document:getXPointer() or self:currentPage())
         local ok, idx = pcall(toc.getTocIndexByPage, toc, pos, toc.toc_chapter_title_bind_to_ticks)
         if ok and idx and toc.toc and toc.toc[idx] then
             info.key = idx
@@ -1492,8 +1492,9 @@ function Book:setNotesPath(path)
 end
 
 -- Open the book's notes in a window over the page (once: a second call while
--- they are open does nothing).
-function Book:openNotes()
+-- they are open does nothing); with `hl` (Book:highlightKey) on that highlight's
+-- handwritten note.
+function Book:openNotes(hl)
     if self._notes_view and shown(self._notes_view) then return end
     self._notes_view = nil
     local ok, NotesView = pcall(require, "ink/reader/notesview")
@@ -1502,9 +1503,102 @@ function Book:openNotes()
     local Blitbuffer = require("ffi/blitbuffer")
     local behind = Blitbuffer.new(Screen:getWidth(), Screen:getHeight(), Screen.bb:getType())
     self:snapshot(behind, true)
-    local view = NotesView:new{ book = self, behind_bb = behind }
+    local view = NotesView:new{ book = self, behind_bb = behind, highlight = hl }
     self._notes_view = view
     UIManager:show(view)
+end
+
+------------------------------------------------------------------------------
+-- Handwritten notes on the reader's highlights (a page of the book's notes each,
+-- see ink/reader/booknotes.lua and ink/reader/hlnotes.lua)
+------------------------------------------------------------------------------
+
+-- What finds highlight `anno` (one of KOReader's annotations) again: its date
+-- and time, its ends, its words, and its chapter's place in the contents.
+function Book:highlightKey(anno)
+    local function copy(v)
+        if type(v) ~= "table" then return v end
+        local c = {}
+        for k, x in pairs(v) do c[k] = copy(x) end
+        return c
+    end
+    local info = self:notesInfo(anno.page or anno.pos0)
+    return { dt = anno.datetime, pos0 = copy(anno.pos0), pos1 = copy(anno.pos1), text = anno.text,
+        key = info.key, chapter = info.chapter }
+end
+
+-- The reader's highlight with this key, and its place in its list (nil if gone).
+function Book:findHighlight(hl)
+    local list = self.ui.annotation and self.ui.annotation.annotations
+    for i, a in ipairs(list or {}) do
+        if (hl.dt and a.datetime == hl.dt) or (not hl.dt and a.pos0 == hl.pos0 and a.pos1 == hl.pos1) then
+            return a, i
+        end
+    end
+end
+
+-- Has highlight `anno` a handwritten note?
+function Book:hasHandNote(anno)
+    if not (anno and anno.datetime) or not (self.has_file or self._data) then return false end
+    local notes = self:data().hl_notes
+    return notes ~= nil and notes[anno.datetime] ~= nil
+end
+
+-- Open the handwritten note of the highlight at `index` in the reader's list
+-- (a new one when it has none).
+function Book:openHighlightNote(index)
+    local list = self.ui.annotation and self.ui.annotation.annotations
+    local anno = list and list[index]
+    if not anno then return end
+    if self:data().read_only then
+        local _ = require("ink/l10n")
+        require("ink/view").tellAnywhere(_("This book's ink was saved by a newer Ink Away. Update Ink Away to change it."))
+        return
+    end
+    self:openNotes(self:highlightKey(anno))
+end
+
+-- The handwritten note of highlight `hl` has ink (`has`) or none now: the book
+-- keeps which highlights have one, and the highlight gets KOReader's note
+-- "(Handwritten note)" when it has no other, so it shows as a highlight with a
+-- note in KOReader's lists and exports (and loses it again with the ink).
+function Book:linkHighlightNote(hl, has)
+    if not (hl and hl.dt) then return end
+    local data = self:data()
+    if data.read_only then return end
+    data.hl_notes = data.hl_notes or {}
+    local marker = data.hl_notes[hl.dt]
+    local _ = require("ink/l10n")
+    local anno = self:findHighlight(hl)
+    if has then
+        if marker then return end
+        local text = _("(Handwritten note)")
+        data.hl_notes[hl.dt] = text
+        self:save()
+        if anno and (anno.note == nil or anno.note == "") then
+            anno.note = text
+            self:highlightsChanged(anno, 1)
+        end
+    else
+        if not marker then return end
+        data.hl_notes[hl.dt] = nil
+        if next(data.hl_notes) == nil then data.hl_notes = nil end
+        self:save()
+        if anno and anno.note == marker then
+            anno.note = nil
+            self:highlightsChanged(anno, -1)
+        end
+    end
+end
+
+-- Tell KOReader a highlight's note was added (1) or taken away (-1), as its own
+-- note editing does: it saves it, and redraws the note's mark.
+function Book:highlightsChanged(anno, notes)
+    local Event = require("ui/event")
+    pcall(function()
+        self.ui:handleEvent(Event:new("AnnotationsModified", { anno, nb_highlights_added = 1, nb_notes_added = notes }))
+    end)
+    UIManager:setDirty(self.ui.dialog or "all", "ui")
 end
 
 ------------------------------------------------------------------------------

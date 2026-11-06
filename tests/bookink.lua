@@ -425,6 +425,24 @@ do
     ok(BookNotes.placeFor(pages, nil).index == 3, "notes: a book without contents opens the last page")
     ok(BookNotes.otherBook({ { book = { toc = 1, md5 = "a" } } }, "b"), "notes: another book's notebook of the same name is told apart")
     ok(not BookNotes.otherBook({ { ops = {} } }, "b"), "notes: a notebook with no chapter pages is not another book's")
+    -- handwritten notes on highlights: a page each, after its chapter's pages
+    local hl = { dt = "2026-11-06 22:31:23", pos0 = "/p[3]/text().5", pos1 = "/p[3]/text().20" }
+    local hpages = {
+        { ops = { 1 }, book = { toc = 2 } },
+        { ops = { 1 }, book = { toc = 2, hl = { dt = "2026-11-01 10:00:00" } } },   -- an earlier highlight's note
+        { ops = { 1 }, book = { toc = 5 } },
+    }
+    ok(BookNotes.placeForHighlight(hpages, 2, hl).insert == 3, "hl notes: a new one after its chapter's pages")
+    ok(BookNotes.placeForHighlight(hpages, 3, hl).insert == 3, "hl notes: a chapter with no page: before the next chapter")
+    ok(BookNotes.placeForHighlight(hpages, 9, hl).insert == 4, "hl notes: a later chapter: last")
+    ok(BookNotes.placeForHighlight(hpages, 2, { dt = "2026-11-01 10:00:00" }).index == 2, "hl notes: its own page again")
+    ok(BookNotes.placeForHighlight({ { ops = {} } }, 2, hl).claim, "hl notes: a new notebook's blank page takes it")
+    ok(BookNotes.placeFor(hpages, 2).index == 1, "hl notes: the chapter's notes do not open on a highlight's page")
+    ok(BookNotes.isNoteOf({ hl = { dt = "x", pos0 = "a" } }, { dt = "x", pos0 = "b" }), "hl notes: found by date and time when the ends moved")
+    ok(not BookNotes.isNoteOf({ toc = 2 }, hl), "hl notes: a chapter page is no highlight's")
+    ok(BookNotes.quote("A  monstrous tripod,") == "\u{201C}A monstrous tripod,\u{201D}", "hl notes: the title quotes the words")
+    local long = BookNotes.quote(string.rep("word ", 40), 30)
+    ok(long:find("\u{2026}\u{201D}$") ~= nil and #long < 60, "hl notes: a long highlight is cut at a word")
     local Notebook = require("ink/notebook")
     local nb = Notebook.fromData({ w = 10, h = 10, pages = { { id = 1, ops = {}, title = "One", book = { toc = 4, md5 = "x" } } } })
     ok(nb.pages[1].book and nb.pages[1].book.toc == 4, "notes: a page keeps its chapter through saving")

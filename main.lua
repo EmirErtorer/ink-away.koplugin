@@ -134,6 +134,9 @@ function InkAway:init()
             self.book.plugin = self
             UIManager:nextTick(function() self:syncBook() end)   -- (cloud sync: match its ink with the other readers')
             self.ui.view:registerViewModule("inkaway", self.book:overlay())
+            -- handwritten notes on the reader's highlights (see there)
+            local nok, HlNotes = pcall(require, "ink/reader/hlnotes")
+            if nok then pcall(HlNotes.install, self) end
             -- highlighting with the pen's button while reading (see there)
             local hok, PenHighlight = pcall(require, "ink/reader/penhighlight")
             if hok then
