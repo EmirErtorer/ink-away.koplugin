@@ -1602,6 +1602,10 @@ msgstr "Ξανά σχεδίαση"
 msgid "Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF."
 msgstr "Σχεδιάστε πάνω σε μια φωτογραφία ή στιγμιότυπο· το σχέδιό σας μένει από πάνω. Για να γράψετε σε ένα PDF, ξεκινήστε από αυτό ένα σημειωματάριο: Αρχείο, Νέο, Από PDF."
 
+#: ink/view/pencase.lua
+msgid "Draw with Boox's pen layer"
+msgstr "Σχεδίαση με το επίπεδο γραφίδας του Boox"
+
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/share.lua
@@ -2763,6 +2767,10 @@ msgstr "Ανοιχτή δρυς"
 #: ink/view/pencase.lua
 msgid "Light touch"
 msgstr "Ελαφρύ άγγιγμα"
+
+#: ink/view/pencase.lua
+msgid "Lighter screen updates"
+msgstr "Ελαφρύτερες ενημερώσεις οθόνης"
 
 #: ink/folderlook.lua
 msgid "Lime"
@@ -4415,6 +4423,10 @@ msgstr "Αποστολή %d αρχείων: %s από %s"
 msgid "Sending %s: %s of %s"
 msgstr "Αποστολή του %s: %s από %s"
 
+#: ink/view/pencase.lua
+msgid "Sends only the part of the screen that changed, not the whole screen, each time ink is drawn. Turn it off if parts of the screen show old content."
+msgstr "Στέλνει μόνο το μέρος της οθόνης που άλλαξε, όχι ολόκληρη την οθόνη, κάθε φορά που σχεδιάζεται μελάνι. Απενεργοποιήστε το αν μέρη της οθόνης δείχνουν παλιό περιεχόμενο."
+
 #: ink/view/images.lua
 msgid "Sent from your phone"
 msgstr "Στάλθηκε από το τηλέφωνό σας"
@@ -4952,6 +4964,10 @@ msgstr "Το + και το − στη γωνία μεγεθύνουν και μ�
 #: ink/view/ocrapi.lua
 msgid "The API key from your account on the service, usually under API keys. It is only sent to the address above."
 msgstr "Το κλειδί API από τον λογαριασμό σας στην υπηρεσία, συνήθως στα Κλειδιά API. Στέλνεται μόνο στη διεύθυνση παραπάνω."
+
+#: ink/view/pencase.lua
+msgid "The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."
+msgstr "Το Boox σχεδιάζει μόνο του το μελάνι της γραφίδας καθώς γράφετε, όπως η δική του εφαρμογή σημειώσεων, και το Ink Away βάζει το πραγματικό χρώμα και την υφή της γραφίδας σας όταν τη σηκώσετε. Απενεργοποιήστε το αν μένει μελάνι εκεί που δεν πρέπει."
 
 #: ink/guide.lua
 msgid "The Library"

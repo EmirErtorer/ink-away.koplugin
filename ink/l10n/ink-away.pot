@@ -1591,6 +1591,10 @@ msgstr ""
 msgid "Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF."
 msgstr ""
 
+#: ink/view/pencase.lua
+msgid "Draw with Boox's pen layer"
+msgstr ""
+
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/share.lua
@@ -2737,6 +2741,10 @@ msgstr ""
 
 #: ink/view/pencase.lua
 msgid "Light touch"
+msgstr ""
+
+#: ink/view/pencase.lua
+msgid "Lighter screen updates"
 msgstr ""
 
 #: ink/folderlook.lua
@@ -4369,6 +4377,10 @@ msgstr ""
 msgid "Sending %s: %s of %s"
 msgstr ""
 
+#: ink/view/pencase.lua
+msgid "Sends only the part of the screen that changed, not the whole screen, each time ink is drawn. Turn it off if parts of the screen show old content."
+msgstr ""
+
 #: ink/view/images.lua
 msgid "Sent from your phone"
 msgstr ""
@@ -4905,6 +4917,10 @@ msgstr ""
 
 #: ink/view/ocrapi.lua
 msgid "The API key from your account on the service, usually under API keys. It is only sent to the address above."
+msgstr ""
+
+#: ink/view/pencase.lua
+msgid "The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."
 msgstr ""
 
 #: ink/guide.lua

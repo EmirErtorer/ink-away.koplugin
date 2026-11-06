@@ -1602,6 +1602,10 @@ msgstr "Yeniden çiz"
 msgid "Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF."
 msgstr "Bir fotoğrafın veya ekran görüntüsünün üstüne çizin; çiziminiz üstte durur. Bir PDF'e yazmak için ondan bir defter başlatın: Dosya, Yeni, PDF'den."
 
+#: ink/view/pencase.lua
+msgid "Draw with Boox's pen layer"
+msgstr "Boox'un kalem katmanıyla çiz"
+
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/share.lua
@@ -2763,6 +2767,10 @@ msgstr "Açık meşe"
 #: ink/view/pencase.lua
 msgid "Light touch"
 msgstr "Hafif dokunuş"
+
+#: ink/view/pencase.lua
+msgid "Lighter screen updates"
+msgstr "Daha hafif ekran güncellemeleri"
 
 #: ink/folderlook.lua
 msgid "Lime"
@@ -4415,6 +4423,10 @@ msgstr "%d dosya gönderiliyor: %s / %s"
 msgid "Sending %s: %s of %s"
 msgstr "%s gönderiliyor: %s / %s"
 
+#: ink/view/pencase.lua
+msgid "Sends only the part of the screen that changed, not the whole screen, each time ink is drawn. Turn it off if parts of the screen show old content."
+msgstr "Her mürekkep çiziminde ekranın tamamını değil, yalnızca değişen kısmını gönderir. Ekranın bazı bölümleri eski içeriği gösterirse kapatın."
+
 #: ink/view/images.lua
 msgid "Sent from your phone"
 msgstr "Telefonunuzdan gönderildi"
@@ -4952,6 +4964,10 @@ msgstr "Köşedeki + ve − yakınlaştırır ve uzaklaştırır, sıkıştırma
 #: ink/view/ocrapi.lua
 msgid "The API key from your account on the service, usually under API keys. It is only sent to the address above."
 msgstr "Hizmetteki hesabınızdan API anahtarı, genellikle API anahtarları altında. Yalnızca yukarıdaki adrese gönderilir."
+
+#: ink/view/pencase.lua
+msgid "The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."
+msgstr "Boox, siz yazarken kalemin mürekkebini kendi notlar uygulaması gibi kendisi çizer; Ink Away da kalemi kaldırdığınızda kaleminizin gerçek rengini ve dokusunu yerine koyar. Mürekkep olmaması gereken yerde kalırsa kapatın."
 
 #: ink/guide.lua
 msgid "The Library"

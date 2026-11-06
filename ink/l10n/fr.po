@@ -1602,6 +1602,10 @@ msgstr "Retracer"
 msgid "Draw over a photo or screenshot; your drawing sits on top. To write on a PDF, start a notebook from it: File, New, From PDF."
 msgstr "Dessinez sur une photo ou une capture d’écran ; votre dessin reste dessus. Pour écrire sur un PDF, créez-en un carnet : Fichier, Nouveau, Depuis un PDF."
 
+#: ink/view/pencase.lua
+msgid "Draw with Boox's pen layer"
+msgstr "Dessiner avec la couche stylet du Boox"
+
 #: ink/view/document.lua
 #: ink/view/library.lua
 #: ink/view/share.lua
@@ -2763,6 +2767,10 @@ msgstr "Chêne clair"
 #: ink/view/pencase.lua
 msgid "Light touch"
 msgstr "Toucher léger"
+
+#: ink/view/pencase.lua
+msgid "Lighter screen updates"
+msgstr "Mises à jour d'écran plus légères"
 
 #: ink/folderlook.lua
 msgid "Lime"
@@ -4415,6 +4423,10 @@ msgstr "Envoi de %d fichiers : %s sur %s"
 msgid "Sending %s: %s of %s"
 msgstr "Envoi de %s : %s sur %s"
 
+#: ink/view/pencase.lua
+msgid "Sends only the part of the screen that changed, not the whole screen, each time ink is drawn. Turn it off if parts of the screen show old content."
+msgstr "N'envoie que la partie de l'écran qui a changé, pas l'écran entier, chaque fois que de l'encre est dessinée. Désactivez-le si des parties de l'écran affichent un ancien contenu."
+
 #: ink/view/images.lua
 msgid "Sent from your phone"
 msgstr "Envoyé depuis votre téléphone"
@@ -4952,6 +4964,10 @@ msgstr "Le + et le − dans le coin zooment et dézooment, tout comme le pinceme
 #: ink/view/ocrapi.lua
 msgid "The API key from your account on the service, usually under API keys. It is only sent to the address above."
 msgstr "La clé d’API de votre compte sur le service, généralement sous Clés d’API. Elle n’est envoyée qu’à l’adresse ci-dessus."
+
+#: ink/view/pencase.lua
+msgid "The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."
+msgstr "Le Boox dessine lui-même l'encre du stylet pendant que vous écrivez, comme sa propre app de notes, et Ink Away met en place la vraie couleur et la texture de votre stylo quand vous le levez. Désactivez-le si de l'encre reste là où elle ne devrait pas."
 
 #: ink/guide.lua
 msgid "The Library"
