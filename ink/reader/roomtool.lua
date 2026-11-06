@@ -179,10 +179,11 @@ end
 
 function RoomTool:onRelease(_arg, ges)
     local d = self.drag
-    if d and not d.moved and ges and (ges.end_pos or ges.pos) then
-        -- a swipe: one gesture from start to lift
-        local e = ges.end_pos or ges.pos
-        if d.mode == "draw" and ges.end_pos then self:onDrag(nil, { pos = e }) end
+    if ges and ges.end_pos and not (d and d.moved) then
+        -- a quick stroke comes as one swipe, its start in pos and its lift in
+        -- end_pos: drawn, moved or resized from the one to the other
+        self:onPress(nil, { pos = ges.pos })
+        self:onDrag(nil, { pos = ges.end_pos })
     end
     d = self.drag
     self.drag = nil
@@ -330,10 +331,22 @@ function RoomTool:showSheet()
         end
         return content
     end
+    local sheet
     view:showSheet(SHEET, build, {
         bottom_y = upper and (Screen:getHeight() - S(6)) or nil,
         top = not upper or nil,
-        on_close = function() end })
+        -- a tap beside the sheet closes it and lands nowhere: it is handed to the
+        -- tool (a tap on a room picks it), and the sheet comes back; Back leaves
+        on_close = function()
+            local p = sheet and sheet.tap_pos
+            UIManager:nextTick(function()
+                if self.book._room_tool ~= self then return end
+                if not p then return self:onCancel() end
+                self:onTap(nil, { pos = p })
+                self:showSheet()
+            end)
+        end })
+    sheet = view[SHEET]
 end
 
 function RoomTool:drawAgain()
