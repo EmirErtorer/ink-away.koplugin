@@ -2251,6 +2251,7 @@ msgstr "Παρακολούθηση συνηθειών"
 msgid "Handwriting"
 msgstr "Χειρόγραφο"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Χειρόγραφη σημείωση"
@@ -2292,6 +2293,10 @@ msgstr "Επισήμανση"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Χρώμα επισήμανσης"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Μενού επισήμανσης"
 
 #: ink/guide.lua
 msgid "Highlight while reading"

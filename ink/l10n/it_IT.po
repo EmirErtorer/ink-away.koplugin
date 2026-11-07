@@ -2251,6 +2251,7 @@ msgstr "Monitor delle abitudini"
 msgid "Handwriting"
 msgstr "Scrittura a mano"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Nota scritta a mano"
@@ -2292,6 +2293,10 @@ msgstr "Evidenzia"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Colore dell'evidenziazione"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Menù evidenziazioni"
 
 #: ink/guide.lua
 msgid "Highlight while reading"

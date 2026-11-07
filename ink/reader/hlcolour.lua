@@ -2,7 +2,10 @@
 Changing the colour of a highlight in the annotation mode. A tap on a highlight
 opens a sheet of colours: with a finger that is navigating, with the lasso, with
 the highlighter in hand (a single tap on text already highlighted), or with Pan.
-A hold still offers to remove it (see ReaderInkView:highlightPromptAt).
+A hold still offers to remove it (see ReaderInkView:highlightPromptAt). For a
+single highlight the sheet also has Handwritten note (ink/reader/hlnotes.lua),
+as KOReader's menu for selected words has: a highlight made with the pen's
+button gets its note this way too.
 
 The colours are the person's own list (ink/reader/hlpalette.lua): the reader's
 colours to start with, any of them taken off by holding it, and any colour from
@@ -152,6 +155,28 @@ function HLColour:openHighlightWheel(items)
     })
 end
 
+-- One highlight tapped: its place in the reader's list, when it can have a
+-- handwritten note (ink/reader/hlnotes.lua); nil otherwise.
+function HLColour:highlightNoteIndex(items)
+    local book = self.book
+    if not (items and #items == 1 and book and book.openHighlightNote and book.findHighlight) then return nil end
+    local a = items[1]
+    local ok, _anno, index = pcall(book.findHighlight, book, { dt = a.datetime, pos0 = a.pos0, pos1 = a.pos1 })
+    return ok and index or nil
+end
+
+-- Its handwritten note, in the notes window over the book: the annotation mode
+-- closes first, its ink saved (as Book notes from the gestures does).
+function HLColour:openNoteOfHighlight(anno)
+    local book = self.book
+    local key = { dt = anno.datetime, pos0 = anno.pos0, pos1 = anno.pos1 }
+    self:closeCanvas()
+    UIManager:nextTick(function()
+        local ok, _anno, index = pcall(book.findHighlight, book, key)
+        if ok and index then book:openHighlightNote(index) end
+    end)
+end
+
 -- The sheet of colours for the highlights `items`.
 function HLColour:openHighlightColours(items)
     if not (items and #items > 0 and self.book) then return false end
@@ -216,21 +241,33 @@ function HLColour:openHighlightColours(items)
             end
         end
         add(vspan(14))
-        local reset = not Palette.isDefault(function(k) return self:getSetting(k) end)
-        if reset then
-            local half = math.floor((content_w - gap) / 2)
-            add(HorizontalGroup:new{ align = "center",
-                self:actionButton(_("Reset colours"), half, function()
-                    self:setSetting(Palette.SETTING, nil); again()
-                end),
-                HorizontalSpan:new{ width = gap },
-                self:actionButton(_("Remove highlight"), half, function()
-                    close(); self:removeHighlights(items)
-                end, nil, nil, "trash") })
-        else
-            add(self:actionButton(_("Remove highlight"), content_w, function()
+        local half = math.floor((content_w - gap) / 2)
+        local function pair(a, b)
+            add(HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b })
+        end
+        local remove = function(w)
+            return self:actionButton(_("Remove highlight"), w, function()
                 close(); self:removeHighlights(items)
-            end, nil, nil, "trash"))
+            end, nil, nil, "trash")
+        end
+        local reset = not Palette.isDefault(function(k) return self:getSetting(k) end)
+        local note = self:highlightNoteIndex(items)
+        if note then
+            pair(self:actionButton(_("Handwritten note"), half, function()
+                close(); self:openNoteOfHighlight(items[1])
+            end), remove(half))
+            if reset then
+                add(vspan(8))
+                add(self:actionButton(_("Reset colours"), content_w, function()
+                    self:setSetting(Palette.SETTING, nil); again()
+                end))
+            end
+        elseif reset then
+            pair(self:actionButton(_("Reset colours"), half, function()
+                self:setSetting(Palette.SETTING, nil); again()
+            end), remove(half))
+        else
+            add(remove(content_w))
         end
         return g
     end

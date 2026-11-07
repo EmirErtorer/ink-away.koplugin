@@ -2251,6 +2251,7 @@ msgstr "Suivi d’habitudes"
 msgid "Handwriting"
 msgstr "Écriture manuscrite"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Note manuscrite"
@@ -2292,6 +2293,10 @@ msgstr "Surligner"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Couleur du surlignage"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Menu surlignage"
 
 #: ink/guide.lua
 msgid "Highlight while reading"

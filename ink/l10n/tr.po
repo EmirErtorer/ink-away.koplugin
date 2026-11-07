@@ -2251,6 +2251,7 @@ msgstr "Alışkanlık takibi"
 msgid "Handwriting"
 msgstr "El yazısı"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "El yazısı not"
@@ -2292,6 +2293,10 @@ msgstr "Vurgula"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Vurgu rengi"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Vurgu menüsü"
 
 #: ink/guide.lua
 msgid "Highlight while reading"

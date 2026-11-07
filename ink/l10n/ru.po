@@ -2251,6 +2251,7 @@ msgstr "Трекер привычек"
 msgid "Handwriting"
 msgstr "Рукописный текст"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Рукописная заметка"
@@ -2292,6 +2293,10 @@ msgstr "Выделить"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Цвет выделения"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Меню выделения"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
