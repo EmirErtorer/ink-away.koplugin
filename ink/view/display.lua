@@ -572,6 +572,8 @@ end
 -- paced like live ink; elsewhere it is refreshAreaBox, sent at once. Returns the
 -- box clipped to the drawing area, or nil.
 function InkAwayView:liveBox(mode, x0, y0, x1, y1)
+    -- Fast DU updates also threshold the book pixels around moving overlays.
+    if mode == "fast" and self.reader_mode and not self:instantColour() and not self:fastLive() then mode = "ui" end
     if not self:onAndroid() then return self:refreshAreaBox(mode, x0, y0, x1, y1) end
     local v = self.view
     x0, y0 = math.max(v.area_x, x0), math.max(v.area_y, y0)

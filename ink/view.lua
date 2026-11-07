@@ -564,6 +564,12 @@ function InkAwayView:onIaTouch(_, ges)
         if self:inClipBubble(pos) then self._clip_press = true; return true end
         self:hideClipBubble()
     end
+    if pos and self.editing_text and self.tool == "text" then
+        local buttons = self:textEditButtons()
+        if InkGeom.inRect(pos.x, pos.y, buttons.done) or InkGeom.inRect(pos.x, pos.y, buttons.format) then
+            return self:textToolTouch(pos)
+        end
+    end
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     self._swallow = nil   -- a new touch: any straightened stroke's contact is over
     self._peel_op = nil   -- a new interaction ends any committed-text undo peel

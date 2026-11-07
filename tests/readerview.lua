@@ -741,5 +741,35 @@ for _, case in ipairs({
     view:closeCanvas()
 end
 
+-- Text chrome belongs to the viewport even when panel pixels occupy a small clip.
+do
+    UIManager.reset()
+    local ReaderInkView = require("ink/reader/inkview")
+    local book = standInBook()
+    local view = ReaderInkView:new{ book = book }
+    local expected = view:textEditButtons()
+    book.surface = { clip = function() return { x = 300, y = 400, w = 180, h = 200 } end }
+    view:placeToolbar()
+    local clipped = view:textEditButtons()
+    ok(clipped.done.x == expected.done.x and clipped.done.y == expected.done.y,
+        "text controls: panel clipping leaves Done anchored to the viewport")
+    ok(clipped.format.x == expected.format.x and clipped.format.y == expected.format.y,
+        "text controls: panel clipping leaves Format anchored to the viewport")
+    view.editing_text, view.tool = {}, "text"
+    local pressed = false
+    view.textToolTouch = function() pressed = true; return true end
+    view:onIaTouch(nil, pos(clipped.done.x + 2, clipped.done.y + 2))
+    ok(pressed, "text controls: Done receives touches outside the panel clip")
+    view.editing_text = nil
+    view._instant_colour, view._is_colour = false, false
+    view.einkDriven = function() return false end
+    view.elipsaDriven = function() return false end
+    UIManager.refreshes = {}
+    view:liveBox("fast", 310, 410, 350, 450)
+    ok(UIManager.last() and UIManager.last().mode == "ui",
+        "text drag: live rectangle preserves grayscale book pixels")
+    view:closeCanvas()
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

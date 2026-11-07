@@ -82,6 +82,8 @@ function ReaderInkView:placeToolbar()
         else v.area_h = H - t; self._bar_y = H - t end
     end
     v.pan_x, v.pan_y = v.area_x, v.area_y
+    -- Editing buttons belong to the toolbar-free viewport, not the panel clip.
+    self._reader_viewport = { area_x = v.area_x, area_y = v.area_y, area_w = v.area_w, area_h = v.area_h }
     local surface = self.book and self.book.surface
     local changed
     if surface and surface.setViewport then
