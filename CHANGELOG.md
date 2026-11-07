@@ -8,6 +8,9 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+# Panels+ Fork
+Adding support for custom viewer and public api.
+
 ## [4.4.0] - 2026-10-31
 
 Your annotations leave the reader: any book can be exported with its ink and
