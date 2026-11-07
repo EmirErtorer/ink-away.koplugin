@@ -7,6 +7,9 @@ local YourPlugin = {}
 
 -- MOCK signature: your plugin creates its own viewer and surface.
 -- viewer_widget is that actual KOReader viewer object, not a standard plugin field.
+---@param ui table
+---@param viewer_widget table
+---@param surface InkSurface
 function YourPlugin:init(ui, viewer_widget, surface)
     self.ui, self.viewer_widget, self.surface = ui, viewer_widget, surface
     self.closed, self.annotation_open = false, false
@@ -22,6 +25,7 @@ function YourPlugin:init(ui, viewer_widget, surface)
     end
 end
 
+---@param ink InkIntegrationAPI
 function YourPlugin:configureInkAway(ink)
     if self.closed or self.cleanup then return end
     if ink.integration_api_version ~= 1 or ink.document_surface_version ~= 1
@@ -59,6 +63,7 @@ end
 
 -- Example viewer paint hook. The viewer must already be in the window stack
 -- when annotation starts. Its background uses absolute screen coordinates.
+---@param bb table
 function YourPlugin:paintTo(bb)
     self:paintBackground(bb)
     if not self.closed and self.ink and self.ui.inkAwayIntegrationAPI == self.ink then

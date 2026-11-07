@@ -5,6 +5,7 @@
 local YourPlugin = {}
 
 -- MOCK signature: ui is this reader's UI. There are no viewer arguments.
+---@param ui table
 function YourPlugin:init(ui)
     self.ui = ui
     self.closed, self.annotation_open = false, false
@@ -20,6 +21,7 @@ function YourPlugin:init(ui)
     end
 end
 
+---@param ink InkIntegrationAPI
 function YourPlugin:configureInkAway(ink)
     if self.closed or self.stop_open then
         return

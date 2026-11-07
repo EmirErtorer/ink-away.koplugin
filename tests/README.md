@@ -30,6 +30,17 @@ For the optional 144 MB synthetic-archive measurement, generate fixtures with
 pass `/tmp/inkaway-comics` as the final argument to the native suite. This is a
 desktop/native-library check, not physical-reader validation.
 
+`luajit tests/delegate.lua` checks the reusable event delegate without KOReader:
+ordered delivery, isolated payloads/errors, subscription mutation, idempotent
+unsubscribe and disposal during dispatch. `tests/integration.lua` checks that
+Book consumes a supplied surface directly and that registry disposal disconnects
+observers/providers.
+
+The PR's LuaLS interfaces are in `ink/contracts.lua`; public examples and runtime
+boundaries reference those types. Run `lua-language-server --check=.` for editor
+static diagnostics. The existing project is not globally type-clean: scope new
+type diagnostics to the PR; do not suppress unrelated host/mock diagnostics.
+
 `luajit tests/loading_order.lua` exercises the actual plugin init plus both
 readiness orders, queue cancellation/failures and composite installation cleanup.
 Host menus, pen/shelf attachment and UI are fixtures.

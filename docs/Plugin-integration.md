@@ -61,6 +61,36 @@ calls the returned cleanup, which releases the surface and removes registrations
 - Rendering snapshots must exclude ink overlays to avoid recursive painting.
   Replacement viewers must also follow the [handoff rules](#surfaceturndirection-done-frame).
 
+## LuaLS contracts and implementation
+
+[`ink/contracts.lua`](../ink/contracts.lua) contains the Sumneko/LuaLS interface
+annotations: `InkSurface`, its shared `InkViewer` presentation contract,
+`InkPlacementDocument`, lifecycle payloads, registration options and callback
+signatures. Plugins implement `InkSurface`; annotate your surface table with
+`---@class MySurface: InkSurface`, or annotate a supplied table with
+`---@type InkSurface` to check its required members (with this file in your
+LuaLS workspace/library).
+Coordinates are original document units or absolute screen pixels; rotations
+are clockwise radians. These annotations support static editor checks, not
+runtime type enforcement. Registration still validates required methods,
+contract version and document identity.
+
+Book consumes external surfaces directly. The built-in `KOReaderSurface.lua` implements
+the same `pages()`, `key()`, `snapshot()` and `repaint()` presentation methods.
+There is no `external.lua` translation layer. Ink Away keeps operation-level
+coordinate conversion in `reader/surface.lua`, so consumers provide geometry
+rather than implementing Ink Away's drawing/storage schema. Optional navigation
+and reading-direction defaults, placement-cache identity and host repainting
+belong to Book's session orchestration.
+
+`main.lua` is the public facade. `integration.lua` owns provider selection and
+lifecycle registrations; `delegate.lua` implements reusable ordered multicast
+events for both opened and closed subscriptions. Each listener receives a fresh
+payload, callback failures are reported without stopping later observers, and
+unsubscription/disposal takes effect during an active dispatch. A listener added
+during dispatch starts with the next emission. The reader closes its editor
+before disposing registrations.
+
 ## API conventions
 
 Calls are in-process Lua methods. This reference uses API-reference sections for
