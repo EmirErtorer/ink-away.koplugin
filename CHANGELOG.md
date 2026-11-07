@@ -8,6 +8,16 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.4.2] - 2026-11-07 *Prerelease*
+
+### Fixed
+
+- Make room: a sticker given the book's first room (Make room in its menu) stays in
+  one piece. Its parts were each kept with a word instead of the room, so they came
+  apart when the book loaded again.
+- Rooms in this book lists a room across the page as "Band across the page", not
+  "Space on the right".
+
 ## [4.4.1] - 2026-11-07 *Prerelease*
 
 Cloud sync (Google Drive), the Boox pen layer, handwritten notes on highlights,
@@ -1035,7 +1045,8 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.1...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.2...HEAD
+[4.4.2]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.1...v4.4.2
 [4.4.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.0...v4.4.1
 [4.4.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.3.0...v4.4.0
 [4.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...v4.3.0
