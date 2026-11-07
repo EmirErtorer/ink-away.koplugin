@@ -79,6 +79,18 @@ api:emit("opened", document, nil)
 check(#called == 2 and called[1] == 1 and called[2] == 3, "unsubscribe and listener failure are isolated")
 off_first(); off_third()
 
+-- Disposal inside a callback must cancel the rest of the same dispatch snapshot.
+local disposing = Integration.new()
+local delivered = false
+local disposed_owner = {}
+disposing:registerRenderingView(disposed_owner, function() return sa end)
+disposing:onAnnotationOpened(function() disposing:dispose() end)
+local stop_disposed = disposing:onAnnotationOpened(function() delivered = true end)
+disposing:emit("opened", document, sa)
+stop_disposed(); disposing:dispose()
+check(not delivered and disposing:select(ui) == nil, "dispose disconnects events and providers during dispatch")
+check(not pcall(disposing.onAnnotationOpened, disposing, function() end), "disposed registry rejects new observers")
+
 -- Public facade can be used before plugin init or after Book creation.
 package.loaded["dispatcher"] = {} -- registration/UI dispatch is outside this contract test
 local Ink = require("main")

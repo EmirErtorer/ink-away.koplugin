@@ -2,6 +2,7 @@
 -- No consumer identities or annotation-core objects belong in this module.
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
+local Delegate = require("ink/delegate")
 local Integration = {}
 Integration.__index = Integration
 
@@ -17,8 +18,11 @@ local function valid(surface, document)
 end
 
 function Integration.new()
-    return setmetatable({ _providers = {}, _installations = {}, _listeners = { opened = {}, closed = {} },
+    local self = setmetatable({ _providers = {}, _installations = {},
         _errors = setmetatable({}, { __mode = "k" }) }, Integration)
+    local function report(err) self:report(nil, err) end
+    self._events = { opened = Delegate.new(report), closed = Delegate.new(report) }
+    return self
 end
 
 function Integration:report(surface, err)
@@ -132,40 +136,21 @@ function Integration:dispose()
     for _, entry in pairs(self._installations) do installed[#installed + 1] = entry end
     for _, entry in ipairs(installed) do entry.cleanup(false) end
     self._providers, self._installations = {}, {}
-    for _, listeners in pairs(self._listeners) do
-        for _, listener in ipairs(listeners) do listener.active = false end
-    end
-    self._listeners = { opened = {}, closed = {} }
+    for _, event in pairs(self._events) do event:dispose() end
     self._errors = setmetatable({}, { __mode = "k" })
 end
 
 function Integration:subscribe(event, callback)
     assert(not self._disposed, "reader integration has closed")
-    assert(self._listeners[event], "unknown annotation event")
-    assert(type(callback) == "function", "an annotation listener must be a function")
-    local entry = { callback = callback, active = true }
-    local listeners = self._listeners[event]
-    listeners[#listeners + 1] = entry
-    return function()
-        entry.active = false
-        for i, listener in ipairs(listeners) do
-            if listener == entry then table.remove(listeners, i); break end
-        end
-    end
+    assert(self._events[event], "unknown annotation event")
+    return self._events[event]:subscribe(callback)
 end
 
 function Integration:onAnnotationOpened(callback) return self:subscribe("opened", callback) end
 function Integration:onAnnotationClosed(callback) return self:subscribe("closed", callback) end
 
 function Integration:emit(event, document, surface)
-    local snapshot = {}
-    for i, entry in ipairs(self._listeners[event]) do snapshot[i] = entry end
-    for _, entry in ipairs(snapshot) do
-        if entry.active then
-            local ok, err = pcall(entry.callback, { document = document, surface = surface })
-            if not ok then self:report(nil, err) end
-        end
-    end
+    self._events[event]:emit(function() return { document = document, surface = surface } end)
 end
 
 -- Preserve the provider's error handler when asynchronous navigation replaces
