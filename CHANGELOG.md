@@ -8,6 +8,11 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.4.1] - 2026-11-07 *Prerelease*
+
+Cloud sync (Google Drive), the Boox pen layer, handwritten notes on highlights,
+Make room, pins and stickers, for testing before 4.5.0.
+
 ### Added
 
 - Boox: the firmware draws the pen's ink (#37). On a Boox with Onyx's pen layer, the
@@ -1030,7 +1035,10 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.1...HEAD
+[4.4.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.0...v4.4.1
+[4.4.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.3.0...v4.4.0
+[4.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.1...v4.2.0
 [4.1.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...v4.1.1
 [4.1.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...v4.1.0
