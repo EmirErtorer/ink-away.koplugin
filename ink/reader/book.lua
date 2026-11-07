@@ -789,6 +789,14 @@ end
 function Book:roomBox(id)
     local r = self:roomById(id)
     if not r then return nil end
+    -- (the book's first room, before the book is loaded again with it: the box as
+    -- planned, so what is put in it is kept with the room, not with the words;
+    -- the reader loaded again has a Book of its own, without it)
+    local held = self._held_box
+    if r.kind == "box" and held and held.id == id then
+        local b = held.box
+        return { x = b.x, y = b.y, w = b.w, h = b.h }
+    end
     if r.kind == "box" then
         local cur = self:currentPage()
         if not cur or self:boxPage(r) ~= cur then return nil end
@@ -819,6 +827,13 @@ function Book:roomBox(id)
     end
     if not y0 then return nil end
     return { x = self:roomX(id), y = y0, w = r.w, h = y1 - y0 }
+end
+
+-- Until the book is loaded again for its first room `id`, its box is `box`, the
+-- one planned (see Book:roomBox): before that, the room is not laid out, and its
+-- box from the old layout is not where it will be.
+function Book:holdBox(id, box)
+    self._held_box = box and { id = id, box = { x = box.x, y = box.y, w = box.w, h = box.h } } or nil
 end
 
 -- The boxes of the rooms on the page shown: { { room, box }, ... }.
@@ -1021,6 +1036,7 @@ function Book:putRoom(r)
         if not data.rooms_ready then
             data.rooms, data.rooms_off, data.rooms_ready = rooms, nil, true
             self:save()
+            self._awaiting_reload = r.id
             return r, "reload"
         end
         local page = self:currentPage()

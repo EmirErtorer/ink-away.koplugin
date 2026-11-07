@@ -170,7 +170,7 @@ end
 ------------------------------------------------------------------------------
 
 local function kindLabel(r)
-    if r.kind == "band" then return _("Band across the page") end
+    if r.kind == "band" or r.side == "full" then return _("Band across the page") end
     if r.side == "left" then return _("Space on the left") end
     return _("Space on the right")
 end
@@ -259,6 +259,11 @@ function RoomsUI:makeRoomForSelection()
     -- lower), or where it was if no room could be made (the layout was put back)
     local function keep(room)
         local dx, dy = 0, 0
+        if room and plan.kind == "box" and pbox and book._awaiting_reload == room.id then
+            -- (the book's first room: laid out only once the book is loaded again,
+            -- so what goes in it is kept with the box as planned)
+            book:holdBox(room.id, pbox)
+        end
         local box = room and book:roomBox(room.id)
         if box and plan.kind == "box" then
             dy = box.y - rect.y   -- (nothing, unless the room starts lower)
