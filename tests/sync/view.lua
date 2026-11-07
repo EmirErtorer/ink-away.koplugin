@@ -74,11 +74,15 @@ ok(findButton(sheet, "Connect Dropbox"), "it offers to connect Dropbox")
 ok(t:find("Nothing is replaced or removed without a safety copy", 1, true), "it says plainly what is kept safe")
 ok(not findButton(sheet, "Sync now"), "no sync button before connecting")
 
--- connecting with no app key: asks for one instead of a broken QR code
+-- connecting with no app key (a build with none of its own): asks for one instead of a broken QR code
+local SyncConf = require("ink/sync/config")
+local built_dropbox = SyncConf.DROPBOX_APP_KEY
+SyncConf.DROPBOX_APP_KEY = ""
 press(sheet, "Connect Dropbox")
 ok(view._sync_key ~= nil, "without an app key it explains and offers to enter one")
 ok(textIn(view._sync_key):find("not registered with Dropbox yet", 1, true), "in words")
 view:closeSheet("_sync_key")
+SyncConf.DROPBOX_APP_KEY = built_dropbox
 
 -- with a key, the QR sheet
 G_reader_settings.data.inkaway_sync_dropbox_key = "abcdefgh12345678"
@@ -137,12 +141,17 @@ ok(findButton(sheet, "Connect OneDrive"), "OneDrive appears once there is a key 
 G_reader_settings.data.inkaway_sync_onedrive_key = nil
 view:closeSheet("_sync"); view:openSync()
 sheet = view._sync
+-- (a build with no Google registration of its own, as a person's own copy may be)
+local SyncConfig = require("ink/sync/config")
+local built_id, built_secret = SyncConfig.GDRIVE_CLIENT_ID, SyncConfig.GDRIVE_CLIENT_SECRET
+SyncConfig.GDRIVE_CLIENT_ID, SyncConfig.GDRIVE_CLIENT_SECRET = "", ""
 press(sheet, "Connect Google Drive")
 ok(view._sync_key ~= nil and textIn(view._sync_key):find("not registered with Google Drive yet", 1, true), "Google Drive without a registration asks for one")
 press(view._sync_key, "Enter details")
 ok(view._prompt ~= nil and textIn(view._prompt):find("The Client ID of your Google Drive app", 1, true), "first the client id")
 view:closeSheet("_prompt")
 view:closeSheet("_sync_key")
+SyncConfig.GDRIVE_CLIENT_ID, SyncConfig.GDRIVE_CLIENT_SECRET = built_id, built_secret
 G_reader_settings.data.inkaway_sync_gdrive_key = "1234567890-abcdefgh.apps.googleusercontent.com"
 G_reader_settings.data.inkaway_sync_gdrive_secret = "GOCSPX-abcdefgh"
 local Http = require("ink/sync/http")

@@ -21,7 +21,9 @@ local Config = {}
 --   Microsoft   entra.microsoft.com: a registration for personal accounts, "Allow
 --               public client flows" on, delegated permissions
 --               Files.ReadWrite.AppFolder, offline_access and User.Read
-Config.DROPBOX_APP_KEY = ""
+Config.DROPBOX_APP_KEY = "terkf6o0m0ess2l"
+-- (Google's are left out of the repository, as GitHub refuses a push with a Google
+-- client secret in it: the release build carries them in ink/sync/localkeys.lua.)
 Config.GDRIVE_CLIENT_ID = ""
 Config.GDRIVE_CLIENT_SECRET = ""
 Config.ONEDRIVE_CLIENT_ID = ""
@@ -49,8 +51,9 @@ function Config.fields(id)
     return FIELDS[id] or {}
 end
 
--- A developer's own registrations for a local test build: ink/sync/localkeys.lua,
--- which git ignores and the release build leaves out. The tests switch it off.
+-- Registrations kept out of the repository: ink/sync/localkeys.lua, which git
+-- ignores and the release build carries (Ink Away's Google registration). The
+-- tests switch it off.
 local function localKeys()
     if rawget(_G, "INKAWAY_NO_LOCALKEYS") then return {} end
     local ok, t = pcall(require, "ink/sync/localkeys")

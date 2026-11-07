@@ -400,8 +400,18 @@ do
     local gid, gsec = "1234567890-abcdefghijkl.apps.googleusercontent.com", "GOCSPX-abcdefgh12"
     local a, b = Config.appKey("gdrive", get({ inkaway_sync_gdrive_key = gid, inkaway_sync_gdrive_secret = gsec }))
     ok(a == gid and b == gsec, "Google needs a client id and a secret, and gives both")
+    local built_id, built_secret = Config.GDRIVE_CLIENT_ID, Config.GDRIVE_CLIENT_SECRET
+    -- (the release build's registration comes from localkeys.lua, which the tests switch off)
+    Config.GDRIVE_CLIENT_ID, Config.GDRIVE_CLIENT_SECRET = "999-built.apps.googleusercontent.com", "GOCSPX-built123"
+    local ba, bb = Config.appKey("gdrive", get({}))
+    ok(ba == Config.GDRIVE_CLIENT_ID and bb == Config.GDRIVE_CLIENT_SECRET,
+        "Ink Away's own Google registration is used when the person entered none")
+    eq(Config.appKey("gdrive", get({ inkaway_sync_gdrive_key = gid })), Config.GDRIVE_CLIENT_ID, "an id with no secret falls back to Ink Away's")
+    -- (a build with no Google registration of its own)
+    Config.GDRIVE_CLIENT_ID, Config.GDRIVE_CLIENT_SECRET = "", ""
     eq(Config.appKey("gdrive", get({ inkaway_sync_gdrive_key = gid })), nil, "an id with no secret is not enough")
     eq(Config.appKey("gdrive", get({ inkaway_sync_gdrive_key = "bad id!", inkaway_sync_gdrive_secret = gsec })), nil, "an id with odd characters is refused")
+    Config.GDRIVE_CLIENT_ID, Config.GDRIVE_CLIENT_SECRET = built_id, built_secret
     local guid = "0a1b2c3d-4e5f-6789-abcd-ef0123456789"
     eq(Config.appKey("onedrive", get({ inkaway_sync_onedrive_key = guid })), guid, "OneDrive takes a GUID")
     eq(Config.appKey("onedrive", get({ inkaway_sync_onedrive_key = "not-a-guid" })), nil, "and nothing else")

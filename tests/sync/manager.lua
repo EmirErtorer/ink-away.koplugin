@@ -90,11 +90,17 @@ ok(Account.defaultDeviceName() ~= "", "a device name")
 ------------------------------------------------------------------------------
 -- config and signing in
 ------------------------------------------------------------------------------
+local built_dropbox = Config.DROPBOX_APP_KEY
+ok(built_dropbox:match("^%w+$") and #built_dropbox >= 8, "Ink Away has its own Dropbox app key")
+eq(Config.appKey("dropbox", function() return nil end), built_dropbox, "used when the person entered none")
+-- (a build with no Dropbox key of its own, as a person's own copy may be)
+Config.DROPBOX_APP_KEY = ""
 eq(Config.appKey("dropbox", function() return nil end), nil, "no key is registered in this build")
 eq(Config.appKey("dropbox", function() return "abcdefgh12345678" end), "abcdefgh12345678", "a key the person entered")
 eq(Config.appKey("dropbox", function() return "bad key!" end), nil, "a key with odd characters is refused")
 local _, e = Manager.beginSignIn("dropbox")
 eq(e.code, "IA-S204", "no app key says so instead of opening a broken address")
+Config.DROPBOX_APP_KEY = built_dropbox
 SETTINGS.inkaway_sync_dropbox_key = "abcdefgh12345678"
 local pending = Manager.beginSignIn("dropbox")
 ok(pending and pending.url:find("client_id=abcdefgh12345678", 1, true), "with a key, an address to open")
