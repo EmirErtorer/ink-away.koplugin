@@ -35,6 +35,8 @@ local CHUNK = 1048576   -- bytes copied per step
 -- Can this KOReader write ink annotations? Its MuPDF must be there with the
 -- call that makes them (older builds have only the highlights); the call is
 -- found on a page of `path`, the PDF about to be written to.
+---@param path string
+---@return boolean
 function Pdfedit.available(path)
     if not Pdf.isPDF(path) then return false end
     local ok, yes = pcall(function()
@@ -134,8 +136,14 @@ local function copier(src, dst)
     end
 end
 
+---@param src string? Actual PDF source, never modified.
+---@param dst string Output copy; removed on cancellation/failure.
+---@param pages table[] Prepared annotations and optional overlay producers.
+---@return table? job
+---@return string? error
 function Pdfedit.job(src, dst, pages)
     if not Pdf.isPDF(src) then return nil, "the source is not a PDF" end
+    ---@cast src string Header validation above also verifies the source exists.
     local M = require("ffi/mupdf")
     local job = { i = 0, n = #pages }
     local copy, doc, finished

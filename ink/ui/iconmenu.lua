@@ -30,6 +30,7 @@ end
 -- It is deliberately not covers_fullscreen: the canvas must keep painting under
 -- the sheet, or closing or reopening a smaller sheet would leave stale panel
 -- pixels around it.
+--- Sheet focus must remain available to child InputText widgets after taps.
 local IconMenu = FocusManager:extend{
     modal = true,              -- stay on top; don't let un-consumed gestures fall
                                -- through and draw on the canvas underneath

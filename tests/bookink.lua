@@ -58,7 +58,7 @@ end
 do
     local doc = rollingDoc()
     local stroke = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 100, 222, 160, 222 } }
-    local item = Place.anchor(stroke, doc)
+    local item = assert(Place.anchor(stroke, doc))
     ok(item and item.a.xp0 == "w1", "rolling: an underline anchors to the word above it")
     local back = Place.place(item, doc)
     local x0, y0 = bbox(back)
@@ -86,7 +86,7 @@ do
     ok(Place.anchor(ul, doc).a.xp0 == "w1", "underline: anchors to the word above it")
     -- a note in the right margin, beside w2
     local note = { kind = "ink", style = "solid", width = 3, alpha = 255, pts = { 520, 400, 560, 430 } }
-    local item = Place.anchor(note, doc)
+    local item = assert(Place.anchor(note, doc))
     ok(item.a.xp0 == "w2" and item.a.mr ~= nil, "margin: right-margin ink keeps its distance from the edge")
     doc.words.w2.box = { x = 60, y = 600, w = 80, h = 20 }      -- the word moves left and down
     local back = Place.place(item, doc)
@@ -98,11 +98,11 @@ end
 do
     local doc = rollingDoc()
     local note = { kind = "ink", style = "solid", width = 3, alpha = 255, pts = { 200, 420, 240, 440 } }
-    local item = Place.anchor(note, doc)
+    local item = assert(Place.anchor(note, doc))
     ok(item.a.xp0 == "w2", "margin: anchors to the nearest word")
     doc.words = {}
     local pic = { kind = "ink", style = "solid", width = 3, alpha = 255, pts = { 500, 500, 520, 520 } }
-    local pi = Place.anchor(pic, doc)
+    local pi = assert(Place.anchor(pic, doc))
     ok(pi.a.pxp == "top3" and pi.a.dx > 0, "picture page: anchored to the page itself")
     local back = Place.place(pi, doc)
     local bx = bbox(back)
@@ -118,7 +118,7 @@ do
         return self.ox + px * self.zoom, self.oy + py * self.zoom, self.zoom
     end
     local stroke = { kind = "ink", style = "solid", width = 8, alpha = 255, pts = { 230, 410, 430, 410 } }
-    local item = Place.anchor(stroke, doc)
+    local item = assert(Place.anchor(stroke, doc))
     ok(item.a.page == 7 and math.abs(item.op.width - 4) < 1e-6, "paging: kept at page scale (width halved)")
     doc.zoom = 1                         -- zoomed out
     local back = Place.place(item, doc)
@@ -571,10 +571,11 @@ end
 do
     local doc = rollingDoc()
     local shape = { kind = "shape", shape = "rect", width = 4, alpha = 255, pts = { 90, 190, 400, 430 } }
-    local base = Place.anchor(shape, doc)
+    local base = assert(Place.anchor(shape, doc))
     local left = { kind = "ink", width = 4, alpha = 255, pts = { 90, 190, 180, 190 } }
     local right = { kind = "ink", width = 4, alpha = 255, pts = { 320, 430, 400, 430 } }
-    local a, b = Place.anchorWith(left, doc, base.a), Place.anchorWith(right, doc, base.a)
+    local a = assert(Place.anchorWith(left, doc, base.a))
+    local b = assert(Place.anchorWith(right, doc, base.a))
     ok(a.a.xp0 == base.a.xp0 and b.a.xp0 == base.a.xp0, "cut shape: both pieces keep the shape's word")
     local w = doc.words[base.a.xp0]
     w.box = { x = w.box.x + 50, y = w.box.y + 300, w = w.box.w, h = w.box.h }   -- laid out again
@@ -587,7 +588,7 @@ end
 do
     local doc = rollingDoc()
     local ul = { kind = "ink", width = 3, alpha = 255, pts = { 100, 224, 160, 224 } }   -- under w1 (200..220)
-    local item = Place.anchor(ul, doc)
+    local item = assert(Place.anchor(ul, doc))
     ok(item.a.dyb ~= nil and item.a.dy == nil, "underline: kept from the bottom of its word")
     doc.words.w1.box = { x = 100, y = 200, w = 90, h = 40 }                      -- a bigger font
     local placed = Place.place(item, doc)
@@ -629,7 +630,7 @@ do
     -- a note under "loping"
     local note = { kind = "ink", width = 4, alpha = 255, pts = { 25, 650, 85, 650 } }
     local ox, oy = bbox(note)
-    local item = Place.anchor(note, doc)
+    local item = assert(Place.anchor(note, doc))
     ok(item and item.a.xp0 == "s1" and item.a.seg == 2, "split word: anchored to its second part")
     local x0, y0 = bbox(Place.place(item, doc))
     ok(math.abs(x0 - ox) < 1 and math.abs(y0 - oy) < 1,
@@ -637,7 +638,7 @@ do
     -- ink by the first part stays there
     local tick = { kind = "ink", width = 4, alpha = 255, pts = { 505, 590, 535, 590 } }
     local tx, ty = bbox(tick)
-    local t_item = Place.anchor(tick, doc)
+    local t_item = assert(Place.anchor(tick, doc))
     x0, y0 = bbox(Place.place(t_item, doc))
     ok(t_item.a.seg == 1 and math.abs(x0 - tx) < 1 and math.abs(y0 - ty) < 1, "split word: ink by its first part stays there")
     -- a new layout where the word is whole: by the word

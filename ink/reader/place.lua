@@ -55,14 +55,19 @@ end
 local function origin(op)
     local x0, y0 = Canvas.opBox(op)
     if not x0 then return nil end
+    ---@cast y0 number Bounding-box coordinates are returned together.
     return floor(x0), floor(y0)
 end
 
 -- Anchor a screen op. Returns the item, or nil for an op that draws nothing.
+---@param op InkOperation
+---@param doc InkPlacementDocument
+---@return InkAnchoredItem?
 function Place.anchor(op, doc)
     if doc.anchorOp then return doc:anchorOp(op) end
     local bx0, by0, x1, y1 = Canvas.opBox(op)
     if not bx0 then return nil end
+    ---@cast by0 number Bounding-box coordinates are returned together.
     local x0, y0 = floor(bx0), floor(by0)
     if doc.kind == "paging" then
         local page, px, py, zoom = doc:toPage(x0, y0)
@@ -135,6 +140,9 @@ function Place.pageOf(item, doc)
 end
 
 -- An item as a screen op on the page now shown, or nil if it is not on it.
+---@param item InkAnchoredItem
+---@param doc InkPlacementDocument
+---@return InkOperation?
 function Place.place(item, doc)
     if item.a.page and doc.placeOp then return doc:placeOp(item) end
     local a = item.a

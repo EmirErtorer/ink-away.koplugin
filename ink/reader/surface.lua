@@ -7,14 +7,22 @@ local Surface = {}
 
 -- An affine part of a surface also describes how widths and non-path objects
 -- turn. Path mapping can additionally cross discontinuities in a document view.
+---@param op InkOperation
+---@param surface InkSurface
+---@param page integer?
+---@param to_page boolean
+---@return InkOperation? operation
+---@return integer? page
 local function mapped(op, surface, page, to_page)
     local c = Canvas.cloneOp(nil, op)
     local x0, y0 = Canvas.opBox(op)
     if not x0 then return nil end
+    ---@cast y0 number Bounding-box coordinates are returned together.
     local x, y, scale, angle
     if to_page then
         local p, px, py, zoom, rotation = surface:toPage(x0, y0)
         if not p then return nil end
+        ---@cast zoom number A successful mapping includes a positive scale.
         page, x, y, scale, angle = p, px, py, 1 / zoom, -(rotation or 0)
     else
         if not page then return nil end
@@ -24,6 +32,7 @@ local function mapped(op, surface, page, to_page)
     Transform.scale(c, x0, y0, scale)
     Transform.rotate(c, x0, y0, angle or 0)
     Canvas.translateOp(c, x - x0, y - y0)
+    ---@cast page integer Both successful branches identify the document page.
     if surface.mapPath then
         if op.kind == "ink" then
             c.pts = surface:mapPath(op.pts, to_page, page)
@@ -43,16 +52,23 @@ local function mapped(op, surface, page, to_page)
     return c, page
 end
 
+--- Build internal ink placement from public transforms; consumers do not implement ink conversion.
+---@param surface InkSurface
+---@return InkPlacementDocument
 function Surface.doc(surface)
     local doc = { kind = "paging" }
     function doc:toPage(x, y) return surface:toPage(x, y) end
     function doc:toScreen(page, x, y) return surface:toScreen(page, x, y) end
+    ---@param op InkOperation
+    ---@return InkAnchoredItem?
     function doc:anchorOp(op)
         local c, page = mapped(op, surface, nil, true)
         if not c then return nil end
         local x, y = Canvas.opBox(c)
         return { op = require("ink/reader/place").moved(c, -x, -y), a = { page = page, x = x, y = y } }
     end
+    ---@param item InkAnchoredItem
+    ---@return InkOperation?
     function doc:placeOp(item)
         local op = require("ink/reader/place").moved(item.op, item.a.x, item.a.y)
         return mapped(op, surface, item.a.page, false)

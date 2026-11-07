@@ -17,11 +17,15 @@ local BookExport = {}
 
 -- The fixed pages of a PDF book are PDF pages; a reflowing book has the pages
 -- the reader makes of it with its font and margins as they are now.
+---@param book InkBook
+---@return boolean
 function BookExport.paged(book)
     return book.ui.paging ~= nil
 end
 
 -- The book's PDF file, or nil (a reflowing book, a comic, a DjVu).
+---@param book InkBook
+---@return string?
 function BookExport.pdfPath(book)
     local d = book.ui.document
     if BookExport.paged(book) and d and Pdf.isPDF(d.file) then return d.file end

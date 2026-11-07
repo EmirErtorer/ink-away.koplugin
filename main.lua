@@ -202,28 +202,44 @@ InkAway.document_surface_version = 1
 InkAway.integration_api_version = 1
 
 -- Lazy construction permits registration before init, and does not require it.
+---@return InkIntegration
 function InkAway:_integrationAPI()
     if self.book then return self.book.extensions end
     if not self._integration then self._integration = require("ink/integration").new() end
     return self._integration
 end
 
+--- Install a widget-owned surface with optional surface-scoped lifecycle observers.
+---@param widget table
+---@param surface InkSurface
+---@param options InkIntegrationOptions?
+---@return fun(release_surface: boolean?) cleanup
 function InkAway:installPluginIntegration(widget, surface, options)
     return self:_integrationAPI():install(self, widget, surface, options)
 end
 
+---@param widget table
+---@param factory InkSurfaceFactory
+---@param on_error InkErrorHandler?
+---@return InkUnsubscribe
 function InkAway:registerRenderingView(widget, factory, on_error)
     return self:_integrationAPI():registerRenderingView(widget, factory, on_error)
 end
 
+---@param callback fun(event: InkAnnotationEvent)
+---@return InkUnsubscribe
 function InkAway:onAnnotationOpened(callback)
     return self:_integrationAPI():onAnnotationOpened(callback)
 end
 
+---@param callback fun(event: InkAnnotationEvent)
+---@return InkUnsubscribe
 function InkAway:onAnnotationClosed(callback)
     return self:_integrationAPI():onAnnotationClosed(callback)
 end
 
+---@param surface InkSurface
+---@param bb table
 function InkAway:paintDocumentSurface(surface, bb)
     if self.book and surface.document == self.ui.document then
         local ok, err = pcall(self.book.paintSurface, self.book, surface, bb)
@@ -231,6 +247,7 @@ function InkAway:paintDocumentSurface(surface, bb)
     end
 end
 
+---@param surface InkSurface
 function InkAway:releaseDocumentSurface(surface)
     if self.book and self.book.surface == surface then
         self.book:closeViews()

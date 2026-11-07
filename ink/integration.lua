@@ -3,9 +3,19 @@
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local Delegate = require("ink/delegate")
+
+---@class InkIntegration
+---@field private _providers table<table, InkRenderingProvider>
+---@field private _installations table<table, InkInstallation>
+---@field private _events table<InkAnnotationEventName, InkDelegate<InkAnnotationEvent>>
+---@field private _errors table<InkSurface, fun(err: unknown)>
+---@field private _disposed boolean?
 local Integration = {}
 Integration.__index = Integration
 
+---@param surface unknown
+---@param document table
+---@return boolean
 local function valid(surface, document)
     if type(surface) ~= "table" or surface.version ~= 1 or surface.document ~= document then return false end
     for _, method in ipairs({ "pages", "key", "toPage", "toScreen", "snapshot", "repaint", "clip" }) do
@@ -17,6 +27,7 @@ local function valid(surface, document)
     return true
 end
 
+---@return InkIntegration
 function Integration.new()
     local self = setmetatable({ _providers = {}, _installations = {},
         _errors = setmetatable({}, { __mode = "k" }) }, Integration)
@@ -25,6 +36,8 @@ function Integration.new()
     return self
 end
 
+---@param surface InkSurface?
+---@param err unknown
 function Integration:report(surface, err)
     logger.warn("Ink Away: extension failed:", err)
     local callback = surface and self._errors[surface]
@@ -35,6 +48,11 @@ function Integration:report(surface, err)
 end
 
 -- A widget owns its provider; registration never changes an active session.
+--- Register an owning widget; removal affects future sessions only.
+---@param widget table
+---@param factory InkSurfaceFactory
+---@param on_error InkErrorHandler?
+---@return InkUnsubscribe
 function Integration:registerRenderingView(widget, factory, on_error)
     assert(not self._disposed, "reader integration has closed")
     assert(type(widget) == "table", "a rendering view needs its owning widget")
@@ -49,6 +67,11 @@ function Integration:registerRenderingView(widget, factory, on_error)
 end
 
 -- One consumer hookup: provider plus optional surface-scoped observers.
+---@param ink InkIntegrationHost
+---@param widget table
+---@param surface InkSurface
+---@param options InkIntegrationOptions?
+---@return fun(release_surface: boolean?) cleanup
 function Integration:install(ink, widget, surface, options)
     assert(not self._disposed, "reader integration has closed")
     assert(type(widget) == "table", "an integration needs its owning widget")
@@ -91,6 +114,9 @@ end
 
 -- Publish only once the reader and integration machinery are usable. The
 -- registry key in ReaderUI may not have been assigned while plugin init runs.
+--- Publish readiness and drain pending consumer configuration in either load order.
+---@param ui table
+---@param ink InkIntegrationHost
 function Integration:publish(ui, ink)
     assert(not self._disposed, "reader integration has closed")
     ui.inkAwayIntegrationAPI = ink
@@ -122,6 +148,8 @@ function Integration:publish(ui, ink)
     end
 end
 
+---@param ui table
+---@param ink InkIntegrationHost
 function Integration:unpublish(ui, ink)
     if ui.inkAwayIntegrationAPI == ink then
         ui.inkAwayIntegrationAPI = nil
@@ -129,6 +157,7 @@ function Integration:unpublish(ui, ink)
     end
 end
 
+--- Disconnect providers and observers after reader/editor shutdown; idempotent.
 function Integration:dispose()
     if self._disposed then return end
     self._disposed = true
@@ -140,21 +169,35 @@ function Integration:dispose()
     self._errors = setmetatable({}, { __mode = "k" })
 end
 
+---@param event InkAnnotationEventName
+---@param callback fun(event: InkAnnotationEvent)
+---@return InkUnsubscribe
 function Integration:subscribe(event, callback)
     assert(not self._disposed, "reader integration has closed")
     assert(self._events[event], "unknown annotation event")
     return self._events[event]:subscribe(callback)
 end
 
+---@param callback fun(event: InkAnnotationEvent)
+---@return InkUnsubscribe
 function Integration:onAnnotationOpened(callback) return self:subscribe("opened", callback) end
+---@param callback fun(event: InkAnnotationEvent)
+---@return InkUnsubscribe
 function Integration:onAnnotationClosed(callback) return self:subscribe("closed", callback) end
 
+---@param event InkAnnotationEventName
+---@param document table
+---@param surface InkSurface?
 function Integration:emit(event, document, surface)
     self._events[event]:emit(function() return { document = document, surface = surface } end)
 end
 
 -- Preserve the provider's error handler when asynchronous navigation replaces
 -- its surface. Invalid handoffs keep the current document mapping.
+---@param previous InkSurface?
+---@param surface InkSurface?
+---@param document table
+---@return InkSurface?
 function Integration:handoff(previous, surface, document)
     if surface ~= nil and not valid(surface, document) then
         self:report(previous, "invalid annotation surface handoff")
@@ -164,6 +207,9 @@ function Integration:handoff(previous, surface, document)
     return surface
 end
 
+--- Select the top eligible visible provider, stopping at unrelated fullscreen UI.
+---@param ui table
+---@return InkSurface?
 function Integration:select(ui)
     for i = #(UIManager._window_stack or {}), 1, -1 do
         local widget = UIManager._window_stack[i].widget
@@ -171,18 +217,21 @@ function Integration:select(ui)
         -- Compatibility with version-1 consumers written before registration.
         local factory = entry and entry.factory or (widget and widget.getAnnotationSurface)
         if type(factory) == "function" then
-            local ok, surface = pcall(factory, widget, { document = ui.document })
-            if ok and surface ~= nil and not valid(surface, ui.document) then
-                ok, surface = false, "invalid annotation surface or different document"
+            local ok, result = pcall(factory, widget, { document = ui.document })
+            ---@type unknown
+            local failure = not ok and result or nil
+            if ok and result ~= nil and not valid(result, ui.document) then
+                ok, failure = false, "invalid annotation surface or different document"
             end
-            if ok and surface then
-                self._errors[surface] = entry and entry.on_error or nil
-                return surface
+            if ok and result then
+                ---@cast result InkSurface Validated above, including document identity.
+                self._errors[result] = entry and entry.on_error or nil
+                return result
             end
             if not ok then
-                self:report(nil, surface)
+                self:report(nil, failure)
                 if entry and entry.on_error then
-                    local reported, err = pcall(entry.on_error, surface)
+                    local reported, err = pcall(entry.on_error, failure)
                     if not reported then self:report(nil, err) end
                 end
                 return nil

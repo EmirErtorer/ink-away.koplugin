@@ -380,6 +380,8 @@ end
 -- Resolution is bounded independently of the editor, so a zoomed panel never
 -- determines the quality of a full-page export. Only this step's geometry and
 -- raster buffers are retained; the existing writer streams each page to disk.
+---@param o InkExportOptions
+---@return InkExportSpec
 function InkAwayView:fixedBookSpec(o)
     local book = self.book
     local pages = self:exportPageList()
@@ -500,6 +502,7 @@ function InkAwayView:reflowBookSpec(o)
 end
 
 -- The spec for the pages the export covers, whatever they are in.
+---@return InkExportSpec
 function InkAwayView:exportSpec()
     local o = self:exportOptions()
     if self.book then

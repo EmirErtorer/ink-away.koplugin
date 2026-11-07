@@ -20,6 +20,9 @@ local Pdf = {}
 
 -- MuPDF also opens image archives and other fixed-page formats. A provider's
 -- is_pdf flag does not mean its source can be copied and edited as a PDF.
+--- Provider is_pdf also covers archives; only a real PDF may use the editable writer.
+---@param path string?
+---@return boolean
 function Pdf.isPDF(path)
     local f = path and io.open(path, "rb")
     if not f then return false end

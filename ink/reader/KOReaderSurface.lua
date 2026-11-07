@@ -2,12 +2,18 @@
 local Device = require("device")
 local UIManager = require("ui/uimanager")
 local Screen = Device.screen
+---@class KOReaderSurface: InkViewer
+---@field ui table
+---@field _doc InkPlacementDocument?
 local KOReaderSurface = {}
 KOReaderSurface.__index = KOReaderSurface
 
+---@param ui table
+---@return KOReaderSurface
 function KOReaderSurface.new(ui) return setmetatable({ ui = ui }, KOReaderSurface) end
 
 -- The adapter between place.lua and KOReader's document and view.
+---@return InkPlacementDocument
 function KOReaderSurface:doc()
     if self._doc then return self._doc end
     local ui = self.ui
@@ -85,6 +91,7 @@ function KOReaderSurface:doc()
 end
 
 -- The page shown now (the first, when more than one is).
+---@return integer?
 function KOReaderSurface:currentPage()
     local ui = self.ui
     if ui.paging then return ui.view.state and ui.view.state.page or ui.paging.current_page end
@@ -94,6 +101,7 @@ end
 
 -- Every page on the screen: one, or two side by side, or the pages a
 -- continuous scroll shows.
+---@return integer[]
 function KOReaderSurface:pages()
     local ui = self.ui
     if ui.paging then
@@ -116,6 +124,7 @@ end
 
 -- What changes where a page's ink goes: for a reflowing book its layout (font,
 -- margins, size...), for a fixed-page one its zoom and position on the screen.
+---@return string
 function KOReaderSurface:key()
     local ui = self.ui
     if ui.paging then
@@ -136,15 +145,19 @@ function KOReaderSurface:key()
         Screen:getWidth(), Screen:getHeight(), top }, "|")
 end
 
+---@return InkReadingDirection
 function KOReaderSurface:readingDirection()
     return self.ui.view and self.ui.view.inverse_reading_order and "rtl" or "ltr"
 end
 
+---@param dir integer
+---@param done fun(surface: InkSurface?)
 function KOReaderSurface:turn(dir, done)
     self.ui:handleEvent(require("ui/event"):new("GotoViewRel", dir))
     done()
 end
 
+---@param bb table
 function KOReaderSurface:snapshot(bb) self.ui.view:paintTo(bb, 0, 0) end
 function KOReaderSurface:repaint() UIManager:setDirty(self.ui.dialog or "all", "ui") end
 

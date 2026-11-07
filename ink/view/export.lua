@@ -109,6 +109,7 @@ end
 -- The open document's export settings, kept in its file: format, pages, paper,
 -- whether the background or paper and page numbers are included, and the last
 -- name (and folder, when one was picked) it was exported under.
+---@return InkExportOptions
 function InkAwayView:exportOptions()
     if not self.export_opts then
         local nb = self.notebook
@@ -163,6 +164,7 @@ end
 -- as an editable PDF: a copy of the original with the ink and highlights as
 -- annotations. What each source can do is decided here and in
 -- ink/view/exportbook.lua, nowhere else.
+--- Show export format, fixed-page quality and page-scope choices.
 function InkAwayView:openExport()
     self:flushPending()
     self:resetLasso()   -- drop any selection first

@@ -23,9 +23,20 @@ local KOReaderSurface = require("ink/reader/KOReaderSurface")
 
 local Screen = Device.screen
 
+---@class InkBook
+---@field ui table
+---@field extensions InkIntegration
+---@field surface InkSurface?
+---@field _native KOReaderSurface
+---@field _surface_doc InkPlacementDocument?
+---@field dirs string[]?
+---@field plugin table?
 local Book = {}
 Book.__index = Book
 
+---@param ui table
+---@param extensions InkIntegration?
+---@return InkBook
 function Book.new(ui, extensions)
     local self = setmetatable({ ui = ui, rev = 0, _native = KOReaderSurface.new(ui),
         extensions = extensions or Extensions.new() }, Book)
@@ -74,21 +85,28 @@ end
 -- The book, as place.lua asks about it
 ------------------------------------------------------------------------------
 
+--- Native and external viewers expose the same pages/key/snapshot contract.
+---@return InkViewer
 function Book:viewer() return self.surface or self._native end
 
+---@return InkPlacementDocument
 function Book:doc()
     if not self.surface then return self._native:doc() end
     if not self._surface_doc then self._surface_doc = require("ink/reader/surface").doc(self.surface) end
     return self._surface_doc
 end
 
+---@return integer? page
 function Book:currentPage()
     if self.surface then return self.surface:pages()[1] end
     return self._native:currentPage()
 end
 
+---@return integer[]
 function Book:visiblePages() return self:viewer():pages() end
 
+--- Include viewer identity so equal keys from different surfaces cannot reuse ink.
+---@return string
 function Book:layoutKey()
     local viewer = self:viewer()
     return self.surface and tostring(viewer) .. "|" .. viewer:key() or viewer:key()
@@ -444,6 +462,8 @@ function Book:paintInk(bb, x, y)
     require("ink/reader/paint").ops(bb, placed.ops, x, y, self)
 end
 
+--- Invalidate screen placement when geometry ownership changes.
+---@param surface InkSurface?
 function Book:setSurface(surface)
     if self.surface == surface then return end
     self.surface = surface
@@ -452,6 +472,10 @@ function Book:setSurface(surface)
 end
 
 -- A render must not change the context of an open annotation session.
+---@param surface InkSurface?
+---@param bb table
+---@param x number
+---@param y number
 function Book:paintOnSurface(surface, bb, x, y)
     local previous = self.surface
     self:setSurface(surface)
@@ -460,6 +484,9 @@ function Book:paintOnSurface(surface, bb, x, y)
     if not ok then error(err) end
 end
 
+---@param surface InkSurface
+---@param bb table
+---@param force_ink boolean?
 function Book:paintSurface(surface, bb, force_ink)
     local G = rawget(_G, "G_reader_settings")
     if not self:hasInk() or (not force_ink and G and G:readSetting("inkaway_book_ink") == false) then return end
@@ -489,6 +516,7 @@ local function shown(w)
     return false
 end
 
+--- Acquire the selected surface and emit opened only after editor creation/show succeeds.
 function Book:annotate()
     if self._view and shown(self._view) then return end
     self._view = nil
@@ -552,12 +580,16 @@ function Book:close()
 end
 
 -- Turn the book's page (dir 1 forward, -1 back), as KOReader does.
+---@return InkReadingDirection
 function Book:readingDirection()
     local viewer = self:viewer()
     if viewer.readingDirection then return viewer:readingDirection() end
     return self._native:readingDirection()
 end
 
+---@param dir integer
+---@param done fun()? Called after geometry handoff; ignored once the session closes.
+---@param frame fun()? Request a live animation frame.
 function Book:turn(dir, done, frame)
     local view, source, completed = self._view, self.surface, false
     local viewer = self:viewer()
@@ -578,6 +610,7 @@ function Book:turn(dir, done, frame)
 end
 
 -- Called after editor saving/cleanup, including native-reader sessions.
+--- Release the active surface once, then notify close observers after editor cleanup.
 function Book:finishAnnotation()
     local surface = self.surface
     self:setSurface(nil)
@@ -593,6 +626,9 @@ end
 
 -- Paint the page shown into `bb` (screen-sized), without the ink unless
 -- `with_ink`.
+---@param bb table
+---@param with_ink boolean?
+---@param force_ink boolean?
 function Book:snapshot(bb, with_ink, force_ink)
     local ov = self:overlay()
     ov.hidden = not with_ink

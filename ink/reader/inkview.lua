@@ -125,6 +125,7 @@ function ReaderInkView:areaChanged()
 end
 
 -- Anchor edits before a provider changes the screen-to-page mapping.
+--- Commit edits using old geometry before an external viewer changes its viewport.
 function ReaderInkView:prepareSurfaceLayout()
     local surface = self.book and self.book.surface
     if not (surface and surface.setViewport) then return end
@@ -135,6 +136,7 @@ function ReaderInkView:prepareSurfaceLayout()
 end
 
 -- Move the toolbar to another side (from the book's settings).
+---@param side "left"|"right"|"top"|"bottom"
 function ReaderInkView:setToolbarSide(side)
     if not SIDES[side] or side == self._bar_side then return end
     self:flushPending()
@@ -384,6 +386,7 @@ end
 -- Turning the book's pages
 ------------------------------------------------------------------------------
 
+---@param dir integer Forward is 1; backward is -1. Editing pauses until navigation completes.
 function ReaderInkView:turnPage(dir)
     if self._surface_navigating then return end
     self:flushPending()
@@ -411,6 +414,7 @@ end
 
 -- Physical arrows follow reading flow; semantic next/previous actions retain
 -- their document meaning, including configured gestures and page-turn keys.
+---@param side "left"|"right" Physical direction, translated through reading order.
 function ReaderInkView:turnArrow(side)
     local rtl = self.book.readingDirection and self.book:readingDirection() == "rtl"
     local forward = (side == "left") == (rtl == true)
@@ -419,6 +423,9 @@ end
 
 -- Show an asynchronous surface's live page and saved ink, with our stationary
 -- toolbar. Editable ops are reloaded only once the camera reaches its target.
+---@param bb table
+---@param x number
+---@param y number
 function ReaderInkView:paintTo(bb, x, y)
     if not self._surface_navigating then return InkAwayView.paintTo(self, bb, x, y) end
     self.book:snapshot(bb, true, true)
@@ -436,17 +443,23 @@ function ReaderInkView:paintTo(bb, x, y)
     self:drawFabs(bb)
 end
 
+---@param event { handler: string }
+---@return boolean?
 function ReaderInkView:handleEvent(event)
     if self._surface_navigating and (event.handler == "onGesture" or event.handler == "onKeyPress") then return true end
     return InkAwayView.handleEvent(self, event)
 end
 
+---@param x number
+---@param y number
+---@return boolean
 function ReaderInkView:inArea(x, y)
     return not self._surface_navigating and InkAwayView.inArea(self, x, y)
 end
 
 -- The canvas's page turns (a finger swipe with Finger on the page set to
 -- Navigate, a two-finger swipe, the gestures) turn the book's pages.
+---@param dir integer Gesture direction; inverted for RTL.
 function ReaderInkView:nbGo(dir)
     local rtl = self.book.readingDirection and self.book:readingDirection() == "rtl"
     self:turnPage(rtl and -dir or dir)
@@ -630,6 +643,7 @@ function ReaderInkView:toolbarFit()
 end
 
 -- Turn the margin fit on or off (from the book's settings).
+---@param on boolean
 function ReaderInkView:setToolbarFit(on)
     self:flushPending()
     self:prepareSurfaceLayout()
@@ -704,6 +718,7 @@ function ReaderInkView:drawFabs(bb)
 end
 
 -- Slide the toolbar away (or back): the page then fills the screen.
+---@param hidden boolean
 function ReaderInkView:setToolbarHidden(hidden)
     if (self._toolbar_hidden or false) == hidden then return end
     self:flushPending()

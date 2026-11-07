@@ -103,6 +103,8 @@ end
 -- a switch under the field) and field. Enter does what the main button does,
 -- unless `lines` asks for a taller field of that many lines, where Enter
 -- starts a new line.
+--- The sheet owns the input focus layout on directional-key devices.
+---@param o InkTextPromptOptions
 function InkAwayView:promptText(o)
     local field = o.field or "_prompt"
     self:closeSheet(field)
