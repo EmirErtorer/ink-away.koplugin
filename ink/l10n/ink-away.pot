@@ -680,6 +680,10 @@ msgstr ""
 msgid "Colour…"
 msgstr ""
 
+#: ink/view/export.lua
+msgid "Compact"
+msgstr ""
+
 #: ink/notebookcover.lua
 msgid "Composition book"
 msgstr ""
@@ -1062,6 +1066,10 @@ msgstr ""
 #: ink/view/library.lua
 #: ink/view/overview.lua
 msgid "Delete…"
+msgstr ""
+
+#: ink/view/export.lua
+msgid "Detailed"
 msgstr ""
 
 #: ink/view/textformat.lua
@@ -2772,6 +2780,10 @@ msgid "Page numbers"
 msgstr ""
 
 #: ink/view/export.lua
+msgid "Page quality"
+msgstr ""
+
+#: ink/view/export.lua
 #, lua-format
 msgid "Page range (1–%d), e.g. 3-8"
 msgstr ""
@@ -4183,6 +4195,16 @@ msgstr ""
 
 #: ink/view/links.lua
 msgid "Up"
+msgstr ""
+
+#: ink/view/export.lua
+#, lua-format
+msgid "Up to %d pixels on the long edge. More detail, larger files and slower export."
+msgstr ""
+
+#: ink/view/export.lua
+#, lua-format
+msgid "Up to %d pixels on the long edge. Smaller files and faster export."
 msgstr ""
 
 #: ink/view/updates.lua
