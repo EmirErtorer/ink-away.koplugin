@@ -713,5 +713,33 @@ do
     Device.hasKeys, Device.input.group = hasKeys, group
 end
 
+-- Book images contain grey even when the selected pen is solid black.
+for _, case in ipairs({
+    { name = "grey e-ink book", instant = false, colour = false, driven = false, mode = "ui" },
+    { name = "desktop book", instant = true, colour = false, driven = false, mode = "fast" },
+    { name = "colour e-ink book", instant = false, colour = true, driven = false, mode = "fast" },
+    { name = "driven Android book", instant = false, colour = false, driven = true, mode = "fast" },
+}) do
+    UIManager.reset()
+    local ReaderInkView = require("ink/reader/inkview")
+    local book = standInBook()
+    function book:snapshot(bb) bb:fill(BB.Color8(160)) end
+    local view = ReaderInkView:new{ book = book }
+    view._instant_colour, view._is_colour = case.instant, case.colour
+    view.einkDriven = function() return case.driven end
+    view.elipsaDriven = function() return false end
+    view.pen_style, view.pen_alpha, view.pen_color = "solid", 255, { 0, 0, 0 }
+    UIManager.refreshes = {}
+    view:beginStroke(view.view.area_x + 50, view.view.area_y + 50)
+    ok(view._live_mode == case.mode, case.name .. ": live black ink uses " .. case.mode)
+    if case.mode == "ui" then
+        for _, refresh in ipairs(UIManager.refreshes) do
+            ok(refresh.mode ~= "fast", case.name .. ": brush rectangle does not force shading to monochrome")
+        end
+    end
+    view:flushPending()
+    view:closeCanvas()
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

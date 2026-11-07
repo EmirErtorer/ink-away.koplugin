@@ -332,7 +332,9 @@ function InkAwayView:beginStroke(sx, sy)
         -- setupLiveWriters), settled once the pen rests; a see-through pen there
         -- would show as a black bar over the text until then
         local opaque = (self.pen_alpha or 255) >= 255
-        self._live_mode = (self:pureBlackPen() or self:colourPanel()
+        -- Kindle DU thresholds the whole brush box, including grey book pixels.
+        local fast_black = self:pureBlackPen() and (not self.reader_mode or self:instantColour())
+        self._live_mode = (fast_black or self:colourPanel()
             or (opaque and (self:einkDriven() or self:elipsaDriven()))) and "fast" or "ui"
     end
     -- a new stroke pushes back the pending colour settle (see queueReconcile);
