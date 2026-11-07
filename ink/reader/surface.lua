@@ -17,6 +17,7 @@ local function mapped(op, surface, page, to_page)
         if not p then return nil end
         page, x, y, scale, angle = p, px, py, 1 / zoom, -(rotation or 0)
     else
+        if not page then return nil end
         x, y, scale, angle = surface:toScreen(page, x0, y0)
         if not x then return nil end
     end

@@ -117,7 +117,13 @@ UIManager._window_stack = { { widget = widget } }
 book:annotate()
 local editor = book._view
 check(book.surface == external and #opened == 2, "explicit provider works without discovery")
+check(book:viewer() == external, "Book consumes the public surface directly without a viewer adapter")
+check(book:visiblePages()[1] == 7, "shared pages contract selects the external page")
 check(external.begins == 1 and opened[2].surface == external, "open occurs after provider activation")
+local navigation_done = false
+book:turn(1, function() navigation_done = true end)
+check(navigation_done and book.surface == external, "optional navigation completes without replacing the surface")
+check(book:readingDirection() == "ltr", "missing reading direction uses the native default")
 release()
 check(book.surface == external, "unregister does not replace an active session")
 local late, frames

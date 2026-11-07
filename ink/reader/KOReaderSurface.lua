@@ -1,15 +1,14 @@
--- Default viewer. Native KOReader behavior is kept here, including reflowing books.
+-- Default viewer. KOReaderSurface KOReader behavior is kept here, including reflowing books.
 local Device = require("device")
 local UIManager = require("ui/uimanager")
 local Screen = Device.screen
-local Native = {}
-Native.__index = Native
-Native.nativeHighlights = true
+local KOReaderSurface = {}
+KOReaderSurface.__index = KOReaderSurface
 
-function Native.new(ui) return setmetatable({ ui = ui }, Native) end
+function KOReaderSurface.new(ui) return setmetatable({ ui = ui }, KOReaderSurface) end
 
 -- The adapter between place.lua and KOReader's document and view.
-function Native:doc()
+function KOReaderSurface:doc()
     if self._doc then return self._doc end
     local ui = self.ui
     local document, view = ui.document, ui.view
@@ -86,7 +85,7 @@ function Native:doc()
 end
 
 -- The page shown now (the first, when more than one is).
-function Native:currentPage()
+function KOReaderSurface:currentPage()
     local ui = self.ui
     if ui.paging then return ui.view.state and ui.view.state.page or ui.paging.current_page end
     local ok, p = pcall(ui.document.getCurrentPage, ui.document)
@@ -95,7 +94,7 @@ end
 
 -- Every page on the screen: one, or two side by side, or the pages a
 -- continuous scroll shows.
-function Native:visiblePages()
+function KOReaderSurface:pages()
     local ui = self.ui
     if ui.paging then
         local view = ui.view
@@ -117,7 +116,7 @@ end
 
 -- What changes where a page's ink goes: for a reflowing book its layout (font,
 -- margins, size...), for a fixed-page one its zoom and position on the screen.
-function Native:layoutKey()
+function KOReaderSurface:key()
     local ui = self.ui
     if ui.paging then
         local view = ui.view
@@ -137,20 +136,16 @@ function Native:layoutKey()
         Screen:getWidth(), Screen:getHeight(), top }, "|")
 end
 
-function Native:pagePosition(x, y)
-    return self.ui.view:screenToPageTransform({ x = x, y = y })
-end
-
-function Native:readingDirection()
+function KOReaderSurface:readingDirection()
     return self.ui.view and self.ui.view.inverse_reading_order and "rtl" or "ltr"
 end
 
-function Native:turn(dir, done)
+function KOReaderSurface:turn(dir, done)
     self.ui:handleEvent(require("ui/event"):new("GotoViewRel", dir))
     done()
 end
 
-function Native:snapshot(bb) self.ui.view:paintTo(bb, 0, 0) end
-function Native:repaint() UIManager:setDirty(self.ui.dialog or "all", "ui") end
+function KOReaderSurface:snapshot(bb) self.ui.view:paintTo(bb, 0, 0) end
+function KOReaderSurface:repaint() UIManager:setDirty(self.ui.dialog or "all", "ui") end
 
-return Native
+return KOReaderSurface

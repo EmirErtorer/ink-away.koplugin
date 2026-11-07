@@ -19,7 +19,7 @@ local Canvas = require("ink/canvas")
 local Place = require("ink/reader/place")
 local Snap = require("ink/reader/snap")
 local Extensions = require("ink/integration")
-local Native = require("ink/reader/native")
+local KOReaderSurface = require("ink/reader/KOReaderSurface")
 
 local Screen = Device.screen
 
@@ -27,7 +27,7 @@ local Book = {}
 Book.__index = Book
 
 function Book.new(ui, extensions)
-    local self = setmetatable({ ui = ui, rev = 0, _native = Native.new(ui),
+    local self = setmetatable({ ui = ui, rev = 0, _native = KOReaderSurface.new(ui),
         extensions = extensions or Extensions.new() }, Book)
     -- the book's KOReader folder (see ink/reader/bookink.lua for where)
     local file = ui.document and ui.document.file
@@ -74,21 +74,25 @@ end
 -- The book, as place.lua asks about it
 ------------------------------------------------------------------------------
 
--- Both the default reader and external viewers implement this contract.
-function Book:viewer()
-    if self.surface then
-        if not self._external or self._external.surface ~= self.surface then
-            self._external = require("ink/reader/external").new(self.surface, self._native)
-        end
-        return self._external
-    end
-    return self._native
+function Book:viewer() return self.surface or self._native end
+
+function Book:doc()
+    if not self.surface then return self._native:doc() end
+    if not self._surface_doc then self._surface_doc = require("ink/reader/surface").doc(self.surface) end
+    return self._surface_doc
 end
 
-function Book:doc() return self:viewer():doc() end
-function Book:currentPage() return self:viewer():currentPage() end
-function Book:visiblePages() return self:viewer():visiblePages() end
-function Book:layoutKey() return self:viewer():layoutKey() end
+function Book:currentPage()
+    if self.surface then return self.surface:pages()[1] end
+    return self._native:currentPage()
+end
+
+function Book:visiblePages() return self:viewer():pages() end
+
+function Book:layoutKey()
+    local viewer = self:viewer()
+    return self.surface and tostring(viewer) .. "|" .. viewer:key() or viewer:key()
+end
 
 -- The items on the pages shown, as screen ops with the item each came from:
 -- { ops = {...}, items = {...} }. Cached until the page, the layout or the ink
@@ -270,8 +274,9 @@ function Book:pageSelection(op, reach)
     local document = self.ui.document
     local doc = self:doc()
     local function wordAt(x, y)
-        local pos = self:viewer():pagePosition(x, y)
-        if not (pos and pos.page) then return nil end
+        local page, px, py = doc:toPage(x, y)
+        if not page then return nil end
+        local pos = { page = page, x = px, y = py }
         local ok, w = pcall(document.getWordFromPosition, document, pos)
         local pb = ok and w and w.pbox
         if not (pb and type(w.word) == "string" and w.word:match("%S")) then return nil end
@@ -334,7 +339,7 @@ function Book:highlightsAt(pts, r)
     local view = ui and ui.view
     -- The normal reader's hit boxes describe its own viewport. Never erase
     -- an unrelated native highlight through stale boxes in an external view.
-    if not self:viewer().nativeHighlights then return out end
+    if self.surface then return out end
     local vis = view and view.highlight and view.highlight.visible_boxes
     local anns = ui and ui.annotation and ui.annotation.annotations
     if not (vis and anns and #vis > 0 and view.screenToPageTransform and pts and #pts >= 2) then return out end
@@ -443,7 +448,7 @@ function Book:setSurface(surface)
     if self.surface == surface then return end
     self.surface = surface
     self._native._doc = nil
-    self._placed, self._external, self._layout_last = nil, nil, nil
+    self._placed, self._surface_doc, self._layout_last = nil, nil, nil
 end
 
 -- A render must not change the context of an open annotation session.
@@ -547,19 +552,28 @@ function Book:close()
 end
 
 -- Turn the book's page (dir 1 forward, -1 back), as KOReader does.
-function Book:readingDirection() return self:viewer():readingDirection() end
+function Book:readingDirection()
+    local viewer = self:viewer()
+    if viewer.readingDirection then return viewer:readingDirection() end
+    return self._native:readingDirection()
+end
 
 function Book:turn(dir, done, frame)
     local view, source, completed = self._view, self.surface, false
     local viewer = self:viewer()
-    local ok, err = pcall(viewer.turn, viewer, dir, function(surface)
+    local function completedTurn(surface)
         if completed or self._view ~= view or (view and view.closing) then return end
         completed = true
         surface = self.extensions:handoff(source, surface, self.ui.document)
         self:setSurface(surface)
         if surface and surface.begin then surface:begin() end
         if done then done() end
-    end, frame)
+    end
+    -- Navigation is optional for an external surface; absent means stay here.
+    local ok, err = pcall(function()
+        if viewer.turn then viewer:turn(dir, completedTurn, frame)
+        else completedTurn(self.surface) end
+    end)
     if not ok then self.extensions:report(source, err); error(err) end
 end
 
@@ -693,6 +707,7 @@ end
 -- Repaint the reader (after the ink changed).
 function Book:repaint()
     self:viewer():repaint()
+    if self.surface then self._native:repaint() end
 end
 
 return Book
