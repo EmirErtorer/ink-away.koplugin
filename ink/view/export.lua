@@ -281,9 +281,11 @@ function InkAwayView:openExport()
                     o.page_quality == "detailed" and "detailed" or "compact", content_w,
                     function(v) o.page_quality = v; reopen() end))
                 add(vspan(4))
-                add(self:sheetHint(o.page_quality == "detailed"
-                    and _("Up to 2400 pixels on the long edge. More detail, larger files and slower export.")
-                    or _("Up to 1600 pixels on the long edge. Smaller files and faster export."), content_w))
+                local quality = BookExport.pageQuality(o.page_quality)
+                local hint = o.page_quality == "detailed"
+                    and _("Up to %d pixels on the long edge. More detail, larger files and slower export.")
+                    or _("Up to %d pixels on the long edge. Smaller files and faster export.")
+                add(self:sheetHint(string.format(hint, quality.max_edge_px), content_w))
             end
             if nb then
                 toggle(pdf_src and _("Include the PDF page") or _("Include the paper"), "include_bg")

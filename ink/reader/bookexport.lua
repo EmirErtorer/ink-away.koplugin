@@ -15,6 +15,16 @@ local Pdf = require("ink/pdf")
 
 local BookExport = {}
 
+-- Raster limits and JPEG quality for the export sheet's Page quality choices.
+local PAGE_QUALITY = {
+    compact = { max_edge_px = 1600, max_pixels = 2000000, jpeg_quality = 80 },
+    detailed = { max_edge_px = 2400, max_pixels = 4000000, jpeg_quality = 90 },
+}
+
+function BookExport.pageQuality(name)
+    return PAGE_QUALITY[name] or PAGE_QUALITY.compact
+end
+
 -- The fixed pages of a PDF book are PDF pages; a reflowing book has the pages
 -- the reader makes of it with its font and margins as they are now.
 ---@param book InkBook

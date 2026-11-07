@@ -1,6 +1,6 @@
 -- Public extension contracts with the real Book/editor; host widgets are fixtures.
 package.path = "./?.lua;./tests/mock/?.lua;" .. package.path
-local Integration = require("ink/integration")
+local IntegrationAPI = require("ink/IntegrationAPI")
 local UIManager = require("ui/uimanager")
 local Book = require("ink/reader/book")
 local BookInk = require("ink/reader/bookink")
@@ -32,7 +32,7 @@ local function surface()
     function s:finish() self.finishes = (self.finishes or 0) + 1 end
     return s
 end
-local api, a, b = Integration.new(), {}, {}
+local api, a, b = IntegrationAPI.new(), {}, {}
 local sa, sb = surface(), surface()
 local errors = 0
 local remove_a = api:registerRenderingView(a, function(owner, context)
@@ -80,7 +80,7 @@ check(#called == 2 and called[1] == 1 and called[2] == 3, "unsubscribe and liste
 off_first(); off_third()
 
 -- Disposal inside a callback must cancel the rest of the same dispatch snapshot.
-local disposing = Integration.new()
+local disposing = IntegrationAPI.new()
 local delivered = false
 local disposed_owner = {}
 disposing:registerRenderingView(disposed_owner, function() return sa end)

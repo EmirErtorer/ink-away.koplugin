@@ -18,6 +18,8 @@ letter widths, so a selection tracks the line closely, not to the pixel.
 
 local Pdf = {}
 
+local PDF_HEADER_LENGTH = #"%PDF-1.7" -- Signature and version have a fixed byte length.
+
 -- MuPDF also opens image archives and other fixed-page formats. A provider's
 -- is_pdf flag does not mean its source can be copied and edited as a PDF.
 --- Provider is_pdf also covers archives; only a real PDF may use the editable writer.
@@ -26,7 +28,7 @@ local Pdf = {}
 function Pdf.isPDF(path)
     local f = path and io.open(path, "rb")
     if not f then return false end
-    local header = f:read(1024) or ""
+    local header = f:read(PDF_HEADER_LENGTH) or ""
     f:close()
     return header:match("^%%PDF%-%d%.%d") ~= nil
 end

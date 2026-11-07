@@ -20,16 +20,22 @@
 ---@field toPage fun(self: InkCoordinateMap, x: number, y: number): integer?, number?, number?, number?, number?
 ---@field toScreen fun(self: InkCoordinateMap, page: integer, x: number, y: number): number?, number?, number?, number?
 
---- Shared presentation contract used directly by Book for either viewer.
+--- The viewer methods Book uses for both KOReader's built-in viewer and an
+--- external viewer. This is the shared display-facing part of the interface;
+--- it does not describe how screen coordinates map to document coordinates.
 ---@class InkViewer
----@field pages fun(self: InkViewer): integer[] Ordered visible native pages.
----@field key fun(self: InkViewer): string Changes with page geometry/layout.
----@field snapshot fun(self: InkViewer, bb: table) Paint background without annotation editor UI.
----@field repaint fun(self: InkViewer)
----@field readingDirection? fun(self: InkViewer): InkReadingDirection
----@field turn? fun(self: InkViewer, dir: integer, done: fun(surface: InkSurface?), frame: fun()?) Complete once, after layout settles.
+---@field pages fun(self: InkViewer): integer[] Visible native document pages, in display order.
+---@field key fun(self: InkViewer): string Identity for the current page geometry and layout; changes when either changes.
+---@field snapshot fun(self: InkViewer, bb: table) Paint the viewer background into bb, without Ink Away's annotation UI or overlay.
+---@field repaint fun(self: InkViewer) Request a repaint of the viewer.
+---@field readingDirection? fun(self: InkViewer): InkReadingDirection Return the document's reading direction when known.
+---@field turn? fun(self: InkViewer, dir: integer, done: fun(surface: InkSurface?), frame: fun()?) Navigate and call done once the resulting layout is settled; frame may provide animation frames.
 
---- External plugins implement this interface; no Ink Away drawing objects required.
+--- Full interface for an external viewer that wants Ink Away to render and save
+--- annotations on it. It includes InkViewer's display methods, then adds the
+--- coordinate mapping and other surface capabilities Ink Away needs for ink.
+--- Implement the viewer's geometry and lifecycle; Ink Away handles its own
+--- annotation drawing and storage.
 ---@class InkSurface: InkViewer, InkCoordinateMap
 ---@field version 1
 ---@field document table Exact open KOReader document identity.

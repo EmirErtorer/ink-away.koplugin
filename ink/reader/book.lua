@@ -18,14 +18,14 @@ local BookInk = require("ink/reader/bookink")
 local Canvas = require("ink/canvas")
 local Place = require("ink/reader/place")
 local Snap = require("ink/reader/snap")
-local Extensions = require("ink/integration")
+local IntegrationAPI = require("ink/IntegrationAPI")
 local KOReaderSurface = require("ink/reader/KOReaderSurface")
 
 local Screen = Device.screen
 
 ---@class InkBook
 ---@field ui table
----@field extensions InkIntegration
+---@field extensions IntegrationAPI
 ---@field surface InkSurface?
 ---@field _native KOReaderSurface
 ---@field _surface_doc InkPlacementDocument?
@@ -35,11 +35,11 @@ local Book = {}
 Book.__index = Book
 
 ---@param ui table
----@param extensions InkIntegration?
+---@param extensions IntegrationAPI?
 ---@return InkBook
 function Book.new(ui, extensions)
     local self = setmetatable({ ui = ui, rev = 0, _native = KOReaderSurface.new(ui),
-        extensions = extensions or Extensions.new() }, Book)
+        extensions = extensions or IntegrationAPI.new() }, Book)
     -- the book's KOReader folder (see ink/reader/bookink.lua for where)
     local file = ui.document and ui.document.file
     local ok, where = pcall(BookInk.locate, file)

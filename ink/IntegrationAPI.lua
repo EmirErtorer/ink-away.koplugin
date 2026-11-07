@@ -4,14 +4,14 @@ local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local Delegate = require("ink/delegate")
 
----@class InkIntegration
+---@class IntegrationAPI
 ---@field private _providers table<table, InkRenderingProvider>
 ---@field private _installations table<table, InkInstallation>
 ---@field private _events table<InkAnnotationEventName, InkDelegate<InkAnnotationEvent>>
 ---@field private _errors table<InkSurface, fun(err: unknown)>
 ---@field private _disposed boolean?
-local Integration = {}
-Integration.__index = Integration
+local IntegrationAPI = {}
+IntegrationAPI.__index = IntegrationAPI
 
 ---@param surface unknown
 ---@param document table
@@ -27,10 +27,10 @@ local function valid(surface, document)
     return true
 end
 
----@return InkIntegration
-function Integration.new()
+---@return IntegrationAPI
+function IntegrationAPI.new()
     local self = setmetatable({ _providers = {}, _installations = {},
-        _errors = setmetatable({}, { __mode = "k" }) }, Integration)
+        _errors = setmetatable({}, { __mode = "k" }) }, IntegrationAPI)
     local function report(err) self:report(nil, err) end
     self._events = { opened = Delegate.new(report), closed = Delegate.new(report) }
     return self
@@ -38,7 +38,7 @@ end
 
 ---@param surface InkSurface?
 ---@param err unknown
-function Integration:report(surface, err)
+function IntegrationAPI:report(surface, err)
     logger.warn("Ink Away: extension failed:", err)
     local callback = surface and self._errors[surface]
     if callback then
@@ -53,7 +53,7 @@ end
 ---@param factory InkSurfaceFactory
 ---@param on_error InkErrorHandler?
 ---@return InkUnsubscribe
-function Integration:registerRenderingView(widget, factory, on_error)
+function IntegrationAPI:registerRenderingView(widget, factory, on_error)
     assert(not self._disposed, "reader integration has closed")
     assert(type(widget) == "table", "a rendering view needs its owning widget")
     assert(type(factory) == "function", "a rendering view needs a surface factory")
@@ -67,12 +67,12 @@ function Integration:registerRenderingView(widget, factory, on_error)
 end
 
 -- One consumer hookup: provider plus optional surface-scoped observers.
----@param ink InkIntegrationHost
+---@param ink IntegrationAPIHost
 ---@param widget table
 ---@param surface InkSurface
----@param options InkIntegrationOptions?
+---@param options IntegrationAPIOptions?
 ---@return fun(release_surface: boolean?) cleanup
-function Integration:install(ink, widget, surface, options)
+function IntegrationAPI:install(ink, widget, surface, options)
     assert(not self._disposed, "reader integration has closed")
     assert(type(widget) == "table", "an integration needs its owning widget")
     assert(valid(surface, ink.ui.document), "invalid annotation surface or different document")
@@ -116,8 +116,8 @@ end
 -- registry key in ReaderUI may not have been assigned while plugin init runs.
 --- Publish readiness and drain pending consumer configuration in either load order.
 ---@param ui table
----@param ink InkIntegrationHost
-function Integration:publish(ui, ink)
+---@param ink IntegrationAPIHost
+function IntegrationAPI:publish(ui, ink)
     assert(not self._disposed, "reader integration has closed")
     ui.inkAwayIntegrationAPI = ink
     local pending = ui.inkAwayPendingIntegrations
@@ -149,8 +149,8 @@ function Integration:publish(ui, ink)
 end
 
 ---@param ui table
----@param ink InkIntegrationHost
-function Integration:unpublish(ui, ink)
+---@param ink IntegrationAPIHost
+function IntegrationAPI:unpublish(ui, ink)
     if ui.inkAwayIntegrationAPI == ink then
         ui.inkAwayIntegrationAPI = nil
         ui.inkAwayPendingIntegrations = nil
@@ -158,7 +158,7 @@ function Integration:unpublish(ui, ink)
 end
 
 --- Disconnect providers and observers after reader/editor shutdown; idempotent.
-function Integration:dispose()
+function IntegrationAPI:dispose()
     if self._disposed then return end
     self._disposed = true
     local installed = {}
@@ -172,7 +172,7 @@ end
 ---@param event InkAnnotationEventName
 ---@param callback fun(event: InkAnnotationEvent)
 ---@return InkUnsubscribe
-function Integration:subscribe(event, callback)
+function IntegrationAPI:subscribe(event, callback)
     assert(not self._disposed, "reader integration has closed")
     assert(self._events[event], "unknown annotation event")
     return self._events[event]:subscribe(callback)
@@ -180,15 +180,15 @@ end
 
 ---@param callback fun(event: InkAnnotationEvent)
 ---@return InkUnsubscribe
-function Integration:onAnnotationOpened(callback) return self:subscribe("opened", callback) end
+function IntegrationAPI:onAnnotationOpened(callback) return self:subscribe("opened", callback) end
 ---@param callback fun(event: InkAnnotationEvent)
 ---@return InkUnsubscribe
-function Integration:onAnnotationClosed(callback) return self:subscribe("closed", callback) end
+function IntegrationAPI:onAnnotationClosed(callback) return self:subscribe("closed", callback) end
 
 ---@param event InkAnnotationEventName
 ---@param document table
 ---@param surface InkSurface?
-function Integration:emit(event, document, surface)
+function IntegrationAPI:emit(event, document, surface)
     self._events[event]:emit(function() return { document = document, surface = surface } end)
 end
 
@@ -198,7 +198,7 @@ end
 ---@param surface InkSurface?
 ---@param document table
 ---@return InkSurface?
-function Integration:handoff(previous, surface, document)
+function IntegrationAPI:handoff(previous, surface, document)
     if surface ~= nil and not valid(surface, document) then
         self:report(previous, "invalid annotation surface handoff")
         return previous
@@ -210,7 +210,7 @@ end
 --- Select the top eligible visible provider, stopping at unrelated fullscreen UI.
 ---@param ui table
 ---@return InkSurface?
-function Integration:select(ui)
+function IntegrationAPI:select(ui)
     for i = #(UIManager._window_stack or {}), 1, -1 do
         local widget = UIManager._window_stack[i].widget
         local entry = widget and self._providers[widget]
@@ -241,4 +241,4 @@ function Integration:select(ui)
     end
 end
 
-return Integration
+return IntegrationAPI

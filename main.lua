@@ -202,17 +202,17 @@ InkAway.document_surface_version = 1
 InkAway.integration_api_version = 1
 
 -- Lazy construction permits registration before init, and does not require it.
----@return InkIntegration
+---@return IntegrationAPI
 function InkAway:_integrationAPI()
     if self.book then return self.book.extensions end
-    if not self._integration then self._integration = require("ink/integration").new() end
+    if not self._integration then self._integration = require("ink/IntegrationAPI").new() end
     return self._integration
 end
 
 --- Install a widget-owned surface with optional surface-scoped lifecycle observers.
 ---@param widget table
 ---@param surface InkSurface
----@param options InkIntegrationOptions?
+---@param options IntegrationAPIOptions?
 ---@return fun(release_surface: boolean?) cleanup
 function InkAway:installPluginIntegration(widget, surface, options)
     return self:_integrationAPI():install(self, widget, surface, options)

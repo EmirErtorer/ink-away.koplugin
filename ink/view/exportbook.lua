@@ -387,8 +387,7 @@ function InkAwayView:fixedBookSpec(o)
     local pages = self:exportPageList()
     local items, marks = BookExport.inkByPage(book), BookExport.marksByPage(book)
     local picture = function(path) return BookInk.picturePath(book.sidecar, path) end
-    local detailed = o.page_quality == "detailed"
-    local edge, pixels = detailed and 2400 or 1600, detailed and 4000000 or 2000000
+    local quality = BookExport.pageQuality(o.page_quality)
     local doc, open_error
     local ok, d = pcall(function()
         return require("document/documentregistry"):openDocument(book.ui.document.file)
@@ -404,13 +403,14 @@ function InkAwayView:fixedBookSpec(o)
         if not (native and native.w and native.h and native.w > 0 and native.h > 0) then
             error("Could not read dimensions for page " .. pages[i])
         end
-        local z = math.min(edge / math.max(native.w, native.h), math.sqrt(pixels / (native.w * native.h)))
+        local z = math.min(quality.max_edge_px / math.max(native.w, native.h),
+            math.sqrt(quality.max_pixels / (native.w * native.h)))
         g = { w = math.max(1, math.floor(native.w * z)), h = math.max(1, math.floor(native.h * z)),
             z = z, pw = native.w, ph = native.h }
         geo = { [i] = g }
         return g
     end
-    local spec = { n = #pages, quality = detailed and 90 or 80, numbers = o.numbers,
+    local spec = { n = #pages, quality = quality.jpeg_quality, numbers = o.numbers,
         template = self:exportDress({ style = "blank" }),
         size = function(i) local g = geom(i); return g.w, g.h end,
         box = function(i) local g = geom(i); return g.pw, g.ph end,

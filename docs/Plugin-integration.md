@@ -83,7 +83,7 @@ rather than implementing Ink Away's drawing/storage schema. Optional navigation
 and reading-direction defaults, placement-cache identity and host repainting
 belong to Book's session orchestration.
 
-`main.lua` is the public facade. `integration.lua` owns provider selection and
+`main.lua` is the public facade. `IntegrationAPI.lua` owns provider selection and
 lifecycle registrations; `delegate.lua` implements reusable ordered multicast
 events for both opened and closed subscriptions. Each listener receives a fresh
 payload, callback failures are reported without stopping later observers, and

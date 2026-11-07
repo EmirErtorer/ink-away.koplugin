@@ -19,39 +19,23 @@ GitHub runs `luacheck` and every suite that needs no KOReader build on each push
 Most suites only need LuaJIT. They run the plugin against small stand-ins for
 KOReader's modules, which live in `tests/mock/`.
 
-`luajit tests/bookexport.lua` checks fixed-page book export routing and native ink
-placement. With a built runtime, `realbb/comicexport.lua` additionally tests real
-CBZ/CBR decoding and PDF output. Run from a built KOReader runtime:
+`bookexport.lua` checks fixed-page exports; `delegate.lua` checks event delivery.
+`integration.lua` and `loading_order.lua` check plugin registration, startup and
+cleanup. `annotation_surface.lua` and `surface_viewport.lua` check drawing and
+toolbar layout with external viewers. See `docs/Plugin-integration.md` for the API.
 
-    ./luajit REPO/tests/realbb/comicexport.lua REPO
+With a built KOReader runtime, `realbb/comicexport.lua` checks CBZ/CBR decoding and
+PDF output; `realbb/surface_toolbar.lua` and `realbb/promptfocus.lua` check toolbar
+pixels and input focus. Run from the runtime folder:
 
-For the optional 144 MB synthetic-archive measurement, generate fixtures with
-`python3 REPO/tests/realbb/comic_fixtures.py /tmp/inkaway-comics --large`, then
-pass `/tmp/inkaway-comics` as the final argument to the native suite. This is a
-desktop/native-library check, not physical-reader validation.
+    ./luajit REPO/tests/realbb/NAME.lua REPO
 
-`luajit tests/delegate.lua` checks the reusable event delegate without KOReader:
-ordered delivery, isolated payloads/errors, subscription mutation, idempotent
-unsubscribe and disposal during dispatch. `tests/integration.lua` checks that
-Book consumes a supplied surface directly and that registry disposal disconnects
-observers/providers.
+For large comic fixtures, run
+`python3 REPO/tests/realbb/comic_fixtures.py /tmp/inkaway-comics --large` and pass
+`/tmp/inkaway-comics` as the final argument to `comicexport.lua`.
 
-The PR's LuaLS interfaces are in `ink/contracts.lua`; public examples and runtime
-boundaries reference those types. Run `lua-language-server --check=.` for editor
-static diagnostics. The existing project is not globally type-clean: scope new
-type diagnostics to the PR; do not suppress unrelated host/mock diagnostics.
-
-`luajit tests/loading_order.lua` exercises the actual plugin init plus both
-readiness orders, queue cancellation/failures and composite installation cleanup.
-Host menus, pen/shelf attachment and UI are fixtures.
-
-`luajit tests/integration.lua` exercises public provider registration, lifecycle
-subscriptions, failures and cleanup through the actual Book/editor with host
-fixtures. `annotation_surface.lua` and `surface_viewport.lua` cover real canvas
-editing and toolbar reflow through a generic provider. The consumer contract is
-in `docs/Plugin-integration.md`. Native `realbb/surface_toolbar.lua` and
-`realbb/promptfocus.lua` check actual toolbar pixels and host focus behavior;
-run them from a built runtime as `./luajit REPO/tests/realbb/NAME.lua REPO`.
+`ink/contracts.lua` contains LuaLS types. Check with `lua-language-server --check=.`;
+the project has existing type warnings.
 
 ## Suites that need the KOReader emulator
 
