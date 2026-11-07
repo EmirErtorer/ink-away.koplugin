@@ -515,7 +515,7 @@ function InkAwayView:openPenTest()
     local PenTestScreen = require("ink/ui/pentestscreen")
     local raw = self._raw_installed
     if raw then self:uninstallRawFinger() end
-    UIManager:show(PenTestScreen:new{ on_close = function()
+    UIManager:show(PenTestScreen:new{ modal = self.modal, on_close = function()
         if raw and not self.closing then self:installRawFinger() end
         self:applyPalmReject()
     end })
