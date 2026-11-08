@@ -98,6 +98,7 @@ function InkAwayView:openTextFont(on_done)
     local FontMenu = require("ink/ui/fontmenu")
     local menu
     menu = FontMenu:new{
+        modal = self.modal,
         title = _("Note font"),
         item_table = items,
         is_popout = true,

@@ -11,6 +11,7 @@ versions marked *Prerelease* were test builds.
 ### Added
 - Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
 - Labels for highlight colours: say what each colour means to you ("Important", "Look this up"). Set them with Labels in the highlight colour sheet; each shows with its colour there, and they sync with your other settings. (#81)
+- Annotation mode on a viewer plugin's page: a plugin that shows a book's pages its own way, such as PanelsPlus (comics panel by panel), can let Ink Away draw on its view, with the ink kept as on the book's own pages. An experimental integration API, designed by Kristan Laimon (#80); see docs/INTEGRATION.md. Nothing changes for anyone not using such a plugin.
 
 ### Changed
 - Make room: where a room can't start at the box's top on that page (the paragraph began on the page before, or starts at the top of the page), the box moves to the nearest place one can as you draw or move it, so the box is always where the room will be. Boxes that were already exact stay exactly as they are.
@@ -24,6 +25,8 @@ versions marked *Prerelease* were test builds.
 - Connecting Google Drive on an Android phone or tablet no longer fails with "No connection" (IA-S101) after you allow it in the phone's own browser: the reader keeps asking while it comes back to the network. Readers that can open links also get an "Open the sign-in page" button, with the code copied to paste.
 - Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
 - A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
+- A comic book (CBZ, CBR) is no longer offered the editable PDF export, which would have written PDF annotations into a copy of its archive; it exports as pictures. A PDF with a few bytes before its header still gets the editable export. (Found by Kristan Laimon, #80.)
+- On a reader with a D-pad (and in the desktop emulator), tapping a text field in one of Ink Away's sheets no longer fails. (Found by Kristan Laimon, #80.)
 
 ## [4.4.2] - 2026-11-07 *Prerelease*
 

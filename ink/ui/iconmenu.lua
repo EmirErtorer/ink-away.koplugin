@@ -95,6 +95,11 @@ function IconMenu:fitFrame()
     self.frame._size = nil   -- drop any cached size so the frame remeasures
 end
 
+-- On a reader with a D-pad (and the desktop emulator), KOReader's text field asks
+-- the widget holding it where it is in a focus layout when tapped. A sheet has
+-- none: nowhere, so the field just takes the tap (its arrows and keys are its own).
+function IconMenu:getFocusableWidgetXY() return nil end
+
 function IconMenu:init()
     if self.build then self.frame = framed(self); self:fitFrame() end
     if Device:isTouchDevice() then
