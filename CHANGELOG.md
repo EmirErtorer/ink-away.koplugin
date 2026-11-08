@@ -17,6 +17,7 @@ versions marked *Prerelease* were test builds.
 - In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
 
 ### Fixed
+- Connecting Google Drive on an Android phone or tablet no longer fails with "No connection" (IA-S101) after you allow it in the phone's own browser: the reader keeps asking while it comes back to the network. Readers that can open links also get an "Open the sign-in page" button, with the code copied to paste.
 - Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
 - A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
 

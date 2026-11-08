@@ -3551,6 +3551,10 @@ msgstr "Resmi arka plan olarak aç"
 msgid "Open the PDF now?"
 msgstr "PDF şimdi açılsın mı?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Giriş sayfasını aç"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Bunları okuyucu menüsünden açın: Araçlar, Ink Away. Ya da Ayarlar, Dokunuşlar ve hareketler, Hareket yöneticisi'nde onlara bir hareket verin: eylemler “Ink Away: kitabı not al” ve “Ink Away: kitap notları”dır."
@@ -5047,6 +5051,10 @@ msgstr "Bulut bu isteği reddetti. Ink Away'in bir izni eksik olabilir."
 #: ink/sync/errors.lua
 msgid "The cloud service reported an error on its side."
 msgstr "Bulut hizmeti kendi tarafında bir hata bildirdi."
+
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Kod kopyalandı: giriş sayfasına yapıştırın."
 
 #: ink/sync/errors.lua
 msgid "The code was not accepted"

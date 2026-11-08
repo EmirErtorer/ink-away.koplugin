@@ -388,8 +388,20 @@ function InkAwayView:syncSignInTyped(pending)
     self:showSheet(field, build)
 end
 
+-- Asking whether a sign-in was allowed: a failure to reach the network that
+-- many times in a row ends it (about two minutes); fewer are waited out.
+InkAwayView.SIGNIN_NET_MISSES = 24
+
+-- Can this reader open the sign-in page itself (a phone or tablet: its own browser)?
+local function canOpenLink()
+    return type(Device.canOpenLink) == "function" and Device:canOpenLink() == true and type(Device.openLink) == "function"
+end
+
 -- The sign-in where the reader shows a code: the person types it on the phone, and
--- the reader asks every few seconds whether that has been done.
+-- the reader asks every few seconds whether that has been done. A reader with a
+-- browser of its own (Android) can open the page itself, the code copied to paste
+-- there; meanwhile the reader is in the background and may come back to the
+-- network a moment late, so failures to reach it are waited out, not shown.
 function InkAwayView:syncSignInDevice(pending)
     local name = Providers.name(pending.provider)
     local field = "_sync_signin"
@@ -415,9 +427,19 @@ function InkAwayView:syncSignInDevice(pending)
         add(para(self, _("3. Tap Allow. This screen carries on by itself."), content_w, 16))
         add(vspan(8))
         add(self:sheetHint(_("No camera? Open this address in any browser:") .. "\n" .. pending.url, content_w, 11))
+        if canOpenLink() then
+            add(vspan(10))
+            add(self:actionButton(_("Open the sign-in page"), content_w, function()
+                local inp = Device.input
+                if inp and inp.setClipboardText then pcall(inp.setClipboardText, pending.user_code) end
+                self:showNotice(_("The code is copied: paste it on the sign-in page."))
+                pcall(Device.openLink, Device, pending.url)
+            end, true))
+        end
         return g
     end
     self:showSheet(field, build)
+    local misses = 0
     local function poll()
         if self._sync_pending ~= token or self.closing or not self[field] then return stop() end
         local who, perr = Manager.pollSignIn(pending)
@@ -427,7 +449,14 @@ function InkAwayView:syncSignInDevice(pending)
             return self:syncPreview()
         end
         if perr and perr.code == "IA-S206" then
+            misses = 0
             return UIManager:scheduleIn(math.max(pending.interval or 5, perr.retry_after or 0), poll)
+        end
+        -- (the network not reached this once: asked again, unless it keeps failing)
+        if perr and (perr.code == "IA-S101" or perr.code == "IA-S102") and misses < InkAwayView.SIGNIN_NET_MISSES then
+            misses = misses + 1
+            Manager.log("sign-in: the network was not reached (" .. perr.code .. "), asking again")
+            return UIManager:scheduleIn(pending.interval or 5, poll)
         end
         close()
         self:syncErrorSheet(perr and perr.code or "IA-S503", { again = function() self:syncSignIn(pending.provider) end })

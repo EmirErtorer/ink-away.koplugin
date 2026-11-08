@@ -3551,6 +3551,10 @@ msgstr "Открыть изображение как фон"
 msgid "Open the PDF now?"
 msgstr "Открыть PDF сейчас?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Открыть страницу входа"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Откройте их из меню читалки: «Инструменты», Ink Away. Или назначьте им жест в разделе «Настройки», «Касания и жесты», «Менеджер жестов»: действия называются «Ink Away: аннотировать книгу» и «Ink Away: заметки к книге»."
@@ -5047,6 +5051,10 @@ msgstr "Облако отклонило этот запрос. Возможно,
 #: ink/sync/errors.lua
 msgid "The cloud service reported an error on its side."
 msgstr "Облачный сервис сообщил об ошибке на своей стороне."
+
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Код скопирован: вставьте его на странице входа."
 
 #: ink/sync/errors.lua
 msgid "The code was not accepted"

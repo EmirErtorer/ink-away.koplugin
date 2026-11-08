@@ -3551,6 +3551,10 @@ msgstr "Άνοιγμα εικόνας ως φόντου"
 msgid "Open the PDF now?"
 msgstr "Να ανοίξει τώρα το PDF;"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Άνοιγμα της σελίδας σύνδεσης"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Ανοίξτε τα από το μενού του αναγνώστη: Εργαλεία, Ink Away. Ή δώστε τους χειρονομία στις Ρυθμίσεις, Πατήματα και χειρονομίες, Διαχειριστής χειρονομιών: οι ενέργειες είναι «Ink Away: σχολιασμός του βιβλίου» και «Ink Away: σημειώσεις βιβλίου»."
@@ -5047,6 +5051,10 @@ msgstr "Το cloud απέρριψε αυτό το αίτημα. Ίσως λεί�
 #: ink/sync/errors.lua
 msgid "The cloud service reported an error on its side."
 msgstr "Η υπηρεσία cloud ανέφερε σφάλμα από την πλευρά της."
+
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Ο κωδικός αντιγράφηκε: επικολλήστε τον στη σελίδα σύνδεσης."
 
 #: ink/sync/errors.lua
 msgid "The code was not accepted"

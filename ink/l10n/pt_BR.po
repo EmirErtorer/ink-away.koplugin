@@ -3551,6 +3551,10 @@ msgstr "Abrir imagem como fundo"
 msgid "Open the PDF now?"
 msgstr "Abrir o PDF agora?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Abrir a página de entrada"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Abra-os pelo menu do leitor: Ferramentas, Ink Away. Ou dê a eles um gesto em Configurações, Toques e gestos, Gerenciador de gestos: as ações são “Ink Away: anotar o livro” e “Ink Away: notas do livro”."
@@ -5047,6 +5051,10 @@ msgstr "A nuvem recusou este pedido. Pode faltar uma permissão ao Ink Away."
 #: ink/sync/errors.lua
 msgid "The cloud service reported an error on its side."
 msgstr "O serviço de nuvem informou um erro do lado dele."
+
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "O código foi copiado: cole-o na página de entrada."
 
 #: ink/sync/errors.lua
 msgid "The code was not accepted"

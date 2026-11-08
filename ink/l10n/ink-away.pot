@@ -3521,6 +3521,10 @@ msgstr ""
 msgid "Open the PDF now?"
 msgstr ""
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr ""
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr ""
@@ -4998,6 +5002,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "The cloud service reported an error on its side."
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
 msgstr ""
 
 #: ink/sync/errors.lua
