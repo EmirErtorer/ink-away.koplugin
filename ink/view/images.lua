@@ -411,6 +411,7 @@ function InkAwayView:chooseSentPicture()
     end
     local grid
     grid = ThumbGrid:new{
+        modal = self.modal,
         title = _("Sent from your phone"),
         items = items,
         flash_open = false,

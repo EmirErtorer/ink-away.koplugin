@@ -28,6 +28,7 @@ local ffi = require("ffi")
 local Overlay = require("ink/export/pdfoverlay")
 
 local Pdfedit = {}
+local Pdf = require("ink/pdf")
 
 local CHUNK = 1048576   -- bytes copied per step
 
@@ -35,6 +36,7 @@ local CHUNK = 1048576   -- bytes copied per step
 -- call that makes them (older builds have only the highlights); the call is
 -- found on a page of `path`, the PDF about to be written to.
 function Pdfedit.available(path)
+    if not Pdf.isPDF(path) then return false end   -- (a comic archive opens in MuPDF too)
     local ok, yes = pcall(function()
         local M = require("ffi/mupdf")
         local doc = M.openDocument(path)
@@ -133,6 +135,7 @@ local function copier(src, dst)
 end
 
 function Pdfedit.job(src, dst, pages)
+    if not Pdf.isPDF(src) then return nil, "the source is not a PDF" end
     local M = require("ffi/mupdf")
     local job = { i = 0, n = #pages }
     local copy, doc, finished

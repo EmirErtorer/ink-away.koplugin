@@ -348,6 +348,7 @@ function InkAwayView:browseFiles(o)
     local start = (o.start and Storage.isDir(o.start)) and o.start:gsub("(.)/+$", "%1") or self:homeDir()
     cur = start
     grid = ThumbGrid:new{
+        modal = self.modal,   -- (over annotation mode on a viewer plugin's page, which is modal)
         title = title(start),
         items = items(start),
         folder_icon = self:iconPath("folder"),
@@ -376,6 +377,7 @@ function InkAwayView:browseKoreaderFiles(path, on_pick, accept, title)
     local PathChooser = require("ui/widget/pathchooser")
     local chooser
     chooser = PathChooser:new{
+        modal = self.modal,
         title = title or true,
         path = (path and Storage.isDir(path)) and path or self:homeDir(),
         select_directory = false, select_file = true,
