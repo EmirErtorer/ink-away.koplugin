@@ -466,6 +466,10 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr ""
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr ""
@@ -985,6 +989,10 @@ msgstr ""
 
 #: ink/view/library.lua
 msgid "Colour and icon…"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
 msgstr ""
 
 #: ink/coverpicker.lua
@@ -2377,6 +2385,10 @@ msgstr ""
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr ""
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr ""
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr ""
@@ -2641,6 +2653,14 @@ msgstr ""
 
 #: ink/notebookcover.lua
 msgid "Kraft with window"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
 msgstr ""
 
 #: ink/view/settings.lua
@@ -4184,6 +4204,7 @@ msgstr ""
 msgid "Sandpaper"
 msgstr ""
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5681,6 +5702,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
 msgstr ""
 
 #: ink/reader/roomtool.lua

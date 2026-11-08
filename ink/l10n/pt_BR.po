@@ -467,6 +467,10 @@ msgstr "Acrílico"
 msgid "Add"
 msgstr "Adicionar"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Adicionar um rótulo"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Adicionar um ícone…"
@@ -987,6 +991,10 @@ msgstr "Cor"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Cor e ícone…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Rótulos das cores"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Imagem, Fundo coloca uma imagem atrás da página. Mantenha pressionado 
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importe um PDF para escrever nas páginas dele e depois exporte de volta para PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Importante, uma palavra para pesquisar, uma pergunta…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "PDFs e imagens importados"
@@ -2667,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraft com janela"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Rótulo desta cor"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Rótulos"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Igual ao caderno"
 msgid "Sandpaper"
 msgstr "Lixa"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "O que o Ink Away faz e que não se vê à primeira vista."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "O que chegou estava incompleto ou danificado, então foi descartado."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "O que cada cor significa para você. Aparece com a cor quando você muda a cor de um destaque."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

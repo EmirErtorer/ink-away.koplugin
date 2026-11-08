@@ -467,6 +467,10 @@ msgstr "Acrílico"
 msgid "Add"
 msgstr "Añadir"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Añadir una etiqueta"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Añadir un icono…"
@@ -987,6 +991,10 @@ msgstr "Color"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Color e icono…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Etiquetas de colores"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Imagen, Fondo: pone una imagen detrás de la página. Mantén presionado
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importa un PDF para escribir en sus páginas y luego expórtalo de nuevo a PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Importante, una palabra que buscar, una pregunta…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "PDF e imágenes importados"
@@ -2667,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraft con ventana"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Etiqueta para este color"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Etiquetas"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Igual que la libreta"
 msgid "Sandpaper"
 msgstr "Lija"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Lo que Ink Away puede hacer y no se ve a simple vista."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Lo que llegó estaba incompleto o dañado, así que se descartó."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Lo que significa cada color para ti. Aparece junto al color cuando cambias el color de un resaltado."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

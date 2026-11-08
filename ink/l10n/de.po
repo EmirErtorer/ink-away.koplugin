@@ -467,6 +467,10 @@ msgstr "Acryl"
 msgid "Add"
 msgstr "Hinzufügen"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Bezeichnung hinzufügen"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Symbol hinzufügen …"
@@ -987,6 +991,10 @@ msgstr "Farbe"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Farbe und Symbol …"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Farbbezeichnungen"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Bild, Hintergrund legt ein Bild hinter die Seite. Halten Sie „Neue Zei
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importieren Sie ein PDF, um auf seine Seiten zu schreiben, und exportieren Sie es dann zurück als PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Wichtig, ein Wort zum Nachschlagen, eine Frage …"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "Importierte PDFs und Bilder"
@@ -2667,6 +2679,14 @@ msgstr "Kraftpapier"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraftpapier mit Fenster"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Bezeichnung für diese Farbe"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Bezeichnungen"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Wie das Notizbuch"
 msgid "Sandpaper"
 msgstr "Schleifpapier"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Was Ink Away kann, das man auf den ersten Blick nicht sieht."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Was ankam, war unvollständig oder beschädigt und wurde verworfen."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Was jede Farbe für dich bedeutet. Es steht bei der Farbe, wenn du die Farbe einer Markierung änderst."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

@@ -467,6 +467,10 @@ msgstr "Акрил"
 msgid "Add"
 msgstr "Добавить"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Добавить подпись"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Добавить значок…"
@@ -987,6 +991,10 @@ msgstr "Цвет"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Цвет и значок…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Подписи цветов"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "«Изображение», «Фон» помещает картинку
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Импортируйте PDF, чтобы писать на его страницах, затем экспортируйте обратно в PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Важное, слово, которое нужно посмотреть, вопрос…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "Импортированные PDF и изображения"
@@ -2667,6 +2679,14 @@ msgstr "Крафт"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Крафт с окошком"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Подпись для этого цвета"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Подписи"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Как у блокнота"
 msgid "Sandpaper"
 msgstr "Наждачная бумага"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Что умеет Ink Away и чего не видно с первого
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Полученное было неполным или повреждённым, поэтому оно отброшено."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Что для вас значит каждый цвет. Подпись видна рядом с цветом, когда вы меняете цвет выделения."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

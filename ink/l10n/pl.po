@@ -467,6 +467,10 @@ msgstr "Akryl"
 msgid "Add"
 msgstr "Dodaj"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Dodaj etykietę"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Dodaj ikonę…"
@@ -987,6 +991,10 @@ msgstr "Kolor"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Kolor i ikona…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Etykiety kolorów"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Obraz, Tło umieszcza obraz za stroną. Przytrzymaj Nowy rysunek, aby za
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Zaimportuj plik PDF, aby pisać na jego stronach, a potem wyeksportuj go z powrotem do PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Ważne, słowo do sprawdzenia, pytanie…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "Zaimportowane pliki PDF i obrazy"
@@ -2667,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraft z okienkiem"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Etykieta tego koloru"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Etykiety"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Jak notatnik"
 msgid "Sandpaper"
 msgstr "Papier ścierny"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Co Ink Away potrafi, a czego nie widać na pierwszy rzut oka."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "To, co dotarło, było niekompletne lub uszkodzone, więc zostało odrzucone."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Co oznacza dla ciebie każdy kolor. Pokazuje się przy kolorze, gdy zmieniasz kolor zakreślenia."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

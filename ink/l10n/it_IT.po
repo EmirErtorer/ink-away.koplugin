@@ -467,6 +467,10 @@ msgstr "Acrilico"
 msgid "Add"
 msgstr "Aggiungi"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Aggiungi un'etichetta"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Aggiungi un’icona…"
@@ -987,6 +991,10 @@ msgstr "Colore"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Colore e icona…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Etichette dei colori"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Immagine, Sfondo mette un’immagine dietro la pagina. Tieni premuto Nuo
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importa un PDF per scrivere sulle sue pagine, poi esportalo di nuovo in PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Importante, una parola da cercare, una domanda…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "PDF e immagini importati"
@@ -2667,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraft con finestra"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Etichetta per questo colore"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Etichette"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Come il quaderno"
 msgid "Sandpaper"
 msgstr "Carta vetrata"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Quello che Ink Away sa fare e che a colpo d’occhio non si vede."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Ciò che è arrivato era incompleto o danneggiato ed è stato scartato."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Cosa significa per te ogni colore. Compare accanto al colore quando cambi il colore di un'evidenziazione."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

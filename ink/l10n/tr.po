@@ -467,6 +467,10 @@ msgstr "Akrilik"
 msgid "Add"
 msgstr "Ekle"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Etiket ekle"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Simge ekle…"
@@ -987,6 +991,10 @@ msgstr "Renk"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Renk ve simge…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Renk etiketleri"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Resim, Arka plan, sayfanın arkasına bir resim koyar. Bir resimden çiz
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Sayfalarına yazmak için bir PDF alın, sonra yine PDF olarak dışa aktarın."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Önemli, bakılacak bir sözcük, bir soru…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "İçe aktarılan PDF'ler ve resimler"
@@ -2667,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Pencereli kraft"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Bu rengin etiketi"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Etiketler"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Defterle aynı"
 msgid "Sandpaper"
 msgstr "Zımpara kâğıdı"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Ink Away'in bir bakışta görünmeyen yapabildikleri."
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Gelen veri eksik veya bozuktu, bu yüzden atıldı."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Her rengin sizin için anlamı. Bir vurgunun rengini değiştirirken rengin yanında görünür."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

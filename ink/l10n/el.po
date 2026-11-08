@@ -467,6 +467,10 @@ msgstr "Ακρυλικό"
 msgid "Add"
 msgstr "Προσθήκη"
 
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Προσθήκη ετικέτας"
+
 #: ink/view/library.lua
 msgid "Add an icon…"
 msgstr "Προσθήκη εικονιδίου…"
@@ -987,6 +991,10 @@ msgstr "Χρώμα"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Χρώμα και εικονίδιο…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Ετικέτες χρωμάτων"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2402,6 +2410,10 @@ msgstr "Εικόνα, Φόντο βάζει μια εικόνα πίσω από 
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Εισαγάγετε ένα PDF για να γράψετε στις σελίδες του και μετά εξαγάγετέ το πάλι σε PDF."
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Σημαντικό, λέξη για αναζήτηση, ερώτηση…"
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr "Εισαγμένα PDF και εικόνες"
@@ -2667,6 +2679,14 @@ msgstr "Κραφτ"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Κραφτ με παράθυρο"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Ετικέτα για αυτό το χρώμα"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Ετικέτες"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -4220,6 +4240,7 @@ msgstr "Όπως το σημειωματάριο"
 msgid "Sandpaper"
 msgstr "Γυαλόχαρτο"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5737,6 +5758,10 @@ msgstr "Τι μπορεί να κάνει το Ink Away και δεν φαίνε
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Ό,τι ήρθε ήταν ελλιπές ή κατεστραμμένο, οπότε απορρίφθηκε."
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Τι σημαίνει για εσάς κάθε χρώμα. Εμφανίζεται μαζί με το χρώμα όταν αλλάζετε το χρώμα μιας επισήμανσης."
 
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"

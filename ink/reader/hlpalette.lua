@@ -155,4 +155,43 @@ function Palette.entryOf(name, custom)
     return name
 end
 
+-- Labels: what each colour means to the person ("Important", "Look this up"),
+-- kept in the settings by palette entry ({ yellow = "...", ["#FF8800"] = "..." },
+-- #81), shown with the colour in the highlight colour sheet.
+Palette.LABELS = "inkaway_hl_labels"
+Palette.LABEL_MAX = 32   -- characters
+
+-- The label of colour `entry`, or nil.
+function Palette.label(get, entry)
+    local t = get and get(Palette.LABELS)
+    local s = type(t) == "table" and t[entry]
+    return type(s) == "string" and s ~= "" and s or nil
+end
+
+-- Has any colour a label?
+function Palette.anyLabel(get)
+    local t = get and get(Palette.LABELS)
+    return type(t) == "table" and next(t) ~= nil
+end
+
+-- `labels` (the setting) with `entry` given `text`: trimmed and cut to
+-- LABEL_MAX characters; empty takes the label off. Returns the new table, or
+-- nil when no label is left.
+function Palette.labelled(labels, entry, text)
+    local out = {}
+    for k, v in pairs(type(labels) == "table" and labels or {}) do
+        if type(k) == "string" and type(v) == "string" and v ~= "" then out[k] = v end
+    end
+    text = type(text) == "string" and text:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "") or ""
+    -- (cut by characters, not bytes: UTF-8)
+    local n, cut = 0, #text
+    for pos in text:gmatch("()[%z\1-\127\194-\244][\128-\191]*") do
+        n = n + 1
+        if n > Palette.LABEL_MAX then cut = pos - 1; break end
+    end
+    text = text:sub(1, cut):gsub(" $", "")
+    out[entry] = text ~= "" and text or nil
+    return next(out) ~= nil and out or nil
+end
+
 return Palette

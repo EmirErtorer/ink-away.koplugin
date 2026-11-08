@@ -21,7 +21,7 @@ Prefs.REL = ".areas/settings/preferences.json"
 
 Prefs.KEYS = {
     -- colours
-    "inkaway_custom_colors", "inkaway_hl_palette", "inkaway_accent", "inkaway_accent_recent",
+    "inkaway_custom_colors", "inkaway_hl_palette", "inkaway_hl_labels", "inkaway_accent", "inkaway_accent_recent",
     "inkaway_night_colours", "inkaway_live_colour",
     -- pens and brushes
     "inkaway_pens", "inkaway_brushes", "inkaway_pen_style", "inkaway_pen_strip", "inkaway_pen_ui",
