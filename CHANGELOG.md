@@ -19,6 +19,8 @@ versions marked *Prerelease* were test builds.
 
 ### Fixed
 - The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)
+- With a colour theme, the active tool and the icons on coloured buttons no longer show as a pale square with coloured lines on some KOReader versions.
+- Colour swatches and pen tiles no longer cover the corners of their black ring with square white corners.
 - Connecting Google Drive on an Android phone or tablet no longer fails with "No connection" (IA-S101) after you allow it in the phone's own browser: the reader keeps asking while it comes back to the network. Readers that can open links also get an "Open the sign-in page" button, with the code copied to paste.
 - Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
 - A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
