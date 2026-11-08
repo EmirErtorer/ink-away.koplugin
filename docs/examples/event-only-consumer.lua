@@ -1,3 +1,4 @@
+-- From Kristan Laimon's PR #80 (see docs/INTEGRATION.md).
 -- YourPlugin/main.lua -- illustrative mock, NOT an installable KOReader plugin.
 -- Event-only consumer: handles both before-ready and after-ready registration.
 -- No viewer, surface, rendering provider or rendering injection is required.

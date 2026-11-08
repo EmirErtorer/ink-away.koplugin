@@ -81,16 +81,8 @@ end
 -- The book, as place.lua asks about it
 ------------------------------------------------------------------------------
 
--- The adapter between place.lua and the page shown: a viewer plugin's surface
--- while annotation mode is on one (see "A viewer plugin's surface" below), else
--- KOReader's document and view.
-function Book:doc()
-    local s = self.surface
-    if s then return self:surfaceDoc(s) end
-    return self:readerDoc()
-end
-
--- The adapter for KOReader's own document and view.
+-- The adapter between place.lua and KOReader's document and view (Book:doc; while
+-- annotation mode is on a viewer plugin's surface, the surface's, see setSurface).
 function Book:readerDoc()
     if self._doc then return self._doc end
     local ui = self.ui
@@ -177,13 +169,7 @@ function Book:readerDoc()
     return d
 end
 
--- The page shown now (the first, when more than one is).
-function Book:currentPage()
-    local s = self.surface
-    if s then return self:surfacePages(s)[1] end
-    return self:readerPage()
-end
-
+-- The page shown now (the first, when more than one is): Book:currentPage.
 function Book:readerPage()
     local ui = self.ui
     if ui.paging then return ui.view.state and ui.view.state.page or ui.paging.current_page end
@@ -201,13 +187,7 @@ function Book:canPin()
 end
 
 -- Every page on the screen: one, or two side by side, or the pages a
--- continuous scroll shows.
-function Book:visiblePages()
-    local s = self.surface
-    if s then return self:surfacePages(s) end
-    return self:readerPages()
-end
-
+-- continuous scroll shows (Book:visiblePages).
 function Book:readerPages()
     local ui = self.ui
     if ui.paging then
@@ -229,13 +209,8 @@ function Book:readerPages()
 end
 
 -- What changes where a page's ink goes: for a reflowing book its layout (font,
--- margins, size...), for a fixed-page one its zoom and position on the screen.
-function Book:layoutKey()
-    local s = self.surface
-    if s then return self:surfaceKey(s) end
-    return self:readerLayoutKey()
-end
-
+-- margins, size...), for a fixed-page one its zoom and position on the screen
+-- (Book:layoutKey).
 function Book:readerLayoutKey()
     local ui = self.ui
     if ui.paging then
@@ -255,6 +230,12 @@ function Book:readerLayoutKey()
     return table.concat({ "r", ok and tostring(hash) or "", ui.document:getPageCount() or 0,
         Screen:getWidth(), Screen:getHeight(), top }, "|")
 end
+
+-- The book as the reader shows it. A book whose annotation mode is on a viewer
+-- plugin's surface answers these for the surface instead (setSurface), so the
+-- reader's own way costs nothing more than it always did.
+Book.doc, Book.currentPage, Book.visiblePages, Book.layoutKey =
+    Book.readerDoc, Book.readerPage, Book.readerPages, Book.readerLayoutKey
 
 -- The items on the pages shown, as screen ops with the item each came from:
 -- { ops = {...}, items = {...} }. Cached until the page, the layout or the ink
@@ -1656,7 +1637,8 @@ function Book:turn(dir, done, frame)
     local function completedTurn(next_surface)
         if completed or self._view ~= view or (view and view.closing) then return end
         completed = true
-        next_surface = self.integration:handoff(surface, next_surface, self.ui.document)
+        -- (none given: the same surface, on its new page)
+        next_surface = self.integration:handoff(surface, next_surface or surface, self.ui.document)
         self:setSurface(next_surface)
         if next_surface and next_surface.begin and next_surface ~= surface then
             local ok, err = pcall(next_surface.begin, next_surface)
@@ -1941,10 +1923,17 @@ end
 
 -- Annotation mode is on surface `s` (nil: on the reader's own page again). The
 -- placement made for the reader's view stays; the surfaces' own is dropped.
+local surfaceAsk   -- (the four questions, for a surface: below)
 function Book:setSurface(s)
     if self.surface == s then return end
     self.surface = s
     self._placed_s = nil
+    if s then
+        self.doc, self.currentPage, self.visiblePages, self.layoutKey =
+            surfaceAsk.doc, surfaceAsk.currentPage, surfaceAsk.visiblePages, surfaceAsk.layoutKey
+    else   -- (the reader's own again: the class's)
+        self.doc, self.currentPage, self.visiblePages, self.layoutKey = nil, nil, nil, nil
+    end
 end
 
 -- The reading direction the viewer gives ("rtl" for manga), or nil (the reader's
@@ -1970,6 +1959,13 @@ function Book:surfacePages(s) return ask(self, s, "pages", {}) end
 -- Its geometry, as layoutKey is the reader's (the key alone: a viewer makes a new
 -- table for each part of a folded spread, so the table itself must not count).
 function Book:surfaceKey(s) return "s|" .. tostring(ask(self, s, "key", "")) end
+
+surfaceAsk = {
+    doc = function(self) return self:surfaceDoc(self.surface) end,
+    currentPage = function(self) return self:surfacePages(self.surface)[1] end,
+    visiblePages = function(self) return self:surfacePages(self.surface) end,
+    layoutKey = function(self) return self:surfaceKey(self.surface) end,
+}
 
 -- Its placement adapter (ink/reader/surface.lua), made once per surface.
 function Book:surfaceDoc(s)

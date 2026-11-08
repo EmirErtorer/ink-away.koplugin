@@ -80,10 +80,10 @@ function IntegrationAPI:registerRenderingView(widget, factory, on_error)
 end
 
 -- One consumer hookup: provider plus optional surface-scoped observers.
----@param ink IntegrationAPIHost
+---@param ink InkIntegrationHost
 ---@param widget table
 ---@param surface InkSurface
----@param options IntegrationAPIOptions?
+---@param options InkIntegrationOptions?
 ---@return fun(release_surface: boolean?) cleanup
 function IntegrationAPI:install(ink, widget, surface, options)
     assert(not self._disposed, "reader integration has closed")
@@ -129,7 +129,7 @@ end
 -- registry key in ReaderUI may not have been assigned while plugin init runs.
 --- Publish readiness and drain pending consumer configuration in either load order.
 ---@param ui table
----@param ink IntegrationAPIHost
+---@param ink InkIntegrationHost
 function IntegrationAPI:publish(ui, ink)
     assert(not self._disposed, "reader integration has closed")
     ui.inkAwayIntegrationAPI = ink
@@ -162,7 +162,7 @@ function IntegrationAPI:publish(ui, ink)
 end
 
 ---@param ui table
----@param ink IntegrationAPIHost
+---@param ink InkIntegrationHost
 function IntegrationAPI:unpublish(ui, ink)
     if ui.inkAwayIntegrationAPI == ink then
         ui.inkAwayIntegrationAPI = nil

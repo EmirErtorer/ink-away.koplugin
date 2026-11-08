@@ -1,8 +1,9 @@
+-- From Kristan Laimon's PR #80 (see docs/INTEGRATION.md).
 -- YourPlugin/main.lua -- illustrative mock, NOT an installable KOReader plugin.
 -- Rendering consumer: handles both before-ready and after-ready registration.
 -- A plugin may also be an event-only consumer; the roles are independent.
 -- Your own viewer setup supplies ui, viewer_widget and a valid surface. Rendering and
--- surface geometry are deliberately omitted; see Plugin-integration.md.
+-- surface geometry are deliberately omitted; see docs/INTEGRATION.md.
 local YourPlugin = {}
 
 -- MOCK signature: your plugin creates its own viewer and surface.

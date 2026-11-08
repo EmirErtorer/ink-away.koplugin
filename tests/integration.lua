@@ -131,6 +131,11 @@ check(external.begins == 1 and opened[2].surface == external, "open occurs after
 local navigation_done = false
 book:turn(1, function() navigation_done = true end)
 check(navigation_done and book.surface == external, "optional navigation completes without replacing the surface")
+function external:turn(_, done) done() end
+navigation_done = false
+book:turn(1, function() navigation_done = true end)
+check(navigation_done and book.surface == external, "a turn done with no surface given keeps the same surface")
+external.turn = nil
 check(book:readingDirection() == nil, "a viewer with no reading direction: none (the arrows as always)")
 release()
 check(book.surface == external, "unregister does not replace an active session")
