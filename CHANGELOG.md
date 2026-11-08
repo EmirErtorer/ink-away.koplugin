@@ -8,6 +8,9 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
+
 ### Changed
 - Make room: where a room can't start at the box's top on that page (the paragraph began on the page before, or starts at the top of the page), the box moves to the nearest place one can as you draw or move it, so the box is always where the room will be. Boxes that were already exact stay exactly as they are.
 - Make room for a sticker or other selection moves it to that nearest place too, instead of leaving a tall empty space above it.

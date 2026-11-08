@@ -3713,6 +3713,31 @@ do
     view2.bg_path = nil; view2:markDirty(); view2:saveDocument()
     ok(Project.load(first).bg == nil, "doc: and dropped once it is removed")
 
+    -- a notebook opens on the page it was left on, found by the page, not its number
+    view2:newNotebook("lines")
+    view2:nbAddPage(); view2:nbAddPage(); view2:nbAddPage()
+    stroke(view2, 300, 300)
+    view2:saveDocument(true)
+    local nbpath = view2.doc_path
+    view2:nbGoTo(3)
+    local left_on = view2.notebook.pages[3].id
+    local function bytes(p) local f = io.open(p, "rb"); local s = f and f:read("*a"); if f then f:close() end; return s end
+    local raw = bytes(nbpath)
+    view2:openDocument(first)
+    ok(view2:openDocument(nbpath) and view2.notebook.index == 3, "last page: a notebook opens where it was left")
+    ok(raw ~= nil and bytes(nbpath) == raw, "last page: turning pages leaves its file alone")
+    view2:nbGoTo(1); view2:nbAddPage()           -- a page before it: it is the 4th now
+    view2:nbGoTo(4)
+    ok(view2.notebook.pages[4].id == left_on, "last page: (the same page, one further on)")
+    view2:nbGoTo(2); view2:nbGoTo(4)
+    view2:saveDocument(true)
+    view2:openDocument(first)
+    view2:openDocument(nbpath)
+    ok(view2.notebook.index == 4 and view2.notebook.pages[4].id == left_on, "last page: found again by the page")
+    view2:renameDocument("Left open")
+    view2:openDocument(first)
+    ok(view2:openDocument(LIB .. "/Left open.inkaway") and view2.notebook.index == 4, "last page: kept when it is renamed")
+
     -- notebooks: the cached save matches a full save, through page turns, undo
     -- and new pages, and closing on a blank page keeps every page
     view2:beginDocument("notebook", nil, function()
