@@ -290,6 +290,108 @@ do
     ok(r and r.xp == P0 and r.sp == nil, "box: higher on the page, its markers come first")
 end
 
+-- ---- exact rooms: where they cannot start at the box, and the box snapped -------------
+do
+    local area = { x0 = 30, y0 = 45, x1 = 2114, y1 = 1640 }
+    local P0 = "/body/DocFragment[11]/body/p[30]"
+    local P1 = "/body/DocFragment[11]/body/p[31]"
+    local P2 = "/body/DocFragment[11]/body/p[32]"
+    local blocks = {
+        { xp = P0, y0 = 45, y1 = 321, starts = false, l1 = 137, lt = 229, lb = 321, ends = true },
+        { xp = P1, y0 = 321, y1 = 1517, starts = true, l1 = 413, lt = 1425, lb = 1517, ends = true },
+        { xp = P2, y0 = 1517, y1 = 1609, starts = true, l1 = 1609, lt = 1517, lb = 1609, ends = false },
+    }
+    local page = { area = area, blocks = blocks, cl = 30, cr = 2114, bottom = 1609 }
+    -- exact boxes say nothing more, and are never snapped
+    local r, _b, _f, loose = Rooms.planBox({ x = 1694, y = 535, w = 420, h = 300 }, page)
+    ok(r and loose == nil, "loose: an exact box is not")
+    ok(Rooms.snapTop({ x = 1694, y = 535, w = 420, h = 300 }, page, "height") == nil, "snap: an exact box stays")
+    -- in the paragraph from the page before: lower
+    r, _b, _f, loose = Rooms.planBox({ x = 1694, y = 100, w = 420, h = 400 }, page)
+    ok(r and loose == "lower", "loose: above every start, the room starts lower")
+    local s = Rooms.snapTop({ x = 1694, y = 100, w = 420, h = 400 }, page, "height")
+    ok(s and s.y == 321 and s.h == 400, "snap: moved down to the next paragraph's top, its height kept (" .. tostring(s and s.y) .. ")")
+    -- a page whose first paragraph starts at its top: below its first line, "top"
+    local top = {
+        { xp = P1, y0 = 45, y1 = 1517, starts = true, l1 = 137, lt = 1425, lb = 1517, ends = true },
+        { xp = P2, y0 = 1517, y1 = 1609, starts = true, l1 = 1609, lt = 1517, lb = 1609, ends = false },
+    }
+    local tpage = { area = area, blocks = top, cl = 30, cr = 2114, bottom = 1609 }
+    r, _b, _f, loose = Rooms.planBox({ x = 1694, y = 300, w = 420, h = 200 }, tpage)
+    ok(r and loose == "top", "loose: the page's first paragraph, below its first line: from its top")
+    s = Rooms.snapTop({ x = 1694, y = 300, w = 420, h = 200 }, tpage, "bottom")
+    ok(s and s.y == 136 and s.y + s.h == 500, "snap: top edge to the first line, the bottom kept (" .. tostring(s and s.y) .. ")")
+    local _r2, _b2, free2 = Rooms.planBox(s, tpage)
+    local _r3, _b3, free3 = Rooms.planBox({ x = 1694, y = 300, w = 420, h = 200 }, tpage)
+    ok(free2.y == free3.y and free2.h == free3.h, "snap: the same room as before, now drawn as it is")
+    -- an inline element starting lower in that paragraph is a place to start
+    top[1].anchors = { { xp = P1 .. "/em[3]", y0 = 597, l1 = 689 } }
+    r, _b, _f, loose = Rooms.planBox({ x = 1694, y = 620, w = 420, h = 200 }, tpage)
+    ok(r and loose == nil and r.xp == P1 .. "/em[3]" and r.off == 23, "inline: a box in its line starts there")
+    r, _b, _f, loose = Rooms.planBox({ x = 1694, y = 900, w = 420, h = 200 }, tpage)
+    ok(r and loose == nil and r.xp == P1 .. "/em[3]" and r.sp == P1 and r.spp == "before" and r.sh == 900 + 1 - 45,
+        "inline: lower, pushed down by its paragraph's marker")
+    r, _b, _f, loose = Rooms.planBox({ x = 1694, y = 300, w = 420, h = 200 }, tpage)
+    ok(r and loose == "top" and r.xp == P1, "inline: above it, as before")
+    -- begun far along its line: a wide box's float starts on the next line (nl), a
+    -- narrow one's on its own; too close to tell, not offered
+    top[1].anchors = { { xp = P1 .. "/em[3]", y0 = 597, l1 = 689, ex = 1500, at_start = false, ny0 = 689, nl1 = 781 } }
+    r, _b, _f, loose = Rooms.planBox({ x = 900, y = 700, w = 1214, h = 200 }, tpage)
+    ok(r and loose == nil and r.xp == P1 .. "/em[3]" and r.nl == 92 and r.off == 11, "inline: a wide box, from the next line")
+    r, _b, _f, loose = Rooms.planBox({ x = 1814, y = 620, w = 300, h = 200 }, tpage)
+    ok(r and loose == nil and r.xp == P1 .. "/em[3]" and r.nl == nil and r.off == 23, "inline: a narrow one, from its own line")
+    r, _b, _f, loose = Rooms.planBox({ x = 1500, y = 620, w = 614, h = 200 }, tpage)
+    ok(not (r and r.xp == P1 .. "/em[3]"), "inline: too close to tell, not that element")
+    top[1].anchors = { { xp = P1 .. "/em[3]", y0 = 597, l1 = 689 } }
+    -- an indented first line: a box too wide to sit beside the indent starts on the
+    -- second line; a narrow one on the first, as before
+    local ind = {
+        { xp = P0, y0 = 45, y1 = 321, starts = false, l1 = 137, lt = 229, lb = 321, ends = true },
+        { xp = P1, y0 = 321, y1 = 1517, starts = true, l1 = 413, lt = 1425, lb = 1517, ends = true, ex = 90, ny0 = 413, nl1 = 505 },
+    }
+    local ipage = { area = area, blocks = ind, cl = 30, cr = 2114, bottom = 1609 }
+    r, _b, _f, loose = Rooms.planBox({ x = 40, y = 413, w = 2070, h = 200 }, ipage)
+    ok(r and r.side == "full" and r.xp == P1 and r.nl == 92 and r.off == 0 and loose == nil, "indent: a box across, from the second line")
+    r = Rooms.planBox({ x = 1694, y = 340, w = 420, h = 100 }, ipage)
+    ok(r and r.xp == P1 and r.nl == nil and r.off == 19, "indent: a narrow box, in the first line as before")
+    s = Rooms.snapTop({ x = 40, y = 330, w = 2070, h = 200 }, ipage, "height")
+    ok(s and s.y == 413, "indent: a box across in the first line snaps to the second (" .. tostring(s and s.y) .. ")")
+    local spots = Rooms.spots(top)
+    ok(#spots == 3 and spots[2].slot > Rooms.slot(1, "before") and spots[2].slot < Rooms.slot(1, "after"),
+        "inline: its marker between its paragraph's two")
+    -- nowhere exact on the page: left as it is
+    local one = { { xp = P0, y0 = 45, y1 = 1609, starts = false, l1 = 137, lt = 1517, lb = 1609, ends = false } }
+    ok(Rooms.snapTop({ x = 1694, y = 300, w = 420, h = 200 }, { area = area, blocks = one, cl = 30, cr = 2114, bottom = 1609 }, "height") == nil,
+        "snap: a page of one paragraph from before: nothing to snap to")
+    -- the old planner and this one agree on every box when there are no inline elements
+    local Old = dofile(os.getenv("ROOMS_OLD") or "/dev/null") or nil
+    if type(Old) == "table" then
+        local same, n = true, 0
+        for y = 40, 1620, 7 do
+            for _i, xw in ipairs({ { 1694, 420 }, { 60, 300 }, { 300, 1500 }, { 900, 300 } }) do
+                for _j, pg in ipairs({ page, tpage }) do
+                    local rect = { x = xw[1], y = y, w = xw[2], h = 180 }
+                    local saved = pg.blocks[1].anchors
+                    pg.blocks[1].anchors = nil
+                    local a1, a2, a3 = Old.planBox(rect, pg)
+                    local b1, b2, b3 = Rooms.planBox(rect, pg)
+                    pg.blocks[1].anchors = saved
+                    n = n + 1
+                    local function eq(x, y2)
+                        if type(x) ~= type(y2) then return false end
+                        if type(x) ~= "table" then return x == y2 end
+                        for k, v in pairs(x) do if y2[k] ~= v then return false end end
+                        for k, v in pairs(y2) do if x[k] ~= v then return false end end
+                        return true
+                    end
+                    if not (eq(a1, b1) and eq(a2, b2) and eq(a3, b3)) then same = false end
+                end
+            end
+        end
+        ok(same, "planner: the same rooms as before for " .. n .. " boxes with no inline elements")
+    end
+end
+
 -- ---- exact rooms: the style rules ----------------------------------------------------------
 do
     local P = "/body/DocFragment[9]/body/p[10]"
@@ -311,7 +413,15 @@ do
     ok(css:find("padding-right: 420px", 1, true) ~= nil and not css:find("clear", 1, true),
         "css: a render mode with no floats, made of paragraphs")
     ok(Rooms.css({}, 1, { ready = true }) == Rooms.MARKERS, "css: no rooms, the markers stay")
-    ok(Rooms.hostable(P) and Rooms.hostable("/body/div[2]") and not Rooms.hostable("/body/p/span"), "markers: block elements only")
+    ok(Rooms.hostable(P) and Rooms.hostable("/body/div[2]") and not Rooms.hostable("/body/p/text()"), "markers: block elements")
+    ok(Rooms.hostable("/body/p/span[2]") and Rooms.isInline("/body/p/em") and not Rooms.isInline(P), "markers: inline elements too")
+    css = Rooms.css({}, 1, { ready = true, inline = true })
+    ok(css:find(Rooms.INLINE_MARKERS, 1, true) ~= nil and not Rooms.css({}, 1, { ready = true }):find(Rooms.INLINE_MARKERS, 1, true),
+        "css: inline markers only in a book laid out with them")
+    local inl = { id = "c", kind = "box", side = "full", x = 30, w = 2084, h = 200, xp = P .. "/em[2]" }
+    css = Rooms.css({ inl }, 1, { ready = true, floats = false })
+    ok(css:find("p:nth-of-type(10) { padding-top: 200px", 1, true) ~= nil and not css:find("em:nth", 1, true),
+        "css: a box held by an inline element, made of paragraphs, is its paragraph's band")
     ok(Rooms.valid(room) and not Rooms.valid({ id = "b", kind = "box", xp = P, side = "up", x = 1, w = 2, h = 3 }),
         "valid: a box room, and one with no side")
 end

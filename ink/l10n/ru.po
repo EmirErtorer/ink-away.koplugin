@@ -438,6 +438,10 @@ msgstr "Изображение каждой страницы занимает о
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Предварительная версия — тестовая сборка. Вернуться к последнему выпуску можно в разделе «Настройки», «Обновления»."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "На этой странице место может начинаться только там, где это позволяет абзац, поэтому рамка сдвинулась к ближайшему такому месту."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Полоса с вашими первыми четырьмя ручками, одно касание: «Ручка и ввод», «Ваши ручки на странице»."

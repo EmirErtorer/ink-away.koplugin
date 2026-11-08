@@ -438,6 +438,10 @@ msgstr "A imagem de cada página ocupa cerca de 0,3 MB, então este PDF terá ce
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Uma pré-versão é uma versão de teste. Você pode voltar à última versão em Configurações, Atualizações."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "Nesta página, um espaço só pode começar onde um parágrafo permite, então a caixa foi para o lugar mais próximo."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Uma faixa com as suas quatro primeiras canetas, a um toque: Caneta e entrada, Suas canetas na página."

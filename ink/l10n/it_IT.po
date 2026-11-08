@@ -438,6 +438,10 @@ msgstr "L’immagine di ogni pagina occupa circa 0,3 MB, quindi questo PDF peser
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Una versione preliminare è una build di prova. Puoi tornare all’ultima versione da Impostazioni, Aggiornamenti."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "In questa pagina uno spazio può iniziare solo dove un paragrafo lo consente, quindi il riquadro si è spostato nel punto più vicino."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Una fascia con le tue prime quattro penne, a un tocco di distanza: Penna e input, Le tue penne sulla pagina."

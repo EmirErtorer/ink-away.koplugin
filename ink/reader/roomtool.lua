@@ -3,7 +3,9 @@ The Make room tool (from the Lasso's sheet, over a reflowing book): draw a box o
 the page and the text moves out of it (ink/reader/rooms.lua). The box can be moved
 and its corners dragged; what it will free shows shaded as it goes: the box itself,
 from the text column's nearer side (or across, when too little text would be left
-beside it). In a render mode that does not float things (legacy, flat) a room is
+beside it). Where a room cannot start at the box's top (no paragraph above it on
+the page to start it from, Rooms.snapTop), the top goes to the nearest place one
+can, as it is dragged, so the box is always where the room will be. In a render mode that does not float things (legacy, flat) a room is
 made of whole paragraphs. A tap on a room already made picks it, to change its
 size or remove it: the page is laid out without it meanwhile.
 
@@ -157,6 +159,25 @@ function RoomTool:onDrag(_arg, ges)
         r = { x = math.min(x0, x1), y = math.min(y0, y1), w = math.abs(x1 - x0), h = math.abs(y1 - y0) }
     end
     r.w, r.h = math.max(1, r.w), math.max(1, r.h)
+    -- where a room cannot start at the box's top, the top goes to the nearest
+    -- place it can (a bottom corner dragged leaves the top alone)
+    self.snapped = nil
+    if d.mode ~= "resize" or d.corner:find("t") then
+        local except = self.room and self.room.id
+        local ok, s = pcall(self.book.snapRoomRect, self.book, r, d.mode == "move" and "height" or "bottom", except)
+        -- (drawn or its top dragged: its top edge to the nearest place, or the whole
+        -- box there, its size kept, whichever moves it less)
+        if ok and d.mode ~= "move" then
+            local ok2, s2 = pcall(self.book.snapRoomRect, self.book, r, "height", except)
+            if ok2 and s2 and (not s or math.abs(s2.y - r.y) < math.abs(s.y - r.y)) then s = s2 end
+        end
+        if ok and s then
+            self.snapped = { y = r.y }
+            r = s
+        elseif not ok then
+            logger.warn("Ink Away: room snap:", s)
+        end
+    end
     self.rect = r
     self:replan()
     local new = self:dirtyBox()
@@ -284,7 +305,9 @@ function RoomTool:describe()
         if p.side == "full" then text = _("The text moves above and below the box.")
         elseif p.side == "left" then text = _("The text moves to the right of the box.")
         else text = _("The text moves to the left of the box.") end
-        if self.pbox and self.rect and self.pbox.y > self.rect.y + 1 and self.pbox.y > self.area.y0 + 1 then
+        if self.snapped then
+            text = text .. "\n" .. _("A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place.")
+        elseif self.pbox and self.rect and self.pbox.y > self.rect.y + 1 and self.pbox.y > self.area.y0 + 1 then
             text = text .. "\n" .. _("The paragraph at its top began on the page before, so the room starts where the next one does.")
         end
         return text .. first
@@ -353,6 +376,7 @@ end
 
 function RoomTool:drawAgain()
     self.rect, self.plan, self.pbox, self.pfree, self.why, self.room, self.room_box = nil, nil, nil, nil, nil, nil, nil
+    self.snapped = nil
     UIManager:setDirty(self, "ui")
     self:showSheet()
 end

@@ -438,6 +438,10 @@ msgstr "Η εικόνα κάθε σελίδας πιάνει περίπου 0,3 
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Μια προ-έκδοση είναι δοκιμαστική δημιουργία. Μπορείτε να γυρίσετε στην τελευταία έκδοση από τις Ρυθμίσεις, Ενημερώσεις."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "Ένας χώρος μπορεί να ξεκινά σε αυτή τη σελίδα μόνο όπου το επιτρέπει μια παράγραφος, οπότε το πλαίσιο μετακινήθηκε στο πλησιέστερο τέτοιο σημείο."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Μια λωρίδα με τα πρώτα τέσσερα στυλό σας, με ένα άγγιγμα: Στυλό και είσοδος, Τα στυλό σας στη σελίδα."

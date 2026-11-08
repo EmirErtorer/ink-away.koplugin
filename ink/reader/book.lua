@@ -424,7 +424,7 @@ function Book:roomsCss()
         list = {}
         for _i, r in ipairs(data.rooms or {}) do if r.id ~= self._hidden_room then list[#list + 1] = r end end
     end
-    local css = Rooms.css(list, self:cssScale(), { ready = ready, floats = self:floats() })
+    local css = Rooms.css(list, self:cssScale(), { ready = ready, floats = self:floats(), inline = ready and data.room_marks == 2 })
     return css ~= "" and css or nil
 end
 
@@ -516,8 +516,104 @@ function Book:pageBlocks()
     end, function(elem)
         return not beyond or Rooms.blockOf(beyond) ~= elem
     end)
+    if self:floats() then self:findIndents(list, words) end
+    if self:inlineMarks() then self:findAnchors(list, words) end
     self._blocks = { key = key, list = list, first = words[1] and words[1].xp, last = words[#words] and words[#words].xp }
     return list
+end
+
+-- The paragraphs starting on the page whose first word is indented: where it is
+-- (ex) and their second line (ny0, nl1), as Rooms.spots takes them: a box too wide
+-- to share the first line with the indent starts on the second.
+function Book:findIndents(blocks, words)
+    local document = self.ui.document
+    local by = {}
+    for _i, b in ipairs(blocks) do if b.starts then by[b.xp] = b end end
+    local seen = {}
+    for i, w in ipairs(words) do
+        local block = Rooms.blockOf(w.xp)
+        local b = block and by[block]
+        if b and not seen[block] then
+            seen[block] = true
+            pcall(function()
+                local boxes = document:getScreenBoxesFromPositions(w.xp, document:getNextVisibleWordEnd(w.xp), false)
+                b.ex = boxes and boxes[1] and boxes[1].x
+            end)
+            for j = i + 1, #words do
+                local n = words[j]
+                if Rooms.blockOf(n.xp) ~= block then break end
+                if n.y > w.y then b.ny0, b.nl1 = n.y, n.y + (n.h or 0); break end
+            end
+        end
+    end
+end
+
+-- Is the book laid out with markers on its inline elements too (Rooms.INLINE_MARKERS)?
+-- Books given their first room from this version on are; books given one before
+-- keep the markers they have (adding these would need the book loaded again).
+function Book:inlineMarks()
+    if not self:roomsReady() or not self:floats() then return false end
+    return self:data().room_marks == 2
+end
+
+-- The inline elements beginning inside the page's paragraphs (not at a
+-- paragraph's first word, where its own marker is): each block's anchors, top to
+-- bottom, { xp, y0, l1 (the top and bottom of the line it begins on), ex (where on
+-- it), at_start (it begins the line), ny0, nl1 (the next line's, in its paragraph
+-- on this page) }. Whether a box's float there starts on that line or the next
+-- depends on the box (Rooms.spots).
+function Book:findAnchors(blocks, words)
+    local by = {}
+    for _i, b in ipairs(blocks) do by[b.xp] = b end
+    local prev_inline
+    local function nextLine(i)
+        local y = words[i].y
+        for j = i + 1, #words do
+            if words[j].y > y then return words[j] end
+        end
+    end
+    for i, w in ipairs(words) do
+        local block = Rooms.blockOf(w.xp)
+        local b = block and by[block]
+        local path = w.xp:gsub("/text%(%).*$", ""):gsub("%.%d+$", "")
+        local inline = b and path ~= block and path or nil
+        if inline and inline ~= prev_inline and self:textStartOf(block) ~= w.xp then
+            -- the outermost inline element that begins at this word (one that
+            -- began before it may hold one that begins here)
+            local rest = inline:sub(#block + 1)
+            local cur = block
+            for seg in rest:gmatch("/[^/]+") do
+                cur = cur .. seg
+                if Rooms.isInline(cur) and self:textStartOf(cur) == w.xp then
+                    local at_start = not (i > 1 and words[i - 1].y == w.y)
+                    local ex
+                    local document = self.ui.document
+                    pcall(function()
+                        local boxes = document:getScreenBoxesFromPositions(w.xp, document:getNextVisibleWordEnd(w.xp), false)
+                        ex = boxes and boxes[1] and boxes[1].x
+                    end)
+                    local nx = nextLine(i)
+                    if nx and Rooms.blockOf(nx.xp) ~= block then nx = nil end
+                    if ex or at_start then
+                        b.anchors = b.anchors or {}
+                        b.anchors[#b.anchors + 1] = { xp = cur, y0 = w.y, l1 = w.y + (w.h or 0), ex = ex,
+                            at_start = at_start, ny0 = nx and nx.y, nl1 = nx and (nx.y + (nx.h or 0)) }
+                    end
+                    break
+                end
+            end
+        end
+        prev_inline = inline
+    end
+end
+
+-- Where a marker is on the page, as an xpointer to ask the document about: a
+-- paragraph's is the paragraph (its top); an inline element's is its first word
+-- (its line). A room whose float starts a line further down (nl, Rooms.spots) is
+-- that many pixels below it: the words of the line it starts on are moved by it.
+function Book:markerPos(xp)
+    if Rooms.isInline(xp) then return self:textStartOf(xp) end
+    return xp
 end
 
 -- The lines of text on the page shown, as the reader lays them out: { { x, y, w,
@@ -668,9 +764,11 @@ function Book:pageModel(except)
     end
     -- the other box rooms: their markers, and where those are in the page's order
     -- (before it: -1; after it: past every one on it)
-    local index = {}
+    local index, anchor_slot = {}, {}
     for i, b in ipairs(blocks) do index[b.xp] = i end
+    for _i, s in ipairs(Rooms.spots(blocks)) do anchor_slot[s.xp] = s.slot end
     local function key(xp, pseudo)
+        if Rooms.isInline(xp) and anchor_slot[xp] then return anchor_slot[xp] end
         local i = index[xp]
         if i then return Rooms.slot(i, pseudo) end
         local ok, below = pcall(function()
@@ -704,16 +802,26 @@ function Book:planRoom(rect, except)
     return room, box, box
 end
 
+-- A box drawn where no room can start as drawn, moved to the nearest place on the
+-- page where one does (Rooms.snapTop; `keep` "height" or "bottom"), or nil when it
+-- is fine as it is, or nothing near would be. Only where the render mode floats
+-- (rooms of whole paragraphs have no such places).
+function Book:snapRoomRect(rect, keep, except)
+    if not self:floats() then return nil end
+    return Rooms.snapTop(rect, self:pageModel(except), keep)
+end
+
 -- Where a box room's marker is pushed down from: the last word of the paragraph
 -- before its own (the top of that line), or its own paragraph's first word.
 function Book:boxAnchor(r)
     -- (with nothing pushing it down, the marker is at the top of its paragraph:
     -- the paragraph's own top, which stays where it is when a box across the
     -- page moves its first line below it)
-    if not r.sp then return r.xp, 0 end
-    -- (pushed from the start of a paragraph above: that paragraph's top)
-    if r.spp == "before" then return r.sp, r.sh or 0 end
-    local ts = self:textStartOf(r.xp)
+    if not r.sp then return self:markerPos(r.xp), tonumber(r.nl) or 0 end
+    -- (pushed from the start of a paragraph above, or of an inline element: its line's top)
+    if r.spp == "before" then return self:markerPos(r.sp), r.sh or 0 end
+    -- (the paragraph before its own ends: the box's own paragraph's first word)
+    local ts = self:textStartOf(Rooms.isInline(r.xp) and Rooms.blockOf(r.xp) or r.xp)
     if not ts then return nil end
     local document = self.ui.document
     local ok, prev = pcall(document.getPrevVisibleWordStart, document, ts)
@@ -957,8 +1065,18 @@ end
 function Book:boxTook(r, page, top)
     local document = self.ui.document
     if top then
-        local ok, now = pcall(document.getPageXPointer, document, page)
-        if not ok or now ~= top then logger.dbg("Ink Away: room: the page moved", top, now); return false end
+        -- (the page found by its first word, not its number: with KOReader's partial
+        -- re-layout, the pages of chapters before it are numbered anew as those are
+        -- laid out again, though nothing on this page moved)
+        local ok, p = pcall(document.getPageFromXPointer, document, top)
+        local nok, now = false, nil
+        if ok and p then nok, now = pcall(document.getPageXPointer, document, p) end
+        if not nok or now ~= top then logger.dbg("Ink Away: room: the page moved", top, now); return false end
+        if p ~= page then
+            logger.dbg("Ink Away: room: the page is numbered", p, "now, was", page)
+            page = p
+            if self:currentPage() ~= page then self:gotoPage(page) end
+        end
     end
     if self:currentPage() ~= page then logger.dbg("Ink Away: room: on another page", page, self:currentPage()); return false end
     local box = self:roomBox(r.id)
@@ -1035,6 +1153,7 @@ function Book:putRoom(r)
         -- again with its markers (Book:reloadForRooms)
         if not data.rooms_ready then
             data.rooms, data.rooms_off, data.rooms_ready = rooms, nil, true
+            data.room_marks = 2   -- (inline elements carry markers too: Book:inlineMarks)
             self:save()
             self._awaiting_reload = r.id
             return r, "reload"

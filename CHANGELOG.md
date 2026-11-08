@@ -8,6 +8,15 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Changed
+- Make room: where a room can't start at the box's top on that page (the paragraph began on the page before, or starts at the top of the page), the box moves to the nearest place one can as you draw or move it, so the box is always where the room will be. Boxes that were already exact stay exactly as they are.
+- Make room for a sticker or other selection moves it to that nearest place too, instead of leaving a tall empty space above it.
+- In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
+
+### Fixed
+- Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
+- A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
+
 ## [4.4.2] - 2026-11-07 *Prerelease*
 
 ### Fixed
