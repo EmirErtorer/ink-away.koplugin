@@ -6094,3 +6094,7 @@ msgstr "Nowe pliki PDF otwierają się z tym wyborem. PDF ustawiony przez Ciebie
 #: main.lua
 msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
 msgstr "Pokazuje dwie strony obok siebie, jak otwarta drukowana książka, także w PDF-ie z samymi pojedynczymi stronami. Twój tusz zostaje na stronie, na której go narysowano. Strona szersza niż wyższa jest pokazywana osobno. Używa widoku stron i przełącza się na niego."
+
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr "Działa to przy włączonym odrzucaniu dłoni."

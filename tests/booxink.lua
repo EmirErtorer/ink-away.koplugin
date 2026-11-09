@@ -216,5 +216,50 @@ do
         and calls[#calls].value == 0, "post-gate exception stops native capture for software fallback")
 end
 
+-- What a firmware has, by name, for the report when the search failed.
+do
+    local pending = false
+    local names = { ["android/view/View"] = { "invalidate", "enablePost", "getWidth" },
+        ["android/onyx/ViewUpdateHelper"] = { "setScreenHandWritingPenState", "refreshScreen", "handwritingRepaint", "setStrokeWidth", "boom" } }
+    local classes, arrays, deleted = {}, {}, 0
+    local function pointer(n) return ffi.cast("void*", n) end
+    local function number(p) return tonumber(ffi.cast("intptr_t", p)) end
+    local objs = {}
+    local function obj(v) objs[#objs + 1] = v; return pointer(#objs) end
+    local env = { [0] = {
+        ExceptionCheck = function() return pending and 1 or 0 end,
+        ExceptionClear = function() pending = false end,
+        FindClass = function(_e, n)
+            assert(not pending, "FindClass with a pending exception")
+            if names[n] then classes[#classes + 1] = n; return obj({ class = n }) end
+            pending = true
+            return nil
+        end,
+        GetArrayLength = function(_e, a) return #objs[number(a)].list end,
+        GetObjectArrayElement = function(_e, a, k) return obj({ name = objs[number(a)].list[k + 1] }) end,
+        DeleteLocalRef = function() deleted = deleted + 1 end,
+    } }
+    local jni = { env = env }
+    function jni:callObjectMethod(o, method)
+        assert(not pending, "call with a pending exception")
+        local v = objs[number(o)]
+        if method == "getMethods" then return obj({ list = names[v.class] }) end
+        assert(method == "getName")
+        if v.name == "boom" then pending = true; return nil end
+        return obj({ str = v.name })
+    end
+    function jni:to_string(js) return objs[number(js)].str end
+    local c = setmetatable({ android = { app = { activity = { vm = 1 } },
+        jni = { context = function(_s, _vm, fn) return fn(jni) end } } }, { __index = BooxInk })
+    local seen = table.concat(c:surveyMethods(), " ")
+    ok(seen == "View.enablePost ViewUpdateHelper.setScreenHandWritingPenState ViewUpdateHelper.handwritingRepaint ViewUpdateHelper.setStrokeWidth",
+        "survey: the pen calls by name, on both classes: " .. seen)
+    ok(not pending, "survey: a Java exception on the way is cleared")
+    ok(deleted > 10, "survey: its references are let go, there may be a thousand")
+    ok(#BooxInk.surveyMethods({}) == 0, "survey: nothing without Android")
+    local f = firmware({ backend = "view", missing = "handwritingRepaint" })
+    ok(not f.ok and f.why:find("repaint", 1, true), "the reason it wasn't found is kept for the pen test")
+end
+
 print(("booxink: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

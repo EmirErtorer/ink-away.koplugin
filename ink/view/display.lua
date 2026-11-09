@@ -346,7 +346,8 @@ function InkAwayView:startEinkDrive()
     if self:getSetting("inkaway_boox_fast", true) == false then return end
     local c = EinkDrive.detect()
     if c and EinkDrive.acquire(Screen, c, function() return self:nowMs() end,
-            function(...) logger.warn(...) end) then
+            function(...) logger.warn(...) end,
+            function(ms, fn) UIManager:scheduleIn(ms / 1000, fn) end) then
         self._eink_drive = true
     end
 end
@@ -401,6 +402,9 @@ function InkAwayView:stopBooxInk()
     self._boox_ink = nil
     BooxDrive.leave(self)
 end
+
+-- (with the firmware on the panel, the fast refresh asks nothing of it)
+EinkDrive.quiet = BooxDrive.busy
 
 -- Has this Boox the pen layer (for the setting)?
 function InkAwayView:booxInkAvailable()
@@ -470,11 +474,18 @@ end
 
 -- Menus, accepted finger gestures, focus loss and close bypass the delay.
 function InkAwayView:booxInkRelease()
+    -- (a finger gesture comes here every time: nothing to do without a pen stroke)
+    if not (self._boox_contact or self._boox_defer or self._boox_rest_task or self:booxInking()) then return end
     local resting = self._boox_rest_task ~= nil
     self:booxInkCancelRest()
     self._boox_contact, self._boox_defer = nil, nil
+    local b = self._boox_blocked
+    self._boox_blocked = nil
     self:booxInkUpdate() -- enable ordinary posts before painting the saved ink
-    if resting and not self.closing then UIManager:setDirty(self, "ui") end
+    -- what was held back, not the whole page, which would redraw at each pause
+    if resting and not self.closing then
+        UIManager:setDirty(self, "ui", b and GeomUI:new{ x = b.x0, y = b.y0, w = b.x1 - b.x0, h = b.y1 - b.y0 } or nil)
+    end
 end
 
 -- Keep quick successive strokes together without leaving normal posts blocked.

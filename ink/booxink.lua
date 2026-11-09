@@ -151,6 +151,7 @@ function BooxInk:probe()
         return true
     end)
     self.ok = found == true
+    self.why = (not self.ok) and (why or "probe failed") or nil
     if self.log then
         if self.ok then self.log("Ink Away: Boox pen layer found:", self.backend)
         else self.log("Ink Away: Boox pen layer not found:", why or "probe failed") end
@@ -171,6 +172,51 @@ function BooxInk:call(fn)
     end
     self.calls = self.calls + 1
     return true
+end
+
+-- The firmware's pen calls by name, wherever Ink Away may look, whatever their
+-- signature: { "ViewUpdateHelper.enablePost", ... }. For a firmware where the search
+-- failed, so its report says what it has. Slow (it reads the names of every method of
+-- View), so only the pen test asks, and only on a Boox.
+function BooxInk:surveyMethods()
+    local out = {}
+    if not self.android then return out end
+    pcall(self.withEnv, self, function(env, jni)
+        local function clear()
+            if env[0].ExceptionCheck(env) ~= 0 then env[0].ExceptionClear(env); return true end
+            return false
+        end
+        for _i, class in ipairs({ VIEW, HELPER }) do
+            local cls = env[0].FindClass(env, class)
+            clear()
+            if cls ~= nil then
+                local arr = jni:callObjectMethod(cls, "getMethods", "()[Ljava/lang/reflect/Method;")
+                if not clear() and arr ~= nil then
+                    for k = 0, env[0].GetArrayLength(env, arr) - 1 do
+                        local m = env[0].GetObjectArrayElement(env, arr, k)
+                        if not clear() and m ~= nil then
+                            local js = jni:callObjectMethod(m, "getName", "()Ljava/lang/String;")
+                            if not clear() and js ~= nil then
+                                local name = jni:to_string(js)
+                                clear()
+                                if type(name) == "string" and (name:find("HandWriting", 1, true)
+                                        or name:find("andwriting", 1, true) or name:find("Scribble", 1, true)
+                                        or name == "enablePost" or name:find("^setStroke")) then
+                                    out[#out + 1] = class:match("[^/]+$") .. "." .. name
+                                end
+                                env[0].DeleteLocalRef(env, js)
+                            end
+                            env[0].DeleteLocalRef(env, m)
+                        end
+                    end
+                    env[0].DeleteLocalRef(env, arr)
+                end
+                env[0].DeleteLocalRef(env, cls)
+            end
+        end
+        return true
+    end)
+    return out
 end
 
 -- Best-effort cleanup bypassing the broken-client guard. Each call clears its

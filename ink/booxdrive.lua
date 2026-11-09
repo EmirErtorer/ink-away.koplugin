@@ -43,6 +43,7 @@ function BooxDrive.client(make, android)
         if android then
             local ok, c = pcall(make)
             if ok and c and c.ok then client = c end
+            BooxDrive.probed = ok and c or nil   -- (found or not: what the pen test reports)
         end
     end
     return client or nil
@@ -159,6 +160,12 @@ function BooxDrive.want(view, want)
     return drive:apply(want)
 end
 
+-- Has the firmware the panel now, for whichever view? (A request of our own would
+-- only get in its way: see ink/einkdrive.lua.)
+function BooxDrive.busy()
+    return drive ~= nil and drive:inking()
+end
+
 -- Is the firmware inking for `view`?
 function BooxDrive.inkingFor(view)
     return drive ~= nil and views[#views] == view and drive:inking()
@@ -240,12 +247,21 @@ function BooxDrive.watchScreen(screen, um)
                 local r1, r2 = orig(fb, x, y, w, h, ...)
                 local owner = drive
                 local v = views[#views]
-                if owner and owner:inking() and focused and v and not v._boox_defer then
+                if owner and owner:inking() and focused and v then
                     local W, H = fb:getWidth(), fb:getHeight()
                     x, y, w, h = x or 0, y or 0, w or W, h or H
                     local x0, y0 = math.max(0, math.floor(x)), math.max(0, math.floor(y))
                     local x1, y1 = math.min(W, math.ceil(x + w)), math.min(H, math.ceil(y + h))
-                    if x1 > x0 and y1 > y0 then
+                    if x1 > x0 and y1 > y0 and v._boox_defer then
+                        -- held back until the pen rests: what to show then (booxInkRelease)
+                        local b = v._boox_blocked
+                        if b then
+                            b.x0, b.y0 = math.min(b.x0, x0), math.min(b.y0, y0)
+                            b.x1, b.y1 = math.max(b.x1, x1), math.max(b.y1, y1)
+                        else
+                            v._boox_blocked = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+                        end
+                    elseif x1 > x0 and y1 > y0 then
                         local p = pending[screen]
                         if p then
                             p.x0, p.y0 = math.min(p.x0, x0), math.min(p.y0, y0)
@@ -277,6 +293,7 @@ end
 function BooxDrive.reset()
     cancelPending()
     client, drive, views = nil, nil, {}
+    BooxDrive.probed = nil
     focused = true
 end
 

@@ -57,16 +57,36 @@ do
     local a = log[2]
     ok(a[2] == 1 and a[3] == EinkDrive.FAST_DELAY_MS and a[4] == 100 and a[5] == 200 and a[6] == 30 and a[7] == 20,
         "fast: DU over the same rect, a frame later")
+    -- paced: a request soon after waits, and goes with the next one, over both
     t = 40
     fb:refreshFastImp(140, 210, 30, 20)
-    a = log[4]
-    ok(a[4] == 100 and a[5] == 200 and a[6] == 70 and a[7] == 30, "fast: a request soon after also covers the one before")
-    t = 1000
-    fb:refreshFastImp(500, 500, 10, 10)
+    ok(#log == 3 and log[3][1] == "post", "paced: the window is posted, the panel isn't asked yet")
+    t = 90
+    fb:refreshFastImp(170, 215, 30, 20)
+    ok(#log == 4, "paced: nor again")
+    t = EinkDrive.PACE_MS
+    fb:refreshFastImp(200, 220, 30, 20)
     a = log[6]
-    ok(a[4] == 500 and a[6] == 10, "fast: after a pause, just its own rect")
+    ok(#log == 6 and a[1] == "ask" and a[4] == 100 and a[5] == 200 and a[6] == 130 and a[7] == 40,
+        "paced: the next request covers all that waited, and the one before")
+    -- at the pen's speed: requests per second, not per post
+    local before = #log
+    local asks = 0
+    for i = 1, 25 do
+        t = t + 40
+        fb:refreshFastImp(10 + i, 10, 5, 5)
+    end
+    for k = before + 1, #log do if log[k][1] == "ask" then asks = asks + 1 end end
+    ok(asks >= 5 and asks <= 7, "paced: a second of posts asks about 6 times, not 25 (" .. asks .. ")")
+    t = 5000
+    fb:refreshFastImp(500, 500, 10, 10)     -- (what waited goes with this one)
+    t = 6000
+    local waiting = #log
+    fb:refreshFastImp(600, 600, 10, 10)
+    ok(#log == waiting + 2 and log[#log][4] == 600 and log[#log][6] == 10, "fast: after a pause, just its own rect")
+    t = 7000
     fb:refreshFastImp()
-    a = log[8]
+    a = log[#log]
     ok(a[4] == 0 and a[5] == 0 and a[6] == 1404 and a[7] == 1872, "fast: no rect means the whole screen")
 
     -- a stroke's end and the grey settle are asked for directly
@@ -77,7 +97,7 @@ do
     a = log[#log]
     ok(a[2] == 2 and a[3] == 100, "ask: the settle is GC16 after KOReader's ui delay")
     ok(not EinkDrive.ask("ui", 10, 20, 0, 40), "ask: nothing for an empty rect")
-    ok(EinkDrive.asked() == 6, "asked: counted")
+    ok(EinkDrive.asked() > 6, "asked: counted")
 
     -- a second view shares it; the last one out unhooks
     ok(EinkDrive.acquire(fb, c), "acquire: a second view")
@@ -90,6 +110,58 @@ do
     ok(#log == n + 1 and log[#log][1] == "post", "release: a fast refresh only posts again")
     ok(not EinkDrive.ask("fast", 1, 1, 1, 1), "release: nothing asked once off")
     ok(Class.refreshFastImp ~= nil, "release: the class method untouched")
+end
+
+-- ---- the pen stops while a request waits: it still goes out ------------------------
+do
+    local fb, log = screen()
+    local t = 0
+    local timers = {}
+    local c = EinkDrive.detect(android("qualcomm", false, ONYX))
+    EinkDrive.acquire(fb, c, function() return t end, nil, function(ms, fn) timers[#timers + 1] = { ms = ms, fn = fn } end)
+    fb:refreshFastImp(10, 10, 5, 5)
+    t = 40
+    fb:refreshFastImp(20, 10, 5, 5)
+    t = 80
+    fb:refreshFastImp(30, 10, 5, 5)
+    ok(#timers == 1 and timers[1].ms == EinkDrive.PACE_MS - 40, "paced: one timer for what waits")
+    local n = #log
+    t = 160
+    timers[1].fn()
+    ok(#log == n + 1 and log[#log][1] == "ask" and log[#log][4] == 10, "paced: the timer sends it")
+    timers[1].fn()
+    ok(#log == n + 1, "paced: and nothing twice")
+    -- a stroke's end covers what waits
+    t = 200
+    fb:refreshFastImp(40, 10, 5, 5)
+    EinkDrive.ask("fast", 0, 0, 100, 100)
+    n = #log
+    timers[#timers].fn()
+    ok(#log == n, "paced: the tail already covered what waited")
+    -- closed while one waits
+    t = 240
+    fb:refreshFastImp(50, 10, 5, 5)
+    local fire = timers[#timers].fn
+    EinkDrive.release()
+    n = #log
+    fire()
+    ok(#log == n, "paced: nothing asked once off")
+end
+
+-- ---- the firmware has the panel: nothing is asked of it ------------------------------
+do
+    local fb, log = screen()
+    local busy = true
+    EinkDrive.quiet = function() return busy end
+    local c = EinkDrive.detect(android("qualcomm", false, ONYX))
+    EinkDrive.acquire(fb, c, function() return 0 end)
+    fb:refreshFastImp(10, 10, 5, 5)
+    ok(#log == 1 and log[1][1] == "post", "quiet: the window is posted, the panel not asked")
+    ok(not EinkDrive.ask("fast", 1, 1, 5, 5) and not EinkDrive.ask("ui", 1, 1, 5, 5), "quiet: nor directly")
+    busy = false
+    ok(EinkDrive.ask("ui", 1, 1, 5, 5), "quiet: over, it can ask again")
+    EinkDrive.release()
+    EinkDrive.quiet = nil
 end
 
 -- ---- another plugin wraps on top: ours passes through after release ----------------

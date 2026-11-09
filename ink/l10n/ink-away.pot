@@ -5421,6 +5421,10 @@ msgstr ""
 msgid "This version of KOReader can't keep colours of your own on a highlight."
 msgstr ""
 
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr ""
+
 #: ink/view/textformat.lua
 msgid "Tight"
 msgstr ""

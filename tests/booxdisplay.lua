@@ -80,6 +80,12 @@ local deferred = #c.repaints
 fb:refreshUIImp(10, 20, 30, 40)
 ok(next(um.jobs) == nil and #c.repaints == deferred,
     "batched handwriting does not repaint every committed letter")
+ok(view._boox_blocked and view._boox_blocked.x0 == 10 and view._boox_blocked.x1 == 40 and view._boox_blocked.y1 == 60,
+    "what is held back is remembered for the rest refresh")
+fb:refreshUIImp(100, 200, 10, 10)
+ok(view._boox_blocked.x1 == 110 and view._boox_blocked.y1 == 210, "and grows with each refresh")
+view._boox_blocked = nil
+ok(Drive.busy(), "the firmware has the panel: the fast refresh stays quiet")
 view._boox_defer = nil
 fb:refreshFastImp(10, 20, 30, 40)
 local before_rest = next(um.jobs)
@@ -132,6 +138,7 @@ ok(c.state == 2 and input.calls == 3, "focus return resumes ink once, with no du
 
 fb:refreshFastImp(10, 20, 30, 40)
 Drive.leave(view)
+ok(not Drive.busy(), "closed: the panel is back for ordinary requests")
 ok(c.state == 0 and c.posts and next(um.jobs) == nil, "closing releases display and cancels delayed work")
 fb:refreshUIImp(0, 0, 100, 100)
 ok(fb.physical == fb.logical and next(um.jobs) == nil, "refresh hooks pass through after close")

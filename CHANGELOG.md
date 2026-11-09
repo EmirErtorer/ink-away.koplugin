@@ -22,6 +22,9 @@ versions marked *Prerelease* were test builds.
 ### Fixed
 - Boox: Ink Away finds the firmware's pen layer on firmware that keeps it on `ViewUpdateHelper` (the Note X3 Pro), and it no longer leaves pages frozen after writing. Ink shows from the first stroke, strokes written in a row stay together, and the page settles half a second after the pen rests. By lisontowind (#82).
 - Boox: the pen layer pauses at once for the eraser end and held pen tools, and on focus loss, sleep and menus.
+- Boox: Fast refresh while drawing asks the panel about six times a second instead of up to 25, which piled up and left the ink behind the pen, and asks nothing while the Boox draws the ink itself.
+- Boox: after the pen rests, only what changed is redrawn, not the whole page.
+- Boox: Test pen and touch says whether the pen layer was found, why not, and which pen calls the firmware has.
 - Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
 - With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
 - The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)

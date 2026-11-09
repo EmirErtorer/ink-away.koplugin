@@ -53,6 +53,16 @@ second()
 ok(not view:booxInking() and c.posts and not view._boox_rest_task,
     "rest deadline releases ordinary display posts and removes the timer")
 ok(UIManager.last().mode == "ui", "rest deadline repaints the saved ink after releasing posts")
+ok(UIManager.last().region == nil, "with nothing recorded, the whole view")
+view:onStylusSlot(Device.input, slot(1, 5, 300))
+view:onStylusSlot(Device.input, slot(1, -1, 300))
+view._boox_blocked = { x0 = 280, y0 = 590, x1 = 340, y1 = 640 }
+local rest = view._boox_rest_task
+rest()
+local rr = UIManager.last().region
+ok(rr and rr.x == 280 and rr.y == 590 and rr.w == 60 and rr.h == 50 and UIManager.last().mode == "ui",
+    "rest refresh: only what was held back, not the whole page")
+ok(view._boox_blocked == nil, "rest refresh: and it is forgotten")
 -- Android's real rear-eraser tool, no side-button latch, without a paint.
 view:onStylusSlot(Device.input, slot(2, 1))
 ok(view.tool == "erase" and view.canvas.live and view.canvas.live.kind == "erase",
