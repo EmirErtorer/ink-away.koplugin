@@ -346,7 +346,8 @@ function InkAwayView:startEinkDrive()
     if self:getSetting("inkaway_boox_fast", true) == false then return end
     local c = EinkDrive.detect()
     if c and EinkDrive.acquire(Screen, c, function() return self:nowMs() end,
-            function(...) logger.warn(...) end) then
+            function(...) logger.warn(...) end,
+            function(ms, fn) UIManager:scheduleIn(ms / 1000, fn) end) then
         self._eink_drive = true
     end
 end
@@ -389,14 +390,21 @@ function InkAwayView:startBooxInk()
     if not c then return end
     self._boox_ink = BooxDrive.join(self, c)
     BooxDrive.watch(UIManager)
+    BooxDrive.watchScreen(Screen, UIManager)
+    if c.android and c.android.lib then BooxDrive.watchInput(Device.input, c.android.lib, UIManager) end
     self:booxInkUpdate()
 end
 
 function InkAwayView:stopBooxInk()
+    self:booxInkCancelRest()
+    self._boox_contact, self._boox_defer = nil, nil
     if not self._boox_ink then return end
     self._boox_ink = nil
     BooxDrive.leave(self)
 end
+
+-- (with the firmware on the panel, the fast refresh asks nothing of it)
+EinkDrive.quiet = BooxDrive.busy
 
 -- Has this Boox the pen layer (for the setting)?
 function InkAwayView:booxInkAvailable()
@@ -412,6 +420,7 @@ end
 -- (penOnUI) the firmware does not ink.
 function InkAwayView:booxInkWant()
     if self.closing or self.tool ~= "pen" or self.editing_text then return nil end
+    if not self.palm_reject then return nil end
     -- (see-through pens have alpha below 255)
     if (self.pen_alpha or 255) < 255 or self.pen_style == "smudge" then return nil end
     if Screen.night_mode then return nil end
@@ -428,13 +437,71 @@ function InkAwayView:booxInkWant()
         if okr and r and r.w and r.w > 0 then exclude[#exclude + 1] = r end
     end
     return { limit = { { x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h } }, exclude = exclude,
-        width = math.max(1, (self.pen_width or 3) * (v.zoom or 1)), color = -16777216, style = 0 }
+        width = math.max(1, (self.pen_width or 3) * (v.zoom or 1)), color = -16777216, style = 0,
+        posts = not (self._boox_contact or self._boox_rest_task) }
 end
 
 -- Tell the firmware what it may ink now (after a tool, pen or layout change).
 function InkAwayView:booxInkUpdate()
     if not self._boox_ink then return end
-    BooxDrive.want(self, self:booxInkWant())
+    local want = self:booxInkWant()
+    if not want then
+        self:booxInkCancelRest()
+        self._boox_defer = nil
+    end
+    BooxDrive.want(self, want)
+end
+
+-- Consecutive letters keep the firmware preview until the pen rests. Data is
+-- still committed on every lift; only the physical reconciliation is batched.
+function InkAwayView:booxInkDelayMs()
+    return 500
+end
+
+-- Forget an idle deadline when another contact or interaction takes over.
+function InkAwayView:booxInkCancelRest()
+    if self._boox_rest_task then UIManager:unschedule(self._boox_rest_task) end
+    self._boox_rest_task = nil
+end
+
+-- Capture is already prepared: close only the post gate at the first point.
+function InkAwayView:booxInkContact()
+    self:booxInkCancelRest()
+    self._boox_contact = true
+    self._boox_defer = self:booxInkDelayMs() > 0
+    self:booxInkUpdate()
+end
+
+-- Menus, accepted finger gestures, focus loss and close bypass the delay.
+function InkAwayView:booxInkRelease()
+    -- (a finger gesture comes here every time: nothing to do without a pen stroke)
+    if not (self._boox_contact or self._boox_defer or self._boox_rest_task or self:booxInking()) then return end
+    local resting = self._boox_rest_task ~= nil
+    self:booxInkCancelRest()
+    self._boox_contact, self._boox_defer = nil, nil
+    local b = self._boox_blocked
+    self._boox_blocked = nil
+    self:booxInkUpdate() -- enable ordinary posts before painting the saved ink
+    -- what was held back, not the whole page, which would redraw at each pause
+    if resting and not self.closing then
+        UIManager:setDirty(self, "ui", b and GeomUI:new{ x = b.x0, y = b.y0, w = b.x1 - b.x0, h = b.y1 - b.y0 } or nil)
+    end
+end
+
+-- Keep quick successive strokes together without leaving normal posts blocked.
+function InkAwayView:booxInkLift()
+    local ms = self:booxInkDelayMs()
+    self:booxInkCancelRest()
+    self._boox_contact = nil
+    if not self:booxInking() or ms == 0 then return self:booxInkRelease() end
+    local task
+    task = function()
+        if self._boox_rest_task ~= task then return end
+        self:booxInkRelease()
+    end
+    self._boox_rest_task = task
+    UIManager:scheduleIn(ms / 1000, task)
+    self:booxInkUpdate()
 end
 
 -- After a pen contact where a Boox's firmware may have inked: that part of the

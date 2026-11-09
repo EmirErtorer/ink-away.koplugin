@@ -6094,3 +6094,7 @@ msgstr "Τα νέα PDF ανοίγουν με αυτή την επιλογή. Έ
 #: main.lua
 msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
 msgstr "Δείχνει δύο σελίδες τη μία δίπλα στην άλλη, όπως ένα ανοιχτό τυπωμένο βιβλίο, ακόμη και σε PDF με μόνο μονές σελίδες. Το μελάνι σας μένει στη σελίδα όπου το σχεδιάσατε. Μια σελίδα πιο φαρδιά από ό,τι ψηλή εμφανίζεται μόνη της. Χρησιμοποιεί την προβολή σελίδας και αλλάζει σε αυτήν."
+
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr "Λειτουργεί με ενεργή την απόρριψη παλάμης."

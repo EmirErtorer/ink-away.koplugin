@@ -4,10 +4,11 @@ the e-ink itself, straight from the pen, while the app is told where it may
 (the way Boox's own notes app writes, and Onyx's pen kit for apps). Ink Away
 then draws the stroke as it really is once the pen lifts (see ink/booxdrive.lua).
 
-These are methods Onyx adds to Android's View class, not part of Android: KOReader
-calls two of them the same way for its own Boox refreshes. They are found once,
+These are Onyx firmware methods, not part of Android: older firmware puts them
+on View as instance methods; Note X3 Pro puts them on ViewUpdateHelper as static
+methods. They are found once,
 by name and signature, through KOReader's JNI helper; on any other device, or a
-Boox without them, `available()` is false and nothing is ever called. A Java
+Boox without them, `usable()` is false and nothing is ever called. A Java
 exception from any call clears it and turns the layer off for the session.
 
   * setScreenHandWritingPenState(int)        0 stop, 1 start, 2 drawing, 3 paused
@@ -25,7 +26,7 @@ local BooxInk = {}
 BooxInk.STOP, BooxInk.START, BooxInk.DRAWING, BooxInk.PAUSED = 0, 1, 2, 3
 
 local VIEW = "android/view/View"
--- (the static stroke methods: on View on the Onyx firmwares seen, on its helper class on others)
+-- Note X3 Pro firmware 4.2 exposes the whole pen API here, as static methods.
 local HELPER = "android/onyx/ViewUpdateHelper"
 
 -- A client for the pen layer. `android` is KOReader's android module (required
@@ -66,7 +67,7 @@ end
 
 -- Find the methods and the window's view (once).
 function BooxInk:probe()
-    local found = self:withEnv(function(env, jni)
+    local found, why = self:withEnv(function(env, jni)
         local function clear()
             if env[0].ExceptionCheck(env) ~= 0 then env[0].ExceptionClear(env) end
         end
@@ -91,13 +92,42 @@ function BooxInk:probe()
             return m ~= nil and m or nil
         end
         local view_cls = class(VIEW)
-        if view_cls == nil then return false end
-        self.pen_state = method(view_cls, "setScreenHandWritingPenState", "(I)V")
-        self.region_limit = method(view_cls, "setScreenHandWritingRegionLimit", "(Landroid/view/View;[I)V")
-        self.region_exclude = method(view_cls, "setScreenHandWritingRegionExclude", "(Landroid/view/View;[I)V")
-        if not (self.pen_state and self.region_limit) then return false end
+        if view_cls == nil then return false, "android.view.View missing" end
+        local helper_cls = class(HELPER)
+        -- Select a complete backend; never call a static method on the decor view.
+        for _i, backend in ipairs({
+            { cls = view_cls, name = VIEW, static = false },
+            { cls = helper_cls, name = HELPER, static = true },
+        }) do
+            local lookup = backend.static and static or method
+            local state = lookup(backend.cls, "setScreenHandWritingPenState", "(I)V")
+            local limit = lookup(backend.cls, "setScreenHandWritingRegionLimit", "(Landroid/view/View;[I)V")
+            if state and limit then
+                self.pen_cls, self.pen_static = backend.cls, backend.static
+                self.backend = backend.name .. (backend.static and " (static)" or " (instance)")
+                self.pen_state, self.region_limit = state, limit
+                self.region_exclude = lookup(backend.cls, "setScreenHandWritingRegionExclude", "(Landroid/view/View;[I)V")
+                break
+            end
+        end
+        if not self.pen_state then return false, "pen state/region methods missing on View and ViewUpdateHelper" end
+        -- Raw handwriting gates ordinary Android panel updates. A client must
+        -- be able both to repaint that mode and to unlock normal posts on exit.
+        for _i, cls in ipairs({ view_cls, helper_cls }) do
+            if not self.enable_post then
+                self.enable_post = static(cls, "enablePost", "(I)V")
+                if self.enable_post then self.post_cls = cls end
+            end
+            if not self.handwriting_repaint then
+                self.handwriting_repaint = static(cls, "handwritingRepaint", "(Landroid/view/View;IIII)V")
+                if self.handwriting_repaint then self.repaint_cls = cls end
+            end
+        end
+        if not (self.enable_post and self.handwriting_repaint) then
+            return false, "handwriting repaint/post control missing"
+        end
         -- the stroke's look, where the firmware has it
-        for _i, cls in ipairs({ view_cls, class(HELPER) }) do
+        for _i, cls in ipairs({ view_cls, helper_cls }) do
             local w = static(cls, "setStrokeWidth", "(F)V")
             if w then
                 self.width_cls, self.stroke_width = cls, w
@@ -110,17 +140,22 @@ function BooxInk:probe()
         local activity = self.android.app.activity.clazz
         local window = jni:callObjectMethod(activity, "getWindow", "()Landroid/view/Window;")
         clear()
-        if window == nil then return false end
+        if window == nil then return false, "activity window missing" end
         local decor = jni:callObjectMethod(window, "getDecorView", "()Landroid/view/View;")
         clear()
         env[0].DeleteLocalRef(env, window)
-        if decor == nil then return false end
+        if decor == nil then return false, "window decor view missing" end
         self.view = env[0].NewGlobalRef(env, decor)
         env[0].DeleteLocalRef(env, decor)
         self.view_cls = view_cls
         return true
     end)
     self.ok = found == true
+    self.why = (not self.ok) and (why or "probe failed") or nil
+    if self.log then
+        if self.ok then self.log("Ink Away: Boox pen layer found:", self.backend)
+        else self.log("Ink Away: Boox pen layer not found:", why or "probe failed") end
+    end
     return self.ok
 end
 
@@ -131,6 +166,7 @@ function BooxInk:call(fn)
     local ok, r, why = pcall(self.withEnv, self, fn)
     if not ok or r == false then
         self.broken = true
+        self:releaseScreen()
         if self.log then self.log("Ink Away: Boox pen layer off:", ok and why or r) end
         return false
     end
@@ -138,15 +174,128 @@ function BooxInk:call(fn)
     return true
 end
 
+-- The firmware's pen calls by name, wherever Ink Away may look, whatever their
+-- signature: { "ViewUpdateHelper.enablePost", ... }. For a firmware where the search
+-- failed, so its report says what it has. Slow (it reads the names of every method of
+-- View), so only the pen test asks, and only on a Boox.
+function BooxInk:surveyMethods()
+    local out = {}
+    if not self.android then return out end
+    pcall(self.withEnv, self, function(env, jni)
+        local function clear()
+            if env[0].ExceptionCheck(env) ~= 0 then env[0].ExceptionClear(env); return true end
+            return false
+        end
+        for _i, class in ipairs({ VIEW, HELPER }) do
+            local cls = env[0].FindClass(env, class)
+            clear()
+            if cls ~= nil then
+                local arr = jni:callObjectMethod(cls, "getMethods", "()[Ljava/lang/reflect/Method;")
+                if not clear() and arr ~= nil then
+                    for k = 0, env[0].GetArrayLength(env, arr) - 1 do
+                        local m = env[0].GetObjectArrayElement(env, arr, k)
+                        if not clear() and m ~= nil then
+                            local js = jni:callObjectMethod(m, "getName", "()Ljava/lang/String;")
+                            if not clear() and js ~= nil then
+                                local name = jni:to_string(js)
+                                clear()
+                                if type(name) == "string" and (name:find("HandWriting", 1, true)
+                                        or name:find("andwriting", 1, true) or name:find("Scribble", 1, true)
+                                        or name == "enablePost" or name:find("^setStroke")) then
+                                    out[#out + 1] = class:match("[^/]+$") .. "." .. name
+                                end
+                                env[0].DeleteLocalRef(env, js)
+                            end
+                            env[0].DeleteLocalRef(env, m)
+                        end
+                    end
+                    env[0].DeleteLocalRef(env, arr)
+                end
+                env[0].DeleteLocalRef(env, cls)
+            end
+        end
+        return true
+    end)
+    return out
+end
+
+-- Best-effort cleanup bypassing the broken-client guard. Each call clears its
+-- own Java exception so even a failed pen command cannot lock ordinary updates.
+function BooxInk:releaseScreen()
+    if self.enable_post then
+        pcall(self.withEnv, self, function(env)
+            local a = self.ffi.new("jvalue[1]"); a[0].i = 1
+            env[0].CallStaticVoidMethodA(env, self.post_cls, self.enable_post, a)
+            return true
+        end)
+    end
+    if self.pen_state and self.view then
+        pcall(self.withEnv, self, function(env)
+            local a = self.ffi.new("jvalue[1]"); a[0].i = BooxInk.STOP
+            self:invokePen(env, self.pen_state, a)
+            return true
+        end)
+    end
+end
+
+-- Invoke a pen method using the class and calling convention chosen by probe.
+function BooxInk:invokePen(env, mid, args)
+    if self.pen_static then
+        env[0].CallStaticVoidMethodA(env, self.pen_cls, mid, args)
+    else
+        env[0].CallVoidMethodA(env, self.view, mid, args)
+    end
+end
+
 -- The pen layer's state: BooxInk.STOP, START, DRAWING or PAUSED.
 function BooxInk:setPenState(n)
     local ffi = self.ffi
-    return self:call(function(env)
+    local ok = self:call(function(env)
         local a = ffi.new("jvalue[1]")
         a[0].i = n
-        env[0].CallVoidMethodA(env, self.view, self.pen_state, a)
+        if n == BooxInk.PAUSED or n == BooxInk.STOP then
+            a[0].i = 1
+            env[0].CallStaticVoidMethodA(env, self.post_cls, self.enable_post, a)
+            if env[0].ExceptionCheck(env) ~= 0 then return false end
+            a[0].i = n
+        end
+        self:invokePen(env, self.pen_state, a)
         return true
     end)
+    if ok and n == BooxInk.DRAWING and not self.reported_active then
+        self.reported_active = true
+        if self.log then self.log("Ink Away: Boox pen layer enabled:", self.backend) end
+    end
+    return ok
+end
+
+-- Keep raw pen capture prepared while allowing ordinary Android posts. Enter
+-- scribble mode only for a real contact; preparing after DOWN misses its start.
+function BooxInk:setPosting(enabled)
+    return self:call(function(env)
+        local a = self.ffi.new("jvalue[1]")
+        a[0].i = enabled and 1 or 0
+        env[0].CallStaticVoidMethodA(env, self.post_cls, self.enable_post, a)
+        return true
+    end)
+end
+
+-- Commit the app's posted pixels while raw handwriting owns the panel. Unlike
+-- refreshScreen, this is the firmware's handwriting-mode repaint (LTRB).
+function BooxInk:repaint(x, y, w, h)
+    local ok = self:call(function(env)
+        local a = self.ffi.new("jvalue[5]")
+        a[0].l = self.view
+        a[1].i, a[2].i = math.floor(x), math.floor(y)
+        a[3].i, a[4].i = math.ceil(x + w), math.ceil(y + h)
+        env[0].CallStaticVoidMethodA(env, self.repaint_cls, self.handwriting_repaint, a)
+        return true
+    end)
+    if ok and not self.reported_repaint then
+        self.reported_repaint = true
+        if self.log then self.log("Ink Away: Boox handwriting repaint active") end
+    end
+    return ok
 end
 
 local function intArray(env, ffi, list)
@@ -180,9 +329,9 @@ function BooxInk:setRegion(limit, exclude)
             local a = ffi.new("jvalue[2]")
             a[0].l = self.view
             a[1].l = arr
-            env[0].CallVoidMethodA(env, self.view, mid, a)
+            self:invokePen(env, mid, a)
             env[0].DeleteLocalRef(env, arr)
-            return true
+            return env[0].ExceptionCheck(env) == 0
         end
         return send(self.region_limit, limit) and send(self.region_exclude, exclude or {})
     end)
@@ -198,9 +347,11 @@ function BooxInk:setStroke(width, color, style)
         local a = ffi.new("jvalue[1]")
         a[0].f = width
         env[0].CallStaticVoidMethodA(env, self.width_cls, self.stroke_width, a)
+        if env[0].ExceptionCheck(env) ~= 0 then return false end
         if self.stroke_color then
             a[0].i = color
             env[0].CallStaticVoidMethodA(env, self.width_cls, self.stroke_color, a)
+            if env[0].ExceptionCheck(env) ~= 0 then return false end
         end
         if self.stroke_style then
             a[0].i = style or 0

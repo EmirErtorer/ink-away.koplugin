@@ -54,6 +54,7 @@ end
 -- annotation mode. Taken either way, so the book under the canvas never turns
 -- on its own.
 function InkAwayView:keyAction(trigger)
+    self:booxInkRelease()
     local id = self:gestureBindings()[trigger]
     if id and id ~= "nothing" then self:runAction(id) end
     return true
@@ -143,12 +144,17 @@ function InkAwayView:holdAction(control)
         local fav = id:match("^fav(%d)$")
         if fav then swapPen(self:savedPen(tonumber(fav))) end
     end
+    -- Held tools change without a paint. Pause the firmware before the eraser,
+    -- lasso or highlighter's first point, rather than let it draw black over it.
+    self:booxInkUpdate()
 end
 
 -- Put back the tool and pen a held pen part swapped in.
 function InkAwayView:restoreHeld()
+    local changed = self._pen_held_pen ~= nil or self._pen_prev_tool ~= nil
     if self._pen_held_pen then self:applyPen(self._pen_held_pen); self._pen_held_pen = nil end
     if self._pen_prev_tool then self.tool = self._pen_prev_tool; self._pen_prev_tool = nil end
+    if changed then self:booxInkUpdate() end
 end
 
 ------------------------------------------------------------------------------

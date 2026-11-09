@@ -11,7 +11,10 @@ black-and-white waveform (DU) over their rect, right after the window is posted,
 through KOReader's own call and with the constants KOReader's driver gives that
 panel, as KOReader does itself on the e-ink Androids it drives fully. A live
 request also covers the one before it, in case that one reached the panel before
-the frame did. Once a stroke ends, its whole rect is asked for again a moment
+the frame did. Requests are paced (PACE_MS): each is a call into Java and a thread
+of its own, and the panel takes longer over each than the pen takes to move, so one
+per window post piled up and the ink fell behind the pen. What changes meanwhile
+goes with the next request. Once a stroke ends, its whole rect is asked for again a moment
 later, and the refresh that settles grey and colour once the pen rests asks for
 the grey waveform.
 
@@ -25,7 +28,12 @@ local EinkDrive = {}
 -- new frame (Android composes it at the next display frame).
 EinkDrive.FAST_DELAY_MS = 20
 -- A request this soon after the previous one covers both rects.
-EinkDrive.JOIN_MS = 150
+EinkDrive.JOIN_MS = 350
+-- At most one live request in this long: about what the panel takes over one.
+EinkDrive.PACE_MS = 160
+-- Set to a function that says the firmware has the panel for now (a Boox's own pen
+-- layer, see ink/booxdrive.lua): nothing is asked of it meanwhile.
+EinkDrive.quiet = nil
 -- The whole stroke, asked for again after the pen lifts.
 EinkDrive.TAIL_DELAY_MS = 120
 
@@ -72,14 +80,15 @@ local function request(s, fb, mode, delay, x, y, w, h)
     return true
 end
 
--- A fast refresh went out: ask for the fast waveform over it and the previous
--- rect, if that was recent.
-local function fast(s, fb, x, y, w, h)
-    if not (x and y and w and h) then
-        x, y, w, h = 0, 0, fb:getWidth(), fb:getHeight()
-    end
+-- Send what is waiting: the rects since the last request, and that request's rect
+-- if it was recent.
+local function flush(s, fb)
+    local p = s.pend
+    if not p then return end
+    s.pend = nil
     local t = s.now()
     local l = s.last
+    local x, y, w, h = p.x, p.y, p.w, p.h
     local rx, ry, rw, rh = x, y, w, h
     if l.t and t - l.t <= EinkDrive.JOIN_MS then
         local x0, y0 = math.min(x, l.x), math.min(y, l.y)
@@ -90,18 +99,48 @@ local function fast(s, fb, x, y, w, h)
     request(s, fb, s.c.fast, math.max(s.c.delay_fast, EinkDrive.FAST_DELAY_MS), rx, ry, rw, rh)
 end
 
+-- A fast refresh went out: ask for the fast waveform over it, now if the last
+-- request is long enough ago, else with the next one.
+local function fast(s, fb, x, y, w, h)
+    if EinkDrive.quiet and EinkDrive.quiet() then
+        s.pend = nil
+        return
+    end
+    if not (x and y and w and h) then
+        x, y, w, h = 0, 0, fb:getWidth(), fb:getHeight()
+    end
+    local p = s.pend
+    if p then
+        local x0, y0 = math.min(x, p.x), math.min(y, p.y)
+        p.w, p.h = math.max(x + w, p.x + p.w) - x0, math.max(y + h, p.y + p.h) - y0
+        p.x, p.y = x0, y0
+    else
+        s.pend = { x = x, y = y, w = w, h = h }
+    end
+    local since = s.last.t and s.now() - s.last.t
+    if not since or since >= EinkDrive.PACE_MS then return flush(s, fb) end
+    -- (the pen may stop here: what is waiting still goes out)
+    if s.later and not s.armed then
+        s.armed = true
+        s.later(EinkDrive.PACE_MS - since, function()
+            s.armed = false
+            if state == s then flush(s, fb) end
+        end)
+    end
+end
+
 -- Start driving `screen` (KOReader's framebuffer) with the waveforms `c` (from
 -- detect). Each open view acquires it once and releases it on close; the screen
--- is hooked while any holds it. `now` gives milliseconds; `log` warns.
--- Returns whether the drive is on.
-function EinkDrive.acquire(screen, c, now, log)
+-- is hooked while any holds it. `now` gives milliseconds; `log` warns; `later(ms,
+-- fn)` runs fn after ms. Returns whether the drive is on.
+function EinkDrive.acquire(screen, c, now, log, later)
     if state then
         state.users = state.users + 1
         return true
     end
     if not (screen and c and type(screen._updatePartial) == "function"
             and type(screen.refreshFastImp) == "function") then return false end
-    local s = { screen = screen, c = c, users = 1, now = now or function() return 0 end, log = log,
+    local s = { screen = screen, c = c, users = 1, now = now or function() return 0 end, log = log, later = later,
         last = {}, asked = 0, own = rawget(screen, "refreshFastImp") }
     local orig = screen.refreshFastImp      -- the class method, or another plugin's wrapper
     s.wrapper = function(fb, x, y, w, h, d)
@@ -137,7 +176,9 @@ end
 function EinkDrive.ask(kind, x, y, w, h)
     local s = state
     if not s or w <= 0 or h <= 0 then return false end
+    if EinkDrive.quiet and EinkDrive.quiet() then return false end
     local fb = s.screen
+    if kind ~= "ui" then s.pend = nil end   -- (the whole stroke: it covers what is waiting)
     if fb.calculateRealCoordinates then x, y, w, h = fb:calculateRealCoordinates(x, y, w, h) end
     if kind == "ui" then
         return request(s, fb, s.c.ui, math.max(s.c.delay_ui, EinkDrive.FAST_DELAY_MS), x, y, w, h)

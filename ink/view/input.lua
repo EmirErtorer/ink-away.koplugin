@@ -312,6 +312,7 @@ end
 -- view closes. Also restores a tool swapped in for the eraser end or side button,
 -- so turning it off mid-stroke never leaves the tool stuck on erase or lasso.
 function InkAwayView:resetPenState()
+    self:booxInkRelease()
     UIManager:unschedule(self._pen_clear)
     if self._watch_settle then UIManager:unschedule(self._watch_settle) end
     self._watch_state, self._watch_slot = nil, nil
@@ -342,9 +343,11 @@ end
 -- and so does a gesture at `pos` that is the pen itself working the UI.
 function InkAwayView:fingerRejected(pos)
     if self._pen_feeding then return false end
-    if pos and self._pen_ui and self:penUiGesture(pos) then return false end
-    return self._pen_state.down or self._palm_count > 0 or self._reject_finger
+    if pos and self._pen_ui and self:penUiGesture(pos) then self:booxInkRelease(); return false end
+    local rejected = self._pen_state.down or self._palm_count > 0 or self._reject_finger
         or self:penInRange()
+    if not rejected then self:booxInkRelease() end
+    return rejected
 end
 
 ------------------------------------------------------------------------------
@@ -692,6 +695,7 @@ function InkAwayView:penDown(slot, facts)
     -- survives the restore and can be moved by holding the button again.
     local act = Stylus.penAction(slot, facts)
     if act ~= Stylus.ACT_DRAW then self:holdAction(act) end
+    self:booxInkContact()
     self:penMove(slot)             -- if this frame already carries coordinates, open here
 end
 
@@ -744,6 +748,9 @@ function InkAwayView:penMove(slot)
 end
 
 function InkAwayView:penUp()
+    -- Keep successive letters in one preview, then unlock ordinary posts after
+    -- a bounded pause. The stroke itself is committed immediately below.
+    self:booxInkLift()
     self._pen_raw_pressure = nil
     if self._pen_hold_at then
         self._pen_hold_at = nil
@@ -795,6 +802,7 @@ end
 -- is, so its own gestures get past the finger rejection while a palm elsewhere is
 -- still kept out (see penUiGesture).
 function InkAwayView:penUiStart(sn, x, y)
+    self:booxInkRelease()
     -- a first frame without coordinates may already have opened a pen stroke; it
     -- drew nothing, so forget it
     if self._pen_state.down then
@@ -862,6 +870,7 @@ end
 -- the button) or moves past the slop (a stroke from where it landed). KOReader
 -- reuses its slot tables, so the landing frame is copied.
 function InkAwayView:penFabStart(sn, slot, kind, x, y)
+    self:booxInkRelease()
     if self._pen_state.down then   -- a coordinate-less first frame may have opened a stroke
         self._pen_state = Stylus.new()
         self._pen_owner, self._pen_kin = nil, nil

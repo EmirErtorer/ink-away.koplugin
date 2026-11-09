@@ -45,6 +45,9 @@ if exists(EMU .. "/luajit") then
     end
 end
 local fail = 0
+suites[#suites + 1] = "tests/booxink.lua"
+suites[#suites + 1] = "tests/booxinput.lua"
+suites[#suites + 1] = "tests/booxdisplay.lua"
 suites[#suites + 1] = "tests/capture.lua"
 suites[#suites + 1] = "tests/capturegestures.lua"
 for _, suite in ipairs({ "tests/ocr_api.lua", "tests/ocr_job.lua", "tests/ocr_image.lua", "tests/ocr_view.lua" }) do
