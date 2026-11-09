@@ -8,6 +8,8 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.4.3] - 2026-11-09 *Prerelease*
+
 ### Added
 - Two pages side by side for a PDF, CBZ or other fixed-page book, also when all its pages are single ones: in the book's Ink Away menu, always or only in landscape, with the first page on its own if it has a cover, and optionally for every PDF. Ink stays on the page it was drawn on.
 - Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
