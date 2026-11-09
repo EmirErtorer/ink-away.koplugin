@@ -122,6 +122,11 @@ ok(tiles(view._stickers)[1] ~= first, "Next shows others")
 ok(textIn(view._stickers):find("2 / ", 1, true), "and the page number")
 findButton(view._stickers, "\u{2039} Prev").callback()
 ok(textIn(view._stickers):find("1 / ", 1, true), "Prev goes back")
+-- the reader's page turn buttons turn them too (#79)
+ok(view._stickers:onMenuPageFwd() and textIn(view._stickers):find("2 / ", 1, true), "the page turn button turns the sheet on")
+ok(view._stickers:onMenuPageBack() and textIn(view._stickers):find("1 / ", 1, true), "and back")
+view._stickers:onMenuPageBack()
+ok(textIn(view._stickers):find("1 / ", 1, true), "back on the first page: it stays there")
 
 -- the tabs
 findButton(view._stickers, "Marks").callback()

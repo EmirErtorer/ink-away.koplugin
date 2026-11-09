@@ -3,10 +3,11 @@ A book's ink, kept as inkaway.lua in the book's own KOReader folder: the same
 ".sdr" folder as the reader's settings for the book, wherever the "Book metadata
 location" setting puts it (next to the book, in KOReader's docsettings folder,
 or by the book's hash). { version, items = { { op, a }, ... }, notes, rooms,
-rooms_off, rooms_ready, hl_notes } (see ink/reader/place.lua for the items; notes is the path of the
+rooms_off, rooms_ready, room_marks, hl_notes } (see ink/reader/place.lua for the items; notes is the path of the
 book's notebook, see ink/reader/booknotes.lua; rooms the space made in its text and
 rooms_off whether it is hidden, rooms_ready whether the book is laid out with the
-markers its exact rooms need, see ink/reader/rooms.lua; hl_notes the reader's
+markers its exact rooms need, see ink/reader/rooms.lua, and room_marks 2 when
+inline elements carry them too; hl_notes the reader's
 highlights that have a handwritten note in the book's notes, by their date and time,
 with the KOReader note Ink Away gave them, see ink/reader/hlnotes.lua).
 
@@ -138,6 +139,7 @@ local function encode(data)
     local rooms = data.rooms and #data.rooms > 0 and data.rooms or nil
     local head = Project.encode({ version = BookInk.VERSION, notes = data.notes, rooms = rooms,
         rooms_off = rooms and data.rooms_off or nil, rooms_ready = data.rooms_ready or nil,
+        room_marks = data.rooms_ready and data.room_marks or nil,
         hl_notes = data.hl_notes and next(data.hl_notes) and data.hl_notes or nil })   -- "return {...,}"
     local parts = {}
     for i, item in ipairs(data.items) do parts[i] = itemText(item) end
@@ -189,6 +191,7 @@ function BookInk.merge(first_path, second_path)
     end
     return encode({ items = items, notes = b.notes or a.notes, rooms = Rooms.merge(b.rooms, a.rooms),
         rooms_off = b.rooms_off, rooms_ready = (a.rooms_ready or b.rooms_ready) or nil,
+        room_marks = math.max(a.room_marks or 0, b.room_marks or 0) > 0 and math.max(a.room_marks or 0, b.room_marks or 0) or nil,
         hl_notes = mergeMarks(a.hl_notes, b.hl_notes) })
 end
 
@@ -295,6 +298,7 @@ local function merge(into, from)
     end
     if from.rooms then into.rooms = Rooms.merge(into.rooms, from.rooms) end
     if from.rooms_ready then into.rooms_ready = true end
+    if (from.room_marks or 0) > (into.room_marks or 0) then into.room_marks = from.room_marks end
     into.hl_notes = mergeMarks(into.hl_notes, from.hl_notes)
     return into
 end

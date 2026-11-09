@@ -485,6 +485,11 @@ function InkAwayView:openStickers(cat)
         end
         if hint then add(vspan(8)); add(hint) end
         if pages <= 1 then return g end   -- (one page: nothing to turn)
+        -- (the reader's page turn buttons turn its pages too, as on every paged sheet: #79)
+        require("ink/ui/iconmenu").pager(function(d)
+            local p = st.page + d
+            if p >= 1 and p <= pages then st.page = p; again() end
+        end)
         add(vspan(12))
         local TextWidget = require("ui/widget/textwidget")
         local Font = require("ui/font")

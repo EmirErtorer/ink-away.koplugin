@@ -245,6 +245,10 @@ function RoomsUI:makeRoomForSelection()
     local rect = { x = math.floor(b.x0) - pad, y = math.floor(b.y0) - pad,
                    w = math.ceil(b.x1 - b.x0) + 2 * pad, h = math.ceil(b.y1 - b.y0) + 2 * pad }
     local plan, pbox = book:planRoom(rect)
+    -- where no room can start at its top, the nearest place one can (what is
+    -- selected moves there with it, its size kept)
+    local sok, snapped = pcall(book.snapRoomRect, book, rect, "height")
+    if sok and snapped then plan, pbox = book:planRoom(snapped) end
     if not plan then
         self:tell(RoomsUI.whyNot(pbox))
         return

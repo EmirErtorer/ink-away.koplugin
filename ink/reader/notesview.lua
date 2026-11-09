@@ -16,8 +16,9 @@ itself, laid out small:
   * opened on one of the reader's highlights (a handwritten note on it, from
     ink/reader/hlnotes.lua), it goes to that highlight's page, or a new one after
     its chapter's pages, titled with the highlighted words; closing tells the book
-    whether the note has ink (Book:linkHighlightNote). On a highlight's page a
-    tap on the strip opens KOReader's menu for that highlight.
+    whether the note has ink (Book:linkHighlightNote). On a highlight's page the
+    strip ends in a Highlight menu button: a tap on the strip opens KOReader's
+    menu for that highlight (to delete it, among others).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -216,10 +217,19 @@ function NotesView:paintSurround(bb, x, y)
     bb:paintRect(x + p.x - b, y + p.y - b, p.w + 2 * b, p.h + 2 * b, Blitbuffer.COLOR_BLACK)
     bb:paintRect(x + p.x, y + p.y, p.w, p.h, Blitbuffer.COLOR_WHITE)
     local s = self._strip
-    local tw = self:stripText()
+    local menu = self:stripMenuButton()
+    local tw = self:stripText(menu and menu.w + Screen:scaleBySize(8) or 0)
     if tw then
         local sz = tw:getSize()
         tw:paintTo(bb, x + s.x + Screen:scaleBySize(8), y + s.y + math.floor((s.h - sz.h) / 2))
+    end
+    if menu then
+        local pad, r = Screen:scaleBySize(3), Screen:scaleBySize(4)
+        local bx, by = x + s.x + s.w - menu.w - Screen:scaleBySize(6), y + s.y + pad
+        local bh = s.h - 2 * pad
+        bb:paintBorder(bx, by, menu.w, bh, Screen:scaleBySize(1), Blitbuffer.COLOR_BLACK, r)
+        local sz = menu.text:getSize()
+        menu.text:paintTo(bb, bx + math.floor((menu.w - sz.w) / 2), by + math.floor((bh - sz.h) / 2))
     end
     bb:paintRect(x + s.x, y + s.y + s.h - 1, s.w, 1, Blitbuffer.COLOR_GRAY_9)
     if Theme.invert() then bb:invertRect(x + s.x, y + s.y, s.w, s.h) end   -- dark: the strip is a control
@@ -234,18 +244,47 @@ local function titleFor(pages, i)
     end
 end
 
--- "Chapter · 2/5", made again only when it changes.
-function NotesView:stripText()
+-- "Chapter · 2/5", made again only when it changes; `room`: px kept free at its
+-- right (the highlight's menu button).
+function NotesView:stripText(room)
     local nb = self.notebook
     if not nb then return nil end
     local name = titleFor(nb.pages, nb.index) or self:docName()
     local text = string.format("%s \u{00B7} %d/%d", name, nb.index, nb:count())
-    if self._strip_w and self._strip_text == text then return self._strip_w end
+    local max_w = self._strip.w - Screen:scaleBySize(16) - (room or 0)
+    if self._strip_w and self._strip_text == text and self._strip_max == max_w then return self._strip_w end
     if self._strip_w then self._strip_w:free() end
-    self._strip_text = text
-    self._strip_w = TextWidget:new{ text = text, face = Font:getFace("smallinfofont"),
-        max_width = self._strip.w - Screen:scaleBySize(16) }
+    self._strip_text, self._strip_max = text, max_w
+    self._strip_w = TextWidget:new{ text = text, face = Font:getFace("smallinfofont"), max_width = max_w }
     return self._strip_w
+end
+
+-- The reader's highlight the page shown is the note of: its place in the
+-- reader's list (nil on any other page, or once the highlight is gone).
+function NotesView:pageHighlightIndex()
+    local nb = self.notebook
+    local page = nb and nb.pages[nb.index]
+    local hl = page and type(page.book) == "table" and page.book.hl
+    if not (hl and self.book and self.book.findHighlight) then return nil end
+    local ok, _anno, index = pcall(self.book.findHighlight, self.book, hl)
+    return ok and index or nil
+end
+
+-- On a highlight's page the strip ends in a button for KOReader's menu for that
+-- highlight (delete it, its colour, its typed note...): { w, text } or nil.
+function NotesView:stripMenuButton()
+    if not self:pageHighlightIndex() then return nil end
+    if not self._strip_menu then
+        local text = TextWidget:new{ text = _("Highlight menu"), face = Font:getFace("x_smallinfofont"),
+            max_width = math.floor(self._strip.w * 0.45) }
+        self._strip_menu = { text = text, w = text:getSize().w + Screen:scaleBySize(16) }
+    end
+    return self._strip_menu
+end
+
+function NotesView:freeStrip()
+    if self._strip_w then self._strip_w:free(); self._strip_w = nil end
+    if self._strip_menu then self._strip_menu.text:free(); self._strip_menu = nil end
 end
 
 -- A page turn changes the strip, which is chrome: paint it all.
@@ -270,11 +309,8 @@ function NotesView:onIaTap(arg, ges)
         return true
     end
     if self.floating and ges and ges.pos and inRect(ges.pos, self._strip) then
-        local nb = self.notebook
-        local page = nb and nb.pages[nb.index]
-        local hl = page and type(page.book) == "table" and page.book.hl
         local book = self.book
-        local index = hl and select(2, book:findHighlight(hl))
+        local index = self:pageHighlightIndex()
         if index then
             self:closeCanvas()
             UIManager:nextTick(function()
@@ -499,7 +535,7 @@ function NotesView:expand()
     self.floating = false
     self._bar_x, self._bar_y = nil, nil
     if self.behind_bb then self.behind_bb:free(); self.behind_bb = nil end
-    if self._strip_w then self._strip_w:free(); self._strip_w = nil end
+    self:freeStrip()
     InkAwayView.initLayout(self, self.screen_w, self.screen_h)
     self.nb_bar_h = self:nbBarHeight()
     InkAwayView.recomputeArea(self)
@@ -523,7 +559,7 @@ end
 
 function NotesView:free()
     if self.behind_bb then self.behind_bb:free(); self.behind_bb = nil end
-    if self._strip_w then self._strip_w:free(); self._strip_w = nil end
+    self:freeStrip()
     InkAwayView.free(self)
 end
 

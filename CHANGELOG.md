@@ -8,20 +8,28 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
-### Fixed
+### Added
+- Two pages side by side for a PDF, CBZ or other fixed-page book, also when all its pages are single ones: in the book's Ink Away menu, always or only in landscape, with the first page on its own if it has a cover, and optionally for every PDF. Ink stays on the page it was drawn on.
+- Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
+- Labels for highlight colours: say what each colour means to you ("Important", "Look this up"). Set them with Labels in the highlight colour sheet; each shows with its colour there, and they sync with your other settings. (#81)
+- Annotation mode on a viewer plugin's page: a plugin that shows a book's pages its own way, such as PanelsPlus (comics panel by panel), can let Ink Away draw on its view, with the ink kept as on the book's own pages. An experimental integration API, designed by Kristan Laimon (#80); see docs/INTEGRATION.md. Nothing changes for anyone not using such a plugin.
 
-- BOOX Note X3 Pro: recognise the firmware's static pen-layer methods so the
-  native low-latency ink can activate. Older View-based firmware keeps its path.
-- Pause the BOOX pen layer immediately for the rear eraser and held pen tools,
-  and resume it when the original pen returns, without waiting for a paint.
-- BOOX: commit Android window updates through the firmware's handwriting repaint
-  while native ink is active, and restore ordinary screen updates on pause,
-  focus loss, exit and errors. Fixes pages appearing frozen after writing on a PDF.
-- Prepare native pen capture before contact, keeping ordinary Android updates
-  open while idle so the first stroke can appear live. Restore ordinary updates
-  after a bounded writing pause of 500 ms.
-  Consecutive strokes restart the timer, while menus and navigation release it
-  immediately. Ink is saved on every lift, independently of the refresh delay.
+### Changed
+- Make room: where a room can't start at the box's top on that page (the paragraph began on the page before, or starts at the top of the page), the box moves to the nearest place one can as you draw or move it, so the box is always where the room will be. Boxes that were already exact stay exactly as they are.
+- Make room for a sticker or other selection moves it to that nearest place too, instead of leaving a tall empty space above it.
+- In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
+
+### Fixed
+- Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
+- With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
+- The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)
+- With a colour theme, the active tool and the icons on coloured buttons no longer show as a pale square with coloured lines on some KOReader versions.
+- Colour swatches and pen tiles no longer cover the corners of their black ring with square white corners.
+- Connecting Google Drive on an Android phone or tablet no longer fails with "No connection" (IA-S101) after you allow it in the phone's own browser: the reader keeps asking while it comes back to the network. Readers that can open links also get an "Open the sign-in page" button, with the code copied to paste.
+- Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
+- A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
+- A comic book (CBZ, CBR) is no longer offered the editable PDF export, which would have written PDF annotations into a copy of its archive; it exports as pictures. A PDF with a few bytes before its header still gets the editable export. (Found by Kristan Laimon, #80.)
+- On a reader with a D-pad (and in the desktop emulator), tapping a text field in one of Ink Away's sheets no longer fails. (Found by Kristan Laimon, #80.)
 
 ## [4.4.2] - 2026-11-07 *Prerelease*
 

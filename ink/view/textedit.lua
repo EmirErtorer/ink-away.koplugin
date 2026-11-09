@@ -150,7 +150,7 @@ end
 -- Lay out the two edit buttons, Format and Done, at the top right. This runs on
 -- every overlay paint and touch, so the labels are measured once and cached.
 function InkAwayView:textEditButtons()
-    local v = self.view
+    local v = self._reader_viewport or self.view   -- (a viewer plugin's page: the toolbar-free room)
     local m = self._text_btn_metrics
     if not m then
         -- the sheets' look: a grey rounded "Format" button and the "Done" pill in

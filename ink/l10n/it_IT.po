@@ -438,6 +438,10 @@ msgstr "L’immagine di ogni pagina occupa circa 0,3 MB, quindi questo PDF peser
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Una versione preliminare è una build di prova. Puoi tornare all’ultima versione da Impostazioni, Aggiornamenti."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "In questa pagina uno spazio può iniziare solo dove un paragrafo lo consente, quindi il riquadro si è spostato nel punto più vicino."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Una fascia con le tue prime quattro penne, a un tocco di distanza: Penna e input, Le tue penne sulla pagina."
@@ -462,6 +466,10 @@ msgstr "Acrilico"
 #: ink/view/imagebrowser.lua
 msgid "Add"
 msgstr "Aggiungi"
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Aggiungi un'etichetta"
 
 #: ink/view/library.lua
 msgid "Add an icon…"
@@ -983,6 +991,10 @@ msgstr "Colore"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Colore e icona…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Etichette dei colori"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2251,6 +2263,7 @@ msgstr "Monitor delle abitudini"
 msgid "Handwriting"
 msgstr "Scrittura a mano"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Nota scritta a mano"
@@ -2292,6 +2305,10 @@ msgstr "Evidenzia"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Colore dell'evidenziazione"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Menù evidenziazioni"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
@@ -2392,6 +2409,10 @@ msgstr "Immagine, Sfondo mette un’immagine dietro la pagina. Tieni premuto Nuo
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importa un PDF per scrivere sulle sue pagine, poi esportalo di nuovo in PDF."
+
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Importante, una parola da cercare, una domanda…"
 
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
@@ -2658,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraft con finestra"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Etichetta per questo colore"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Etichette"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -3542,6 +3571,10 @@ msgstr "Apri l’immagine come sfondo"
 msgid "Open the PDF now?"
 msgstr "Aprire il PDF ora?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Apri la pagina di accesso"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Aprili dal menu del lettore: Strumenti, Ink Away. Oppure assegna loro un gesto in Impostazioni, Tocchi e gesti, Gestore dei gesti: le azioni sono «Ink Away: annota il libro» e «Ink Away: note del libro»."
@@ -4207,6 +4240,7 @@ msgstr "Come il quaderno"
 msgid "Sandpaper"
 msgstr "Carta vetrata"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5039,6 +5073,10 @@ msgstr "Il cloud ha rifiutato questa richiesta. Forse a Ink Away manca un'autori
 msgid "The cloud service reported an error on its side."
 msgstr "Il servizio cloud ha segnalato un errore dal suo lato."
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Il codice è copiato: incollalo nella pagina di accesso."
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr "Il codice non è stato accettato"
@@ -5721,6 +5759,10 @@ msgstr "Quello che Ink Away sa fare e che a colpo d’occhio non si vede."
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Ciò che è arrivato era incompleto o danneggiato ed è stato scartato."
 
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Cosa significa per te ogni colore. Compare accanto al colore quando cambi il colore di un'evidenziazione."
+
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
 msgstr "Ciò che è in questo spazio: eliminarlo, o lasciarlo dov’è e farlo seguire il testo?"
@@ -6020,3 +6062,35 @@ msgstr "«%s» esiste già. Sostituirlo?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "«%s» è in Libreria: Importati contiene solo ciò che hai inviato"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Due pagine affiancate"
+
+#: main.lua
+msgid "In landscape"
+msgstr "In orizzontale"
+
+#: main.lua
+msgid "Always"
+msgstr "Sempre"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Prima pagina da sola"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Per un libro con copertina: le coppie iniziano allora dalla seconda pagina."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Apri così tutti i PDF"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "I nuovi PDF si aprono con questa scelta. Un PDF che hai impostato tu mantiene la sua."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Mostra due pagine una accanto all'altra, come un libro stampato aperto, anche per un PDF con sole pagine singole. Il tuo inchiostro resta sulla pagina dove l'hai disegnato. Una pagina più larga che alta viene mostrata da sola. Usa la vista a pagina e passa a essa."

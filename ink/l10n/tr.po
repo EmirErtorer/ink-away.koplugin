@@ -438,6 +438,10 @@ msgstr "Her sayfanın resmi yaklaşık 0,3 MB yer kaplar, bu yüzden bu PDF yakl
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Ön sürüm bir deneme sürümüdür. En son sürüme Ayarlar, Güncellemeler bölümünden dönebilirsiniz."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "Bu sayfada boşluk yalnızca bir paragrafın izin verdiği yerde başlayabilir, bu yüzden kutu en yakın böyle yere kaydı."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "İlk dört kalemin tek dokunuşla elinizin altında: Kalem ve girdi, Sayfadaki kalemleriniz."
@@ -462,6 +466,10 @@ msgstr "Akrilik"
 #: ink/view/imagebrowser.lua
 msgid "Add"
 msgstr "Ekle"
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Etiket ekle"
 
 #: ink/view/library.lua
 msgid "Add an icon…"
@@ -983,6 +991,10 @@ msgstr "Renk"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Renk ve simge…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Renk etiketleri"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2251,6 +2263,7 @@ msgstr "Alışkanlık takibi"
 msgid "Handwriting"
 msgstr "El yazısı"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "El yazısı not"
@@ -2292,6 +2305,10 @@ msgstr "Vurgula"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Vurgu rengi"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Vurgu menüsü"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
@@ -2392,6 +2409,10 @@ msgstr "Resim, Arka plan, sayfanın arkasına bir resim koyar. Bir resimden çiz
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Sayfalarına yazmak için bir PDF alın, sonra yine PDF olarak dışa aktarın."
+
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Önemli, bakılacak bir sözcük, bir soru…"
 
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
@@ -2658,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Pencereli kraft"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Bu rengin etiketi"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Etiketler"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -3542,6 +3571,10 @@ msgstr "Resmi arka plan olarak aç"
 msgid "Open the PDF now?"
 msgstr "PDF şimdi açılsın mı?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Giriş sayfasını aç"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Bunları okuyucu menüsünden açın: Araçlar, Ink Away. Ya da Ayarlar, Dokunuşlar ve hareketler, Hareket yöneticisi'nde onlara bir hareket verin: eylemler “Ink Away: kitabı not al” ve “Ink Away: kitap notları”dır."
@@ -4207,6 +4240,7 @@ msgstr "Defterle aynı"
 msgid "Sandpaper"
 msgstr "Zımpara kâğıdı"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5039,6 +5073,10 @@ msgstr "Bulut bu isteği reddetti. Ink Away'in bir izni eksik olabilir."
 msgid "The cloud service reported an error on its side."
 msgstr "Bulut hizmeti kendi tarafında bir hata bildirdi."
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Kod kopyalandı: giriş sayfasına yapıştırın."
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr "Kod kabul edilmedi"
@@ -5721,6 +5759,10 @@ msgstr "Ink Away'in bir bakışta görünmeyen yapabildikleri."
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Gelen veri eksik veya bozuktu, bu yüzden atıldı."
 
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Her rengin sizin için anlamı. Bir vurgunun rengini değiştirirken rengin yanında görünür."
+
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
 msgstr "Bu boşluktakiler: silinsin mi, yoksa olduğu yerde kalıp metni mi takip etsin?"
@@ -6020,3 +6062,35 @@ msgstr "“%s” zaten var. Değiştirilsin mi?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "“%s” Kitaplık içinde: Alınanlar yalnızca gönderdiklerinizi tutar"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Yan yana iki sayfa"
+
+#: main.lua
+msgid "In landscape"
+msgstr "Yatay konumda"
+
+#: main.lua
+msgid "Always"
+msgstr "Her zaman"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "İlk sayfa tek başına"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Kapaklı bir kitap için: çiftler bu durumda ikinci sayfadan başlar."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Her PDF'yi böyle aç"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Yeni PDF'ler bu seçimle açılır. Kendi ayarladığınız bir PDF kendi seçimini korur."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "İki sayfayı, açık bir basılı kitap gibi yan yana gösterir; tüm sayfaları tek olan bir PDF'de de. Mürekkebiniz çizdiğiniz sayfada kalır. Eni boyundan büyük bir sayfa tek başına gösterilir. Sayfa görünümünü kullanır ve ona geçer."

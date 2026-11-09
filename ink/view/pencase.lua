@@ -189,13 +189,15 @@ local function frame(inner, selected)
         margin = 0, background = WHITE, inner }
 end
 
--- A tile showing `bb` (owned by the cache), tappable.
+-- A tile showing `bb` (owned by the cache), tappable. The picture's corners are
+-- rounded off, so they stay inside the frame's ring.
 function InkAwayView:imageTile(bb, w, h, cb, hold_cb)
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(10),
         background = WHITE, margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     if bb then
-        self:setButtonLabel(b, ImageWidget:new{ image = bb, width = w, height = h,
-            image_disposable = false, fgcolor = BLACK })
+        local ok, round = pcall(self.roundedImage, self, bb, Screen:scaleBySize(10))
+        self:setButtonLabel(b, ImageWidget:new{ image = ok and round or bb, width = w, height = h,
+            alpha = ok and round and true or nil, image_disposable = false, fgcolor = BLACK })
     end
     return Theme.keep(b, Screen:scaleBySize(10))   -- a pen as it draws, in dark too
 end

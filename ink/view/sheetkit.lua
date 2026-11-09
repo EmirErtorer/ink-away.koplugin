@@ -46,8 +46,8 @@ local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px)
 -- A cached image as a Button label. The cache owns the buffer, so the widget must
 -- not free it, and fgcolor must be set: Button's tap highlight inverts
 -- label_widget.fgcolor whenever `text` is set (ours is ""), and a nil one crashes.
-local function imageLabel(bb, w, h)
-    return ImageWidget:new{ image = bb, width = w, height = h,
+local function imageLabel(bb, w, h, alpha)
+    return ImageWidget:new{ image = bb, width = w, height = h, alpha = alpha,
         image_disposable = false, fgcolor = BLACK }
 end
 
@@ -519,8 +519,8 @@ end
 
 -- A tappable rounded tile filled with `rgb`. A grey uses a Color8 fill, rounded
 -- in C. KOReader rounds an RGB32 fill pixel by pixel in Lua, which is slow, so a
--- colour tile is drawn once into an image (white corners, like the sheet) and
--- reused for every later paint.
+-- colour tile is drawn once into an image and reused for every later paint. Its
+-- corners are clear: white ones would cover the inside of a swatch's ring.
 function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     local fill = uiFill(rgb)
     -- a swatch is the colour it gives, in dark too
@@ -536,7 +536,7 @@ function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
         callback = cb, hold_callback = hold_cb, show_parent = self }
     local ok, img_bb = pcall(function() return self:cachedColourTile(rgb, w, h, radius) end)
     if ok and img_bb and b.label_container then
-        self:setButtonLabel(b, imageLabel(img_bb, w, h))
+        self:setButtonLabel(b, imageLabel(img_bb, w, h, true))
     else
         b.frame.background = fill   -- fall back to the plain (slow) colour fill
     end
@@ -546,14 +546,55 @@ end
 function InkAwayView:cachedColourTile(rgb, w, h, radius)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
-    local id = table.concat({ "tile", rgb[1], rgb[2], rgb[3], w, h, radius, Screen.bb:getType() }, "|")
+    local id = table.concat({ "tile", rgb[1], rgb[2], rgb[3], w, h, radius }, "|")
     local e = cache[id]
     if e then return e.bb end
-    local bb = Blitbuffer.new(w, h, Screen.bb:getType())
-    bb:paintRect(0, 0, w, h, WHITE)
+    local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BBRGB32)   -- starts fully clear
     bb:paintRoundedRectRGB32(0, 0, w, h, Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF), radius)
     cache[id] = { bb = bb }
     return bb
+end
+
+-- A copy of the picture `bb` with its corners rounded off (radius r, clear
+-- outside, the edge pixel partly so), to show inside a rounded frame without
+-- its square corners covering the frame. Drawn once per picture: only the four
+-- r x r corners are touched.
+function InkAwayView:roundedImage(bb, r)
+    local cache = self._wave_cache
+    if not cache then cache = {}; self._wave_cache = cache end
+    local id = "round|" .. tostring(bb) .. "|" .. r
+    local e = cache[id]
+    if e then return e.bb end
+    local w, h = bb:getWidth(), bb:getHeight()
+    local rgb = Screen.bb:getType() == Blitbuffer.TYPE_BBRGB32
+    local out = Blitbuffer.new(w, h, rgb and Blitbuffer.TYPE_BBRGB32 or (Blitbuffer.TYPE_BB8A or Blitbuffer.TYPE_BBRGB32))
+    out:blitFrom(bb, 0, 0, 0, 0, w, h)
+    r = math.min(r, math.floor(w / 2), math.floor(h / 2))
+    for dy = 0, r - 1 do
+        for dx = 0, r - 1 do
+            -- how much of this corner pixel lies inside the curve (kept half a pixel
+            -- within it, as KOReader draws the tile's own rounded background)
+            local ex, ey = r - dx - 0.5, r - dy - 0.5
+            local cover = r - math.sqrt(ex * ex + ey * ey)
+            if cover < 1 then
+                -- premultiplied, as ImageWidget blends a picture it is given
+                local f = math.max(0, cover)
+                local alpha = math.floor(f * 0xFF + 0.5)
+                local function pm(v) return math.floor(v * f + 0.5) end
+                for _i, p in ipairs({ { dx, dy }, { w - 1 - dx, dy }, { dx, h - 1 - dy }, { w - 1 - dx, h - 1 - dy } }) do
+                    local c = out:getPixel(p[1], p[2])
+                    if out:getType() == Blitbuffer.TYPE_BBRGB32 then
+                        c = c:getColorRGB32()
+                        out:setPixel(p[1], p[2], Blitbuffer.ColorRGB32(pm(c.r), pm(c.g), pm(c.b), alpha))
+                    else
+                        out:setPixel(p[1], p[2], Blitbuffer.Color8A(pm(c:getColor8().a), alpha))
+                    end
+                end
+            end
+        end
+    end
+    cache[id] = { bb = out }
+    return out
 end
 
 -- A colour swatch tile: a rounded colour square with a thin black border (thicker

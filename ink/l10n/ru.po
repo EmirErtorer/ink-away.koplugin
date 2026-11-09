@@ -438,6 +438,10 @@ msgstr "Изображение каждой страницы занимает о
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Предварительная версия — тестовая сборка. Вернуться к последнему выпуску можно в разделе «Настройки», «Обновления»."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "На этой странице место может начинаться только там, где это позволяет абзац, поэтому рамка сдвинулась к ближайшему такому месту."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Полоса с вашими первыми четырьмя ручками, одно касание: «Ручка и ввод», «Ваши ручки на странице»."
@@ -462,6 +466,10 @@ msgstr "Акрил"
 #: ink/view/imagebrowser.lua
 msgid "Add"
 msgstr "Добавить"
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Добавить подпись"
 
 #: ink/view/library.lua
 msgid "Add an icon…"
@@ -983,6 +991,10 @@ msgstr "Цвет"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Цвет и значок…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Подписи цветов"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2251,6 +2263,7 @@ msgstr "Трекер привычек"
 msgid "Handwriting"
 msgstr "Рукописный текст"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Рукописная заметка"
@@ -2292,6 +2305,10 @@ msgstr "Выделить"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Цвет выделения"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Меню выделения"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
@@ -2392,6 +2409,10 @@ msgstr "«Изображение», «Фон» помещает картинку
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Импортируйте PDF, чтобы писать на его страницах, затем экспортируйте обратно в PDF."
+
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Важное, слово, которое нужно посмотреть, вопрос…"
 
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
@@ -2658,6 +2679,14 @@ msgstr "Крафт"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Крафт с окошком"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Подпись для этого цвета"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Подписи"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -3542,6 +3571,10 @@ msgstr "Открыть изображение как фон"
 msgid "Open the PDF now?"
 msgstr "Открыть PDF сейчас?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Открыть страницу входа"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Откройте их из меню читалки: «Инструменты», Ink Away. Или назначьте им жест в разделе «Настройки», «Касания и жесты», «Менеджер жестов»: действия называются «Ink Away: аннотировать книгу» и «Ink Away: заметки к книге»."
@@ -4207,6 +4240,7 @@ msgstr "Как у блокнота"
 msgid "Sandpaper"
 msgstr "Наждачная бумага"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5039,6 +5073,10 @@ msgstr "Облако отклонило этот запрос. Возможно,
 msgid "The cloud service reported an error on its side."
 msgstr "Облачный сервис сообщил об ошибке на своей стороне."
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Код скопирован: вставьте его на странице входа."
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr "Код не принят"
@@ -5721,6 +5759,10 @@ msgstr "Что умеет Ink Away и чего не видно с первого
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Полученное было неполным или повреждённым, поэтому оно отброшено."
 
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Что для вас значит каждый цвет. Подпись видна рядом с цветом, когда вы меняете цвет выделения."
+
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
 msgstr "То, что в этом месте: удалить или оставить на месте, чтобы оно следовало за текстом?"
@@ -6020,3 +6062,35 @@ msgstr "«%s» уже существует. Заменить?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "«%s» в разделе «Библиотека»: «Полученные» хранит только то, что вы отправили"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Две страницы рядом"
+
+#: main.lua
+msgid "In landscape"
+msgstr "В альбомной ориентации"
+
+#: main.lua
+msgid "Always"
+msgstr "Всегда"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Первая страница отдельно"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Для книги с обложкой: тогда пары начинаются со второй страницы."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Открывать так все PDF"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Новые PDF открываются с этим выбором. PDF, настроенный вами, сохраняет свой."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Показывает две страницы рядом, как раскрытая печатная книга, даже в PDF только с одиночными страницами. Ваши чернила остаются на той странице, где вы рисовали. Страница, которая шире своей высоты, показывается отдельно. Использует постраничный режим и переключается на него."

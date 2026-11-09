@@ -438,6 +438,10 @@ msgstr "Ein Bild jeder Seite braucht etwa 0,3 MB, dieses PDF wird also rund %d M
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Eine Vorabversion ist ein Testbuild. Zur letzten Version können Sie unter Einstellungen, Updates zurückkehren."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "Ein Freiraum kann auf dieser Seite nur dort beginnen, wo ein Absatz es zulässt, also ist der Rahmen an die nächste solche Stelle gerückt."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Eine Leiste mit Ihren ersten vier Stiften, nur einen Tipp entfernt: Stift und Eingabe, Ihre Stifte auf der Seite."
@@ -462,6 +466,10 @@ msgstr "Acryl"
 #: ink/view/imagebrowser.lua
 msgid "Add"
 msgstr "Hinzufügen"
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Bezeichnung hinzufügen"
 
 #: ink/view/library.lua
 msgid "Add an icon…"
@@ -983,6 +991,10 @@ msgstr "Farbe"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Farbe und Symbol …"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Farbbezeichnungen"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2251,6 +2263,7 @@ msgstr "Gewohnheitstracker"
 msgid "Handwriting"
 msgstr "Handschrift"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Handschriftliche Notiz"
@@ -2292,6 +2305,10 @@ msgstr "Markieren"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Farbe der Markierung"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Menü Hervorhebung"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
@@ -2392,6 +2409,10 @@ msgstr "Bild, Hintergrund legt ein Bild hinter die Seite. Halten Sie „Neue Zei
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importieren Sie ein PDF, um auf seine Seiten zu schreiben, und exportieren Sie es dann zurück als PDF."
+
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Wichtig, ein Wort zum Nachschlagen, eine Frage …"
 
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
@@ -2658,6 +2679,14 @@ msgstr "Kraftpapier"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraftpapier mit Fenster"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Bezeichnung für diese Farbe"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Bezeichnungen"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -3542,6 +3571,10 @@ msgstr "Bild als Hintergrund öffnen"
 msgid "Open the PDF now?"
 msgstr "Das PDF jetzt öffnen?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Anmeldeseite öffnen"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Öffnen Sie sie über das Lesemenü: Werkzeuge, Ink Away. Oder geben Sie ihnen eine Geste unter Einstellungen, Tipp- und Wischgesten, Gestenmanager: Die Aktionen heißen „Ink Away: Buch kommentieren“ und „Ink Away: Buchnotizen“."
@@ -4207,6 +4240,7 @@ msgstr "Wie das Notizbuch"
 msgid "Sandpaper"
 msgstr "Schleifpapier"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5039,6 +5073,10 @@ msgstr "Die Cloud hat diese Anfrage abgelehnt. Ink Away fehlt möglicherweise ei
 msgid "The cloud service reported an error on its side."
 msgstr "Der Cloud-Dienst hat einen Fehler auf seiner Seite gemeldet."
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Der Code ist kopiert: Füge ihn auf der Anmeldeseite ein."
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr "Der Code wurde nicht akzeptiert"
@@ -5721,6 +5759,10 @@ msgstr "Was Ink Away kann, das man auf den ersten Blick nicht sieht."
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Was ankam, war unvollständig oder beschädigt und wurde verworfen."
 
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Was jede Farbe für dich bedeutet. Es steht bei der Farbe, wenn du die Farbe einer Markierung änderst."
+
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
 msgstr "Was im Freiraum ist: löschen, oder an seinem Platz lassen und dem Text folgen lassen?"
@@ -6020,3 +6062,35 @@ msgstr "„%s“ gibt es schon. Ersetzen?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "„%s“ liegt in Bibliothek: Importiert enthält nur, was Sie gesendet haben"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Zwei Seiten nebeneinander"
+
+#: main.lua
+msgid "In landscape"
+msgstr "Im Querformat"
+
+#: main.lua
+msgid "Always"
+msgstr "Immer"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Erste Seite allein"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Für ein Buch mit Umschlag: Die Paare beginnen dann mit der zweiten Seite."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Jedes PDF so öffnen"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Neue PDFs öffnen sich mit dieser Einstellung. Ein PDF, das Sie selbst eingestellt haben, behält seine eigene."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Zeigt zwei Seiten nebeneinander wie in einem aufgeschlagenen Buch, auch bei einem PDF mit lauter Einzelseiten. Ihre Tinte bleibt auf der Seite, auf der Sie sie gezeichnet haben. Eine Seite, die breiter als hoch ist, wird allein gezeigt. Dies nutzt die Seitenansicht und wechselt zu ihr."

@@ -438,6 +438,10 @@ msgstr "Η εικόνα κάθε σελίδας πιάνει περίπου 0,3 
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Μια προ-έκδοση είναι δοκιμαστική δημιουργία. Μπορείτε να γυρίσετε στην τελευταία έκδοση από τις Ρυθμίσεις, Ενημερώσεις."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "Ένας χώρος μπορεί να ξεκινά σε αυτή τη σελίδα μόνο όπου το επιτρέπει μια παράγραφος, οπότε το πλαίσιο μετακινήθηκε στο πλησιέστερο τέτοιο σημείο."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Μια λωρίδα με τα πρώτα τέσσερα στυλό σας, με ένα άγγιγμα: Στυλό και είσοδος, Τα στυλό σας στη σελίδα."
@@ -462,6 +466,10 @@ msgstr "Ακρυλικό"
 #: ink/view/imagebrowser.lua
 msgid "Add"
 msgstr "Προσθήκη"
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Προσθήκη ετικέτας"
 
 #: ink/view/library.lua
 msgid "Add an icon…"
@@ -983,6 +991,10 @@ msgstr "Χρώμα"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Χρώμα και εικονίδιο…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Ετικέτες χρωμάτων"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2251,6 +2263,7 @@ msgstr "Παρακολούθηση συνηθειών"
 msgid "Handwriting"
 msgstr "Χειρόγραφο"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Χειρόγραφη σημείωση"
@@ -2292,6 +2305,10 @@ msgstr "Επισήμανση"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Χρώμα επισήμανσης"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Μενού επισήμανσης"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
@@ -2392,6 +2409,10 @@ msgstr "Εικόνα, Φόντο βάζει μια εικόνα πίσω από 
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Εισαγάγετε ένα PDF για να γράψετε στις σελίδες του και μετά εξαγάγετέ το πάλι σε PDF."
+
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Σημαντικό, λέξη για αναζήτηση, ερώτηση…"
 
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
@@ -2658,6 +2679,14 @@ msgstr "Κραφτ"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Κραφτ με παράθυρο"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Ετικέτα για αυτό το χρώμα"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Ετικέτες"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -3542,6 +3571,10 @@ msgstr "Άνοιγμα εικόνας ως φόντου"
 msgid "Open the PDF now?"
 msgstr "Να ανοίξει τώρα το PDF;"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Άνοιγμα της σελίδας σύνδεσης"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Ανοίξτε τα από το μενού του αναγνώστη: Εργαλεία, Ink Away. Ή δώστε τους χειρονομία στις Ρυθμίσεις, Πατήματα και χειρονομίες, Διαχειριστής χειρονομιών: οι ενέργειες είναι «Ink Away: σχολιασμός του βιβλίου» και «Ink Away: σημειώσεις βιβλίου»."
@@ -4207,6 +4240,7 @@ msgstr "Όπως το σημειωματάριο"
 msgid "Sandpaper"
 msgstr "Γυαλόχαρτο"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5039,6 +5073,10 @@ msgstr "Το cloud απέρριψε αυτό το αίτημα. Ίσως λεί�
 msgid "The cloud service reported an error on its side."
 msgstr "Η υπηρεσία cloud ανέφερε σφάλμα από την πλευρά της."
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Ο κωδικός αντιγράφηκε: επικολλήστε τον στη σελίδα σύνδεσης."
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr "Ο κωδικός δεν έγινε δεκτός"
@@ -5721,6 +5759,10 @@ msgstr "Τι μπορεί να κάνει το Ink Away και δεν φαίνε
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Ό,τι ήρθε ήταν ελλιπές ή κατεστραμμένο, οπότε απορρίφθηκε."
 
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Τι σημαίνει για εσάς κάθε χρώμα. Εμφανίζεται μαζί με το χρώμα όταν αλλάζετε το χρώμα μιας επισήμανσης."
+
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
 msgstr "Ό,τι υπάρχει σε αυτόν τον χώρο: διαγραφή, ή να μείνει εκεί που είναι και να ακολουθεί το κείμενο;"
@@ -6020,3 +6062,35 @@ msgstr "Το «%s» υπάρχει ήδη. Να αντικατασταθεί;"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "Το «%s» είναι στη Βιβλιοθήκη: τα Εισαγμένα κρατούν μόνο ό,τι στείλατε"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Δύο σελίδες δίπλα-δίπλα"
+
+#: main.lua
+msgid "In landscape"
+msgstr "Σε οριζόντιο προσανατολισμό"
+
+#: main.lua
+msgid "Always"
+msgstr "Πάντα"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Η πρώτη σελίδα μόνη της"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Για βιβλίο με εξώφυλλο: τα ζεύγη ξεκινούν τότε από τη δεύτερη σελίδα του."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Άνοιγμα κάθε PDF με αυτόν τον τρόπο"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Τα νέα PDF ανοίγουν με αυτή την επιλογή. Ένα PDF που ρυθμίσατε εσείς κρατά τη δική του."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Δείχνει δύο σελίδες τη μία δίπλα στην άλλη, όπως ένα ανοιχτό τυπωμένο βιβλίο, ακόμη και σε PDF με μόνο μονές σελίδες. Το μελάνι σας μένει στη σελίδα όπου το σχεδιάσατε. Μια σελίδα πιο φαρδιά από ό,τι ψηλή εμφανίζεται μόνη της. Χρησιμοποιεί την προβολή σελίδας και αλλάζει σε αυτήν."

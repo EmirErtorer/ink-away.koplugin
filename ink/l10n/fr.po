@@ -438,6 +438,10 @@ msgstr "L’image de chaque page pèse environ 0,3 Mo, ce PDF fera donc environ 
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr "Une préversion est une version de test. Vous pouvez revenir à la dernière version depuis Paramètres, Mises à jour."
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr "Sur cette page, un espace ne peut commencer que là où un paragraphe le permet : le cadre s'est déplacé à l'endroit le plus proche."
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr "Une bande de vos quatre premiers stylos, à portée d’un appui : Stylo et saisie, Vos stylos sur la page."
@@ -462,6 +466,10 @@ msgstr "Acrylique"
 #: ink/view/imagebrowser.lua
 msgid "Add"
 msgstr "Ajouter"
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
+msgstr "Ajouter une étiquette"
 
 #: ink/view/library.lua
 msgid "Add an icon…"
@@ -983,6 +991,10 @@ msgstr "Couleur"
 #: ink/view/library.lua
 msgid "Colour and icon…"
 msgstr "Couleur et icône…"
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
+msgstr "Étiquettes des couleurs"
 
 #: ink/coverpicker.lua
 msgid "Colour wheel"
@@ -2251,6 +2263,7 @@ msgstr "Suivi d’habitudes"
 msgid "Handwriting"
 msgstr "Écriture manuscrite"
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr "Note manuscrite"
@@ -2292,6 +2305,10 @@ msgstr "Surligner"
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
 msgstr "Couleur du surlignage"
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
+msgstr "Menu surlignage"
 
 #: ink/guide.lua
 msgid "Highlight while reading"
@@ -2392,6 +2409,10 @@ msgstr "Image, Arrière-plan place une image derrière la page. Maintenez Nouvea
 #: ink/guide.lua
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr "Importez un PDF pour écrire sur ses pages, puis exportez-le de nouveau en PDF."
+
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr "Important, un mot à chercher, une question…"
 
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
@@ -2658,6 +2679,14 @@ msgstr "Kraft"
 #: ink/notebookcover.lua
 msgid "Kraft with window"
 msgstr "Kraft à fenêtre"
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr "Étiquette de cette couleur"
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
+msgstr "Étiquettes"
 
 #: ink/view/settings.lua
 msgid "Landscape"
@@ -3542,6 +3571,10 @@ msgstr "Ouvrir l’image comme arrière-plan"
 msgid "Open the PDF now?"
 msgstr "Ouvrir le PDF maintenant ?"
 
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
+msgstr "Ouvrir la page de connexion"
+
 #: ink/welcome.lua
 msgid "Open them from the reader menu: Tools, Ink Away. Or give them a gesture in Settings, Taps and gestures, Gesture manager: the actions are “Ink Away: annotate the book” and “Ink Away: book notes”."
 msgstr "Ouvrez-les depuis le menu du lecteur : Outils, Ink Away. Ou donnez-leur un geste dans Paramètres, Touches et gestes, Gestionnaire de gestes : les actions sont « Ink Away : annoter le livre » et « Ink Away : notes du livre »."
@@ -4207,6 +4240,7 @@ msgstr "Comme le carnet"
 msgid "Sandpaper"
 msgstr "Papier de verre"
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -5039,6 +5073,10 @@ msgstr "Le cloud a refusé cette demande. Il manque peut-être une autorisation 
 msgid "The cloud service reported an error on its side."
 msgstr "Le service cloud a signalé une erreur de son côté."
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr "Le code est copié : collez-le sur la page de connexion."
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr "Le code n'a pas été accepté"
@@ -5721,6 +5759,10 @@ msgstr "Ce qu’Ink Away sait faire et qu’un coup d’œil ne montre pas."
 msgid "What arrived was incomplete or damaged, so it was thrown away."
 msgstr "Ce qui est arrivé était incomplet ou endommagé et a été jeté."
 
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
+msgstr "Ce que chaque couleur signifie pour vous. Cela s'affiche avec la couleur quand vous changez la couleur d'un surlignage."
+
 #: ink/reader/roomtool.lua
 msgid "What is in this room: delete it, or keep it where it is and let it follow the text?"
 msgstr "Ce qui est dans cet espace : le supprimer, ou le laisser où il est et lui faire suivre le texte ?"
@@ -6020,3 +6062,35 @@ msgstr "« %s » existe déjà. Le remplacer ?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "« %s » est dans Bibliothèque : Importés ne contient que ce que vous avez envoyé"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Deux pages côte à côte"
+
+#: main.lua
+msgid "In landscape"
+msgstr "En paysage"
+
+#: main.lua
+msgid "Always"
+msgstr "Toujours"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Première page seule"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Pour un livre avec couverture : les paires commencent alors à sa deuxième page."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Ouvrir tous les PDF ainsi"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Les nouveaux PDF s'ouvrent avec ce choix. Un PDF que vous avez réglé vous-même garde le sien."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Affiche deux pages côte à côte, comme un livre imprimé ouvert, même pour un PDF dont toutes les pages sont simples. Votre encre reste sur la page où vous l'avez dessinée. Une page plus large que haute s'affiche seule. Ceci utilise la vue par page et y bascule."

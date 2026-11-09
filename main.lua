@@ -8,6 +8,7 @@ book's ink (ink/reader/): shown over the pages, and drawn in the annotation mode
 local Dispatcher = require("dispatcher")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local logger = require("logger")
 local _ = require("ink/l10n")
 
 local InkAway = WidgetContainer:extend{
@@ -130,7 +131,9 @@ function InkAway:init()
     if self.ui.document and self.ui.view and self.ui.view.registerViewModule then
         local ok, Book = pcall(require, "ink/reader/book")
         if ok then
-            self.book = Book.new(self.ui)
+            -- (viewer plugins such as PanelsPlus can show its pages for annotation mode, see ink/integration.lua)
+            local iok, Integration = pcall(require, "ink/integration")
+            self.book = Book.new(self.ui, iok and Integration.new() or nil)
             self.book.plugin = self
             UIManager:nextTick(function() self:syncBook() end)   -- (cloud sync: match its ink with the other readers')
             self.ui.view:registerViewModule("inkaway", self.book:overlay())
@@ -142,6 +145,11 @@ function InkAway:init()
             if hok then
                 self.pen_highlight = PenHighlight.new(self.book)
                 self.pen_highlight:attach()
+            end
+            -- the integration API ready for viewer plugins, once the book is set up
+            if self.book.integration then
+                local pok, err = pcall(self.book.integration.publish, self.book.integration, self.ui, self:integrationFacade())
+                if not pok then logger.warn("Ink Away: integration API:", err) end
             end
         end
     end
@@ -240,6 +248,10 @@ function InkAway:addToMainMenu(menu_items)
                 callback = function() self:openPdfAsNotebook(file) end,
             })
         end
+        local two = self:twoPage()
+        if two then
+            table.insert(menu_items.inkaway.sub_item_table, self:twoPageMenu(two))
+        end
         local PenHighlight = self.pen_highlight and require("ink/reader/penhighlight")
         if PenHighlight and PenHighlight.penReader() then
             table.insert(menu_items.inkaway.sub_item_table, {
@@ -270,6 +282,50 @@ function InkAway:addToMainMenu(menu_items)
         keep_menu_open = false,
         callback = function() self:openCanvas() end,
     }
+end
+
+-- Ink Away's two pages for this book (see ink/reader/twopage.lua), or nil where they
+-- can't be: not a fixed-page book, or another plugin already shows it in two pages.
+function InkAway:twoPage()
+    if not (self.book and self.ui and self.ui.paging) then return nil end
+    if self.two_page then return self.two_page end
+    local ok, TwoPage = pcall(require, "ink/reader/twopage")
+    if not (ok and TwoPage.available(self.ui)) then return nil end
+    self.two_page = TwoPage.new(self.ui)
+    return self.two_page
+end
+
+-- The menu of the two pages: when, the first page, and whether every PDF opens so.
+function InkAway:twoPageMenu(two)
+    local TwoPage = require("ink/reader/twopage")
+    local function mode(text, value)
+        return { text = text, radio = true, keep_menu_open = true,
+            checked_func = function() return two.mode == value end,
+            callback = function() two:setMode(value) end }
+    end
+    local items = {
+        mode(_("Off"), TwoPage.OFF),
+        mode(_("In landscape"), TwoPage.LANDSCAPE),
+        mode(_("Always"), TwoPage.ALWAYS),
+        { text = _("First page on its own"), keep_menu_open = true, separator = true,
+          help_text = _("For a book with a cover: the pairs then start from its second page."),
+          enabled_func = function() return two.mode ~= TwoPage.OFF end,
+          checked_func = function() return two.first_alone end,
+          callback = function() two:setFirstAlone(not two.first_alone) end },
+    }
+    local file = self.ui.document and self.ui.document.file
+    if type(file) == "string" and file:lower():match("%.pdf$") then
+        items[#items + 1] = { text = _("Open every PDF this way"), keep_menu_open = true,
+            help_text = _("New PDFs open with this choice. A PDF you set yourself keeps its own."),
+            enabled_func = function() return two.mode ~= TwoPage.OFF end,
+            checked_func = function() return two.mode ~= TwoPage.OFF and G_reader_settings:readSetting(TwoPage.MODE) == two.mode end,
+            callback = function()
+                local on = G_reader_settings:readSetting(TwoPage.MODE) == two.mode
+                G_reader_settings:saveSetting(TwoPage.MODE, (not on) and two.mode or nil)
+            end }
+    end
+    return { text = _("Two pages side by side"), sub_item_table = items,
+        help_text = _("Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it.") }
 end
 
 -- Set the book gestures in KOReader's gesture manager, where they are free
@@ -341,6 +397,45 @@ function InkAway:onInkAwayAnnotate()
     return true
 end
 
+-- The integration API's public side, published as ui.inkAwayIntegrationAPI for
+-- viewer plugins (docs/INTEGRATION.md): what they may call, and nothing else of
+-- Ink Away. Experimental: it may change before Ink Away 5.0, so a consumer checks
+-- the two version numbers.
+function InkAway:integrationFacade()
+    if self._facade then return self._facade end
+    local plugin = self
+    local function integration() return plugin.book and plugin.book.integration end
+    local f = { integration_api_version = 1, document_surface_version = 1, ui = self.ui }
+    -- a widget's surface for annotation mode, with optional on_open, on_close and
+    -- on_error for that surface; returns the cleanup to call before the widget goes
+    function f:installPluginIntegration(widget, surface, options)
+        local api = assert(integration(), "Ink Away has no book open")
+        return api:install(f, widget, surface, options)
+    end
+    -- the book's ink painted on the surface (in the viewer's own paint)
+    function f:paintDocumentSurface(surface, bb)
+        local book = plugin.book
+        if book and book.integration and surface and surface.document == plugin.ui.document then
+            local ok, err = pcall(book.paintSurface, book, surface, bb)
+            if not ok then book.integration:report(surface, err) end
+        end
+    end
+    -- the surface going away: annotation mode on it closes, its ink kept
+    function f:releaseDocumentSurface(surface)
+        local book = plugin.book
+        if book and book.surface == surface then
+            book:closeViews()
+            book:setSurface(nil)
+        end
+    end
+    function f:onAnnotationOpened(callback) return assert(integration(), "Ink Away has no book open"):onAnnotationOpened(callback) end
+    function f:onAnnotationClosed(callback) return assert(integration(), "Ink Away has no book open"):onAnnotationClosed(callback) end
+    -- open annotation mode (on the topmost viewer that gave a surface, else the reader)
+    function f:onInkAwayAnnotate() return plugin:onInkAwayAnnotate() end
+    self._facade = f
+    return f
+end
+
 -- The export sheet of the book being read, over the annotation mode (the one
 -- place a book is exported from, see ink/view/export.lua).
 function InkAway:onInkAwayExportBook()
@@ -397,6 +492,9 @@ end
 -- The book is up: one whose rooms need markers it was not laid out with (they
 -- came with the cloud sync, or its saved layout is older) is loaded again with them.
 function InkAway:onReaderReady()
+    -- two pages, for a book that shows them (with them off, nothing is installed)
+    local two = self:twoPage()
+    if two and two.mode ~= "off" then two:apply(true) end
     if self.book and self.book.checkMarkers then
         UIManager:scheduleIn(0.5, function()
             if self.book then pcall(self.book.checkMarkers, self.book) end
@@ -411,9 +509,16 @@ function InkAway:onCloseDocument()
         if ok then pcall(SyncManager.bookClosed) end
         self.sync_md5 = nil
     end
-    if self.book then self.book:close() end
-    -- (after the views over the book, which give the pen back as they close)
-    if self.pen_highlight then self.pen_highlight:detach() end
+    -- viewer plugins see the API go first, and lose it for good after the close
+    local integration = self.book and self.book.integration
+    if integration then integration:unpublish(self.ui, self:integrationFacade()) end
+    local ok, err = pcall(function()
+        if self.book then self.book:close() end
+        -- (after the views over the book, which give the pen back as they close)
+        if self.pen_highlight then self.pen_highlight:detach() end
+    end)
+    if integration then integration:dispose() end
+    if not ok then error(err) end
 end
 
 -- The gesture actions, when a gesture is mapped to Ink Away or its library.

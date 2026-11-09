@@ -327,6 +327,7 @@ end
 -- A file or folder moved from `old` to `new`: follow it with the open document
 -- and the remembered last notebook, when either was in it.
 function InkAwayView:pathMoved(old, new)
+    self:lastPageMoved(old, new)
     local nb = self:getSetting("inkaway_last_notebook")
     if nb and Storage.within(nb, old) then self:setSetting("inkaway_last_notebook", new .. nb:sub(#old + 1)) end
     if self.doc_path and Storage.within(self.doc_path, old) then

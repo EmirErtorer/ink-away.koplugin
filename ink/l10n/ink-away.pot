@@ -437,6 +437,10 @@ msgstr ""
 msgid "A prerelease is a test build. You can go back to the latest release from Settings, Updates."
 msgstr ""
 
+#: ink/reader/roomtool.lua
+msgid "A room can only start where a paragraph lets it on this page, so the box moved to the nearest such place."
+msgstr ""
+
 #: ink/guide.lua
 msgid "A strip of your first four pens, one tap away: Pen and input, Your pens on the page."
 msgstr ""
@@ -460,6 +464,10 @@ msgstr ""
 
 #: ink/view/imagebrowser.lua
 msgid "Add"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Add a label"
 msgstr ""
 
 #: ink/view/library.lua
@@ -532,6 +540,10 @@ msgstr ""
 
 #: ink/view/search.lua
 msgid "Also look inside pages (slower)"
+msgstr ""
+
+#: main.lua
+msgid "Always"
 msgstr ""
 
 #: ink/view/exportbook.lua
@@ -981,6 +993,10 @@ msgstr ""
 
 #: ink/view/library.lua
 msgid "Colour and icon…"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Colour labels"
 msgstr ""
 
 #: ink/coverpicker.lua
@@ -1951,6 +1967,10 @@ msgstr ""
 msgid "First page"
 msgstr ""
 
+#: main.lua
+msgid "First page on its own"
+msgstr ""
+
 #: ink/actions.lua
 msgid "Fit the page"
 msgstr ""
@@ -2010,6 +2030,10 @@ msgstr ""
 #: ink/view/textformat.lua
 #, lua-format
 msgid "Font: %s"
+msgstr ""
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
 msgstr ""
 
 #: ink/guide.lua
@@ -2226,6 +2250,7 @@ msgstr ""
 msgid "Handwriting"
 msgstr ""
 
+#: ink/reader/hlcolour.lua
 #: ink/reader/hlnotes.lua
 msgid "Handwritten note"
 msgstr ""
@@ -2266,6 +2291,10 @@ msgstr ""
 
 #: ink/reader/hlcolour.lua
 msgid "Highlight colour"
+msgstr ""
+
+#: ink/reader/notesview.lua
+msgid "Highlight menu"
 msgstr ""
 
 #: ink/guide.lua
@@ -2368,12 +2397,20 @@ msgstr ""
 msgid "Import a PDF to write on its pages, then export it back to PDF."
 msgstr ""
 
+#: ink/reader/hlcolour.lua
+msgid "Important, a word to look up, a question…"
+msgstr ""
+
 #: ink/sync/areas.lua
 msgid "Imported PDFs and pictures"
 msgstr ""
 
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
+msgstr ""
+
+#: main.lua
+msgid "In landscape"
 msgstr ""
 
 #: ink/reader/roomtool.lua
@@ -2632,6 +2669,14 @@ msgstr ""
 
 #: ink/notebookcover.lua
 msgid "Kraft with window"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Label for this colour"
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "Labels"
 msgstr ""
 
 #: ink/view/settings.lua
@@ -3096,6 +3141,10 @@ msgstr ""
 msgid "New"
 msgstr ""
 
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr ""
+
 #: ink/view/document.lua
 msgid "New drawing"
 msgstr ""
@@ -3427,6 +3476,7 @@ msgstr ""
 
 #: ink/view/settings.lua
 #: ink/view/sync.lua
+#: main.lua
 msgid "Off"
 msgstr ""
 
@@ -3504,12 +3554,20 @@ msgstr ""
 msgid "Open as Ink Away notebook"
 msgstr ""
 
+#: main.lua
+msgid "Open every PDF this way"
+msgstr ""
+
 #: ink/view/images.lua
 msgid "Open image as background"
 msgstr ""
 
 #: ink/view/export.lua
 msgid "Open the PDF now?"
+msgstr ""
+
+#: ink/view/sync.lua
+msgid "Open the sign-in page"
 msgstr ""
 
 #: ink/welcome.lua
@@ -4171,6 +4229,7 @@ msgstr ""
 msgid "Sandpaper"
 msgstr ""
 
+#: ink/reader/hlcolour.lua
 #: ink/ui/brushmaker.lua
 #: ink/ui/colorpicker.lua
 #: ink/view/export.lua
@@ -4483,6 +4542,10 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
+msgstr ""
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
 msgstr ""
 
 #: ink/actions.lua
@@ -4991,6 +5054,10 @@ msgstr ""
 msgid "The cloud service reported an error on its side."
 msgstr ""
 
+#: ink/view/sync.lua
+msgid "The code is copied: paste it on the sign-in page."
+msgstr ""
+
 #: ink/sync/errors.lua
 msgid "The code was not accepted"
 msgstr ""
@@ -5491,6 +5558,10 @@ msgstr ""
 msgid "Two names look the same"
 msgstr ""
 
+#: main.lua
+msgid "Two pages side by side"
+msgstr ""
+
 #: ink/actions.lua
 msgid "Two-finger double tap"
 msgstr ""
@@ -5664,6 +5735,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "What arrived was incomplete or damaged, so it was thrown away."
+msgstr ""
+
+#: ink/reader/hlcolour.lua
+msgid "What each colour means to you. It shows with the colour when you change a highlight's colour."
 msgstr ""
 
 #: ink/reader/roomtool.lua

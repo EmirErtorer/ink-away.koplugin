@@ -72,16 +72,38 @@ Rooms.HOST_TAGS = { "p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5"
     "center", "td", "th", "v", "stanza", "epigraph", "subtitle", "text-author", "poem" }
 local HOSTS = {}
 for _i, t in ipairs(Rooms.HOST_TAGS) do HOSTS[t] = true end
-do
+local function markers(tags)
     local sels = {}
-    for _i, t in ipairs(Rooms.HOST_TAGS) do sels[#sels + 1] = t .. "::before, " .. t .. "::after" end
-    Rooms.MARKERS = table.concat(sels, ", ") .. ' { content: ""; float: right; width: 0; height: 0; }'
+    for _i, t in ipairs(tags) do sels[#sels + 1] = t .. "::before, " .. t .. "::after" end
+    return table.concat(sels, ", ") .. ' { content: ""; float: right; width: 0; height: 0; }'
+end
+Rooms.MARKERS = markers(Rooms.HOST_TAGS)
+
+-- The inline elements that carry one too, in books laid out with them (Book's
+-- room_marks 2): where one begins inside a paragraph, its marker sits on that
+-- line, so a box can start there (a paragraph's own marker is only at its top).
+-- Zero-size floats in a line change nothing in its layout.
+Rooms.INLINE_TAGS = { "a", "b", "big", "cite", "em", "font", "i", "q", "small", "span", "strong", "sub", "sup", "u" }
+local INLINE_HOSTS = {}
+for _i, t in ipairs(Rooms.INLINE_TAGS) do INLINE_HOSTS[t] = true end
+Rooms.INLINE_MARKERS = markers(Rooms.INLINE_TAGS)
+
+local function lastName(elem_xp)
+    local name = type(elem_xp) == "string" and elem_xp:match("/([%w_%-]+)%[?%d*%]?$")
+    return name and name:lower()
 end
 
--- Does the paragraph (an element xpointer) carry markers?
+-- Does the element (an element xpointer) carry markers? A paragraph does; an
+-- inline element (Rooms.INLINE_TAGS) does in a book laid out with them.
 function Rooms.hostable(elem_xp)
-    local name = type(elem_xp) == "string" and elem_xp:match("/([%w_%-]+)%[?%d*%]?$")
-    return name ~= nil and HOSTS[name:lower()] == true
+    local name = lastName(elem_xp)
+    return name ~= nil and (HOSTS[name] == true or INLINE_HOSTS[name] == true)
+end
+
+-- Is it an inline element's (a marker inside a paragraph, not at its top)?
+function Rooms.isInline(elem_xp)
+    local name = lastName(elem_xp)
+    return name ~= nil and INLINE_HOSTS[name] == true
 end
 
 -- The steps of an xpointer's element path: { { name = "p", idx = 10 }, ... }
@@ -152,8 +174,10 @@ local function round(v) return math.floor(v + 0.5) end
 -- at a side, space beside that paragraph.
 function Rooms.asParagraphs(r)
     if r.kind ~= "box" then return r end
-    if r.side == "full" then return { id = r.id, kind = "band", xp = r.xp, h = r.h, from = r } end
-    return { id = r.id, kind = "side", side = r.side, xp = r.xp, xps = { r.xp }, w = r.w, from = r }
+    -- (a box held by an inline element: its paragraph)
+    local xp = Rooms.isInline(r.xp) and Rooms.blockOf(r.xp) or r.xp
+    if r.side == "full" then return { id = r.id, kind = "band", xp = xp, h = r.h, from = r } end
+    return { id = r.id, kind = "side", side = r.side, xp = xp, xps = { xp }, w = r.w, from = r }
 end
 
 local function px(v, scale)
@@ -165,8 +189,9 @@ end
 -- The style rules for `rooms`. `scale` is CSS pixels per screen pixel (96 / the
 -- render dpi; 1 when KOReader does not scale). One rule per paragraph, so two
 -- rooms on one paragraph (a band and side space) add up. With `opts.ready` the
--- book has its markers (Rooms.MARKERS); with `opts.floats` its render mode floats
--- them, and a box room is one of them sized (else it is made of paragraphs).
+-- book has its markers (Rooms.MARKERS, and Rooms.INLINE_MARKERS with
+-- `opts.inline`); with `opts.floats` its render mode floats them, and a box room
+-- is one of them sized (else it is made of paragraphs).
 function Rooms.css(rooms, scale, opts)
     scale = scale or 1
     opts = opts or {}
@@ -180,6 +205,7 @@ function Rooms.css(rooms, scale, opts)
     end
     local out = {}
     if opts.ready then out[#out + 1] = Rooms.MARKERS end
+    if opts.ready and opts.inline then out[#out + 1] = Rooms.INLINE_MARKERS end
     for _i, room in ipairs(rooms or {}) do
         if room.kind == "box" and not (opts.floats and opts.ready) then room = Rooms.asParagraphs(room) end
         if room.kind == "band" and room.xp and room.h then
@@ -285,6 +311,7 @@ function Rooms.plan(rect, blocks, area)
 end
 
 Rooms.MIN_BOX = 12     -- a box room's smallest side, in pixels
+Rooms.FIT_MARGIN = 16  -- an inline element's float: text this close to fitting beside it is too close to tell
 Rooms.MIN_TEXT = 0.2   -- text narrower than this (of the column) beside a box: none, the box goes across
 
 -- The exact room a box drawn on the page makes (see the top), where the render
@@ -296,8 +323,11 @@ Rooms.MIN_TEXT = 0.2   -- text narrower than this (of the column) beside a box: 
 -- the page's order, Rooms.slot) }) }. Returns the room (without an id), the box it
 -- keeps (where ink in it goes: the box drawn, cut to the text column and the page)
 -- and the area it frees (from the box's edge to the column's, from where its
--- marker sits to the box's bottom); or nil and why ("small", "no_break", "overlap",
--- "taken").
+-- marker sits to the box's bottom), and, when the room cannot start at the box's
+-- top, how it starts instead: "top" (higher: no marker above the box on this page
+-- to push it down from, so from the top of its paragraph's or anchor's line) or
+-- "lower" (at the next spot below); or nil and why ("small", "no_break",
+-- "overlap", "taken"). The blocks may carry inline anchors (Rooms.spots).
 --
 -- A box room is two markers: the one before its paragraph holds the box, and an
 -- earlier one, of no width, pushes it down to its top ("clear"). A marker that
@@ -347,60 +377,178 @@ function Rooms.planBox(rect, page)
         end
         return true
     end
-    local function made(top, xp, sp, spp, sh, off)
+    local function made(top, xp, sp, spp, sh, off, loose, nl)
         local h = b - top
-        local room = { kind = "box", side = side, x = bx, w = bw, h = h, xp = xp, sp = sp, spp = spp, sh = sh, off = off }
+        local room = { kind = "box", side = side, x = bx, w = bw, h = h, xp = xp, sp = sp, spp = spp, sh = sh, off = off,
+            nl = nl or nil }
         local css_top = top - (off or 0)
-        return room, { x = bx, y = top, w = bw, h = h }, { x = bx, y = css_top, w = bw, h = b - css_top }
+        return room, { x = bx, y = top, w = bw, h = h }, { x = bx, y = css_top, w = bw, h = b - css_top }, loose
     end
     local taken = false
-    -- the last paragraph starting at or above the box's top holds it (or one
-    -- before it, when its marker is taken)
-    for i = #blocks, 1, -1 do
-        local P = blocks[i]
-        if P.starts and P.y0 <= t then
-            if not free(P.xp, "before") then
+    local spots = Rooms.spots(blocks)
+    -- the last spot starting at or above the box's top holds it (or one before
+    -- it, when its marker is taken)
+    -- the line a box's float starts on at spot S, this box's size given: an inline
+    -- element's own line when the text before it there fits beside the box, else
+    -- the next line (nl); nil when too close to tell, or S cannot hold this box
+    local function boxLine(S)
+        -- (a paragraph whose first line has nothing before its first word: there)
+        if not S.inline and not S.ex then return S.y0, S.l1, nil end
+        if not across(S.block) then return nil end
+        local cl = S.block.cl or page.cl or area.x0
+        local cr = S.block.cr or page.cr or area.x1
+        local before = (S.ex or cl) - cl
+        local room_left = (side == "full") and 0 or ((cr - cl) - bw)
+        -- (a box across, at an inline element that begins its line, would push that
+        -- line's words below it, and nothing would say where it is: not there)
+        if S.inline and side == "full" and (S.at_start or before <= 1) then return nil end
+        if S.at_start or before <= 1 then return S.y0, S.l1, nil end
+        if before + Rooms.FIT_MARGIN < room_left then return S.y0, S.l1, nil end
+        -- (the next line: nl is how far below the element's own line it is)
+        if before - Rooms.FIT_MARGIN > room_left and S.ny0 then return S.ny0, S.nl1, S.ny0 - S.y0 end
+        return nil
+    end
+    for k = #spots, 1, -1 do
+        local S = spots[k]
+        local P = S.block
+        local sy0, sl1, snl = boxLine(S)
+        if sy0 and sy0 <= t then
+            if not free(S.xp, "before") then
                 taken = true
             elseif not across(P) then
                 return nil, why
             else
-                local bk = Rooms.slot(i, "before")
+                local bk = S.slot
                 -- at its top, or in its first line: the marker starts that line, and
                 -- so does the box's effect on the text (the box is where it was drawn)
-                if t < P.l1 then
-                    if inOrder(nil, bk, P.y0) then return made(t, P.xp, nil, nil, nil, t - P.y0) end
+                if t < sl1 then
+                    if inOrder(nil, bk, sy0) then return made(t, S.xp, nil, nil, nil, t - sy0, nil, snl) end
                 else
                     -- pushed down by a marker above it on this page: the end of the
-                    -- paragraph just before (the top of its last line), or the start of
-                    -- one before that; one pixel lower, so the line just above keeps
+                    -- paragraph just before its own (the top of its last line), or
+                    -- an earlier spot; one pixel lower, so the line just above keeps
                     -- its width
-                    local O = blocks[i - 1]
+                    local O = blocks[S.bi - 1]
                     if O and O.ends and O.lt >= area.y0 and free(O.xp, "after")
-                        and inOrder(Rooms.slot(i - 1, "after"), bk, t + 1) then
-                        return made(t, P.xp, O.xp, "after", t + 1 - O.lt, -1)
+                        and inOrder(Rooms.slot(S.bi - 1, "after"), bk, t + 1) then
+                        return made(t, S.xp, O.xp, "after", t + 1 - O.lt, -1, nil, snl)
                     end
-                    for j = i - 1, 1, -1 do
-                        local X = blocks[j]
-                        if X.starts and X.y0 >= area.y0 and free(X.xp, "before")
-                            and inOrder(Rooms.slot(j, "before"), bk, t + 1) then
-                            return made(t, P.xp, X.xp, "before", t + 1 - X.y0, -1)
+                    for j = k - 1, 1, -1 do
+                        local X = spots[j]
+                        -- (a spacer has no width: on its element's own line, always)
+                        if X.y0 >= area.y0 and X.y0 <= sy0 and free(X.xp, "before")
+                            and inOrder(X.slot, bk, t + 1) then
+                            return made(t, S.xp, X.xp, "before", t + 1 - X.y0, -1, nil, snl)
                         end
                     end
-                    -- nothing above it on this page: from the paragraph's top
-                    if inOrder(nil, bk, P.y0) then return made(t, P.xp, nil, nil, nil, t - P.y0) end
+                    -- nothing above it on this page: from the top of the spot's line
+                    -- (the room starts higher than the box: "top")
+                    if inOrder(nil, bk, sy0) then return made(t, S.xp, nil, nil, nil, t - sy0, "top", snl) end
                 end
             end
         end
     end
-    -- above every paragraph starting on this page (in one that began before): from
-    -- the first one starting below it
-    for i, P in ipairs(blocks) do
-        if P.starts and P.y0 > t and free(P.xp, "before") and across(P) and inOrder(nil, Rooms.slot(i, "before"), P.y0) then
-            if b - P.y0 < Rooms.MIN_BOX then break end
-            return made(P.y0, P.xp, nil, nil, nil, 0)
+    -- above every spot on this page (in a paragraph that began before): from the
+    -- first one below it (the room starts lower than the box: "lower")
+    for _k, S in ipairs(spots) do
+        local sy0, _sl1, snl = boxLine(S)
+        if sy0 and sy0 > t and free(S.xp, "before") and across(S.block) and inOrder(nil, S.slot, sy0) then
+            if b - sy0 < Rooms.MIN_BOX then break end
+            return made(sy0, S.xp, nil, nil, nil, 0, "lower", snl)
         end
     end
     return nil, taken and "taken" or "no_break"
+end
+
+-- The places on a page a box's marker can sit, in the page's order: where each
+-- paragraph starting on it begins, and where an inline element begins inside one
+-- (`anchors` of a block: { xp, y0, l1 } the top and bottom of the line it begins
+-- on, ex where it begins on it, at_start whether it begins the line, ny0, nl1 the
+-- next line's, when on the page). Each: { xp, y0, l1, block, bi (the block's
+-- place), slot (Rooms.slot order), and an inline one's facts }.
+--
+-- A float on an inline element starts on its line when the text before it there
+-- fits beside the float, else on the next line (as CSS has it): which depends on
+-- the box, so Rooms.planBox decides, and keeps "next line" in the room (nl: how
+-- far below the element's own line, whose words stay put, the float starts). The
+-- same holds at a paragraph's start when its first line is indented (a block's
+-- ex, ny0, nl1): a box wider than the indent leaves room for starts on its
+-- second line.
+function Rooms.spots(blocks)
+    local out = {}
+    for i, P in ipairs(blocks or {}) do
+        if P.starts then
+            -- (ex: where its first word is, after an indent; ny0, nl1 its second line)
+            out[#out + 1] = { xp = P.xp, y0 = P.y0, l1 = P.l1, block = P, bi = i, slot = Rooms.slot(i, "before"),
+                ex = P.ex, ny0 = P.ny0, nl1 = P.nl1 }
+        end
+        local n = P.anchors and #P.anchors or 0
+        for k = 1, n do
+            local A = P.anchors[k]
+            -- (between the paragraph's own two markers)
+            out[#out + 1] = { xp = A.xp, y0 = A.y0, l1 = A.l1, block = P, bi = i, slot = Rooms.slot(i, "before") + k / (n + 1),
+                inline = true, ex = A.ex, at_start = A.at_start, ny0 = A.ny0, nl1 = A.nl1 }
+        end
+    end
+    return out
+end
+
+-- A box drawn where no room can start (Rooms.planBox would start it higher or
+-- lower than the box, or finds nowhere): the box moved to the nearest top on
+-- the page where a room starts exactly, or nil when it is exact already, or no
+-- such top is near. `keep` "height" moves the whole box; "bottom" moves only its
+-- top edge. Only tops: the box's sides and size stay as drawn.
+--
+-- Whether a top is exact changes only where it crosses a line of the page model
+-- (a paragraph's or anchor's top, its first line's bottom, another room's edges),
+-- so the nearest exact top is found among those lines and a pixel either side.
+function Rooms.snapTop(rect, page, keep)
+    local room, _box, _free, loose = Rooms.planBox(rect, page)
+    if room and not loose then return nil end
+    if not room and _box ~= "no_break" then return nil end
+    local area = page.area
+    local bottom = rect.y + rect.h
+    local function tryAt(t)
+        if t < area.y0 then return nil end
+        local r
+        if keep == "bottom" then
+            if bottom - t < Rooms.MIN_BOX then return nil end
+            r = { x = rect.x, y = t, w = rect.w, h = bottom - t }
+        else
+            r = { x = rect.x, y = t, w = rect.w, h = rect.h }
+        end
+        local p, _b, _f, l = Rooms.planBox(r, page)
+        if p and not l then return r end
+    end
+    local seen, cands = {}, {}
+    local function add(v)
+        if type(v) ~= "number" then return end
+        v = math.floor(v)
+        for d = -1, 1 do
+            local c = v + d
+            if not seen[c] then seen[c] = true; cands[#cands + 1] = c end
+        end
+    end
+    add(area.y0)
+    for _i, P in ipairs(page.blocks or {}) do
+        add(P.y0); add(P.l1); add(P.lt); add(P.lb); add(P.y1); add(P.ny0); add(P.nl1)
+        for _k, A in ipairs(P.anchors or {}) do add(A.y0); add(A.l1); add(A.ny0); add(A.nl1) end
+    end
+    for _i, e in ipairs(page.rooms or {}) do
+        add(e.top); add(e.bottom)
+        if keep ~= "bottom" then add(e.top - rect.h) end
+    end
+    if keep ~= "bottom" and page.bottom then add(page.bottom - rect.h) end
+    if keep == "bottom" then add(bottom - Rooms.MIN_BOX) end
+    table.sort(cands, function(a, b) return math.abs(a - rect.y) < math.abs(b - rect.y) or
+        (math.abs(a - rect.y) == math.abs(b - rect.y) and a < b) end)
+    for _i, c in ipairs(cands) do
+        if c ~= rect.y then
+            local r = tryAt(c)
+            if r then return r end
+        end
+    end
+    return nil
 end
 
 -- A copy of a room (the same id), safe to change.

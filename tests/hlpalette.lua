@@ -95,5 +95,19 @@ ui.highlight.custom_colors = nil
 ok(book:customColours() == nil, "no custom colours table is nil")
 ok(not Book.setHighlightColour({ ui = {} }, item, "red"), "a book with no reader is refused")
 
+-- labels: what each colour means (#81)
+do
+    local store2 = {}
+    local get2 = function(k) return store2[k] end
+    ok(P.label(get2, "yellow") == nil and not P.anyLabel(get2), "labels: none at first")
+    store2[P.LABELS] = P.labelled(nil, "yellow", "  Look   this up ")
+    ok(P.label(get2, "yellow") == "Look this up" and P.anyLabel(get2), "labels: kept, spaces tidied")
+    store2[P.LABELS] = P.labelled(store2[P.LABELS], "#FF8800", string.rep("\195\169", 40))
+    ok(#P.label(get2, "#FF8800") == 64, "labels: cut to 32 characters, not bytes")
+    store2[P.LABELS] = P.labelled(store2[P.LABELS], "yellow", "   ")
+    ok(P.label(get2, "yellow") == nil and P.label(get2, "#FF8800") ~= nil, "labels: an empty one taken off, the others kept")
+    ok(P.labelled({ red = "x" }, "red", "") == nil, "labels: none left, nothing kept")
+end
+
 print(("hlpalette: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
