@@ -428,6 +428,7 @@ end
 -- KOReader puts the reader to sleep: the Elipsa's display helper stops (see
 -- startElipsaDrive) and so does sharing.
 function InkAwayView:onSuspend()
+    self._boox_contact = nil
     self:cancelOcrApi()
     self:stopElipsaDrive()
     self:stopBooxInk()      -- (the firmware never inks on a sleeping screen)

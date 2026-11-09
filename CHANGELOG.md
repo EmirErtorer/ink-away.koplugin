@@ -8,6 +8,21 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Fixed
+
+- BOOX Note X3 Pro: recognise the firmware's static pen-layer methods so the
+  native low-latency ink can activate. Older View-based firmware keeps its path.
+- Pause the BOOX pen layer immediately for the rear eraser and held pen tools,
+  and resume it when the original pen returns, without waiting for a paint.
+- BOOX: commit Android window updates through the firmware's handwriting repaint
+  while native ink is active, and restore ordinary screen updates on pause,
+  focus loss, exit and errors. Fixes pages appearing frozen after writing on a PDF.
+- Prepare native pen capture before contact, keeping ordinary Android updates
+  open while idle so the first stroke can appear live. Restore ordinary updates
+  after a bounded writing pause of 500 ms.
+  Consecutive strokes restart the timer, while menus and navigation release it
+  immediately. Ink is saved on every lift, independently of the refresh delay.
+
 ## [4.4.2] - 2026-11-07 *Prerelease*
 
 ### Fixed
