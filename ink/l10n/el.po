@@ -6062,3 +6062,35 @@ msgstr "Το «%s» υπάρχει ήδη. Να αντικατασταθεί;"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "Το «%s» είναι στη Βιβλιοθήκη: τα Εισαγμένα κρατούν μόνο ό,τι στείλατε"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Δύο σελίδες δίπλα-δίπλα"
+
+#: main.lua
+msgid "In landscape"
+msgstr "Σε οριζόντιο προσανατολισμό"
+
+#: main.lua
+msgid "Always"
+msgstr "Πάντα"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Η πρώτη σελίδα μόνη της"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Για βιβλίο με εξώφυλλο: τα ζεύγη ξεκινούν τότε από τη δεύτερη σελίδα του."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Άνοιγμα κάθε PDF με αυτόν τον τρόπο"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Τα νέα PDF ανοίγουν με αυτή την επιλογή. Ένα PDF που ρυθμίσατε εσείς κρατά τη δική του."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Δείχνει δύο σελίδες τη μία δίπλα στην άλλη, όπως ένα ανοιχτό τυπωμένο βιβλίο, ακόμη και σε PDF με μόνο μονές σελίδες. Το μελάνι σας μένει στη σελίδα όπου το σχεδιάσατε. Μια σελίδα πιο φαρδιά από ό,τι ψηλή εμφανίζεται μόνη της. Χρησιμοποιεί την προβολή σελίδας και αλλάζει σε αυτήν."

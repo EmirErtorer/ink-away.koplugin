@@ -93,7 +93,8 @@ function Book:readerDoc()
         function d.toPage(_, x, y)
             local pos = view:screenToPageTransform({ x = x, y = y })
             if not (pos and pos.page) then return nil end
-            local zoom = view.state and view.state.zoom or 1
+            -- (each page of a spread can have its own scale, which the position gives)
+            local zoom = not view.page_scroll and pos.zoom or (view.state and view.state.zoom) or 1
             return pos.page, pos.x, pos.y, zoom
         end
         -- the page's place on the screen, as the reader draws it (its own
@@ -110,6 +111,11 @@ function Book:readerDoc()
                     y = y + st.visible_area.h + (view.page_gap and view.page_gap.height or 0)
                 end
                 return nil
+            end
+            if self:spreadPages() then
+                local ox, oy, s = self:spreadOrigin(page)
+                if not ox then return nil end
+                return ox + px * s, oy + py * s, s
             end
             local st = view.state
             if not (st and st.page == page and view.visible_area) then return nil end
@@ -177,6 +183,31 @@ function Book:readerPage()
     return ok and p or nil
 end
 
+-- The pages of the spread shown, when a fixed-page book shows two side by side
+-- (Ink Away's own two pages, or another plugin's, such as MuPDFtwoPages): nil for
+-- one page. The view says, as it does for KOReader's highlights; both replace the
+-- method on this book's view, so a book showing one page isn't even asked.
+function Book:spreadPages()
+    local view = self.ui.view
+    local list = rawget(view, "getCurrentPageList")
+    if not list or view.page_scroll or not self.ui.paging then return nil end
+    local pages = list(view)
+    if pages and #pages > 1 then return pages end
+    return nil
+end
+
+-- Where page `page` of the spread is: the screen place of its top-left corner, and
+-- its scale. Asked for the whole page, as the view gives nothing for a point off
+-- the screen, and it knows each page's crop, gutter and scale.
+function Book:spreadOrigin(page)
+    local ui = self.ui
+    local ok, dims = pcall(ui.document.getNativePageDimensions, ui.document, page)
+    if not (ok and dims and dims.w and dims.w > 0) then return nil end
+    local r = ui.view:pageToScreenTransform(page, { x = 0, y = 0, w = dims.w, h = dims.h })
+    if not (r and r.x and r.w) then return nil end
+    return r.x, r.y, r.w / dims.w
+end
+
 -- Can what is drawn be pinned to its page (kept at its spot on that page number
 -- whatever the text does)? Only in a reflowing book showing one page at a time.
 function Book:canPin()
@@ -197,7 +228,7 @@ function Book:readerPages()
             for _i, st in ipairs(view.page_states) do pages[#pages + 1] = st.page end
             return pages
         end
-        return { self:readerPage() }
+        return self:spreadPages() or { self:readerPage() }
     end
     local p = self:readerPage()
     if not p then return {} end
@@ -222,6 +253,11 @@ function Book:readerLayoutKey()
             local off = st.offset or {}
             parts[#parts + 1] = table.concat({ st.page or 0, st.zoom or 0, st.rotation or 0,
                 va.x or 0, va.y or 0, off.x or 0, off.y or 0 }, ",")
+        end
+        -- (a spread: where each of its pages is, which its crop and gutter change)
+        for _i, page in ipairs(self:spreadPages() or {}) do
+            local ox, oy, s = self:spreadOrigin(page)
+            parts[#parts + 1] = table.concat({ page, ox or 0, oy or 0, s or 0 }, ",")
         end
         return table.concat(parts, "|")
     end
@@ -1672,7 +1708,9 @@ function Book:finishAnnotation()
 end
 
 -- Paint the page shown into `bb` (screen-sized), without the ink unless
--- `with_ink` (`force_ink`: even with the book's ink hidden in the settings).
+-- `with_ink` (`force_ink`: even with the book's ink hidden in the settings). The Paper
+-- Dots plugin adds its texture only where the page is painted on the screen's own
+-- buffer: `bb` stands in for it, so the page looks the same.
 function Book:snapshot(bb, with_ink, force_ink)
     local surface = self.surface
     if surface then
@@ -1691,7 +1729,10 @@ function Book:snapshot(bb, with_ink, force_ink)
     end
     local ov = self:overlay()
     ov.hidden = not with_ink
+    local real_bb = Screen._paper_dots_hooked and Screen.bb
+    if real_bb then Screen.bb = bb end
     local ok, err = pcall(self.ui.view.paintTo, self.ui.view, bb, 0, 0)
+    if real_bb then Screen.bb = real_bb end
     ov.hidden = false
     if not ok then logger.warn("Ink Away: could not draw the page:", err) end
     return ok

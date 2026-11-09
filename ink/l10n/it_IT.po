@@ -6062,3 +6062,35 @@ msgstr "«%s» esiste già. Sostituirlo?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "«%s» è in Libreria: Importati contiene solo ciò che hai inviato"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Due pagine affiancate"
+
+#: main.lua
+msgid "In landscape"
+msgstr "In orizzontale"
+
+#: main.lua
+msgid "Always"
+msgstr "Sempre"
+
+#: main.lua
+msgid "First page on its own"
+msgstr "Prima pagina da sola"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Per un libro con copertina: le coppie iniziano allora dalla seconda pagina."
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Apri così tutti i PDF"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "I nuovi PDF si aprono con questa scelta. Un PDF che hai impostato tu mantiene la sua."
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Mostra due pagine una accanto all'altra, come un libro stampato aperto, anche per un PDF con sole pagine singole. Il tuo inchiostro resta sulla pagina dove l'hai disegnato. Una pagina più larga che alta viene mostrata da sola. Usa la vista a pagina e passa a essa."
