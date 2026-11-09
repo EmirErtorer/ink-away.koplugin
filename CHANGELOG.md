@@ -20,6 +20,8 @@ versions marked *Prerelease* were test builds.
 - In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
 
 ### Fixed
+- Boox: Ink Away finds the firmware's pen layer on firmware that keeps it on `ViewUpdateHelper` (the Note X3 Pro), and it no longer leaves pages frozen after writing. Ink shows from the first stroke, strokes written in a row stay together, and the page settles half a second after the pen rests. By lisontowind (#82).
+- Boox: the pen layer pauses at once for the eraser end and held pen tools, and on focus loss, sleep and menus.
 - Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
 - With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
 - The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)

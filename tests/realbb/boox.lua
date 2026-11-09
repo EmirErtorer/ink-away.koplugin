@@ -184,7 +184,8 @@ local function fakeJni(opts)
     local log = {}
     local pending = false
     local ids = { setScreenHandWritingPenState = 11, setScreenHandWritingRegionLimit = 12,
-        setScreenHandWritingRegionExclude = 13, setStrokeWidth = 21, setStrokeColor = 22, setStrokeStyle = 23 }
+        setScreenHandWritingRegionExclude = 13, setStrokeWidth = 21, setStrokeColor = 22, setStrokeStyle = 23,
+        enablePost = 31, handwritingRepaint = 32 }
     for _i, k in ipairs(opts.missing or {}) do ids[k] = nil end
     local arrays = {}
     local env
@@ -214,7 +215,9 @@ local function fakeJni(opts)
             local id = tonumber(ffi.cast("intptr_t", mid))
             if id == 21 then log[#log + 1] = { "width", args[0].f }
             elseif id == 22 then log[#log + 1] = { "color", args[0].i }
-            else log[#log + 1] = { "style", args[0].i } end
+            elseif id == 23 then log[#log + 1] = { "style", args[0].i }
+            elseif id == 31 then log[#log + 1] = { "post", args[0].i }
+            else log[#log + 1] = { "repaint", args[1].i, args[2].i, args[3].i, args[4].i } end
         end,
     }
     env = { [0] = funcs }
@@ -258,7 +261,8 @@ do
     local warned
     c = BooxInk.new(android, ffi, function() warned = true end)
     ok(not c:setPenState(2) and not c:usable() and warned, "pen layer: a Java exception turns it off")
-    ok(not c:setPenState(1) and #log == 1, "pen layer: and nothing more is sent")
+    ok(not c:setPenState(1) and #log == 3 and log[2][1] == "post" and log[3][2] == 0,
+        "pen layer: cleanup unlocks posts, then nothing more is sent")
     -- not Android
     ok(not BooxInk.new({}, ffi).ok, "pen layer: nothing without Android")
 end
@@ -272,6 +276,7 @@ local function fakeClient()
     local c = { ok = true, sent = {}, broken = false }
     function c:usable() return not self.broken end
     function c:setPenState(n) self.sent[#self.sent + 1] = "state " .. n; return true end
+    function c:setPosting(enabled) self.posts = enabled; return true end
     function c:setRegion(l, e) self.sent[#self.sent + 1] = "region " .. #l .. "/" .. #(e or {}); return true end
     function c:setStroke(w) self.sent[#self.sent + 1] = "stroke " .. w; return true end
     return c
@@ -324,6 +329,10 @@ local function world(client)
     if client then BooxDrive.client(function() return client end, true) end
     local view = dofile(REPO .. "/ink/view.lua"):new{}
     UIManager:show(view)
+    -- The tool/colour checks below model an actual contact. Idle views now keep
+    -- the panel released, and the input-specific suite checks that transition.
+    view.palm_reject, view._boox_contact = true, true
+    view:booxInkUpdate()
     return view
 end
 -- (what a paint does first: the mock toolbar cannot paint itself)
@@ -367,13 +376,14 @@ do
     Device.screen.night_mode = true; paint(view)
     ok(last(c) == "state 3", "view: night mode pauses it")
     Device.screen.night_mode = false; paint(view)
-    -- something shown over the page: paused before it is drawn; closed: on again
+    -- A menu ends a contact; closing it must not lock ordinary posts while idle.
     local sheet = { name = "a sheet" }
     UIManager:show(sheet)
     ok(last(c) == "state 3", "view: a sheet shown pauses it at once")
     UIManager:close(sheet)
     UIManager.fireScheduled()
-    ok(last(c) == "state 2", "view: closed, on again")
+    ok(not view:booxInking() and c.posts, "view: closed, prepares capture with ordinary posts open")
+    view:booxInkContact()
     local toast = { toast = true }
     local n = #c.sent
     UIManager:show(toast)
@@ -402,12 +412,16 @@ do
     ok(covered, "view: the stroke as drawn shown once at the lift")
     ok(#view.canvas.ops >= 1, "view: and kept")
     -- a finger stroke: live refreshes as before
+    view.palm_reject, view._boox_contact = false, nil
+    paint(view)
     UIManager.refreshes = {}
     view:onIaTouch(nil, { pos = { x = 300, y = 900 } })
     local t0 = (view._live_last or 0) + 1000
     for k = 1, 20 do view.nowMs = function() return t0 + k * 100 end; view:onIaPan(nil, { pos = { x = 300 + k * 8, y = 900 } }) end
     ok(#UIManager.refreshes > 0, "view: a finger stroke keeps its live refreshes")
     view:onIaPanRelease(nil, { pos = { x = 460, y = 900 } }); view:flushPending()
+    view.palm_reject, view._boox_contact = true, true
+    paint(view)
     -- a pen tap where the firmware may have inked: that part shown again
     UIManager.refreshes = {}
     view._hw_box = { x0 = 700, y0 = 700, x1 = 720, y1 = 720 }
@@ -419,12 +433,15 @@ do
     view:stopBooxInk()
     ok(c.sent[1] == "state 0" and not view._boox_ink, "view: turned off, it stops")
     view:startBooxInk()
-    ok(view:booxInking(), "view: turned on, it inks again")
+    ok(not view:booxInking(), "view: turned on, waits for a fresh contact")
+    view:booxInkContact()
     -- sleep: stops; wake: again
     view:onSuspend()
     ok(not view._boox_ink and last(c) == "region 0/0", "view: asleep, stopped")
     view:onResume()
-    ok(view:booxInking(), "view: awake, again")
+    ok(not view:booxInking(), "view: awake, the panel stays released until a new pen contact")
+    view._boox_contact = true; paint(view)
+    ok(view:booxInking(), "view: a fresh contact resumes native ink after wake")
     -- closing: stops
     c.sent = {}
     view:onCloseWidget()

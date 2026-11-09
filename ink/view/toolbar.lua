@@ -380,6 +380,7 @@ function InkAwayView:setTool(tool)
     -- first touch, which would then start late) and gone with it
     if tool ~= "erase" then self:layerRestFree() elseif self:layered() and not self.erase_whole then self:layerRest() end
     self.tool = tool
+    self:booxInkUpdate() -- stop native ink before a contact with the new tool
     self:refreshToolLabels()
     -- the toolbar strip changes too (the pill moves), so clear any area-only flag
     -- set by a nested deselect, or the next paint would skip the toolbar
