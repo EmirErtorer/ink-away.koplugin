@@ -9,6 +9,7 @@ versions marked *Prerelease* were test builds.
 ## [Unreleased]
 
 ### Added
+- Two pages side by side for a PDF, CBZ or other fixed-page book, also when all its pages are single ones: in the book's Ink Away menu, always or only in landscape, with the first page on its own if it has a cover, and optionally for every PDF. Ink stays on the page it was drawn on.
 - Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
 - Labels for highlight colours: say what each colour means to you ("Important", "Look this up"). Set them with Labels in the highlight colour sheet; each shows with its colour there, and they sync with your other settings. (#81)
 
@@ -18,6 +19,8 @@ versions marked *Prerelease* were test builds.
 - In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
 
 ### Fixed
+- Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
+- With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
 - The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)
 - With a colour theme, the active tool and the icons on coloured buttons no longer show as a pale square with coloured lines on some KOReader versions.
 - Colour swatches and pen tiles no longer cover the corners of their black ring with square white corners.

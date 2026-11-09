@@ -542,6 +542,10 @@ msgstr ""
 msgid "Also look inside pages (slower)"
 msgstr ""
 
+#: main.lua
+msgid "Always"
+msgstr ""
+
 #: ink/view/exportbook.lua
 msgid "An editable PDF can't hold these as annotations:"
 msgstr ""
@@ -1963,6 +1967,10 @@ msgstr ""
 msgid "First page"
 msgstr ""
 
+#: main.lua
+msgid "First page on its own"
+msgstr ""
+
 #: ink/actions.lua
 msgid "Fit the page"
 msgstr ""
@@ -2022,6 +2030,10 @@ msgstr ""
 #: ink/view/textformat.lua
 #, lua-format
 msgid "Font: %s"
+msgstr ""
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
 msgstr ""
 
 #: ink/guide.lua
@@ -2395,6 +2407,10 @@ msgstr ""
 
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
+msgstr ""
+
+#: main.lua
+msgid "In landscape"
 msgstr ""
 
 #: ink/reader/roomtool.lua
@@ -3125,6 +3141,10 @@ msgstr ""
 msgid "New"
 msgstr ""
 
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr ""
+
 #: ink/view/document.lua
 msgid "New drawing"
 msgstr ""
@@ -3456,6 +3476,7 @@ msgstr ""
 
 #: ink/view/settings.lua
 #: ink/view/sync.lua
+#: main.lua
 msgid "Off"
 msgstr ""
 
@@ -3531,6 +3552,10 @@ msgstr ""
 
 #: main.lua
 msgid "Open as Ink Away notebook"
+msgstr ""
+
+#: main.lua
+msgid "Open every PDF this way"
 msgstr ""
 
 #: ink/view/images.lua
@@ -4517,6 +4542,10 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
+msgstr ""
+
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
 msgstr ""
 
 #: ink/actions.lua
@@ -5527,6 +5556,10 @@ msgstr ""
 
 #: ink/sync/errors.lua
 msgid "Two names look the same"
+msgstr ""
+
+#: main.lua
+msgid "Two pages side by side"
 msgstr ""
 
 #: ink/actions.lua

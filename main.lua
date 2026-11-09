@@ -240,6 +240,10 @@ function InkAway:addToMainMenu(menu_items)
                 callback = function() self:openPdfAsNotebook(file) end,
             })
         end
+        local two = self:twoPage()
+        if two then
+            table.insert(menu_items.inkaway.sub_item_table, self:twoPageMenu(two))
+        end
         local PenHighlight = self.pen_highlight and require("ink/reader/penhighlight")
         if PenHighlight and PenHighlight.penReader() then
             table.insert(menu_items.inkaway.sub_item_table, {
@@ -270,6 +274,50 @@ function InkAway:addToMainMenu(menu_items)
         keep_menu_open = false,
         callback = function() self:openCanvas() end,
     }
+end
+
+-- Ink Away's two pages for this book (see ink/reader/twopage.lua), or nil where they
+-- can't be: not a fixed-page book, or another plugin already shows it in two pages.
+function InkAway:twoPage()
+    if not (self.book and self.ui and self.ui.paging) then return nil end
+    if self.two_page then return self.two_page end
+    local ok, TwoPage = pcall(require, "ink/reader/twopage")
+    if not (ok and TwoPage.available(self.ui)) then return nil end
+    self.two_page = TwoPage.new(self.ui)
+    return self.two_page
+end
+
+-- The menu of the two pages: when, the first page, and whether every PDF opens so.
+function InkAway:twoPageMenu(two)
+    local TwoPage = require("ink/reader/twopage")
+    local function mode(text, value)
+        return { text = text, radio = true, keep_menu_open = true,
+            checked_func = function() return two.mode == value end,
+            callback = function() two:setMode(value) end }
+    end
+    local items = {
+        mode(_("Off"), TwoPage.OFF),
+        mode(_("In landscape"), TwoPage.LANDSCAPE),
+        mode(_("Always"), TwoPage.ALWAYS),
+        { text = _("First page on its own"), keep_menu_open = true, separator = true,
+          help_text = _("For a book with a cover: the pairs then start from its second page."),
+          enabled_func = function() return two.mode ~= TwoPage.OFF end,
+          checked_func = function() return two.first_alone end,
+          callback = function() two:setFirstAlone(not two.first_alone) end },
+    }
+    local file = self.ui.document and self.ui.document.file
+    if type(file) == "string" and file:lower():match("%.pdf$") then
+        items[#items + 1] = { text = _("Open every PDF this way"), keep_menu_open = true,
+            help_text = _("New PDFs open with this choice. A PDF you set yourself keeps its own."),
+            enabled_func = function() return two.mode ~= TwoPage.OFF end,
+            checked_func = function() return two.mode ~= TwoPage.OFF and G_reader_settings:readSetting(TwoPage.MODE) == two.mode end,
+            callback = function()
+                local on = G_reader_settings:readSetting(TwoPage.MODE) == two.mode
+                G_reader_settings:saveSetting(TwoPage.MODE, (not on) and two.mode or nil)
+            end }
+    end
+    return { text = _("Two pages side by side"), sub_item_table = items,
+        help_text = _("Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it.") }
 end
 
 -- Set the book gestures in KOReader's gesture manager, where they are free
@@ -397,6 +445,9 @@ end
 -- The book is up: one whose rooms need markers it was not laid out with (they
 -- came with the cloud sync, or its saved layout is older) is loaded again with them.
 function InkAway:onReaderReady()
+    -- two pages, for a book that shows them (with them off, nothing is installed)
+    local two = self:twoPage()
+    if two and two.mode ~= "off" then two:apply(true) end
     if self.book and self.book.checkMarkers then
         UIManager:scheduleIn(0.5, function()
             if self.book then pcall(self.book.checkMarkers, self.book) end
