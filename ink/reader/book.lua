@@ -255,9 +255,12 @@ function Book:readerLayoutKey()
                 va.x or 0, va.y or 0, off.x or 0, off.y or 0 }, ",")
         end
         -- (a spread: where each of its pages is, which its crop and gutter change)
-        for _i, page in ipairs(self:spreadPages() or {}) do
-            local ox, oy, s = self:spreadOrigin(page)
-            parts[#parts + 1] = table.concat({ page, ox or 0, oy or 0, s or 0 }, ",")
+        local spread = self:spreadPages()
+        if spread then
+            for _i, page in ipairs(spread) do
+                local ox, oy, s = self:spreadOrigin(page)
+                parts[#parts + 1] = table.concat({ page, ox or 0, oy or 0, s or 0 }, ",")
+            end
         end
         return table.concat(parts, "|")
     end
