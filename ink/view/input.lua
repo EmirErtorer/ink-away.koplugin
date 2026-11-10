@@ -668,6 +668,7 @@ function InkAwayView:penDropFingerOps()
         if self._sm then self:smudgeEnd() end
         self.canvas:cancelStroke()
         self.last_cx, self.last_cy = nil, nil
+        self._hw_stroke, self._hw_rect = false, nil   -- (recompose shows the page over any firmware ink)
         self:recompose()
     end
     self:cancelShape()      -- drop a half-drawn shape
@@ -714,6 +715,11 @@ function InkAwayView:penMove(slot)
         end
     end
     self._pen_last_x, self._pen_last_y = x, y
+    -- where a Boox's firmware may have inked: shown as Ink Away has it at the lift
+    if self._boox_ink then
+        local pad = math.max(8, (self.pen_width or 3) * ((self.view and self.view.zoom) or 1))
+        self._hw_box = require("ink/geom").growRect(self._hw_box, x - pad, y - pad, x + pad, y + pad)
+    end
     self._pen_raw_pressure = self:slotPressure(slot)
     -- Some pen protocols announce the contact one frame before the first
     -- coordinates, so the stroke is opened by whichever frame first has a point.
@@ -748,6 +754,7 @@ function InkAwayView:penUp()
         self:flushPending()      -- the pen lift is clean; commit now, no coalesce wait
         self._pen_started = false
     end
+    self:booxInkSweep()
     self:restoreHeld()
     -- keep ignoring fingers briefly: a palm often lifts a moment after the pen
     UIManager:unschedule(self._pen_clear)

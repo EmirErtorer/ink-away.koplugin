@@ -32,11 +32,14 @@ local function readAll(path)
     return s
 end
 
-local function copyIfNewer(lfs, src, dst)
-    local sa, da = lfs.attributes(src), lfs.attributes(dst)
-    if not sa or (da and (da.modification or 0) >= (sa.modification or 0)) then return true end
+-- Copy `src` over `dst` unless `dst` already holds the same bytes. The file times
+-- are no guide: a device clock can be wrong and a copied plugin keeps the old
+-- times, so a stale icon from an earlier version would otherwise stay for good.
+local function copyIfChanged(lfs, src, dst)
+    if not lfs.attributes(src) then return true end
     local data = readAll(src)
     if not data then return false end
+    if lfs.attributes(dst) and readAll(dst) == data then return true end
     local out = io.open(dst, "wb")
     if not out then return false end
     out:write(data)
@@ -57,7 +60,7 @@ function Topbar.installIcon(lfs, plugin_dir, data_dir, cwd)
             pcall(function()
                 if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
                 if lfs.attributes(dir, "mode") == "directory"
-                        and copyIfNewer(lfs, src, dir .. "/" .. Topbar.ICON .. ".svg") then
+                        and copyIfChanged(lfs, src, dir .. "/" .. Topbar.ICON .. ".svg") then
                     n = n + 1
                 end
             end)

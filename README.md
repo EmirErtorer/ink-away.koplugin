@@ -76,6 +76,8 @@ I'm a computer science and engineering graduate, and I design and test Ink Away 
 
 Bug reports, prerelease testing, ideas and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to start.
 
+The integration API for viewer plugins such as [Panels+](https://github.com/KristanLaimon/PanelsPlus) was designed by [Kristan Laimon](https://github.com/KristanLaimon).
+
 ## License
 
 MIT (see [`LICENSE`](LICENSE)). PNG/JPEG use KOReader's bundled lodepng and libjpeg-turbo.

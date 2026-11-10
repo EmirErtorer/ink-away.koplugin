@@ -9,6 +9,12 @@ Each chapter page remembers its chapter as page.book = { toc = <the chapter's
 place in the book's contents>, md5 = <the book's checksum> }; pages added by
 hand belong to the chapter page before them. Plain Lua: the headless tests
 drive it.
+
+A handwritten note on one of the reader's highlights is a page too, in the
+highlight's chapter, after that chapter's pages: page.book also has hl = { dt =
+<the highlight's date and time, KOReader's own mark for it>, pos0, pos1 }, and
+the page is titled with the highlighted words. Opening the chapter's notes does
+not land on it.
 ]]
 
 local BookNotes = {}
@@ -88,16 +94,64 @@ function BookNotes.placeFor(pages, key)
         return { index = 1, claim = true }
     end
     if key == nil then return { index = n } end
-    -- each page's chapter: its own, or the chapter page's before it
+    -- each page's chapter: its own, or the chapter page's before it (a
+    -- highlight's note, and pages added after it, are not the chapter's notes)
+    local last_of, insert_at, cur, of_note = nil, nil, nil, false
+    for i, p in ipairs(pages) do
+        if type(p.book) == "table" and type(p.book.toc) == "number" then
+            cur, of_note = p.book.toc, type(p.book.hl) == "table"
+        end
+        if cur == key and not of_note then last_of = i end
+        if not insert_at and cur and cur > key then insert_at = i end
+    end
+    if last_of then return { index = last_of } end
+    -- before the first page of a later chapter, else at the end
+    return { insert = insert_at or (n + 1) }
+end
+
+-- Is page tag `tag` (page.book) the note of highlight `hl` ({ dt, pos0, pos1 })?
+-- By KOReader's date and time for it (moving its ends keeps that), else by where
+-- it is.
+function BookNotes.isNoteOf(tag, hl)
+    local t = type(tag) == "table" and tag.hl
+    if type(t) ~= "table" or type(hl) ~= "table" then return false end
+    if t.dt and hl.dt then return t.dt == hl.dt end
+    return t.pos0 ~= nil and t.pos0 == hl.pos0 and t.pos1 == hl.pos1
+end
+
+-- Where highlight `hl`'s note is, in chapter `key`: { index = n } for its page,
+-- or { insert = n } for a new one after the chapter's pages (before the next
+-- chapter's), { index = 1, claim = true } for a new notebook's empty page.
+function BookNotes.placeForHighlight(pages, key, hl)
+    local n = #pages
+    for i, p in ipairs(pages) do
+        if BookNotes.isNoteOf(p.book, hl) then return { index = i } end
+    end
+    if n == 0 then return { insert = 1 } end
+    if n == 1 and not pages[1].book and #(pages[1].ops or {}) == 0 then
+        return { index = 1, claim = true }
+    end
+    if key == nil then return { insert = n + 1 } end
     local last_of, insert_at, cur = nil, nil, nil
     for i, p in ipairs(pages) do
         if type(p.book) == "table" and type(p.book.toc) == "number" then cur = p.book.toc end
         if cur == key then last_of = i end
         if not insert_at and cur and cur > key then insert_at = i end
     end
-    if last_of then return { index = last_of } end
-    -- before the first page of a later chapter, else at the end
+    if last_of then return { insert = last_of + 1 } end
     return { insert = insert_at or (n + 1) }
+end
+
+-- A page title for highlighted words: in quotes, cut to about `max` letters.
+function BookNotes.quote(text, max)
+    max = max or 60
+    local s = tostring(text or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    local chars = {}
+    for ch in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+    if #chars > max then
+        s = table.concat(chars, "", 1, max):gsub("%s+%S*$", "") .. "\u{2026}"
+    end
+    return "\u{201C}" .. s .. "\u{201D}"
 end
 
 return BookNotes

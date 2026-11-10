@@ -292,7 +292,7 @@ function InkAwayView:openDocument(path)
     self.save_area = nil
     self.export_opts = type(data.export) == "table" and data.export or nil
     if Project.isNotebook(data) then
-        self:openNotebookData(data)
+        self:openNotebookData(data, path)
     else
         self:exitNotebook()
         self:clearBackground()
@@ -470,6 +470,7 @@ function InkAwayView:renameDocument(name)
         end
         self:rememberDoc(new)
         local old = self.doc_path
+        self:lastPageMoved(old, new)
         Folder.update(Storage.dirName(new), function(d) Folder.rename(d, Storage.baseName(old), Storage.baseName(new)) end)
     end
     self.doc_path = new

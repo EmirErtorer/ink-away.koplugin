@@ -304,6 +304,13 @@ function InkAwayView:openSettings()
                 end))
             add(vspan(14))
 
+            -- the stickers: a button of their own, or under Image on a crowded toolbar
+            add(self:labelledRow(_("Stickers button"), { { true, _("Toolbar") }, { false, _("Image") } },
+                self:stickersInToolbar(), content_w, function(on)
+                    closeSelf(); self:setStickersInToolbar(on); self:openSettings()
+                end))
+            add(vspan(14))
+
             -- the zoom and Pan buttons: at either side, or none (pinch and two
             -- fingers do the same)
             add(self:labelledRow(_("Zoom and Pan buttons"),
@@ -555,7 +562,7 @@ function InkAwayView:openPenTest()
     local PenTestScreen = require("ink/ui/pentestscreen")
     local raw = self._raw_installed
     if raw then self:uninstallRawFinger() end
-    UIManager:show(PenTestScreen:new{ on_close = function()
+    UIManager:show(PenTestScreen:new{ modal = self.modal, on_close = function()
         if raw and not self.closing then self:installRawFinger() end
         self:applyPalmReject()
     end })

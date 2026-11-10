@@ -29,6 +29,13 @@ An item is { op = <op in anchor space>, a = <anchor> }:
                   hyphen splits over two lines: the part the ink is by (2 for
                   the part on the second line), whose box it is measured from
   rolling, page:  a = { pxp, dx, dy }              dx, dy on the screen
+  rolling, pinned: a = { pg, fx, fy }              page number pg of the book, and the
+                  top-left as a fraction of the screen: it does not follow the text at all,
+                  it stays on that page number at that spot whatever the layout does
+  rolling, room:  a = { room, rx, ry }             in a box room or a band made across the
+                  page (see ink/reader/rooms.lua): from its top-left, so it stays in it
+                  wherever the text takes it; in side space: the word anchor above, with
+                  rx (from the room's left edge) in place of dx, so it stays in the room
   paging:         a = { page, x, y }               page units
 ]]
 
@@ -60,6 +67,7 @@ end
 
 -- Anchor a screen op. Returns the item, or nil for an op that draws nothing.
 function Place.anchor(op, doc)
+    if doc.anchorOp then return doc:anchorOp(op) end   -- (a viewer plugin's surface, ink/reader/surface.lua)
     local bx0, by0, x1, y1 = Canvas.opBox(op)
     if not bx0 then return nil end
     local x0, y0 = floor(bx0), floor(by0)
@@ -70,6 +78,12 @@ function Place.anchor(op, doc)
         -- scaled, then moved by the scaled corner
         local s = 1 / zoom
         return { op = Place.moved(op, -x0 * s, -y0 * s, s), a = { page = page, x = px, y = py } }
+    end
+    -- in room made in the text: kept with the room
+    local room, rbox
+    if doc.roomAt then room, rbox = doc:roomAt(x0, y0, x1, y1) end
+    if room and (room.kind == "band" or room.kind == "box") then
+        return { op = Place.moved(op, -x0, -y0), a = { room = room.id, rx = x0 - rbox.x, ry = y0 - rbox.y } }
     end
     local cx, cy = floor((x0 + x1) / 2), floor((y0 + y1) / 2)
     -- the word under the middle; for an underline (whose middle is between two
@@ -82,6 +96,10 @@ function Place.anchor(op, doc)
     if w and w.box then
         local a = { xp0 = w.xp0, xp1 = w.xp1, seg = w.seg, dx = x0 - w.box.x }
         Place.setDy(a, y0, w.box)
+        if room then   -- (side space: across from the room's edge, down from its word)
+            a.dx, a.room, a.rx = nil, room.id, x0 - rbox.x
+            return { op = local_op, a = a }
+        end
         -- ink in a side margin stays in it: kept by its distance from that edge
         local W = doc.width and doc:width()
         if W then
@@ -112,7 +130,8 @@ end
 function Place.anchorWith(op, doc, a)
     local x0, y0 = origin(op)
     if not x0 then return nil end
-    if doc.kind == "paging" or not (a and a.xp0) then return Place.anchor(op, doc) end
+    if a and a.pg then return Place.pinned(op, doc, a.pg) end   -- (a piece of a pinned shape stays pinned)
+    if doc.kind == "paging" or not (a and a.xp0) or a.room then return Place.anchor(op, doc) end
     local box = doc:boxOf(a.xp0, a.xp1, a.seg)
     if not box then return Place.anchor(op, doc) end
     local na = { xp0 = a.xp0, xp1 = a.xp1, seg = a.seg }
@@ -123,10 +142,29 @@ function Place.anchorWith(op, doc, a)
     return { op = Place.moved(op, -x0, -y0), a = na }
 end
 
+-- Pin an op to page `page` of a reflowing book (see the top): it keeps that page
+-- number and that spot on the screen (as fractions of its size, so another screen
+-- keeps it in the same place) when the text is laid out again. A fixed-page book
+-- has nothing to pin to: it is anchored as usual.
+function Place.pinned(op, doc, page)
+    if doc.kind == "paging" or not (page and doc.size) then return Place.anchor(op, doc) end
+    local x0, y0 = origin(op)
+    if not x0 then return nil end
+    local W, H = doc:size()
+    if not (W and H and W > 0 and H > 0) then return Place.anchor(op, doc) end
+    return { op = Place.moved(op, -x0, -y0), a = { pg = page, fx = x0 / W, fy = y0 / H } }
+end
+
 -- Which page an item is on, for this layout (nil if it cannot be placed).
 function Place.pageOf(item, doc)
     local a = item.a
     if a.page then return a.page end
+    if a.pg then
+        -- (a book laid out shorter than the page it was pinned to: its last page)
+        local n = doc.pageCount and doc:pageCount()
+        return (n and n > 0 and a.pg > n) and n or a.pg
+    end
+    if a.room and not a.xp0 then return doc.roomPage and doc:roomPage(a.room) or nil end
     -- (the second part of a split word can be on the next page: where it ends)
     if a.xp0 then return doc:pageOf((a.seg or 1) > 1 and a.xp1 or a.xp0) end
     if a.pxp then return doc:pageOf(a.pxp) end
@@ -135,17 +173,31 @@ end
 
 -- An item as a screen op on the page now shown, or nil if it is not on it.
 function Place.place(item, doc)
+    if doc.placeOp then return doc:placeOp(item) end   -- (a viewer plugin's surface)
     local a = item.a
     if a.page then
         local sx, sy, zoom = doc:toScreen(a.page, a.x, a.y)
         if not sx then return nil end
         return Place.moved(item.op, sx, sy, zoom)
     end
+    if a.pg then
+        local W, H = doc:size()
+        return Place.moved(item.op, floor(a.fx * W + 0.5), floor(a.fy * H + 0.5))
+    end
+    if a.room and not a.xp0 then
+        local rb = doc.roomBox and doc:roomBox(a.room)
+        if not rb then return nil end
+        return Place.moved(item.op, floor(rb.x + (a.rx or 0) + 0.5), floor(rb.y + (a.ry or 0) + 0.5))
+    end
     if a.xp0 then
         local box = doc:boxOf(a.xp0, a.xp1, a.seg)
         if not box then return nil end
         local x
-        if a.mr then x = (doc.width and doc:width() or 0) - a.mr
+        if a.room then
+            local rx = doc.roomX and doc:roomX(a.room)
+            if not rx then return nil end   -- (the rooms are hidden: so is what is in them)
+            x = rx + (a.rx or 0)
+        elseif a.mr then x = (doc.width and doc:width() or 0) - a.mr
         elseif a.ml then x = a.ml
         else x = box.x + (a.dx or 0) end
         return Place.moved(item.op, x, yOf(a, box))

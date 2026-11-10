@@ -2,7 +2,10 @@
 Changing the colour of a highlight in the annotation mode. A tap on a highlight
 opens a sheet of colours: with a finger that is navigating, with the lasso, with
 the highlighter in hand (a single tap on text already highlighted), or with Pan.
-A hold still offers to remove it (see ReaderInkView:highlightPromptAt).
+A hold still offers to remove it (see ReaderInkView:highlightPromptAt). For a
+single highlight the sheet also has Handwritten note (ink/reader/hlnotes.lua),
+as KOReader's menu for selected words has: a highlight made with the pen's
+button gets its note this way too.
 
 The colours are the person's own list (ink/reader/hlpalette.lua): the reader's
 colours to start with, any of them taken off by holding it, and any colour from
@@ -26,6 +29,7 @@ local Palette = require("ink/reader/hlpalette")
 local Screen = Device.screen
 
 local FIELD = "_hl_colours"
+local LABELS_FIELD = "_hl_labels"
 local GREY = { 176, 176, 176 }   -- "gray": the reader's own highlight in a light grey
 
 local HLColour = {}
@@ -152,6 +156,28 @@ function HLColour:openHighlightWheel(items)
     })
 end
 
+-- One highlight tapped: its place in the reader's list, when it can have a
+-- handwritten note (ink/reader/hlnotes.lua); nil otherwise.
+function HLColour:highlightNoteIndex(items)
+    local book = self.book
+    if not (items and #items == 1 and book and book.openHighlightNote and book.findHighlight) then return nil end
+    local a = items[1]
+    local ok, _anno, index = pcall(book.findHighlight, book, { dt = a.datetime, pos0 = a.pos0, pos1 = a.pos1 })
+    return ok and index or nil
+end
+
+-- Its handwritten note, in the notes window over the book: the annotation mode
+-- closes first, its ink saved (as Book notes from the gestures does).
+function HLColour:openNoteOfHighlight(anno)
+    local book = self.book
+    local key = { dt = anno.datetime, pos0 = anno.pos0, pos1 = anno.pos1 }
+    self:closeCanvas()
+    UIManager:nextTick(function()
+        local ok, _anno, index = pcall(book.findHighlight, book, key)
+        if ok and index then book:openHighlightNote(index) end
+    end)
+end
+
 -- The sheet of colours for the highlights `items`.
 function HLColour:openHighlightColours(items)
     if not (items and #items > 0 and self.book) then return false end
@@ -165,9 +191,11 @@ function HLColour:openHighlightColours(items)
         local ok, err = pcall(self.setHighlightsColour, self, items, entry)
         if not ok then logger.warn("Ink Away: highlight colour:", err) end
     end
+    local get = function(k) return self:getSetting(k) end
     local build = function()
         local custom = self.book:customColours()
         local list = self:highlightPalette()
+        local labelled = Palette.anyLabel(get)
         local g = VerticalGroup:new{ align = "left", self:sheetTitle(_("Highlight colour"), content_w, _("Done"), close) }
         local function add(w) table.insert(g, w) end
         add(vspan(12))
@@ -181,13 +209,18 @@ function HLColour:openHighlightColours(items)
             for _i, entry in ipairs(list) do
                 local rgb = entryRgb(entry, custom)
                 if rgb then
-                    tiles[#tiles + 1] = self:swatchTile(rgb, allIn(items, entry, custom), col,
+                    local tile = self:swatchTile(rgb, allIn(items, entry, custom), col,
                         function() pick(entry) end, function() forget(entry) end, swh)
+                    -- (with labels: each under its colour, the row kept even)
+                    if labelled then tile = self:labelledTile(tile, Palette.label(get, entry), col) end
+                    tiles[#tiles + 1] = tile
                 end
             end
             -- the wheel, as the last tile (where the reader keeps colours of one's own)
             if custom then
-                tiles[#tiles + 1] = self:wheelTile(col, swh, function() close(); self:openHighlightWheel(items) end)
+                local wheel = self:wheelTile(col, swh, function() close(); self:openHighlightWheel(items) end)
+                if labelled then wheel = self:labelledTile(wheel, nil, col) end
+                tiles[#tiles + 1] = wheel
             end
             for i = 1, #tiles, 5 do
                 local row = HorizontalGroup:new{ align = "top" }
@@ -208,7 +241,8 @@ function HLColour:openHighlightColours(items)
                 for j = i, math.min(i + 1, #list) do
                     if j > i then table.insert(row, HorizontalSpan:new{ width = gap }) end
                     local entry = list[j]
-                    table.insert(row, self:actionButton(self:highlightColourLabel(entry), half,
+                    local name, label = self:highlightColourLabel(entry), Palette.label(get, entry)
+                    table.insert(row, self:actionButton(label and (label .. " \u{00B7} " .. name) or name, half,
                         function() pick(entry) end, allIn(items, entry, custom), "small"))
                 end
                 if i > 1 then add(vspan(8)) end
@@ -216,26 +250,106 @@ function HLColour:openHighlightColours(items)
             end
         end
         add(vspan(14))
-        local reset = not Palette.isDefault(function(k) return self:getSetting(k) end)
-        if reset then
-            local half = math.floor((content_w - gap) / 2)
-            add(HorizontalGroup:new{ align = "center",
-                self:actionButton(_("Reset colours"), half, function()
-                    self:setSetting(Palette.SETTING, nil); again()
-                end),
-                HorizontalSpan:new{ width = gap },
-                self:actionButton(_("Remove highlight"), half, function()
-                    close(); self:removeHighlights(items)
-                end, nil, nil, "trash") })
-        else
-            add(self:actionButton(_("Remove highlight"), content_w, function()
+        local half = math.floor((content_w - gap) / 2)
+        local function pair(a, b)
+            add(HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = gap }, b })
+        end
+        local remove = function(w)
+            return self:actionButton(_("Remove highlight"), w, function()
                 close(); self:removeHighlights(items)
-            end, nil, nil, "trash"))
+            end, nil, nil, "trash")
+        end
+        local reset = not Palette.isDefault(get)
+        local note = self:highlightNoteIndex(items)
+        -- the buttons, two to a row: a handwritten note (one highlight), removing
+        -- it, the colours' labels, and putting the reader's colours back
+        local buttons = {}
+        if note then
+            buttons[#buttons + 1] = function(w) return self:actionButton(_("Handwritten note"), w, function()
+                close(); self:openNoteOfHighlight(items[1])
+            end) end
+        end
+        buttons[#buttons + 1] = remove
+        buttons[#buttons + 1] = function(w) return self:actionButton(_("Labels"), w, function()
+            close(); self:openHighlightLabels(items)
+        end) end
+        if reset then
+            buttons[#buttons + 1] = function(w) return self:actionButton(_("Reset colours"), w, function()
+                self:setSetting(Palette.SETTING, nil); again()
+            end) end
+        end
+        for i = 1, #buttons, 2 do
+            if i > 1 then add(vspan(8)) end
+            if buttons[i + 1] then pair(buttons[i](half), buttons[i + 1](half)) else add(buttons[i](content_w)) end
         end
         return g
     end
     self:showSheet(FIELD, build)
     return true
+end
+
+-- A colour tile with its label under it (a blank line for one with none, so the
+-- tiles of a row stay level).
+function HLColour:labelledTile(tile, label, w)
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local Geom = require("ui/geometry")
+    local TextWidget = require("ui/widget/textwidget")
+    local Font = require("ui/font")
+    local face = Font:getFace("cfont", 12)
+    local text = TextWidget:new{ text = label or " ", face = face, max_width = w }
+    return VerticalGroup:new{ align = "center", tile, vspan(2),
+        CenterContainer:new{ dimen = Geom:new{ w = w, h = text:getSize().h }, text } }
+end
+
+-- What each highlight colour means (#81): a label for each colour of the list,
+-- shown with it in the colour sheet. Done goes back to that sheet.
+function HLColour:openHighlightLabels(items)
+    self:closeSheet(LABELS_FIELD)
+    local colour = self:colorScreen()
+    local content_w, gap = self:sheetWidth()
+    local get = function(k) return self:getSetting(k) end
+    local function again() self:rebuildSheet(LABELS_FIELD) end
+    local function back()
+        self:closeSheet(LABELS_FIELD)
+        if items then self:openHighlightColours(items) end
+    end
+    local function ask(entry)
+        self:promptText({ title = _("Label for this colour"), input = Palette.label(get, entry) or "", ok_text = _("Save"),
+            hint = _("Important, a word to look up, a question…"),
+            on_ok = function(text)
+                self:setSetting(Palette.LABELS, Palette.labelled(self:getSetting(Palette.LABELS), entry, text))
+                again()
+            end })
+    end
+    local build = function()
+        local custom = self.book and self.book:customColours()
+        local g = VerticalGroup:new{ align = "left", self:sheetTitle(_("Colour labels"), content_w, _("Done"), back) }
+        local function add(w) table.insert(g, w) end
+        add(vspan(6))
+        add(self:sheetHint(_("What each colour means to you. It shows with the colour when you change a highlight's colour."), content_w, 14))
+        local sw = Screen:scaleBySize(44)
+        for _i, entry in ipairs(self:highlightPalette()) do
+            add(vspan(gap))
+            local label = Palette.label(get, entry)
+            local text = label or _("Add a label")
+            if colour then
+                local rgb = entryRgb(entry, custom)
+                local row = HorizontalGroup:new{ align = "center" }
+                if rgb then
+                    table.insert(row, self:swatchTile(rgb, false, sw, function() ask(entry) end, nil, sw))
+                    table.insert(row, HorizontalSpan:new{ width = gap })
+                end
+                table.insert(row, self:actionButton(text, content_w - (rgb and (sw + gap) or 0), function() ask(entry) end, label ~= nil))
+                add(row)
+            else
+                -- (no colours on the screen: the colour's name says which it is)
+                add(self:actionButton(self:highlightColourLabel(entry) .. " \u{00B7} " .. text, content_w,
+                    function() ask(entry) end, label ~= nil))
+            end
+        end
+        return g
+    end
+    self:showSheet(LABELS_FIELD, build)
 end
 
 -- Mix the above into `Class`.

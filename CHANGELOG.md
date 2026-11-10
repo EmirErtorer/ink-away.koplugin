@@ -12,7 +12,111 @@ versions marked *Prerelease* were test builds.
 - Add Simplified Chinese (zh_CN) translation by adding file `ink/l10n/zh_CN.po`
 
 ### Added
+- Two pages side by side for a PDF, CBZ or other fixed-page book, also when all its pages are single ones: in the book's Ink Away menu, always or only in landscape, with the first page on its own if it has a cover, and optionally for every PDF. Ink stays on the page it was drawn on.
+- Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
+- Labels for highlight colours: say what each colour means to you ("Important", "Look this up"). Set them with Labels in the highlight colour sheet; each shows with its colour there, and they sync with your other settings. (#81)
+- Annotation mode on a viewer plugin's page: a plugin that shows a book's pages its own way, such as PanelsPlus (comics panel by panel), can let Ink Away draw on its view, with the ink kept as on the book's own pages. An experimental integration API, designed by Kristan Laimon (#80); see docs/INTEGRATION.md. Nothing changes for anyone not using such a plugin.
 
+### Changed
+- Make room: where a room can't start at the box's top on that page (the paragraph began on the page before, or starts at the top of the page), the box moves to the nearest place one can as you draw or move it, so the box is always where the room will be. Boxes that were already exact stay exactly as they are.
+- Make room for a sticker or other selection moves it to that nearest place too, instead of leaving a tall empty space above it.
+- In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
+
+### Fixed
+- Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
+- With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
+- The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)
+- With a colour theme, the active tool and the icons on coloured buttons no longer show as a pale square with coloured lines on some KOReader versions.
+- Colour swatches and pen tiles no longer cover the corners of their black ring with square white corners.
+- Connecting Google Drive on an Android phone or tablet no longer fails with "No connection" (IA-S101) after you allow it in the phone's own browser: the reader keeps asking while it comes back to the network. Readers that can open links also get an "Open the sign-in page" button, with the code copied to paste.
+- Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
+- A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
+- A comic book (CBZ, CBR) is no longer offered the editable PDF export, which would have written PDF annotations into a copy of its archive; it exports as pictures. A PDF with a few bytes before its header still gets the editable export. (Found by Kristan Laimon, #80.)
+- On a reader with a D-pad (and in the desktop emulator), tapping a text field in one of Ink Away's sheets no longer fails. (Found by Kristan Laimon, #80.)
+
+## [4.4.2] - 2026-11-07 *Prerelease*
+
+### Fixed
+
+- Make room: a sticker given the book's first room (Make room in its menu) stays in
+  one piece. Its parts were each kept with a word instead of the room, so they came
+  apart when the book loaded again.
+- Rooms in this book lists a room across the page as "Band across the page", not
+  "Space on the right".
+
+## [4.4.1] - 2026-11-07 *Prerelease*
+
+Cloud sync (Google Drive), the Boox pen layer, handwritten notes on highlights,
+Make room, pins and stickers, for testing before 4.5.0.
+
+### Added
+
+- Boox: the firmware draws the pen's ink (#37). On a Boox with Onyx's pen layer, the
+  firmware now draws the pen's strokes on the screen itself while the pen moves, as
+  Boox's own notes app does, and Ink Away puts the stroke as it really is
+  (its colour, texture and pressure) in place when the pen lifts. It only works for
+  pens that draw opaque, dark ink, inside the drawing area and away from its floating
+  buttons; the eraser, the lasso, text, see-through or light pens, night mode, a turned
+  screen and anything shown over the page pause it first, so the firmware never inks
+  where Ink Away would not. If anything fails it turns itself off and the pen draws as
+  before. Pen and input, Draw with Boox's pen layer turns it off.
+- Android: drawing sends only the part of the screen that changed to the screen, not
+  the whole screen each time (10 to 18 MB per piece of ink on a Boox), while Ink Away is
+  open. Pen and input, Lighter screen updates turns it off.
+- Handwritten notes on highlights (#77): select words and pick Handwritten note in
+  KOReader's menu, next to Add note. The words are highlighted as KOReader does, and
+  a small writing window opens over the page. The note is a page of the book's notes,
+  titled with the highlighted words and kept after its chapter's pages, so it has
+  every pen, layer and tool, and goes with the notebook's search, export and sync.
+  Tap the highlight later to see the note again and write more; tap the window's
+  title strip for KOReader's menu for that highlight, whose "…" also has Handwritten
+  note. While the note has ink, the highlight's KOReader note reads "(Handwritten
+  note)" (unless it has a typed one), so it shows as a highlight with a note in
+  KOReader's lists and exports. A note left empty is not kept.
+- Make room in a book's text, for stickers, pictures and notes: the text moves out of
+  the way, and the font stays the same. Tap the Lasso a second time for its sheet and
+  pick Make room, then draw a box on the page. Move it or drag its corners; the page
+  shades exactly the space it will free before you make it. The room is the box you
+  drew, to the pixel: the lines beside it end at its edge and the text above and below
+  it keeps its width. A box at a side frees the space from that side of the text to
+  the box's far edge (text cannot run on both sides of a box); a wide box, or one that
+  would leave too little text beside it, goes across the page. The menu of anything
+  selected (a sticker, a picture, a shape, writing) also has Make room: the text moves
+  out of its way at once and it stays where it is, in its room. A room keeps its size
+  whatever the font, and what you draw or place in it stays in it when the text
+  moves, even to another page. The first room in a book loads the book again once (a
+  note says so while it does); every room after that, and any change, is a quick
+  layout. A paragraph holds one room, rooms cannot overlap, and a room in the lines a
+  page carries over from the page before starts where the next paragraph does. Tap a
+  room in the tool to resize it or remove it; when it holds something you choose to
+  delete that or let it follow the text. The Lasso's sheet lists the rooms in the book
+  and has a switch to hide them all, so the book reads as it was made. The book's file
+  is never changed: the rooms are a few style rules kept with the book's ink (so they
+  move with the book and go with cloud sync). In the book and web render modes they
+  are exact; in the legacy and flat modes, which do not float anything, a room is made
+  of whole paragraphs. Ink on later pages still follows its words; items pinned to
+  later pages stay on their page number, so a note says when a room may have put other
+  text under them. Not offered in a PDF or other fixed-page book, in continuous
+  scroll, or with two pages side by side.
+- Over a reflowing book, anything you select (ink, shapes, pictures, a sticker with
+  what is written on it) can be pinned to its page: the selection menu has "Pin to this
+  page". A pinned item does not follow the text when the font, margins or screen change:
+  it stays at the same spot on the same page number, as a fraction of the screen, so a
+  bigger screen keeps it in the same place. Everything else still follows its word, and
+  "Let it follow the text" takes the pin off. It is not offered in a PDF or other
+  fixed-page book (they never reflow), in continuous scroll, or with two pages side by side.
+- Stickers: ready-made notes, speech bubbles, marks, tape and little pictures, each
+  shown as a preview, a few to a page. Post-its come in many shapes, flat, curled,
+  torn, taped or pinned, and in any colour (the colour is remembered,
+  and so is the last one used); tap one to put it on the page, ready to move, resize
+  or turn. What you write on a note, with the pen or the Text tool, moves, turns and
+  resizes with it. Hold a sticker to hide it (it comes back in the sticker options)
+  or, for your own pictures added under Mine, to delete it. How many show to a page
+  is a setting. The Stickers button takes the place of the quick-note button in the
+  book toolbar and sits next to Image in the notebook toolbar; Settings can move it
+  under Image instead, for a crowded toolbar. Book notes stay one tap away from the
+  quick menu and their gesture. The built-in stickers are drawn by a few lines of
+  code each, so all of them take only a few kilobytes.
 - Connecting Dropbox no longer means typing a 40-letter code on the reader. When
   the reader is on Wi-Fi, the QR code leads to a page the reader serves: on the
   phone, tap Open Dropbox, tap Allow, paste the code on that page, and the reader
@@ -967,7 +1071,11 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.2...HEAD
+[4.4.2]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.1...v4.4.2
+[4.4.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.0...v4.4.1
+[4.4.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.3.0...v4.4.0
+[4.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.1...v4.2.0
 [4.1.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...v4.1.1
 [4.1.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...v4.1.0

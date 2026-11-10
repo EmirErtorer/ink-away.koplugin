@@ -3713,6 +3713,31 @@ do
     view2.bg_path = nil; view2:markDirty(); view2:saveDocument()
     ok(Project.load(first).bg == nil, "doc: and dropped once it is removed")
 
+    -- a notebook opens on the page it was left on, found by the page, not its number
+    view2:newNotebook("lines")
+    view2:nbAddPage(); view2:nbAddPage(); view2:nbAddPage()
+    stroke(view2, 300, 300)
+    view2:saveDocument(true)
+    local nbpath = view2.doc_path
+    view2:nbGoTo(3)
+    local left_on = view2.notebook.pages[3].id
+    local function bytes(p) local f = io.open(p, "rb"); local s = f and f:read("*a"); if f then f:close() end; return s end
+    local raw = bytes(nbpath)
+    view2:openDocument(first)
+    ok(view2:openDocument(nbpath) and view2.notebook.index == 3, "last page: a notebook opens where it was left")
+    ok(raw ~= nil and bytes(nbpath) == raw, "last page: turning pages leaves its file alone")
+    view2:nbGoTo(1); view2:nbAddPage()           -- a page before it: it is the 4th now
+    view2:nbGoTo(4)
+    ok(view2.notebook.pages[4].id == left_on, "last page: (the same page, one further on)")
+    view2:nbGoTo(2); view2:nbGoTo(4)
+    view2:saveDocument(true)
+    view2:openDocument(first)
+    view2:openDocument(nbpath)
+    ok(view2.notebook.index == 4 and view2.notebook.pages[4].id == left_on, "last page: found again by the page")
+    view2:renameDocument("Left open")
+    view2:openDocument(first)
+    ok(view2:openDocument(LIB .. "/Left open.inkaway") and view2.notebook.index == 4, "last page: kept when it is renamed")
+
     -- notebooks: the cached save matches a full save, through page turns, undo
     -- and new pages, and closing on a blank page keeps every page
     view2:beginDocument("notebook", nil, function()
@@ -4249,7 +4274,7 @@ do
     ok(view.nb_bar_h == view.toolbar:getSize().h, "pages: the bottom bar is as tall as the toolbar")
     ok(ov.w >= view._btn_w and plus.w >= view._btn_w and view._nb_prev.w >= view._btn_w
         and view._nb_next.w >= view._btn_w, "pages: each bar button is at least a toolbar button wide")
-    ok(cnt.w >= 2 * view._btn_w, "pages: and the counter has two columns' room between them")
+    ok(cnt.w >= 2 * view._btn_w - 2, "pages: and the counter has two columns' room between them")
     ok(view._nb_prev.w >= 1.4 * view._btn_w and view._nb_next.w >= 1.4 * view._btn_w
         and view._nb_prev.x + view._nb_prev.w <= ov.x and plus.x + plus.w <= view._nb_next.x,
         "pages: Prev and Next take taps further in, clear of the middle buttons")

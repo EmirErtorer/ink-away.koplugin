@@ -156,6 +156,8 @@ function InkAwayView:buildToolbar()
         end },
         -- placing an image, one tap away
         { id = "image", label = _("Image"), cb = function() self:chooseImage() end },
+        -- ready-made notes, bubbles and marks (Settings can move this under Image)
+        { id = "sticker", label = _("Stickers"), cb = function() self:openStickers() end },
         -- Pan has its own button by the zoom pill (see drawPanFab)
         { id = "lasso", label = _("Lasso"), tool = true, cb = function() self:setTool("lasso") end },
         { id = "undo",  label = _("Undo"),  cb = function() self:undo() end },
@@ -165,9 +167,12 @@ function InkAwayView:buildToolbar()
         { id = "file",  label = _("File"),  cb = function() self:openDocumentSheet() end },
         { id = "exit",  label = _("Exit"),  cb = function() self:closeCanvas() end },
     }
+    if not self:stickersInToolbar() then
+        for i, s in ipairs(specs) do if s.id == "sticker" then table.remove(specs, i); break end end
+    end
     -- each tool id maps to an SVG in ink/icons (erase uses "eraser")
     local ICON = { pen = "pen", erase = "eraser", shape = "shape", text = "text",
-        image = "image", lasso = "lasso",
+        image = "image", sticker = "sticker", lasso = "lasso",
         undo = "undo", redo = "redo", menu = "menu", library = "library", file = "file", exit = "exit" }
     self:ensureUserIcons()   -- so the Buttons can render the icons by name
     -- down the left or right of the screen instead (Settings, Toolbar side): the
@@ -328,7 +333,7 @@ function InkAwayView:ensureUserIcons()
                                 "undo", "redo", "menu", "library", "file", "exit",
                                 "sh_line", "sh_rect", "sh_ellipse", "sh_triangle",
                                 "sh_curve", "sh_arrow", "sh_darrow", "sh_carrow", "sh_cdarrow",
-                                "bucket", "lasso", "caret", "highlighter", "booknotes", "nav_prev", "nav_next",
+                                "bucket", "lasso", "caret", "highlighter", "booknotes", "sticker", "nav_prev", "nav_next", "room",
                                 "newpage", "fullscreen" }) do
             local src = src_dir .. name .. ".svg"
             local dst = dst_dir .. "/inkaway." .. name .. ".svg"

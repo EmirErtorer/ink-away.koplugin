@@ -425,6 +425,24 @@ do
     ok(BookNotes.placeFor(pages, nil).index == 3, "notes: a book without contents opens the last page")
     ok(BookNotes.otherBook({ { book = { toc = 1, md5 = "a" } } }, "b"), "notes: another book's notebook of the same name is told apart")
     ok(not BookNotes.otherBook({ { ops = {} } }, "b"), "notes: a notebook with no chapter pages is not another book's")
+    -- handwritten notes on highlights: a page each, after its chapter's pages
+    local hl = { dt = "2026-11-06 22:31:23", pos0 = "/p[3]/text().5", pos1 = "/p[3]/text().20" }
+    local hpages = {
+        { ops = { 1 }, book = { toc = 2 } },
+        { ops = { 1 }, book = { toc = 2, hl = { dt = "2026-11-01 10:00:00" } } },   -- an earlier highlight's note
+        { ops = { 1 }, book = { toc = 5 } },
+    }
+    ok(BookNotes.placeForHighlight(hpages, 2, hl).insert == 3, "hl notes: a new one after its chapter's pages")
+    ok(BookNotes.placeForHighlight(hpages, 3, hl).insert == 3, "hl notes: a chapter with no page: before the next chapter")
+    ok(BookNotes.placeForHighlight(hpages, 9, hl).insert == 4, "hl notes: a later chapter: last")
+    ok(BookNotes.placeForHighlight(hpages, 2, { dt = "2026-11-01 10:00:00" }).index == 2, "hl notes: its own page again")
+    ok(BookNotes.placeForHighlight({ { ops = {} } }, 2, hl).claim, "hl notes: a new notebook's blank page takes it")
+    ok(BookNotes.placeFor(hpages, 2).index == 1, "hl notes: the chapter's notes do not open on a highlight's page")
+    ok(BookNotes.isNoteOf({ hl = { dt = "x", pos0 = "a" } }, { dt = "x", pos0 = "b" }), "hl notes: found by date and time when the ends moved")
+    ok(not BookNotes.isNoteOf({ toc = 2 }, hl), "hl notes: a chapter page is no highlight's")
+    ok(BookNotes.quote("A  monstrous tripod,") == "\u{201C}A monstrous tripod,\u{201D}", "hl notes: the title quotes the words")
+    local long = BookNotes.quote(string.rep("word ", 40), 30)
+    ok(long:find("\u{2026}\u{201D}$") ~= nil and #long < 60, "hl notes: a long highlight is cut at a word")
     local Notebook = require("ink/notebook")
     local nb = Notebook.fromData({ w = 10, h = 10, pages = { { id = 1, ops = {}, title = "One", book = { toc = 4, md5 = "x" } } } })
     ok(nb.pages[1].book and nb.pages[1].book.toc == 4, "notes: a page keeps its chapter through saving")
@@ -758,6 +776,136 @@ do
     local pb = setmetatable({ ui = { paging = true, view = pview, annotation = { annotations = { h1 } } } }, Book)
     ok(#pb:highlightsAt({ 120, 130 }, 4) == 1, "highlights (PDF): inside the box on the zoomed page")
     ok(#pb:highlightsAt({ 120, 175 }, 4) == 0, "highlights (PDF): the reach is in page coordinates, not more")
+end
+
+-- ---- pinned ink: it keeps its page number and its spot on the screen --------------------------
+do
+    local doc = rollingDoc()
+    doc.size = function() return 1000, 1400 end
+    doc.pageCount = function() return 200 end
+    local note = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 200, 700, 260, 760 }, pin = true }
+    local item = Place.pinned(note, doc, 3)
+    ok(item and item.a.pg == 3 and math.abs(item.a.fx - 0.2) < 0.01 and math.abs(item.a.fy - 0.5) < 0.01,
+        "pin: kept as a page number and fractions of the screen")
+    ok(item.a.xp0 == nil, "pin: with no word to follow")
+    ok(item.op.pin == true, "pin: the item remembers it is pinned (the button shows it)")
+    local back = Place.place(item, doc)
+    local bx, by = bbox(back)
+    local ox, oy = bbox(note)
+    ok(math.abs(bx - ox) < 1.5 and math.abs(by - oy) < 1.5, "pin: placed back where it was drawn")
+    ok(Place.pageOf(item, doc) == 3, "pin: on page 3")
+    -- the text is laid out again, a bigger font: every word moves to other pages. It stays
+    doc.words.w1.page, doc.words.w1.box = 4, { x = 40, y = 520, w = 90, h = 30 }
+    doc.words.w2.page = 5
+    ok(Place.pageOf(item, doc) == 3, "pin: still on page 3 after a reflow")
+    local again = Place.place(item, doc)
+    local ax, ay = bbox(again)
+    ok(math.abs(ax - bx) < 1 and math.abs(ay - by) < 1, "pin: and at the same spot")
+    -- another screen: the same place by fractions
+    doc.size = function() return 2000, 2800 end
+    local big = Place.place(item, doc)
+    local Canvas = require("ink/canvas")
+    local sx0, sy0 = Canvas.opBox(back)
+    local gx, gy = Canvas.opBox(big)
+    ok(math.abs(gx - 2 * sx0) <= 1 and math.abs(gy - 2 * sy0) <= 1, "pin: a bigger screen keeps it in the same place")
+    doc.size = function() return 1000, 1400 end
+    -- a book laid out shorter than the page it was pinned to
+    doc.pageCount = function() return 2 end
+    ok(Place.pageOf(item, doc) == 2, "pin: past the last page it is on the last page, not lost")
+    doc.pageCount = function() return 200 end
+    -- a piece cut from a pinned shape stays pinned
+    local piece = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 210, 710, 230, 730 } }
+    local pa = Place.anchorWith(piece, doc, item.a)
+    ok(pa and pa.a.pg == 3, "pin: a piece cut from it stays pinned")
+    -- no pin without a screen to take fractions of: anchored as usual
+    local plain = rollingDoc()
+    ok(Place.pinned({ kind = "ink", width = 3, pts = { 100, 205, 150, 205 } }, plain, 3).a.xp0 == "w1",
+        "pin: a book that cannot say its size anchors to the word as usual")
+    -- a fixed-page book has nothing to pin to
+    local pdf = { kind = "paging", zoom = 1 }
+    function pdf:toPage(x, y) return 7, x, y, 1 end
+    ok(Place.pinned({ kind = "ink", width = 3, pts = { 10, 10, 20, 20 } }, pdf, 7).a.page == 7, "pin: a PDF is anchored by page as usual")
+    -- the pin comes off: anchored to the nearest word at the spot it has now
+    local free = Place.anchor({ kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 300, 405, 380, 405 } }, rollingDoc())
+    ok(free.a.xp0 == "w2" and free.a.pg == nil, "pin: unpinned, it follows a word again")
+end
+
+-- ---- the book: what can be pinned, and what saving keeps pinned ---------------------------
+do
+    local Book = require("ink/reader/book")
+    local doc = rollingDoc()
+    doc.size = function() return 1000, 1400 end
+    doc.pageCount = function() return 200 end
+    local function newBook(view_mode, count)
+        local ui = { paging = false, view = { view_mode = view_mode },
+            document = { getCurrentPage = function() return 3 end, getPageCount = function() return 200 end,
+                getVisiblePageCount = function() return count or 1 end } }
+        local b = setmetatable({ ui = ui, rev = 0, has_file = true }, Book)
+        b._doc = doc
+        b._data = { version = 1, items = {} }
+        return b
+    end
+    ok(newBook("page"):canPin(), "book: a reflowing book showing one page can pin")
+    ok(not newBook("scroll"):canPin(), "book: not in continuous scroll")
+    ok(not newBook("page", 2):canPin(), "book: not with two pages side by side")
+    local pdf = setmetatable({ ui = { paging = true, view = {} }, rev = 0 }, Book)
+    ok(not pdf:canPin(), "book: not a fixed-page book")
+    local b = newBook("page")
+    local pinned = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 200, 700, 260, 760 }, pin = true }
+    local loose = { kind = "ink", style = "solid", width = 4, alpha = 255, pts = { 100, 205, 150, 205 } }
+    local map = b:setPageOps({ pinned, loose }, {}, {})
+    ok(map[pinned].a.pg == 3, "book: a pinned drawing is saved against its page")
+    ok(map[loose].a.xp0 == "w1", "book: another is saved against its word")
+    -- shown again (as the reader opens it), the button still reads pinned
+    local placed = b:pageOps()
+    local pins = 0
+    for _, op in ipairs(placed.ops) do if op.pin then pins = pins + 1 end end
+    ok(pins == 1, "book: shown again, the pinned one still says it is pinned")
+    -- unpinned in the annotation mode (the button), it is saved against a word
+    local copy = {}
+    for k, v in pairs(placed.ops[1]) do copy[k] = v end
+    local was_pinned = copy.pin
+    copy.pin = nil
+    local m2 = b:setPageOps({ copy }, {}, placed.items)
+    ok(was_pinned and m2[copy].a.pg == nil and m2[copy].a.xp0 ~= nil, "book: unpinned, it is saved against a word again")
+end
+
+-- ---- the book laid out again for its rooms, with KOReader's partial re-layout -------------
+-- (on by default on readers: a part of the book is laid out again only when one of
+-- its pages is drawn, so the page shown is drawn before the room is checked)
+do
+    local Book = require("ink/reader/book")
+    local function newBook(delayed)
+        local seen = { events = {}, drawn = 0, told = 0 }
+        local document = {
+            getPageCount = function() return 200 end,
+            isRerenderingDelayed = function() return delayed end,
+            drawCurrentView = function(_d, target, x, y, rect)
+                seen.drawn = seen.drawn + 1
+                seen.target, seen.rect = target, rect
+            end,
+        }
+        local ui = { paging = false, document = document,
+            view = { visible_area = { x = 0, y = 0, w = 600, h = 800 } },
+            rolling = { handlePartialRerendering = function()
+                ok(seen.drawn > 0, "rooms: KOReader is told after the page was drawn")
+                seen.told = seen.told + 1
+            end },
+            handleEvent = function(_ui, ev) seen.events[#seen.events + 1] = tostring(ev.handler or ev.name) end }
+        local b = setmetatable({ ui = ui, rev = 0 }, Book)
+        return b, seen
+    end
+    local b, seen = newBook(true)
+    b._blocks = { key = "old" }
+    b:relayout()
+    ok(seen.events[1] and seen.events[1]:find("ApplyStyleSheet", 1, true) ~= nil, "rooms: the book's style rules are applied again")
+    ok(seen.drawn == 1 and seen.told == 1, "rooms: with the partial re-layout, the page shown is drawn and KOReader told")
+    ok(seen.rect and seen.rect.w == 600 and seen.target and seen.target:getWidth() == 1,
+        "rooms: drawn off the screen, at the page's size")
+    ok(b._blocks == nil and b.rev == 1, "rooms: what was found in the old layout is forgotten")
+    local b2, seen2 = newBook(false)
+    b2:relayout()
+    ok(seen2.drawn == 0 and seen2.told == 0, "rooms: laid out whole at once, nothing is drawn")
 end
 
 print(("bookink: %d checks, %d failures"):format(checks, failures))

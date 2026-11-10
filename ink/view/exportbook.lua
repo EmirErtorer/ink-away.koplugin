@@ -55,10 +55,13 @@ function InkAwayView:exportPdf()
     return t and t.pdf_path or nil
 end
 
--- Can this KOReader write annotations into a copy of that PDF? (Found out once.)
+-- Can this KOReader write annotations into a copy of that PDF? (Whether its
+-- MuPDF can is found out once; whether the file is a PDF, not a comic archive
+-- KOReader also opens as one, for each file.)
 function InkAwayView:exportEditable()
     local path = self:exportPdf()
     if not (path and Storage.exists(path)) then return false end
+    if not require("ink/pdf").isPDF(path) then return false end
     if InkAwayView._can_edit then return true end
     local ok = Pdfedit.available(path)
     InkAwayView._can_edit = ok or nil

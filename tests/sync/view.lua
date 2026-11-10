@@ -74,11 +74,15 @@ ok(findButton(sheet, "Connect Dropbox"), "it offers to connect Dropbox")
 ok(t:find("Nothing is replaced or removed without a safety copy", 1, true), "it says plainly what is kept safe")
 ok(not findButton(sheet, "Sync now"), "no sync button before connecting")
 
--- connecting with no app key: asks for one instead of a broken QR code
+-- connecting with no app key (a build with none of its own): asks for one instead of a broken QR code
+local SyncConf = require("ink/sync/config")
+local built_dropbox = SyncConf.DROPBOX_APP_KEY
+SyncConf.DROPBOX_APP_KEY = ""
 press(sheet, "Connect Dropbox")
 ok(view._sync_key ~= nil, "without an app key it explains and offers to enter one")
 ok(textIn(view._sync_key):find("not registered with Dropbox yet", 1, true), "in words")
 view:closeSheet("_sync_key")
+SyncConf.DROPBOX_APP_KEY = built_dropbox
 
 -- with a key, the QR sheet
 G_reader_settings.data.inkaway_sync_dropbox_key = "abcdefgh12345678"
@@ -137,12 +141,17 @@ ok(findButton(sheet, "Connect OneDrive"), "OneDrive appears once there is a key 
 G_reader_settings.data.inkaway_sync_onedrive_key = nil
 view:closeSheet("_sync"); view:openSync()
 sheet = view._sync
+-- (a build with no Google registration of its own, as a person's own copy may be)
+local SyncConfig = require("ink/sync/config")
+local built_id, built_secret = SyncConfig.GDRIVE_CLIENT_ID, SyncConfig.GDRIVE_CLIENT_SECRET
+SyncConfig.GDRIVE_CLIENT_ID, SyncConfig.GDRIVE_CLIENT_SECRET = "", ""
 press(sheet, "Connect Google Drive")
 ok(view._sync_key ~= nil and textIn(view._sync_key):find("not registered with Google Drive yet", 1, true), "Google Drive without a registration asks for one")
 press(view._sync_key, "Enter details")
 ok(view._prompt ~= nil and textIn(view._prompt):find("The Client ID of your Google Drive app", 1, true), "first the client id")
 view:closeSheet("_prompt")
 view:closeSheet("_sync_key")
+SyncConfig.GDRIVE_CLIENT_ID, SyncConfig.GDRIVE_CLIENT_SECRET = built_id, built_secret
 G_reader_settings.data.inkaway_sync_gdrive_key = "1234567890-abcdefgh.apps.googleusercontent.com"
 G_reader_settings.data.inkaway_sync_gdrive_secret = "GOCSPX-abcdefgh"
 local Http = require("ink/sync/http")
@@ -189,6 +198,57 @@ ok(view._sync_pending == nil and view._sync_signin == nil, "Cancel stops waiting
 local before = #sent
 UIManager.fireScheduled()
 ok(#sent == before, "nothing is asked after Cancel")
+-- the network not reached while waiting (an Android phone's own browser puts the
+-- reader in the background): asked again, and allowed once it is back
+local Errors = require("ink/sync/errors")
+local net_down = 3
+sent = {}
+Http.transport = function(spec)
+    sent[#sent + 1] = spec
+    if spec.url:find("/device/code", 1, true) then
+        return { code = 200, headers = {}, body = Json.encode({ device_code = "DC", user_code = "ABCD-EFGH",
+            verification_url = "https://www.google.com/device", interval = 5, expires_in = 900 }) }
+    end
+    if spec.url:find("/token", 1, true) then
+        if net_down > 0 then net_down = net_down - 1; return nil, Errors.make("IA-S101", "network is unreachable") end
+        return { code = 200, headers = {}, body = Json.encode({ access_token = "A", refresh_token = "R", expires_in = 3600 }) }
+    end
+    if spec.url:find("/about", 1, true) then
+        return { code = 200, headers = {}, body = Json.encode({ user = { displayName = "Grace", emailAddress = "g@x.org", permissionId = "p1" } }) }
+    end
+    return { code = 404, headers = {}, body = "{}" }
+end
+-- (a reader with a browser of its own: it can open the page, the code copied)
+local opened, copied
+local Device = require("device")
+local saved_can, saved_open, saved_clip = Device.canOpenLink, Device.openLink, Device.input and Device.input.setClipboardText
+Device.canOpenLink = function() return true end
+Device.openLink = function(_self, url) opened = url; return true end
+Device.input = Device.input or {}
+Device.input.setClipboardText = function(t) copied = t end
+press(view._sync, "Connect Google Drive")
+ok(findButton(view._sync_signin, "Open the sign-in page") ~= nil, "a reader with a browser can open the sign-in page")
+press(view._sync_signin, "Open the sign-in page")
+ok(opened == "https://www.google.com/device" and copied == "ABCD-EFGH", "it opens the page, the code copied to paste")
+for _i = 1, 3 do UIManager.fireScheduled() end
+ok(view._sync_signin ~= nil and view._sync_pending ~= nil, "the network not reached: it keeps waiting, no error")
+UIManager.fireScheduled()
+ok(Account.load(Manager.dir()) ~= nil and view._sync_signin == nil, "once it is back, the sign-in finishes")
+Manager.signOut()
+Manager.live.result, Manager.live.running = nil, false
+Device.canOpenLink, Device.openLink = saved_can, saved_open
+Device.input.setClipboardText = saved_clip
+for _i, f in ipairs({ "_sync_preview", "_sync" }) do view:closeSheet(f) end
+view:openSync()
+press(view._sync, "Connect Google Drive")
+ok(view._sync_signin ~= nil and not findButton(view._sync_signin, "Open the sign-in page"), "an e-reader with no browser shows no such button")
+-- the network never back: after a while it says so
+net_down = 1000
+for _i = 1, view.SIGNIN_NET_MISSES do UIManager.fireScheduled() end
+ok(view._sync_signin ~= nil, "still waiting after many misses in a row")
+UIManager.fireScheduled()
+ok(view._sync_signin == nil and view._sync_pending == nil and textIn(view._sync_err or view):find("IA-S101", 1, true) ~= nil,
+    "past the limit: the no-connection sheet")
 G_reader_settings.data.inkaway_sync_gdrive_key = nil
 G_reader_settings.data.inkaway_sync_gdrive_secret = nil
 Http.transport = real_transport

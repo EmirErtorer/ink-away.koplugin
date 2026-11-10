@@ -102,6 +102,12 @@ local svg = read(BASE .. "/data/icons/" .. Topbar.ICON .. ".svg")
 ok(svg and svg:find("<svg", 1, true) and svg:find("viewBox", 1, true), "an SVG, which KOReader draws for any screen")
 ok(read(BASE .. "/cwd/resources/icons/" .. Topbar.ICON .. ".svg") == svg, "the same one in resources/icons")
 eq(Topbar.installIcon(lfs, plugin_dir, BASE .. "/data", BASE .. "/cwd"), 2, "a second run keeps them")
+do -- an old icon left by an earlier version is replaced even when its file time is newer
+    local stale = BASE .. "/data/icons/" .. Topbar.ICON .. ".svg"
+    local f = io.open(stale, "wb"); f:write("<svg>old</svg>"); f:close()
+    Topbar.installIcon(lfs, plugin_dir, BASE .. "/data", BASE .. "/cwd")
+    ok(read(stale) == svg, "a stale icon is replaced by the current one")
+end
 eq(Topbar.installIcon(lfs, plugin_dir, BASE .. "/none/at/all", nil), 0, "an unwritable place is skipped, not an error")
 eq(Topbar.installIcon(lfs, "/no/such/plugin/", BASE .. "/data", nil), 0, "a missing source is skipped")
 ok(not svg:find("png", 1, true) and not svg:find("<image", 1, true), "no raster in it, so no colour depth to go wrong")
