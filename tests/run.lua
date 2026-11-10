@@ -1,6 +1,6 @@
 -- Run the whole Ink Away test suite:  luajit tests/run.lua
 -- (core logic under real FFI, then the view against a mock KOReader env)
-local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua", "tests/links.lua", "tests/pentest.lua", "tests/pens.lua", "tests/wash.lua", "tests/smudge.lua", "tests/penset.lua", "tests/actions.lua", "tests/bookink.lua", "tests/cut.lua", "tests/readerview.lua", "tests/einkdrive.lua", "tests/elipsadrive.lua", "tests/elipsaworker.lua", "tests/guide.lua", "tests/snap.lua", "tests/update.lua", "tests/layers.lua", "tests/bookshelf.lua", "tests/drawingshelf.lua", "tests/share.lua", "tests/annots.lua", "tests/l10n.lua" }
+local suites = { "tests/core.lua", "tests/library.lua", "tests/raster_identity.lua", "tests/text.lua", "tests/recognize.lua", "tests/stylus.lua", "tests/imagesearch.lua", "tests/hwr.lua", "tests/wipe.lua", "tests/view.lua", "tests/rawfinger.lua", "tests/hwrnet.lua", "tests/hwrwords.lua", "tests/search.lua", "tests/trash.lua", "tests/transform.lua", "tests/links.lua", "tests/pentest.lua", "tests/pens.lua", "tests/wash.lua", "tests/smudge.lua", "tests/penset.lua", "tests/actions.lua", "tests/bookink.lua", "tests/cut.lua", "tests/readerview.lua", "tests/einkdrive.lua", "tests/elipsadrive.lua", "tests/elipsaworker.lua", "tests/guide.lua", "tests/snap.lua", "tests/update.lua", "tests/layers.lua", "tests/bookshelf.lua", "tests/drawingshelf.lua", "tests/share.lua", "tests/annots.lua", "tests/hlpalette.lua", "tests/clips.lua", "tests/sync/json.lua", "tests/sync/plan.lua", "tests/launcher.lua", "tests/stickers.lua", "tests/stickerview.lua", "tests/rooms.lua", "tests/lastpage.lua", "tests/spread.lua", "tests/delegate.lua", "tests/integration.lua", "tests/loading_order.lua", "tests/annotation_surface.lua", "tests/surface_viewport.lua", "tests/pdfcheck.lua", "tests/fit.lua", "tests/l10n.lua" }
 -- Some suites need a KOReader checkout with the emulator built in it:
 -- ~/koreader-emulator unless KO_SRC says otherwise (see tests/README.md).
 local KO_SRC = os.getenv("KO_SRC") or (os.getenv("HOME") .. "/koreader-emulator")
@@ -16,6 +16,12 @@ if exists(KO_SRC .. "/frontend/device/input.lua") then
     suites[#suites + 1] = "tests/gestures.lua"
     suites[#suites + 1] = "tests/kobopen.lua"
     suites[#suites + 1] = "tests/penhighlight.lua"
+end
+-- The cloud sync suites need KOReader's SHA-2 code (ffi/sha2) from the checkout.
+if exists(KO_SRC .. "/base/ffi/sha2.lua") then
+    for _, n in ipairs({ "hash", "engine", "dropbox", "clouds", "areas", "manager", "portable", "view" }) do
+        suites[#suites + 1] = "tests/sync/" .. n .. ".lua"
+    end
 end
 -- Pixel-level checks on KOReader's real C blitter, run with the emulator's luajit.
 -- The emulator's koreader folder is found in the checkout, or set with KO_EMU.
@@ -33,12 +39,14 @@ if exists(EMU .. "/luajit") then
         "tests/realbb/android.lua", "tests/realbb/wash.lua", "tests/realbb/smudge.lua", "tests/realbb/greylive.lua",
         "tests/realbb/theme.lua", "tests/realbb/paper.lua", "tests/realbb/layers.lua",
         "tests/realbb/update.lua", "tests/realbb/text.lua",
-    "tests/realbb/notebookcover.lua", "tests/realbb/framecover.lua", "tests/realbb/folderlook.lua", "tests/realbb/share.lua", "tests/realbb/erasecursor.lua", "tests/realbb/rotation.lua", "tests/realbb/lift.lua", "tests/realbb/ocrjob.lua" }) do
+    "tests/realbb/notebookcover.lua", "tests/realbb/framecover.lua", "tests/realbb/folderlook.lua", "tests/realbb/share.lua", "tests/realbb/erasecursor.lua", "tests/realbb/rotation.lua", "tests/realbb/lift.lua", "tests/realbb/ocrjob.lua", "tests/realbb/capture.lua", "tests/realbb/captureui.lua", "tests/realbb/boox.lua", "tests/realbb/tilecorners.lua", "tests/realbb/surface.lua" }) do
         suites[#suites + 1] = t
         REAL[t] = "cd '" .. EMU .. "' && ./luajit '" .. here .. "/" .. t .. "' '" .. here .. "' 2>&1 | grep -v -e '^ffi\\.' -e '^lib_' -e '^Has monolibtic'"
     end
 end
 local fail = 0
+suites[#suites + 1] = "tests/capture.lua"
+suites[#suites + 1] = "tests/capturegestures.lua"
 for _, suite in ipairs({ "tests/ocr_api.lua", "tests/ocr_job.lua", "tests/ocr_image.lua", "tests/ocr_view.lua" }) do
     suites[#suites + 1] = suite
 end
@@ -54,7 +62,7 @@ do
     local allowed = {}
     for n in ("_G assert bit collectgarbage coroutine debug error getmetatable io ipairs jit load loadfile "
         .. "loadstring math next os pairs pcall print rawequal rawget rawlen rawset require select "
-        .. "setfenv getfenv setmetatable string table tonumber tostring type unpack xpcall "
+        .. "setfenv getfenv setmetatable string table tonumber tostring type unpack xpcall package "
         .. "G_reader_settings"):gmatch("%S+") do allowed[n] = true end
     local bad = 0
     for f in io.popen("find ink -name '*.lua' | sort; echo main.lua"):lines() do

@@ -353,7 +353,7 @@ function InkAwayView:shapeErased(idx)
     local op = ops[idx]
     for j = idx + 1, #ops do
         local e = ops[j]
-        if e.kind == "erase" and e.pts and #e.pts >= 2 then
+        if e.kind == "erase" and e.pts and #e.pts >= 2 and not (op.group and e.group == op.group) then
             for _, a in ipairs(Symmetry.flips(e.sym)) do
                 for _, b in ipairs(Symmetry.flips(op.sym)) do
                     -- erase copy a against shape copy b: flip both by b

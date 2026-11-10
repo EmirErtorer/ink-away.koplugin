@@ -82,6 +82,8 @@ InkAwayView.opExtent = opExtent
 -- Pan). Returns whether anything is selected.
 function InkAwayView:selectOps(idxs, from)
     if #idxs == 0 then self.selection = nil; return false end
+    -- a sticker and what is written on it are one: any part selects all
+    idxs = require("ink/stickers").expand(self.canvas.ops, idxs)
     self.selection = { idxs = idxs, from = from or "lasso" }
     self:recomputeSelectionBBox()
     return self.selection ~= nil
@@ -633,10 +635,14 @@ function InkAwayView:selDuplicate()
     if not sel then return end
     self.canvas:pushHistory()
     local off = self.grid_on and self.grid_size or math.floor(24 / self.view.zoom + 0.5)
-    local new = {}
+    local new, copies = {}, {}
     for _, op in ipairs(self:selectionOps()) do
         local c = self.canvas:cloneOp(op)
         translateOp(c, off, off)
+        copies[#copies + 1] = c
+    end
+    require("ink/stickers").rekey(copies)   -- (a copied sticker moves apart from the original)
+    for _, c in ipairs(copies) do
         local _op, at = self.canvas:placeOp(c)
         new[#new + 1] = at
     end
@@ -683,6 +689,28 @@ function InkAwayView:closeSelectionMenu()
         m.on_close = nil
         pcall(function() UIManager:close(m) end)
     end
+end
+
+-- Can the selection be pinned to its page of the book (never follow the text)? Only
+-- over a reflowing book, see ink/reader/inkview.lua.
+function InkAwayView:canPinSelection() return false end
+
+-- Can the text move out of the selection's way (ink/reader/roomsui.lua)? Only over
+-- a reflowing book.
+function InkAwayView:canMakeRoom() return false end
+
+-- Is everything selected pinned?
+function InkAwayView:selectionPinned()
+    local ops = self:selectionOps()
+    if #ops == 0 then return false end
+    for _i, op in ipairs(ops) do if not op.pin then return false end end
+    return true
+end
+
+-- Pin the selection to its page, or let it follow the text again. The book keeps
+-- it when the annotation mode closes (see Book:setPageOps).
+function InkAwayView:selSetPin(on)
+    self:transformSelection(function(op) op.pin = on and true or nil end)
 end
 
 -- Open the selection's menu beside it. `panel` shows the colour, opacity or
@@ -783,6 +811,17 @@ function InkAwayView:openSelectionMenu(panel)
             elseif not self.reader_mode then   -- over a book there are no pages to link to
                 add(self:actionButton(_("Link to page\u{2026}"), content_w, function() self:selLink() end,
                     false, "small", "link"))
+            end
+            if self:canPinSelection() then
+                local pinned = self:selectionPinned()
+                add(self:actionButton(pinned and _("Let it follow the text") or _("Pin to this page"), content_w, function()
+                    self:selSetPin(not pinned); again()
+                end, pinned, "small"))
+            end
+            if self:canMakeRoom() then
+                add(self:actionButton(_("Make room"), content_w, function()
+                    self:makeRoomForSelection()
+                end, false, "small", "room"))
             end
             if k.n == 1 and k.image == 1 then
                 add(self:actionButton(_("Remove background"), content_w, function()

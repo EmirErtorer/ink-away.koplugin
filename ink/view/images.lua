@@ -13,6 +13,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("ink/l10n")
 local ImageProc = require("ink/imageproc")
 local Library = require("ink/library")
+local Clips = require("ink/clips")
 local Storage = require("ink/storage")
 local ThumbGrid = require("ink/ui/thumbgrid")
 
@@ -56,6 +57,7 @@ function InkAwayView:placeBackground(img, path)
 end
 
 function InkAwayView:loadBackground(path)
+    path = Clips.keep(path)
     local ok, img = pcall(function() return RenderImage:renderImageFile(path, false) end)
     if not ok or not img then
         self:tell(_("Could not open that image."))
@@ -309,7 +311,8 @@ end
 
 -- Insert a new image from a file: fit it to ~60% of the visible area (so its
 -- corners show for dragging), centre it in the viewport and select it.
-function InkAwayView:insertImage(path)
+function InkAwayView:insertImage(path, frac)
+    path = Clips.keep(path)   -- (a screen clip is kept, see ink/clips.lua)
     local tmp = { kind = "image", path = path, x = 0, y = 0, w = 1, h = 1 }
     local src = self:imageSrc(tmp)
     if not src then
@@ -318,8 +321,8 @@ function InkAwayView:insertImage(path)
     end
     local natw, nath = src:getWidth(), src:getHeight()
     local v = self.view
-    local maxw = 0.6 * v.area_w / v.zoom
-    local maxh = 0.6 * v.area_h / v.zoom
+    local maxw = (frac or 0.6) * v.area_w / v.zoom
+    local maxh = (frac or 0.6) * v.area_h / v.zoom
     local s = math.min(maxw / natw, maxh / nath)
     if s <= 0 then s = 1 end
     local op = { kind = "image", path = path, natw = natw, nath = nath,
@@ -355,6 +358,12 @@ function InkAwayView:chooseImage()
         end
         add(self:sheetTitle(_("Add image"), content_w, _("Cancel"), closeSelf))
         add(vspan(16))
+        if not self:stickersInToolbar() then   -- (Settings put the stickers under Image)
+            add(self:actionButton(_("Stickers"), content_w, function()
+                closeSelf(); self:openStickers() end, nil, nil, "sticker"))
+            hint(_("Notes, speech bubbles, marks and your own."))
+            add(vspan(12))
+        end
         add(self:actionButton(_("From this reader"), content_w, function()
             closeSelf(); self:chooseLocalImage() end, true, nil, "reader"))
         hint(_("A picture file on this reader."))
@@ -374,6 +383,13 @@ function InkAwayView:chooseImage()
         add(self:actionButton(_("Search online"), content_w, function()
             closeSelf(); self:browseOnlineImages() end, nil, nil, "globe"))
         hint(_("Free pictures from Wikimedia and Openverse. Needs Wi-Fi."))
+        -- over a book: a picture of part of its page, to paste with the lasso
+        if self.reader_mode and self.startPageClip then
+            add(vspan(12))
+            add(self:actionButton(_("Clip the page"), content_w, function()
+                closeSelf(); self:startPageClip() end, nil, nil, "crop"))
+            hint(_("Outline part of the page and copy it. Paste it with the lasso."))
+        end
         if not (self.notebook or self.reader_mode) then   -- a notebook's paper, or the book, is the background
             add(vspan(14))
             add(self:actionButton(_("Background\u{2026}"), content_w, function()
@@ -395,6 +411,7 @@ function InkAwayView:chooseSentPicture()
     end
     local grid
     grid = ThumbGrid:new{
+        modal = self.modal,
         title = _("Sent from your phone"),
         items = items,
         flash_open = false,

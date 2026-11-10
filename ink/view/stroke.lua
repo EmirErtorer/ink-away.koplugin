@@ -309,6 +309,10 @@ end
 
 function InkAwayView:beginStroke(sx, sy)
     self:elipsaStroke(true)
+    -- the pen's stroke on a Boox whose firmware inks it already: no live refresh
+    -- of its own (see liveDirty), the real stroke shown once at the lift
+    self._hw_stroke = (self.tool == "pen" and self._pen_started == true and self:booxInking()) or false
+    self._hw_rect = nil
     -- in a layered drawing: the active layer shown, what lies above it at hand
     self:layerStrokeBegin(self.tool == "erase")
     if self.tool == "erase" and self.erase_whole then return self:wipeBegin(sx, sy) end
@@ -625,6 +629,15 @@ function InkAwayView:finalizeStroke()
     self.capturing = false
     self:elipsaStroke(false)
     self:eraserCursorOff()
+    -- the firmware's black preview of a Boox pen stroke: now the stroke as drawn
+    if self._hw_stroke then
+        local hw = self._hw_rect
+        self._hw_stroke, self._hw_rect = false, nil
+        if hw then
+            self:liveDirty(self._live_mode or "fast", hw, 1)
+            self:liveFlush()
+        end
+    end
     if self._wipe then return self:wipeEnd() end
     -- the live stroke wrote canvas_bb directly; resync the mirror over it
     self:markCanvasDirtyAcc(self._lw_cacc)

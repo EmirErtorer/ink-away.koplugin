@@ -11,6 +11,190 @@ versions marked *Prerelease* were test builds.
 
 - Add Simplified Chinese (zh_CN) translation by adding file `ink/l10n/zh_CN.po`
 
+### Added
+- Two pages side by side for a PDF, CBZ or other fixed-page book, also when all its pages are single ones: in the book's Ink Away menu, always or only in landscape, with the first page on its own if it has a cover, and optionally for every PDF. Ink stays on the page it was drawn on.
+- Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
+- Labels for highlight colours: say what each colour means to you ("Important", "Look this up"). Set them with Labels in the highlight colour sheet; each shows with its colour there, and they sync with your other settings. (#81)
+- Annotation mode on a viewer plugin's page: a plugin that shows a book's pages its own way, such as PanelsPlus (comics panel by panel), can let Ink Away draw on its view, with the ink kept as on the book's own pages. An experimental integration API, designed by Kristan Laimon (#80); see docs/INTEGRATION.md. Nothing changes for anyone not using such a plugin.
+
+### Changed
+- Make room: where a room can't start at the box's top on that page (the paragraph began on the page before, or starts at the top of the page), the box moves to the nearest place one can as you draw or move it, so the box is always where the room will be. Boxes that were already exact stay exactly as they are.
+- Make room for a sticker or other selection moves it to that nearest place too, instead of leaving a tall empty space above it.
+- In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
+
+### Fixed
+- Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
+- With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
+- The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)
+- With a colour theme, the active tool and the icons on coloured buttons no longer show as a pale square with coloured lines on some KOReader versions.
+- Colour swatches and pen tiles no longer cover the corners of their black ring with square white corners.
+- Connecting Google Drive on an Android phone or tablet no longer fails with "No connection" (IA-S101) after you allow it in the phone's own browser: the reader keeps asking while it comes back to the network. Readers that can open links also get an "Open the sign-in page" button, with the code copied to paste.
+- Make room no longer says it "could not make room there" when only the page numbers of earlier chapters changed (KOReader's partial re-layout), which also made a second try fail.
+- A box across the page at the top of an indented paragraph starts on its second line, where the layout puts it, instead of failing.
+- A comic book (CBZ, CBR) is no longer offered the editable PDF export, which would have written PDF annotations into a copy of its archive; it exports as pictures. A PDF with a few bytes before its header still gets the editable export. (Found by Kristan Laimon, #80.)
+- On a reader with a D-pad (and in the desktop emulator), tapping a text field in one of Ink Away's sheets no longer fails. (Found by Kristan Laimon, #80.)
+
+## [4.4.2] - 2026-11-07 *Prerelease*
+
+### Fixed
+
+- Make room: a sticker given the book's first room (Make room in its menu) stays in
+  one piece. Its parts were each kept with a word instead of the room, so they came
+  apart when the book loaded again.
+- Rooms in this book lists a room across the page as "Band across the page", not
+  "Space on the right".
+
+## [4.4.1] - 2026-11-07 *Prerelease*
+
+Cloud sync (Google Drive), the Boox pen layer, handwritten notes on highlights,
+Make room, pins and stickers, for testing before 4.5.0.
+
+### Added
+
+- Boox: the firmware draws the pen's ink (#37). On a Boox with Onyx's pen layer, the
+  firmware now draws the pen's strokes on the screen itself while the pen moves, as
+  Boox's own notes app does, and Ink Away puts the stroke as it really is
+  (its colour, texture and pressure) in place when the pen lifts. It only works for
+  pens that draw opaque, dark ink, inside the drawing area and away from its floating
+  buttons; the eraser, the lasso, text, see-through or light pens, night mode, a turned
+  screen and anything shown over the page pause it first, so the firmware never inks
+  where Ink Away would not. If anything fails it turns itself off and the pen draws as
+  before. Pen and input, Draw with Boox's pen layer turns it off.
+- Android: drawing sends only the part of the screen that changed to the screen, not
+  the whole screen each time (10 to 18 MB per piece of ink on a Boox), while Ink Away is
+  open. Pen and input, Lighter screen updates turns it off.
+- Handwritten notes on highlights (#77): select words and pick Handwritten note in
+  KOReader's menu, next to Add note. The words are highlighted as KOReader does, and
+  a small writing window opens over the page. The note is a page of the book's notes,
+  titled with the highlighted words and kept after its chapter's pages, so it has
+  every pen, layer and tool, and goes with the notebook's search, export and sync.
+  Tap the highlight later to see the note again and write more; tap the window's
+  title strip for KOReader's menu for that highlight, whose "…" also has Handwritten
+  note. While the note has ink, the highlight's KOReader note reads "(Handwritten
+  note)" (unless it has a typed one), so it shows as a highlight with a note in
+  KOReader's lists and exports. A note left empty is not kept.
+- Make room in a book's text, for stickers, pictures and notes: the text moves out of
+  the way, and the font stays the same. Tap the Lasso a second time for its sheet and
+  pick Make room, then draw a box on the page. Move it or drag its corners; the page
+  shades exactly the space it will free before you make it. The room is the box you
+  drew, to the pixel: the lines beside it end at its edge and the text above and below
+  it keeps its width. A box at a side frees the space from that side of the text to
+  the box's far edge (text cannot run on both sides of a box); a wide box, or one that
+  would leave too little text beside it, goes across the page. The menu of anything
+  selected (a sticker, a picture, a shape, writing) also has Make room: the text moves
+  out of its way at once and it stays where it is, in its room. A room keeps its size
+  whatever the font, and what you draw or place in it stays in it when the text
+  moves, even to another page. The first room in a book loads the book again once (a
+  note says so while it does); every room after that, and any change, is a quick
+  layout. A paragraph holds one room, rooms cannot overlap, and a room in the lines a
+  page carries over from the page before starts where the next paragraph does. Tap a
+  room in the tool to resize it or remove it; when it holds something you choose to
+  delete that or let it follow the text. The Lasso's sheet lists the rooms in the book
+  and has a switch to hide them all, so the book reads as it was made. The book's file
+  is never changed: the rooms are a few style rules kept with the book's ink (so they
+  move with the book and go with cloud sync). In the book and web render modes they
+  are exact; in the legacy and flat modes, which do not float anything, a room is made
+  of whole paragraphs. Ink on later pages still follows its words; items pinned to
+  later pages stay on their page number, so a note says when a room may have put other
+  text under them. Not offered in a PDF or other fixed-page book, in continuous
+  scroll, or with two pages side by side.
+- Over a reflowing book, anything you select (ink, shapes, pictures, a sticker with
+  what is written on it) can be pinned to its page: the selection menu has "Pin to this
+  page". A pinned item does not follow the text when the font, margins or screen change:
+  it stays at the same spot on the same page number, as a fraction of the screen, so a
+  bigger screen keeps it in the same place. Everything else still follows its word, and
+  "Let it follow the text" takes the pin off. It is not offered in a PDF or other
+  fixed-page book (they never reflow), in continuous scroll, or with two pages side by side.
+- Stickers: ready-made notes, speech bubbles, marks, tape and little pictures, each
+  shown as a preview, a few to a page. Post-its come in many shapes, flat, curled,
+  torn, taped or pinned, and in any colour (the colour is remembered,
+  and so is the last one used); tap one to put it on the page, ready to move, resize
+  or turn. What you write on a note, with the pen or the Text tool, moves, turns and
+  resizes with it. Hold a sticker to hide it (it comes back in the sticker options)
+  or, for your own pictures added under Mine, to delete it. How many show to a page
+  is a setting. The Stickers button takes the place of the quick-note button in the
+  book toolbar and sits next to Image in the notebook toolbar; Settings can move it
+  under Image instead, for a crowded toolbar. Book notes stay one tap away from the
+  quick menu and their gesture. The built-in stickers are drawn by a few lines of
+  code each, so all of them take only a few kilobytes.
+- Connecting Dropbox no longer means typing a 40-letter code on the reader. When
+  the reader is on Wi-Fi, the QR code leads to a page the reader serves: on the
+  phone, tap Open Dropbox, tap Allow, paste the code on that page, and the reader
+  carries on by itself. The page lives only while the sign-in screen is open and
+  takes one code. With no Wi-Fi address, or if you prefer, "Type the code instead"
+  works as before. Google Drive only asks for a short code on the phone.
+- Cloud sync can carry more than notebooks, and each part is turned on or off on
+  its own under "What to sync": notebooks and drawings, book notes, ink on book
+  pages, imported PDFs and pictures, exports, screen clips, and your pens, colours
+  and preferences (only the choices that suit every reader, not folders or
+  screen and pen settings). Notebooks and
+  book notes stay on as before; the rest start off. A part that is off is left
+  alone on both sides. The ink on a book is matched across readers by the book's
+  checksum, whatever the file is called; if two readers drew on the same book
+  while apart, the ink from both is combined (a stroke erased on only one of them
+  can come back). KOReader's own highlights are not included.
+- Cloud sync also works with Google Drive. It shows a short code on the reader:
+  scan the QR code, type the code on the phone, tap Allow, and the reader carries
+  on by itself. Ink Away asks only for access to its own folder, and files it
+  removes go to the service's bin. Everything else, the safety rules included, is
+  the same as with Dropbox.
+- Cloud sync, with Dropbox first (Library, ..., Cloud sync). Connect on the
+  reader itself: scan a QR code with a phone, tap Allow, type the short code
+  Dropbox shows. Notebooks and drawings are kept the same on all your readers,
+  each through your own account and only in Ink Away's own folder. A newer
+  version is fetched when you open a notebook, and changes are sent after closing
+  a notebook, after a pause in drawing, on a timer, when the reader sleeps, or
+  with Sync now; all of those are yours to choose, and Wi-Fi is turned on by
+  itself only if you allow it. Syncing runs in the background, and a notebook
+  open in the editor is never replaced.
+- Cloud sync never loses work. The version on this reader is copied to a backup
+  folder (kept 30 days) before anything replaces or removes it, a file changed on
+  two readers is kept twice (the cloud's under its own name, this reader's as
+  "Name (conflict Reader date)") to settle from the Conflicts list, a deletion
+  never wins over an edit, a run that would delete much of the library stops, and
+  earlier versions of a notebook can be brought back. Every problem has a code
+  (IA-S101 and so on) with what happened and what to do, and a sync log.
+- A notebook made on another reader keeps its own page size and is fitted to the
+  screen, instead of taking the screen's size and cropping what was written
+  beyond it. Notebooks made for the same screen are unchanged. The pictures and
+  PDF a notebook uses are found on the other reader, and those outside the
+  library are brought along by the sync.
+- Copy a rectangular part of a book page, from the Image tool of the annotation
+  mode (Clip the page) or from Tools, Ink Away, Copy part of the screen, by
+  dragging the pen or tapping two opposite corners. Check the outlined area,
+  select it again or cancel before copying, then paste the picture into a
+  notebook with the lasso or page menu.
+- Screen clips left in the "screen clips" folder are deleted after a week. In that
+  folder, the ... button of the library sets it: turn it off, keep clips for 1, 3,
+  7, 14 or 30 days, or delete them all now. A clip you paste or add to a page, or
+  use as a background, is copied into it first, so it stays.
+  Capture activates immediately, with a small corner symbol instead of an
+  instruction dialog.
+- Start a screen clip with a two-finger swipe from the top left to the bottom
+  right while reading. The shortcut is assigned only if free, and the action
+  can be assigned to another gesture in KOReader's gesture manager.
+- Change a highlight's colour by tapping it in the annotation mode. A tap with a
+  navigating finger, the lasso or Pan, or a single tap with the highlighter on text
+  already highlighted, opens a sheet of colours (hold still offers to remove it).
+  The list is yours: hold a colour to take it off, add colours of your own from the
+  colour wheel, or Reset colours. It is one undo step, and exports follow the new colour.
+
+- Ink Away has an icon in KOReader's own top menu bar, next to the main menu, in the file browser and in a book. It opens a quick menu: annotate the book, the book's notes, copy part of the page, open Ink Away and its library, and the cloud sync, each with the gesture that does the same on that reader (the one Ink Away set or the one the reader chose). The icon is the annotate pen, an SVG, so it draws the same on grey and colour screens. It can be switched off in Settings (Files) or Tools, Ink Away, and the quick menu can also be put on a gesture.
+- Settings no longer scrolls, on colour or grey screens, in portrait or landscape: it is four short tabs (Screen, Colour on colour screens, Page, Files), and the one last used opens first. The Gestures and Updates buttons stay on every tab.
+- The cloud sync screens now say, and keep saying, that syncing by itself can slow the reader and use battery: on the connect screen, on the main sheet while anything is automatic, and on Sync automatically, where each switch says what it costs and a Manual only button turns them all off. Getting the latest when opening a notebook is now off until you turn it on, since it is the one setting that can make opening wait (up to 6 seconds).
+- A cloud icon opens the cloud sync from the library's top bar and from the settings sheets (next to the coffee in Settings, and in the book ink settings). The sync sheet no longer scrolls: when to sync and what to sync each have a screen of their own.
+- Cloud sync: on a reader whose data folder is a relative path (a Kindle's), the safety copy made before a downloaded notebook replaces yours could not be created, so those downloads failed with IA-S402 ("Cannot write a file"). Fixed.
+- Cloud sync: tapping Sync now while a sync was already going (the one a closing
+  book starts) no longer says "Not signed in"; the sheet just shows it going. A stop
+  request now belongs to one run, so an old one can never stop a later run. The
+  sync log and the list of problems say what went wrong, not only the code (the system's own reason when a file cannot be written). The conflict screen says which version is this reader's and which is the other reader's (with sizes), and what each choice does here and on the other reader. Ink on a book is joined by a
+  small file named after the book, so its folder in the cloud says which book it is.
+
+### Fixed
+
+- The screen clip confirmation stays above the selected area, and small pen
+  movements no longer cancel the capture.
+
 ## [4.4.0] - 2026-10-31
 
 Your annotations leave the reader: any book can be exported with its ink and
@@ -887,7 +1071,11 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.2...HEAD
+[4.4.2]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.1...v4.4.2
+[4.4.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.0...v4.4.1
+[4.4.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.3.0...v4.4.0
+[4.3.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.1...v4.2.0
 [4.1.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.1.0...v4.1.1
 [4.1.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.0.1...v4.1.0

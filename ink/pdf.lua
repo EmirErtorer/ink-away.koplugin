@@ -18,6 +18,25 @@ letter widths, so a selection tracks the line closely, not to the pixel.
 
 local Pdf = {}
 
+-- Is the file at `path` a PDF? KOReader calls every book MuPDF opens "PDF"
+-- (comic archives, CBZ and CBR, among them), but only a PDF can be copied with
+-- its annotations written in. Its header, "%PDF-", is in its first 1024 bytes,
+-- as the PDF specification and the readers allow (some files have bytes before
+-- it). Remembered per path. From Kristan Laimon's PR #80.
+local real_pdf = {}
+function Pdf.isPDF(path)
+    if type(path) ~= "string" then return false end
+    local known = real_pdf[path]
+    if known ~= nil then return known end
+    local f = io.open(path, "rb")
+    if not f then return false end
+    local head = f:read(1024) or ""
+    f:close()
+    local yes = head:find("%PDF-", 1, true) ~= nil
+    real_pdf[path] = yes
+    return yes
+end
+
 local Stream = {}
 Stream.__index = Stream
 

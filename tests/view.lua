@@ -2174,6 +2174,67 @@ do
     view:onCloseWidget()
 end
 
+-- ---- input.lua replaced by another pen plugin: said on open, once each start ----
+do
+    local Stylus = require("ink/stylus")
+    ok(Stylus.INPUT_NOTICE == false, "input.lua: the note is switched off in the file for now")
+    Stylus.INPUT_NOTICE = true   -- (the rest of this block is the note as it will be when switched on)
+    UIManager.reset()
+    G_reader_settings.data.inkaway_welcome_seen = true
+    local inp = require("device").input
+    local InkAwayView = dofile("ink/view.lua")
+    local function said() return UIManager.shown and UIManager.shown.text and UIManager.shown.text:find("input.lua", 1, true) end
+    inp.routeStylusEvents = function(self) return self.stylus_eraser_active end   -- KOReader's own
+    local view = InkAwayView:new{}
+    UIManager:show(view)
+    ok(not said(), "input.lua: KOReader's own says nothing")
+    view:onCloseWidget()
+    inp.routeStylusEvents = function(self) return self.kobo_eraser_active end     -- pencil.koplugin's
+    UIManager.reset()
+    local view2 = InkAwayView:new{}
+    UIManager:show(view2)
+    ok(said(), "input.lua: another plugin's copy is said on open")
+    view2:onCloseWidget()
+    UIManager.reset()
+    local view3 = InkAwayView:new{}
+    UIManager:show(view3)
+    ok(not said(), "input.lua: said once each start, not each time Ink Away opens")
+    view3:onCloseWidget()
+    -- "Don't show this again": kept in the settings, so no later start says it either
+    local function fresh()   -- (a new KOReader start: the told flag is per start, so reload the part)
+        UIManager.reset()
+        package.loaded["ink/view/settings"] = nil
+        local v = dofile("ink/view.lua"):new{}
+        UIManager:show(v)
+        return v
+    end
+    local v4 = fresh()
+    ok(said(), "input.lua: said again on a new start")
+    ok(v4._message and v4._message.text, "input.lua: and held as a message sheet")
+    local toggled
+    local function press_toggle(w, seen)
+        seen = seen or {}
+        if type(w) ~= "table" or seen[w] then return end
+        seen[w] = true
+        if w.label == "Don't show this again" and w.callback and not toggled then toggled = true; w.callback(true); return end
+        for k, c in pairs(w) do if k ~= "parent" and k ~= "show_parent" then press_toggle(c, seen) end end
+    end
+    press_toggle(v4._message)
+    ok(toggled and G_reader_settings.data.inkaway_input_notice_never == true, "input.lua: the switch is kept in KOReader's settings")
+    v4:onCloseWidget()
+    local v5 = fresh()
+    ok(not said(), "input.lua: after Don't show this again, a later start says nothing")
+    v5:onCloseWidget()
+    G_reader_settings.data.inkaway_input_notice_never = nil
+    -- the switch in the file off: nothing said whatever the file looks like
+    Stylus.INPUT_NOTICE = false
+    local v6 = fresh()
+    ok(not said(), "input.lua: switched off in the file, nothing is said")
+    v6:onCloseWidget()
+    inp.routeStylusEvents = nil
+    G_reader_settings.data.inkaway_welcome_seen = nil
+end
+
 -- ---- the notice the first time Ink Away opens: once, and the device tip with it ----
 do
     UIManager.reset()
@@ -3652,6 +3713,31 @@ do
     view2.bg_path = nil; view2:markDirty(); view2:saveDocument()
     ok(Project.load(first).bg == nil, "doc: and dropped once it is removed")
 
+    -- a notebook opens on the page it was left on, found by the page, not its number
+    view2:newNotebook("lines")
+    view2:nbAddPage(); view2:nbAddPage(); view2:nbAddPage()
+    stroke(view2, 300, 300)
+    view2:saveDocument(true)
+    local nbpath = view2.doc_path
+    view2:nbGoTo(3)
+    local left_on = view2.notebook.pages[3].id
+    local function bytes(p) local f = io.open(p, "rb"); local s = f and f:read("*a"); if f then f:close() end; return s end
+    local raw = bytes(nbpath)
+    view2:openDocument(first)
+    ok(view2:openDocument(nbpath) and view2.notebook.index == 3, "last page: a notebook opens where it was left")
+    ok(raw ~= nil and bytes(nbpath) == raw, "last page: turning pages leaves its file alone")
+    view2:nbGoTo(1); view2:nbAddPage()           -- a page before it: it is the 4th now
+    view2:nbGoTo(4)
+    ok(view2.notebook.pages[4].id == left_on, "last page: (the same page, one further on)")
+    view2:nbGoTo(2); view2:nbGoTo(4)
+    view2:saveDocument(true)
+    view2:openDocument(first)
+    view2:openDocument(nbpath)
+    ok(view2.notebook.index == 4 and view2.notebook.pages[4].id == left_on, "last page: found again by the page")
+    view2:renameDocument("Left open")
+    view2:openDocument(first)
+    ok(view2:openDocument(LIB .. "/Left open.inkaway") and view2.notebook.index == 4, "last page: kept when it is renamed")
+
     -- notebooks: the cached save matches a full save, through page turns, undo
     -- and new pages, and closing on a blank page keeps every page
     view2:beginDocument("notebook", nil, function()
@@ -3806,7 +3892,10 @@ do
     -- a new folder from the header's + Folder, then a new drawing made inside it
     local plus_new
     for _, a in ipairs(lib.actions) do if a[1] == "+ New" then plus_new = a end end
-    ok(plus_new and plus_new[3] and #lib.actions == 3, "lib: one filled + New sits in the header, with Search and the menu")
+    ok(plus_new and plus_new[3] and #lib.actions == 4, "lib: one filled + New sits in the header, with Search, the cloud and the menu")
+    local cloud_btn
+    for _, a in ipairs(lib.actions) do if a.icon and a.icon:find("cloud.svg", 1, true) then cloud_btn = a end end
+    ok(cloud_btn ~= nil, "lib: a cloud icon opens the sync sheet, next to the menu")
     plus_new[2]()
     local new_sheet = view._library_new
     ok(new_sheet and findButton(new_sheet, "Drawing") and findButton(new_sheet, "Notebook") and findButton(new_sheet, "Folder"),
@@ -4185,7 +4274,7 @@ do
     ok(view.nb_bar_h == view.toolbar:getSize().h, "pages: the bottom bar is as tall as the toolbar")
     ok(ov.w >= view._btn_w and plus.w >= view._btn_w and view._nb_prev.w >= view._btn_w
         and view._nb_next.w >= view._btn_w, "pages: each bar button is at least a toolbar button wide")
-    ok(cnt.w >= 2 * view._btn_w, "pages: and the counter has two columns' room between them")
+    ok(cnt.w >= 2 * view._btn_w - 2, "pages: and the counter has two columns' room between them")
     ok(view._nb_prev.w >= 1.4 * view._btn_w and view._nb_next.w >= 1.4 * view._btn_w
         and view._nb_prev.x + view._nb_prev.w <= ov.x and plus.x + plus.w <= view._nb_next.x,
         "pages: Prev and Next take taps further in, clear of the middle buttons")
@@ -5331,6 +5420,7 @@ do
         ok(Palette.sameColor(view:paperRGB(), black), "paper: a tap puts the notebook on it")
         ok(view._paper_colour ~= nil, "paper: the sheet stays to try another")
         view:closeSheet("_paper_colour")
+        G_reader_settings.data.inkaway_settings_tab = "page"
         view:openSettings()
         local seen, label = {}, nil
         local function find(w)
@@ -5438,6 +5528,7 @@ do
     UIManager:show(view)
     ok(Accent.get().key == "159,214,101" and Accent.get().chromatic and Accent.get().text == BB.COLOR_BLACK,
         "accent: Ink Away green until another is chosen, with black text on it")
+    G_reader_settings.data.inkaway_settings_tab = "colour"
     view:openSettings()
     ok(says(view._settings_dialog, "Theme Color"), "accent: a colour screen's settings offer it")
     view:chooseAccent()
@@ -6755,6 +6846,7 @@ do
     view = dofile("ink/view.lua"):new{}
     UIManager:show(view)
     ok(view.live_colour == true, "live colour: on by default")
+    G_reader_settings.data.inkaway_settings_tab = "colour"
     view:openSettings()
     local t = find(view._settings_dialog, labelled("Colour while drawing"))
     ok(t ~= nil and t.callback ~= nil, "live colour: offered on a colour screen")
@@ -6763,6 +6855,37 @@ do
     view:closeSheet("_settings_dialog")
     UIManager:close(view)
     G_reader_settings.data.inkaway_live_colour = nil
+    -- Settings is four short tabs (three on a grey screen), so it never scrolls
+    G_reader_settings.data.inkaway_settings_tab = nil
+    UIManager.reset()
+    view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    view:openSettings()
+    local dlg = view._settings_dialog
+    for _i, tab in ipairs({ "Screen", "Colour", "Page", "Files" }) do
+        ok(find(dlg, labelled(tab)) ~= nil, "settings tabs: " .. tab .. " on a colour screen")
+    end
+    ok(find(dlg, labelled("Toolbar side")) ~= nil and find(dlg, labelled("Ghosting")) ~= nil, "settings tabs: Screen opens first, with the toolbar and ghosting")
+    ok(find(dlg, labelled("Symmetry")) == nil and find(dlg, labelled("Theme Color")) == nil, "settings tabs: and not the other tabs' choices")
+    ok(find(dlg, labelled("Gestures and pen buttons")) ~= nil, "settings tabs: the gestures and Updates stay on every tab")
+    pressIn(dlg, "Page")
+    dlg = view._settings_dialog
+    ok(find(dlg, labelled("Symmetry")) ~= nil and find(dlg, labelled("Toolbar side")) == nil, "settings tabs: tapping Page shows the page choices")
+    ok(G_reader_settings.data.inkaway_settings_tab == "page", "settings tabs: the last one is remembered")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    Device.hasColorScreen = function() return false end
+    UIManager.reset()
+    view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    G_reader_settings.data.inkaway_settings_tab = "colour"
+    view:openSettings()
+    dlg = view._settings_dialog
+    ok(find(dlg, labelled("Colour")) == nil and find(dlg, labelled("Page")) ~= nil, "settings tabs: no Colour tab on a grey screen")
+    ok(find(dlg, labelled("Toolbar side")) ~= nil, "settings tabs: and a remembered Colour tab falls back to Screen")
+    view:closeSheet("_settings_dialog")
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_settings_tab = nil
     Device.hasColorScreen = had
     require("ink/accent").set(nil)
     UIManager.reset()

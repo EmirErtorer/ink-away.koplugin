@@ -392,7 +392,9 @@ end
 
 function InkAwayView:onShow()
     self:installRawFinger()
+    self:startAndroidWindow()
     self:startEinkDrive()
+    self:startBooxInk()
     self:startElipsaDrive()
     UIManager:setDirty(self, "full")
     -- opened here rather than a tick later, so its refresh joins the canvas's and
@@ -409,6 +411,8 @@ function InkAwayView:onShow()
         self._note_on_show = nil
     elseif self:welcomeDue() then
         self:showWelcome()       -- once: the book features and their gestures
+    elseif self:inputFileDue() then
+        self:inputFileNotice()   -- once each start: input.lua is another plugin's copy
     elseif self:onAndroid() then
         self:deviceTips(false)   -- once, on readers that still need it
     end
@@ -426,12 +430,15 @@ end
 function InkAwayView:onSuspend()
     self:cancelOcrApi()
     self:stopElipsaDrive()
+    self:stopBooxInk()      -- (the firmware never inks on a sleeping screen)
     self:stopSendForSleep()
 end
 
--- The reader wakes with Ink Away open: the display helper comes back.
+-- The reader wakes with Ink Away open: the display helper comes back, and so
+-- does Boox's pen layer.
 function InkAwayView:onResume()
     self:startElipsaDrive()
+    self:startBooxInk()
 end
 
 function InkAwayView:onCloseWidget()
@@ -439,7 +446,9 @@ function InkAwayView:onCloseWidget()
     self:cancelOcrApi()
     self:updatesOnClose()
     self:uninstallRawFinger()
+    self:stopBooxInk()
     self:stopEinkDrive()
+    self:stopAndroidWindow()
     self:stopElipsaDrive()
     self:removePenBridge()
     self:releaseStylus()   -- the pen goes back to the view under this one, if any
@@ -459,6 +468,7 @@ function InkAwayView:onCloseWidget()
         self._export_job = nil
     end
     self:stopSend()   -- the reader stops sharing over Wi-Fi with Ink Away
+    self:stopCodePage()
     if self._search_job then self._search_job.abort(); self._search_job = nil end
     self._clip_bubble, self._clip_press, self._pen_hold_at = nil, nil, nil
     local tm = self._text_btn_metrics
@@ -563,6 +573,14 @@ function InkAwayView:onIaTouch(_, ges)
     if self._clip_bubble then
         if self:inClipBubble(pos) then self._clip_press = true; return true end
         self:hideClipBubble()
+    end
+    -- (on a viewer plugin's page the drawing area is its page's part of the screen,
+    -- and a text box's Format and Done can sit just outside it)
+    if self._reader_viewport and pos and self.editing_text and self.tool == "text" then
+        local b = self:textEditButtons()
+        if InkGeom.inRect(pos.x, pos.y, b.done) or InkGeom.inRect(pos.x, pos.y, b.format) then
+            return self:textToolTouch(pos)
+        end
     end
     if not pos or not self:inArea(pos.x, pos.y) then return false end
     self._swallow = nil   -- a new touch: any straightened stroke's contact is over
@@ -747,7 +765,8 @@ function InkAwayView:onIaTap(_, ges)
         local nav = self._finger_nav
         self._finger_nav = nil
         local link = nav.mode == "navigate" and ges and ges.pos and self:linkAtScreen(ges.pos.x, ges.pos.y)
-        if link then self:followLink(link) end
+        if link then self:followLink(link)
+        elseif nav.mode == "navigate" and ges and ges.pos and self.highlightTap then self:highlightTap(ges.pos) end
         return true
     end
     if self._clip_press then
@@ -780,6 +799,11 @@ function InkAwayView:onIaTap(_, ges)
         local link = self._link_press
         self._link_press, self.pan_last = nil, nil
         self:followLink(link)
+        return true
+    end
+    -- a tap on a highlight with Pan offers its colours (in a book)
+    if self.tool == "pan" and self.highlightTap and not self.sel_drag and ges and ges.pos
+       and self:highlightTap(ges.pos) then
         return true
     end
     -- a tap on the selection (its touch began a drag that never moved) opens its
@@ -936,6 +960,9 @@ function InkAwayView:paintTo(bb, x, y)
     local v = self.view
     -- rebuild area_bb if the screen's pixel order changed (see view/display.lua)
     self:matchAreaTarget()
+    -- a Boox's pen layer follows the tool, the pen and the layout, which every
+    -- change of them paints (it sends nothing when nothing changed)
+    if self._boox_ink and not self.capturing then self:booxInkUpdate() end
     -- During a stroke or shape drag only `_blit_rect` changed, and an area-only
     -- refresh (areaScreenRect) never covers the toolbar or the notebook bar, so
     -- both skip the chrome; on a software-rotated screen redrawing it is slow.
@@ -1038,7 +1065,7 @@ end
 local PARTS = { "viewport", "display", "compose", "stroke", "shapes", "images", "imagebrowser",
     "textedit", "textformat", "lasso", "notebook", "overview", "export", "exportbook", "document", "library", "input", "toolbar", "menus",
     "settings", "sheetkit", "handwriting", "ocrapi", "wipe", "jobs", "search", "trash", "selection", "links", "wash", "smudge", "pencase", "gestures", "welcome", "guide",
-    "paper", "updates", "layers", "keys", "share", "receive", "dialogs", "erasecursor" }
+    "paper", "updates", "layers", "keys", "share", "codepage", "stickers", "receive", "dialogs", "erasecursor", "sync" }
 for _, part in ipairs(PARTS) do
     for name, fn in pairs(require("ink/view/" .. part)) do
         assert(rawget(InkAwayView, name) == nil, "two definitions of InkAwayView." .. name)

@@ -2,6 +2,9 @@
 -- never touches a real KOReader folder, and settings to go with it.
 local TestEnv = {}
 
+-- (a developer's own cloud keys, ink/sync/localkeys.lua, must not change what the tests see)
+_G.INKAWAY_NO_LOCALKEYS = true
+
 local dir
 
 -- A fresh empty folder for this run, made once.

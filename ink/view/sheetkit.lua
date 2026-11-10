@@ -46,8 +46,8 @@ local function vspan(px) return VerticalSpan:new{ width = Screen:scaleBySize(px)
 -- A cached image as a Button label. The cache owns the buffer, so the widget must
 -- not free it, and fgcolor must be set: Button's tap highlight inverts
 -- label_widget.fgcolor whenever `text` is set (ours is ""), and a nil one crashes.
-local function imageLabel(bb, w, h)
-    return ImageWidget:new{ image = bb, width = w, height = h,
+local function imageLabel(bb, w, h, alpha)
+    return ImageWidget:new{ image = bb, width = w, height = h, alpha = alpha,
         image_disposable = false, fgcolor = BLACK }
 end
 
@@ -227,27 +227,39 @@ end
 
 -- A wide action tile for a main choice: a black button with a white icon on the
 -- left, a bold title and a small note under it; `hold_cb` adds a long-press
--- action (the note can say so).
-function InkAwayView:actionTile(icon, title, note, w, cb, hold_cb)
+-- action (the note can say so). `glyph` (an icon name) is drawn small at the
+-- right edge, as the picture of a gesture is. `style` "compact" makes it smaller and
+-- "quiet" smaller still and grey, for a menu of several (the quick menu).
+function InkAwayView:actionTile(icon, title, note, w, cb, hold_cb, glyph, style)
     local a = Accent.get()
-    local h = Screen:scaleBySize(76)
-    local isz = Screen:scaleBySize(34)
-    local pad = Screen:scaleBySize(20)
+    local small = style == "compact" or style == "quiet"
+    local quiet = style == "quiet"
+    local h = Screen:scaleBySize(small and 54 or 76)
+    local isz = Screen:scaleBySize(small and 26 or 34)
+    local pad = Screen:scaleBySize(small and 14 or 20)
+    local gsz = Screen:scaleBySize(small and 24 or 30)
+    local fg, notefg = quiet and BLACK or a.text, quiet and HINT or a.note
+    local gw = glyph and self:tileIcon(glyph, gsz, not quiet) or nil
+    local room = w - 3 * pad - isz - (gw and (gsz + pad) or 0)
     local texts = VerticalGroup:new{ align = "left",
-        TextWidget:new{ text = title, face = Font:getFace("cfont", 20), bold = true, fgcolor = a.text,
-            max_width = w - 3 * pad - isz },
-        vspan(2),
-        TextWidget:new{ text = note, face = Font:getFace("cfont", 13),
-            fgcolor = a.note, max_width = w - 3 * pad - isz } }
-    local iw = self:tileIcon(icon, isz, true) or HorizontalSpan:new{ width = isz }
+        TextWidget:new{ text = title, face = Font:getFace("cfont", small and 17 or 20), bold = true, fgcolor = fg,
+            max_width = room },
+        vspan(small and 1 or 2),
+        TextWidget:new{ text = note, face = Font:getFace("cfont", small and 12 or 13),
+            fgcolor = notefg, max_width = room } }
+    local iw = self:tileIcon(icon, isz, not quiet) or HorizontalSpan:new{ width = isz }
     -- left aligned: the trailing span fills the rest of the tile
-    local used = pad + isz + pad + texts:getSize().w
+    local used = pad + isz + pad + texts:getSize().w + (gw and (gsz + pad) or 0)
     local row = HorizontalGroup:new{ align = "center",
         HorizontalSpan:new{ width = pad }, iw, HorizontalSpan:new{ width = pad }, texts,
         HorizontalSpan:new{ width = math.max(0, w - used) } }
-    if a.chromatic then return self:accentButton(w, h, Screen:scaleBySize(16), row, cb, hold_cb) end
+    if gw then
+        row[#row + 1] = gw
+        row[#row + 1] = HorizontalSpan:new{ width = pad }
+    end
+    if a.chromatic and not quiet then return self:accentButton(w, h, Screen:scaleBySize(16), row, cb, hold_cb) end
     local b = Button:new{ icon = "inkaway." .. icon, icon_width = 1, icon_height = 1,
-        width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(16), background = a.fill,
+        width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(16), background = quiet and TILE_BG or a.fill,
         margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     self:setButtonLabel(b, row)
     return b
@@ -351,6 +363,19 @@ end
 -- A small grey line of text in a sheet; a section heading when `bold`.
 function InkAwayView:sheetLabel(text, bold)
     return TextWidget:new{ text = text, face = Font:getFace("cfont", 15), bold = bold, fgcolor = LABEL }
+end
+
+-- A setting on one line: its name on the left, the choices (a segmented row) on
+-- the right. Saves a line over a label above the row, so a sheet of several fits
+-- a landscape screen without scrolling.
+function InkAwayView:labelledRow(label, options, current, width, onpick)
+    local gap = Screen:scaleBySize(12)
+    local lw = math.floor(width * 0.44)
+    local text = TextWidget:new{ text = label, face = Font:getFace("cfont", 16), bold = true, fgcolor = LABEL,
+        max_width = lw - gap }
+    return HorizontalGroup:new{ align = "center", text,
+        HorizontalSpan:new{ width = lw - text:getSize().w },
+        self:segmentedRow(options, current, width - lw, onpick) }
 end
 
 -- A grey explanation under a control, wrapped to `width`.
@@ -494,8 +519,8 @@ end
 
 -- A tappable rounded tile filled with `rgb`. A grey uses a Color8 fill, rounded
 -- in C. KOReader rounds an RGB32 fill pixel by pixel in Lua, which is slow, so a
--- colour tile is drawn once into an image (white corners, like the sheet) and
--- reused for every later paint.
+-- colour tile is drawn once into an image and reused for every later paint. Its
+-- corners are clear: white ones would cover the inside of a swatch's ring.
 function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
     local fill = uiFill(rgb)
     -- a swatch is the colour it gives, in dark too
@@ -511,7 +536,7 @@ function InkAwayView:colourTileButton(rgb, w, h, radius, cb, hold_cb)
         callback = cb, hold_callback = hold_cb, show_parent = self }
     local ok, img_bb = pcall(function() return self:cachedColourTile(rgb, w, h, radius) end)
     if ok and img_bb and b.label_container then
-        self:setButtonLabel(b, imageLabel(img_bb, w, h))
+        self:setButtonLabel(b, imageLabel(img_bb, w, h, true))
     else
         b.frame.background = fill   -- fall back to the plain (slow) colour fill
     end
@@ -521,14 +546,55 @@ end
 function InkAwayView:cachedColourTile(rgb, w, h, radius)
     local cache = self._wave_cache
     if not cache then cache = {}; self._wave_cache = cache end
-    local id = table.concat({ "tile", rgb[1], rgb[2], rgb[3], w, h, radius, Screen.bb:getType() }, "|")
+    local id = table.concat({ "tile", rgb[1], rgb[2], rgb[3], w, h, radius }, "|")
     local e = cache[id]
     if e then return e.bb end
-    local bb = Blitbuffer.new(w, h, Screen.bb:getType())
-    bb:paintRect(0, 0, w, h, WHITE)
+    local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BBRGB32)   -- starts fully clear
     bb:paintRoundedRectRGB32(0, 0, w, h, Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF), radius)
     cache[id] = { bb = bb }
     return bb
+end
+
+-- A copy of the picture `bb` with its corners rounded off (radius r, clear
+-- outside, the edge pixel partly so), to show inside a rounded frame without
+-- its square corners covering the frame. Drawn once per picture: only the four
+-- r x r corners are touched.
+function InkAwayView:roundedImage(bb, r)
+    local cache = self._wave_cache
+    if not cache then cache = {}; self._wave_cache = cache end
+    local id = "round|" .. tostring(bb) .. "|" .. r
+    local e = cache[id]
+    if e then return e.bb end
+    local w, h = bb:getWidth(), bb:getHeight()
+    local rgb = Screen.bb:getType() == Blitbuffer.TYPE_BBRGB32
+    local out = Blitbuffer.new(w, h, rgb and Blitbuffer.TYPE_BBRGB32 or (Blitbuffer.TYPE_BB8A or Blitbuffer.TYPE_BBRGB32))
+    out:blitFrom(bb, 0, 0, 0, 0, w, h)
+    r = math.min(r, math.floor(w / 2), math.floor(h / 2))
+    for dy = 0, r - 1 do
+        for dx = 0, r - 1 do
+            -- how much of this corner pixel lies inside the curve (kept half a pixel
+            -- within it, as KOReader draws the tile's own rounded background)
+            local ex, ey = r - dx - 0.5, r - dy - 0.5
+            local cover = r - math.sqrt(ex * ex + ey * ey)
+            if cover < 1 then
+                -- premultiplied, as ImageWidget blends a picture it is given
+                local f = math.max(0, cover)
+                local alpha = math.floor(f * 0xFF + 0.5)
+                local function pm(v) return math.floor(v * f + 0.5) end
+                for _i, p in ipairs({ { dx, dy }, { w - 1 - dx, dy }, { dx, h - 1 - dy }, { w - 1 - dx, h - 1 - dy } }) do
+                    local c = out:getPixel(p[1], p[2])
+                    if out:getType() == Blitbuffer.TYPE_BBRGB32 then
+                        c = c:getColorRGB32()
+                        out:setPixel(p[1], p[2], Blitbuffer.ColorRGB32(pm(c.r), pm(c.g), pm(c.b), alpha))
+                    else
+                        out:setPixel(p[1], p[2], Blitbuffer.Color8A(pm(c:getColor8().a), alpha))
+                    end
+                end
+            end
+        end
+    end
+    cache[id] = { bb = out }
+    return out
 end
 
 -- A colour swatch tile: a rounded colour square with a thin black border (thicker

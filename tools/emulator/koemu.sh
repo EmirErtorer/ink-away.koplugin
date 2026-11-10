@@ -35,6 +35,7 @@ device_spec() {
     case "$1" in
         kindle-basic)      echo "600 800 167 1" ;;   # entry Kindle
         paperwhite)        echo "1072 1448 300 1" ;;  # PW3/PW4 era
+        paperwhite-colour) echo "1072 1448 300 0" ;;  # Paperwhite size, colour screen
         paperwhite5)       echo "1236 1648 300 1" ;;  # PW 6.8in
         oasis)             echo "1264 1680 300 1" ;;
         scribe)            echo "1860 2480 300 1" ;;  # 10.2in, pen
@@ -53,7 +54,7 @@ device_spec() {
     esac
 }
 
-DEVICES="kindle-basic paperwhite paperwhite5 oasis scribe fit colorsoft \
+DEVICES="kindle-basic paperwhite paperwhite-colour paperwhite5 oasis scribe fit colorsoft \
 kobo-clara clara-colour kobo-libra libra-colour kobo-sage kobo-elipsa \
 kobo-forma kobo-aura-one hidpi"
 

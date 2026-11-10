@@ -29,6 +29,8 @@ local Canvas = require("ink/canvas")
 local InkAwayView = require("ink/view")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 local VBar = require("ink/reader/vbar")
+local HLColour = require("ink/reader/hlcolour")
+local RoomsUI = require("ink/reader/roomsui")
 
 local Screen = Device.screen
 
@@ -39,6 +41,8 @@ local ReaderInkView = InkAwayView:extend{
     book = nil,          -- ink/reader/book.lua
 }
 VBar.into(ReaderInkView)
+HLColour.into(ReaderInkView)
+RoomsUI.into(ReaderInkView)
 
 ------------------------------------------------------------------------------
 -- Start and layout
@@ -82,11 +86,64 @@ function ReaderInkView:placeToolbar()
         else v.area_h = H - t; self._bar_y = H - t end
     end
     v.pan_x, v.pan_y = v.area_x, v.area_y
+    if self.book and self.book.surface then self:fitSurface() else self._reader_viewport = nil end
     if self._toolbar_hidden then self[1] = nil else self[1] = self.toolbar end
+end
+
+-- On a viewer plugin's page (see ink/integration.lua): the viewer is told the
+-- room the toolbar leaves (it may fit its page into it, and says so), and the
+-- drawing area is its page's part of the screen (its controls and margins stay
+-- out of it). The text edit buttons keep to the toolbar-free room.
+function ReaderInkView:fitSurface()
+    local v, surface = self.view, self.book.surface
+    self._reader_viewport = { area_x = v.area_x, area_y = v.area_y, area_w = v.area_w, area_h = v.area_h }
+    if surface.setViewport then
+        local ok, changed = pcall(surface.setViewport, surface, { x = v.area_x, y = v.area_y, w = v.area_w, h = v.area_h },
+            function(reflow)
+                if self.closing or self.book._view ~= self then return end
+                self:flushPending()
+                self:prepareSurfaceLayout()
+                reflow()
+                self._surface_layout_changed = true
+                self:loadBookPage()
+                self:composeCanvas()
+                self:renderView()
+                UIManager:setDirty(self, "ui")
+            end)
+        if not ok then self.book.integration:report(surface, changed) end
+        self._surface_layout_changed = self._surface_layout_changed or (ok and changed) or nil
+    end
+    -- (a viewer laid out again has new widgets, whose place its snapshot settles first)
+    local cok, clip = true, nil
+    if not self._surface_layout_changed then cok, clip = pcall(surface.clip, surface) end
+    if cok and clip then
+        local right = math.min(v.area_x + v.area_w, clip.x + clip.w)
+        local bottom = math.min(v.area_y + v.area_h, clip.y + clip.h)
+        v.area_x, v.area_y = math.max(v.area_x, clip.x), math.max(v.area_y, clip.y)
+        v.area_w, v.area_h = math.max(1, right - v.area_x), math.max(1, bottom - v.area_y)
+        v.pan_x, v.pan_y = v.area_x, v.area_y
+    elseif not cok then
+        self.book.integration:report(surface, clip)
+    end
+end
+
+-- Before a viewer plugin changes where its page is: what is in hand is finished
+-- and kept, with the old geometry. Nothing on the reader's own page.
+function ReaderInkView:prepareSurfaceLayout()
+    local surface = self.book and self.book.surface
+    if not (surface and surface.setViewport) then return end
+    self:cancelShape()
+    if self.editing_text then self:finishTextEdit(true) end
+    self:resetLasso()
+    self:saveDocument()
 end
 
 -- After the toolbar moved or hid: a new on-screen buffer for the area, drawn.
 function ReaderInkView:areaChanged()
+    if self._surface_layout_changed then   -- (a viewer plugin laid its page out again)
+        self:loadBookPage()
+        self:composeCanvas()
+    end
     if self.area_bb then self.area_bb:free() end
     self.area_bb = self:newAreaBuffer()
     self:renderView()
@@ -99,6 +156,7 @@ end
 function ReaderInkView:setToolbarSide(side)
     if not SIDES[side] or side == self._bar_side then return end
     self:flushPending()
+    self:prepareSurfaceLayout()
     self:setSetting("inkaway_book_toolbar_side", side)
     self._bar_side = side
     self:buildToolbar()
@@ -116,11 +174,23 @@ function ReaderInkView:openStartDocument()
     self:loadBookPage()
 end
 
--- The page shown by the reader, and its ink.
+-- The page shown by the reader (or the viewer plugin showing it), and its ink.
 function ReaderInkView:loadBookPage()
     local W, H = self.view.canvas_w, self.view.canvas_h
+    local surface = self.book.surface
+    if surface and surface.setViewport then
+        -- (a turn may have given the viewer new widgets though the room is the
+        -- same: its snapshot settles where they are before its clip is asked)
+        self._surface_layout_changed = true
+        self:placeToolbar()
+    end
     if not self.bg_bb then self.bg_bb = Blitbuffer.new(W, H, Screen.bb:getType()) end
     self.book:snapshot(self.bg_bb)
+    if surface then
+        self._surface_layout_changed = nil
+        self:placeToolbar()
+        if self.area_bb then self.area_bb:free(); self.area_bb = self:newAreaBuffer() end
+    end
     local placed = self.book:pageOps()
     local ops, from = {}, {}
     for i, op in ipairs(placed and placed.ops or {}) do
@@ -132,6 +202,7 @@ function ReaderInkView:loadBookPage()
     self._shown = placed and placed.items or {}
     self.canvas:setOps(ops)
     self._committed_rev = self.canvas.rev
+    self._anchored_rev = self.canvas.rev   -- (just placed from the book: nothing to anchor)
     self.dirty = false
 end
 
@@ -177,6 +248,18 @@ end
 function ReaderInkView:takeStroke(op)
     if op.kind == "erase" then return self:cutWithEraser(op) end
     if not (op.kind == "ink" and op.style == "highlighter") then return false end
+    -- on a viewer plugin's page the highlighter draws see-through ink, as in a
+    -- notebook: the reader's highlights are drawn by its own view, which the
+    -- viewer is not, so one made there would not show
+    if self.book.surface then return false end
+    -- a single tap with the highlighter on text already highlighted: its colour
+    -- sheet, not a new mark (the tap goes as if never made)
+    if self:isTapStroke(op) and #self:highlightsUnder({ x = op.pts[1], y = op.pts[2] }) > 0 then
+        self.canvas:undo()
+        self.canvas.redo_stack = {}
+        self:pageChanged()
+        return self:highlightTap({ x = op.pts[1], y = op.pts[2] })
+    end
     if self:getSetting("inkaway_snap_text", true) == false then return false end
     local ok, item = pcall(self.book.highlight, self.book, op)
     if not (ok and item) then
@@ -189,6 +272,13 @@ function ReaderInkView:takeStroke(op)
     self.canvas:pushMark({ item = item })
     self:pageChanged()
     return true
+end
+
+-- Clip part of the page (ink/reader/capture.lua): outlined, confirmed, then on
+-- the clipboard as a picture, to paste with the lasso.
+function ReaderInkView:startPageClip()
+    local ok, err = pcall(function() require("ink/reader/capture").open(self.book) end)
+    if not ok then logger.warn("Ink Away: could not start the page clip:", err) end
 end
 
 -- A stroke of the eraser (not taking whole strokes): the strokes it crosses are
@@ -220,6 +310,7 @@ function ReaderInkView:cutWithEraser(op)
 end
 
 function ReaderInkView:undoMark(mark)
+    if mark.recolour then return self:applyRecolour(mark.recolour, true) end
     if mark.erased then   -- highlights an eraser or a hold took away: back, with the ink
         for i, it in ipairs(mark.erased) do
             local back = self.book:restoreHighlight(it)
@@ -233,6 +324,7 @@ function ReaderInkView:undoMark(mark)
 end
 
 function ReaderInkView:redoMark(mark)
+    if mark.recolour then return self:applyRecolour(mark.recolour, false) end
     if mark.erased then
         for _i, it in ipairs(mark.erased) do self.book:removeHighlight(it) end
         if mark.after then self.canvas.ops = mark.after end
@@ -311,8 +403,10 @@ function ReaderInkView:holdMenuAt(pos)
     self:highlightPromptAt(pos)
 end
 
-function ReaderInkView:selectAt(pos)
+function ReaderInkView:selectAt(pos, tap)
     if InkAwayView.selectAt(self, pos) then return true end
+    -- a tap with the lasso offers the colours, a hold offers to remove it
+    if tap and self:highlightTap(pos) then return true end
     return self:highlightPromptAt(pos)
 end
 
@@ -330,6 +424,7 @@ end
 ------------------------------------------------------------------------------
 
 function ReaderInkView:turnPage(dir)
+    if self.book.surface then return self:turnSurfacePage(dir) end
     self:flushPending()
     self:cancelShape()
     if self.editing_text then self:finishTextEdit(true) end
@@ -342,9 +437,82 @@ function ReaderInkView:turnPage(dir)
     UIManager:setDirty(self, "partial")
 end
 
+-- While a viewer plugin turns its page (it may animate it): its live picture is
+-- shown with the toolbar, and nothing is drawn or tapped until it is done. These
+-- stand in for the view's own only then (see surfaceNavigating).
+local function navigatingPaintTo(self, bb, x, y)
+    self.book:snapshot(bb, true, true)
+    if not self._toolbar_hidden then
+        local tx, ty = x + (self._bar_x or 0), y + (self._bar_y or 0)
+        local size = self.toolbar:getSize()
+        bb:paintRect(tx, ty, size.w, size.h, Blitbuffer.COLOR_WHITE)
+        self:paintBarMarks(bb, tx, ty)
+        self.toolbar:paintTo(bb, tx, ty)
+        self:paintBarIcons(bb, tx, ty)
+        self:darkToolbar(bb, tx, ty)
+    end
+    self:drawFabs(bb)
+end
+local function navigatingHandleEvent(self, event)
+    if event.handler == "onGesture" or event.handler == "onKeyPress" then return true end
+    return ReaderInkView.handleEvent(self, event)
+end
+local function navigatingInArea() return false end
+
+function ReaderInkView:surfaceNavigating(on)
+    self._surface_navigating = on or nil
+    if on then
+        self.paintTo, self.handleEvent, self.inArea = navigatingPaintTo, navigatingHandleEvent, navigatingInArea
+        -- (a Boox's firmware would ink the old page's place while the new one comes:
+        -- not until the view paints itself again, which asks for its region anew)
+        if self._boox_ink then pcall(function() require("ink/booxdrive").want(self, nil) end) end
+    else
+        self.paintTo, self.handleEvent, self.inArea = nil, nil, nil   -- (the view's own again)
+    end
+end
+
+-- A turn on a viewer plugin's page: what is in hand kept first, then the
+-- viewer turns, and the new page and its ink come once it says it is done.
+function ReaderInkView:turnSurfacePage(dir)
+    if self._surface_navigating then return end
+    self:flushPending()
+    self:cancelShape()
+    if self.editing_text then self:finishTextEdit(true) end
+    self:resetLasso()
+    self:saveDocument()
+    local function loaded()
+        if self.closing then return end
+        self:surfaceNavigating(false)
+        self:loadBookPage()
+        self:composeCanvas()
+        self:renderView()
+        UIManager:setDirty(self, "partial")
+    end
+    self:surfaceNavigating(true)
+    local ok, err = pcall(self.book.turn, self.book, dir, loaded, function()
+        if not self.closing and self._surface_navigating then UIManager:setDirty(self, "partial") end
+    end)
+    if not ok then
+        logger.warn("Ink Away: the viewer could not turn its page:", err)
+        loaded()
+    end
+end
+
+-- The toolbar's arrows: left and right on the screen, so on a viewer plugin's
+-- right-to-left page (manga) the left one goes forward. On the reader's own
+-- page, back and forward as always.
+function ReaderInkView:turnArrow(side)
+    local rtl = self.book:readingDirection() == "rtl"
+    if side == "left" then self:turnPage(rtl and 1 or -1) else self:turnPage(rtl and -1 or 1) end
+end
+
 -- The canvas's page turns (a finger swipe with Finger on the page set to
--- Navigate, a two-finger swipe, the gestures) turn the book's pages.
-function ReaderInkView:nbGo(dir) self:turnPage(dir) end
+-- Navigate, a two-finger swipe, the gestures) turn the book's pages (the other
+-- way on a viewer plugin's right-to-left page).
+function ReaderInkView:nbGo(dir)
+    if self.book.surface and self.book:readingDirection() == "rtl" then dir = -dir end
+    self:turnPage(dir)
+end
 function ReaderInkView:pageSwipes() return true end
 function ReaderInkView:sidewaysRoom() return false end
 
@@ -430,12 +598,17 @@ function ReaderInkView:onSetDimensions()
 end
 
 function ReaderInkView:onCloseWidget()
+    if self._surface_navigating then self:surfaceNavigating(false) end
     -- the book lets go of this view first, so nothing that fails while closing
     -- can leave it thinking annotation mode is still open
     local book = self.book
-    if book and book._view == self then book._view = nil end
-    InkAwayView.onCloseWidget(self)
+    local owned = book and book._view == self
+    if owned then book._view = nil end
+    local ok, err = pcall(InkAwayView.onCloseWidget, self)
+    -- (a viewer plugin's surface let go and those listening told, after the ink is kept)
+    if owned then book:finishAnnotation() end
     if book then book:repaint() end
+    if not ok then error(err) end
 end
 
 ------------------------------------------------------------------------------
@@ -465,7 +638,10 @@ function ReaderInkView:buildToolbar()
         { id = "erase", icon = "eraser", tool = true, cb = function()
             if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
         end },
-        { id = "lasso", icon = "lasso", tool = true, cb = function() self:setTool("lasso") end },
+        -- (tapped again: its sheet, with Make room)
+        { id = "lasso", icon = "lasso", tool = true, cb = function()
+            if self.tool == "lasso" then self:openLassoMenu() else self:setTool("lasso") end
+        end },
         { id = "shape", icon = "shape", tool = true, cb = function()
             if self.tool == "shape" then self:openShapePicker() else self:setTool("shape") end
         end },
@@ -475,16 +651,34 @@ function ReaderInkView:buildToolbar()
             else self:setTool("text") end
         end },
         { id = "image", icon = "image", cb = function() self:chooseImage() end },
+        { id = "sticker", icon = "sticker", cb = function() self:openStickers() end },
         { id = "undo", icon = "undo", cb = function() self:undo() end },
         { id = "redo", icon = "redo", cb = function() self:redo() end },
-        { id = "prev", icon = "nav_prev", cb = function() self:turnPage(-1) end },
-        { id = "next", icon = "nav_next", cb = function() self:turnPage(1) end },
-        { id = "notes", icon = "booknotes", cb = function() self:openBookNotes() end },
+        { id = "prev", icon = "nav_prev", cb = function() self:turnArrow("left") end },
+        { id = "next", icon = "nav_next", cb = function() self:turnArrow("right") end },
         { id = "menu", icon = "menu", cb = function() self:openReaderSettings() end },
         { id = "exit", icon = "exit", cb = function() self:closeCanvas() end },
     }
+    if not self:stickersInToolbar() then
+        for i, s in ipairs(specs) do if s.id == "sticker" then table.remove(specs, i); break end end
+    end
     local across = self._bar_side == "top" or self._bar_side == "bottom"
     self:buildVBar(specs, across and Screen:getWidth() or Screen:getHeight(), self._bar_side, self:toolbarFit())
+end
+
+-- A selection can be pinned to its page: it then stays at its spot on that page
+-- number when the text reflows (see Place.pinned).
+function ReaderInkView:canPinSelection()
+    local book = self.book
+    return book ~= nil and type(book.canPin) == "function" and book:canPin() == true
+end
+
+-- The Stickers button comes or goes: the toolbar is built again.
+function ReaderInkView:stickersBarChanged()
+    self:flushPending()
+    self:buildToolbar()
+    self:placeToolbar()
+    self:areaChanged()
 end
 
 -- Is the toolbar sized to the book's margin (Book ink settings, off by default)?
@@ -522,6 +716,7 @@ end
 -- Turn the margin fit on or off (from the book's settings).
 function ReaderInkView:setToolbarFit(on)
     self:flushPending()
+    self:prepareSurfaceLayout()
     self:setSetting("inkaway_book_toolbar_fit", on and true or false)
     self:buildToolbar()
     self:placeToolbar()
@@ -596,6 +791,7 @@ end
 function ReaderInkView:setToolbarHidden(hidden)
     if (self._toolbar_hidden or false) == hidden then return end
     self:flushPending()
+    self:prepareSurfaceLayout()
     self._toolbar_hidden = hidden
     self:setSetting("inkaway_book_toolbar_hidden", hidden)
     self:placeToolbar()
@@ -615,6 +811,7 @@ function ReaderInkView:openReaderSettings()
         local content = VerticalGroup:new{ align = "left" }
         local function add(w) table.insert(content, w) end
         add(self:sheetTitle(_("Book ink"), content_w, _("Done"), closeSelf, nil, {
+            { icon = "cloud", cb = function() closeSelf(); self:openSync() end },
             { icon = "appearance", cb = function() closeSelf(); self:openAppearance() end },
             { label = _("Guide"), cb = function() self:openGuide() end } }))
         add(VerticalSpan:new{ width = Screen:scaleBySize(12) })
@@ -642,6 +839,9 @@ function ReaderInkView:openReaderSettings()
         add(self:sheetHint(_("The toolbar takes the width of the book's margin on its side, with its icons sized to it, so it stays clear of the text. Widen the margins in the reader's settings to give it more room. PDFs and comics keep the usual size."), content_w))
         -- (Pen and input is in the Pen sheet, where the pen is)
         add(VerticalSpan:new{ width = Screen:scaleBySize(14) })
+        add(self:actionButton(_("Stickers\u{2026}"), content_w, function()
+            closeSelf(); self:openStickerOptions() end))
+        add(VerticalSpan:new{ width = Screen:scaleBySize(10) })
         add(self:actionButton(_("Export\u{2026}"), content_w, function()
             closeSelf(); self:openExport() end, nil, nil, "export"))
         add(VerticalSpan:new{ width = Screen:scaleBySize(10) })

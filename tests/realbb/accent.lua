@@ -90,6 +90,26 @@ if icon then
     r, g, b = px(icon, 16, 16)
     ok(r == 0 and g == 0 and b == 0, "accent: and black on yellow")
 end
+-- on a KOReader whose blitter ignores a buffer's invert flag, the icon must still
+-- come out right (it came out reversed: a pale square with lines in the accent)
+do
+    local mt = debug.getmetatable(BB.new(1, 1, BB.TYPE_BB8))
+    local index = mt.__index
+    mt.__index = function(t, k)   -- (the flag, ignored)
+        if k == "invert" then return function(self) return self end end
+        return index(t, k)
+    end
+    Accent.set({ 0x1E, 0x6F, 0xD9 })
+    icon = Accent.icon("whatever.svg", 32)
+    mt.__index = index
+    ok(icon ~= nil, "accent (flag ignored): the icon is drawn")
+    if icon then
+        r, g, b = px(icon, 1, 1)
+        ok(r == 0x1E and g == 0x6F and b == 0xD9, "accent (flag ignored): around the lines is still the colour")
+        r, g, b = px(icon, 16, 16)
+        ok(r == 255 and g == 255 and b == 255, "accent (flag ignored): the lines still white")
+    end
+end
 
 -- the library's grid draws its pills in it
 Accent.set({ 0xC0, 0x30, 0x30 })

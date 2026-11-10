@@ -190,7 +190,10 @@ function Accent.icon(file, size)
         if straight then mask:alphablitFrom(raw, 0, 0, 0, 0, w, h)
         else mask:pmulalphablitFrom(raw, 0, 0, 0, 0, w, h) end
         raw:free()
-        mask:invert()
+        -- (invertRect turns the pixels themselves over; invert() only sets a flag,
+        -- which some KOReader builds' blitters ignore, leaving the icon reversed:
+        -- a pale square with lines in the accent)
+        mask:invertRect(0, 0, w, h)
         local out = Blitbuffer.new(w, h, Blitbuffer.TYPE_BBRGB32)
         local fill = Blitbuffer.ColorRGB32(a.rgb[1], a.rgb[2], a.rgb[3], 0xFF)
         if out.paintRectRGB32 then out:paintRectRGB32(0, 0, w, h, fill) else out:paintRect(0, 0, w, h, fill) end

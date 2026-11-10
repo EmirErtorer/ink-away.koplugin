@@ -189,13 +189,15 @@ local function frame(inner, selected)
         margin = 0, background = WHITE, inner }
 end
 
--- A tile showing `bb` (owned by the cache), tappable.
+-- A tile showing `bb` (owned by the cache), tappable. The picture's corners are
+-- rounded off, so they stay inside the frame's ring.
 function InkAwayView:imageTile(bb, w, h, cb, hold_cb)
     local b = Button:new{ text = "", width = w, height = h, bordersize = 0, radius = Screen:scaleBySize(10),
         background = WHITE, margin = 0, padding = 0, callback = cb, hold_callback = hold_cb, show_parent = self }
     if bb then
-        self:setButtonLabel(b, ImageWidget:new{ image = bb, width = w, height = h,
-            image_disposable = false, fgcolor = BLACK })
+        local ok, round = pcall(self.roundedImage, self, bb, Screen:scaleBySize(10))
+        self:setButtonLabel(b, ImageWidget:new{ image = ok and round or bb, width = w, height = h,
+            alpha = ok and round and true or nil, image_disposable = false, fgcolor = BLACK })
     end
     return Theme.keep(b, Screen:scaleBySize(10))   -- a pen as it draws, in dark too
 end
@@ -575,6 +577,28 @@ function InkAwayView:openPenInput()
                 end })
             add(vspan(4))
             add(self:sheetHint(_("Ink shows with the Boox's fast black-and-white refresh as you write, and settles into grey and colour when the pen rests."), content_w))
+        end
+        -- a Boox whose firmware inks the pen itself (see ink/booxink.lua)
+        if self:booxInkAvailable() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Draw with Boox's pen layer"), is_on = self:getSetting("inkaway_boox_native", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_boox_native", on)
+                    if on then self:startBooxInk() else self:stopBooxInk() end
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."), content_w))
+        end
+        -- any Android reader: only what changed goes to the screen (see ink/androidwindow.lua)
+        if self:onAndroid() then
+            add(vspan(10))
+            add(ToggleRow:new{ label = _("Lighter screen updates"), is_on = self:getSetting("inkaway_android_partial", true) ~= false,
+                width = content_w, parent = menu, callback = function(on)
+                    self:setSetting("inkaway_android_partial", on)
+                    if on then self:startAndroidWindow() else self:stopAndroidWindow() end
+                end })
+            add(vspan(4))
+            add(self:sheetHint(_("Sends only the part of the screen that changed, not the whole screen, each time ink is drawn. Turn it off if parts of the screen show old content."), content_w))
         end
         add(vspan(12))
         add(SliderRow:new{ label = _("Stabilizer"), value = self.stabilizer, min = 0, max = 100,

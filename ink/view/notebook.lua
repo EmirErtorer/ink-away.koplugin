@@ -17,6 +17,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("ink/l10n")
 local Clipboard = require("ink/clipboard")
 local ImageProc = require("ink/imageproc")
+local LastPage = require("ink/lastpage")
 local Notebook = require("ink/notebook")
 local Storage = require("ink/storage")
 local Templates = require("ink/templates")
@@ -162,6 +163,7 @@ function InkAwayView:nbLoad()
     self:resetLasso()
     self:composeCanvas(); self:renderView()
     self._shown_page = self.notebook.pages[self.notebook.index]   -- the page the canvas shows
+    self:rememberLastPage()
     -- Like KOReader's reader, turn pages with a non-flashing refresh ("partial" on
     -- grey, "ui" on colour, where a flash takes a second or two) and flash only
     -- every few turns to clear ghosting.
@@ -601,12 +603,32 @@ function InkAwayView:nbDeletePage()
 end
 
 -- Make `nb` the open notebook and show its current page.
-function InkAwayView:enterNotebook(nb)
+function InkAwayView:enterNotebook(nb, fit)
     self.notebook = nb
+    self.nb_fit = fit and true or nil
+    -- the page is the notebook's own size when fitted, else the screen's
+    local W, H = nb.w, nb.h
+    if not fit then W, H = self.screen_w, self.screen_h end
+    if self.view.canvas_w ~= W or self.view.canvas_h ~= H then self:resizePage(W, H) end
     self.nb_bar_h = self:nbBarHeight()
     self:recomputeArea()
     self:nbLoad()
     self:resetTransientMemory()     -- reclaim the previous work's memory now
+end
+
+-- Remember the page the open notebook shows, to open it there next time.
+function InkAwayView:rememberLastPage()
+    local page = self.notebook and self.notebook.pages[self.notebook.index]
+    if not (self.doc_path and page and page.id) then return end
+    local map = LastPage.put(self:getSetting(LastPage.SETTING), self.doc_path, page.id)
+    if map then self:setSetting(LastPage.SETTING, map) end
+end
+
+-- The notebooks at `old` (a file, or those in a folder) renamed or moved to
+-- `new`: their pages left on go with them.
+function InkAwayView:lastPageMoved(old, new)
+    local map = LastPage.moved(self:getSetting(LastPage.SETTING), old, new)
+    if map then self:setSetting(LastPage.SETTING, map) end
 end
 
 -- Enter notebook mode with a fresh notebook using `template`
@@ -617,15 +639,19 @@ function InkAwayView:startNotebook(template)
     self:enterNotebook(Notebook.new(self.screen_w, self.screen_h, template))
 end
 
--- Rebuild notebook mode from a loaded v2 project.
-function InkAwayView:openNotebookData(data)
+-- Rebuild notebook mode from a loaded v2 project (the file at `path`), on the
+-- page it was left on in this reader (ink/lastpage.lua).
+function InkAwayView:openNotebookData(data, path)
     self:closeNotebookPDF()
     self:clearBackground()
     self.save_area = nil
     local nb = Notebook.fromData(data)
-    -- pages were drawn at their own screen size; treat them at this screen size
-    nb.w, nb.h = self.screen_w, self.screen_h
-    self:enterNotebook(nb)
+    local at = path and LastPage.indexOf(nb.pages, LastPage.get(self:getSetting(LastPage.SETTING), path))
+    if at then nb.index = at end
+    -- pages made on this screen's size are the screen's; those from another reader
+    -- keep their size and are fitted to the screen (see pageNeedsFit)
+    local fit = self:adoptScreenSize(nb)
+    self:enterNotebook(nb, fit)
     -- warn if the source PDF of a PDF-backed notebook is gone (the ink is safe;
     -- only the page images are missing until it is back)
     if self.notebook.template.pdf_path and not self._nb_pdf_doc then
@@ -641,6 +667,11 @@ function InkAwayView:exitNotebook()
     self:closeNotebookPDF()
     self.notebook = nil
     self.nb_bar_h = 0
+    if self.nb_fit then   -- back to a page the size of the screen
+        self.nb_fit = nil
+        self:resizePage(self.screen_w, self.screen_h)
+        self:composeCanvas()
+    end
     self:recomputeArea()
 end
 

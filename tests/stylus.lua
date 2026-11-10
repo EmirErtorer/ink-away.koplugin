@@ -240,5 +240,20 @@ do
     v:onCloseWidget()
 end
 
+-- input.lua replaced by another pen plugin's copy: KOReader's own
+-- routeStylusEvents reads stylus_eraser_active, the copies don't
+do
+    local function input(route) return setmetatable({}, { __index = { routeStylusEvents = route } }) end
+    ok(S.foreignInput(input(function(self) return self.stylus_eraser_active end)) == false,
+        "foreignInput: KOReader's own input.lua")
+    ok(S.foreignInput(input(function(self) return self.kobo_eraser_active end)) == true,
+        "foreignInput: pencil.koplugin 0.2-0.5's copy")
+    ok(S.foreignInput(input(function(self) return self.pen_slot end)) == true,
+        "foreignInput: a copy that reads neither name (pencil.koplugin 0.1)")
+    ok(S.foreignInput({}) == false, "foreignInput: a KOReader without the stylus hook")
+    ok(S.foreignInput(nil) == false, "foreignInput: no input")
+    ok(S.foreignInput(input(print)) == false, "foreignInput: a C function can't be told, so says nothing")
+end
+
 print(string.format("stylus: %d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)

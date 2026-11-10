@@ -24,7 +24,8 @@ end
 -- downloaded pictures) rather than documents. The library leaves them out.
 Library.INTERNAL = { drawings = true, notebooks = true, exports = true,
     ["online images"] = true, ["processed images"] = true,
-    ["imported pdfs"] = true, ["imported images"] = true }   -- (sent from a phone, see ink/view/receive.lua)
+    ["imported pdfs"] = true, ["imported images"] = true,
+    ["clipped images"] = true }   -- (screen clips in use, see ink/clips.lua)   -- (sent from a phone, see ink/view/receive.lua)
 
 -- Is `name` a document file?
 function Library.isDocument(name)
