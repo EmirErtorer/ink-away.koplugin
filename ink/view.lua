@@ -488,6 +488,7 @@ function InkAwayView:onCloseWidget()
     Export.text_raster = nil   -- drop the closures over this view
     Export.image_raster = nil
     self:saveDocument()
+    self:writeLastPage()
     self:shelfSnapshot()   -- before the page's buffers go
     self:freeThumbs()   -- release any decoded online-image thumbnails
     self:eraserCursorFree()

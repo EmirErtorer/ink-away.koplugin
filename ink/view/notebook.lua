@@ -621,7 +621,22 @@ function InkAwayView:rememberLastPage()
     local page = self.notebook and self.notebook.pages[self.notebook.index]
     if not (self.doc_path and page and page.id) then return end
     local map = LastPage.put(self:getSetting(LastPage.SETTING), self.doc_path, page.id)
-    if map then self:setSetting(LastPage.SETTING, map) end
+    if map then
+        self:setSetting(LastPage.SETTING, map)
+        self._last_page_unwritten = true
+    end
+end
+
+-- Write the reader's settings to disk if the page left on changed since they
+-- were: setting it only changes them in memory, so a reader that is killed or
+-- runs out of battery would forget it. Once, when a notebook or Ink Away is left,
+-- never while pages are turned.
+function InkAwayView:writeLastPage()
+    self:rememberLastPage()
+    if not self._last_page_unwritten then return end
+    self._last_page_unwritten = nil
+    local G = rawget(_G, "G_reader_settings")
+    if G and G.flush then pcall(G.flush, G) end
 end
 
 -- The notebooks at `old` (a file, or those in a folder) renamed or moved to
