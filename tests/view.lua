@@ -3420,6 +3420,30 @@ do
     ok(grid.title == "browsetest", "dialogs: the arrow goes back up")
     pickPath(D .. "/b.png")
     ok(file == D .. "/b.png", "dialogs: a tap on a picture picks it")
+    -- hidden folders (a .emotis of pictures): listed only when KOReader's own list shows hidden files
+    os.execute("mkdir -p '" .. D .. "/.emotis'")
+    local hf = io.open(D .. "/.emotis/cat.png", "w"); hf:write("x"); hf:close()
+    local function shown()
+        view:pickFile(D, function() end, view.isPictureName)
+        local g = UIManager.shown
+        local out = {}
+        for _, it in ipairs(g.items) do out[#out + 1] = it.label end
+        g:close()
+        return table.concat(out, ","), g
+    end
+    ok(not shown():find(".emotis", 1, true), "dialogs: a hidden folder is not listed while hidden files are off")
+    _G.G_reader_settings.data.show_hidden = true
+    local with, wg = shown()
+    ok(with:find(".emotis", 1, true) and with:find("Sub", 1, true), "dialogs: it is listed once KOReader shows hidden files (" .. with .. ")")
+    ok(with:find(".hidden", 1, true), "dialogs: with the other hidden folders")
+    view:pickFile(D, function() end, view.isPictureName)
+    local hg = UIManager.shown
+    for _, it in ipairs(hg.items) do if it.label == ".emotis" then hg.on_pick(it) end end
+    ok(hg.title == ".emotis" and #hg.items == 1 and hg.items[1].label == "cat.png" and hg.items[1].picture,
+        "dialogs: and its pictures can be picked")
+    hg:close()
+    _G.G_reader_settings.data.show_hidden = nil
+    os.execute("rm -rf '" .. D .. "/.emotis'")
     -- anything else, a PDF, is chosen from KOReader's own file list
     file = nil
     view:pickFile(D, function(p) file = p end, function(n) return n:lower():match("%.pdf$") ~= nil end, "pdfpen", nil, "From a PDF")

@@ -317,10 +317,14 @@ InkAwayView.isPictureName = isPicture
 function InkAwayView:browseFiles(o)
     local grid, cur
     local function title(dir) return dir == "/" and "/" or Storage.baseName(dir) end
+    -- dot folders (a .emotis of pictures) are listed when KOReader's own file
+    -- list shows hidden files
+    local show_hidden = self:getSetting("show_hidden") == true
+    local function listed(name) return name:sub(1, 1) ~= "." or show_hidden end
     local function items(dir)
         local folders, files = {}, {}
         for _i, e in ipairs(Storage.list(dir)) do
-            if e.name:sub(1, 1) ~= "." then
+            if listed(e.name) then
                 if e.mode == "directory" then
                     folders[#folders + 1] = { label = e.name, path = e.path, folder = true }
                 elseif not o.folders and e.mode == "file" and (not o.accept or o.accept(e.name)) then
