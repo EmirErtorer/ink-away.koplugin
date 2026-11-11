@@ -543,6 +543,10 @@ msgstr "Además cada"
 msgid "Also look inside pages (slower)"
 msgstr "Buscar también dentro de las páginas (más lento)"
 
+#: main.lua
+msgid "Always"
+msgstr "Siempre"
+
 #: ink/view/exportbook.lua
 msgid "An editable PDF can't hold these as annotations:"
 msgstr "Un PDF editable no puede guardar esto como anotaciones:"
@@ -1988,6 +1992,10 @@ msgstr "Primera o última página"
 msgid "First page"
 msgstr "Primera página"
 
+#: main.lua
+msgid "First page on its own"
+msgstr "Primera página sola"
+
 #: ink/actions.lua
 msgid "Fit the page"
 msgstr "Ajustar la página"
@@ -2048,6 +2056,10 @@ msgstr "Tamaño de la Fuente"
 #, lua-format
 msgid "Font: %s"
 msgstr "Fuente: %s"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Para un libro con portada: los pares empiezan entonces en su segunda página."
 
 #: ink/guide.lua
 msgid "For pen readers: rest your hand while you write. Finger on the page sets what a finger does then."
@@ -2421,6 +2433,10 @@ msgstr "PDF e imágenes importados"
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "En el modo nocturno de KOReader, la tinta conserva su color: el azul sigue azul y la tinta oscura se aclara para leerse sobre la página oscura."
+
+#: main.lua
+msgid "In landscape"
+msgstr "En horizontal"
 
 #: ink/reader/roomtool.lua
 msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
@@ -2970,6 +2986,10 @@ msgstr "Solo manual"
 msgid "Many files seem to be missing"
 msgstr "Parecen faltar muchos archivos"
 
+#: ink/view/settings.lua
+msgid "Map while panning"
+msgstr "Mapa al desplazar"
+
 #: ink/view/notebook.lua
 msgid "Margin ruled"
 msgstr "Con línea de margen"
@@ -3149,6 +3169,10 @@ msgstr "Azul marino"
 #: ink/view/library.lua
 msgid "New"
 msgstr "Nuevo"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Los PDF nuevos se abren con esta opción. Un PDF que hayas ajustado tú conserva la suya."
 
 #: ink/view/document.lua
 msgid "New drawing"
@@ -3486,6 +3510,7 @@ msgstr "Roble"
 
 #: ink/view/settings.lua
 #: ink/view/sync.lua
+#: main.lua
 msgid "Off"
 msgstr "Apagado"
 
@@ -3562,6 +3587,10 @@ msgstr "Abrir Ink Away"
 #: main.lua
 msgid "Open as Ink Away notebook"
 msgstr "Abrir como libreta de Ink Away"
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Abrir todos los PDF así"
 
 #: ink/view/images.lua
 msgid "Open image as background"
@@ -4565,6 +4594,10 @@ msgstr "Aparece en los nombres de las copias de conflicto, para que sepas de qu�
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
 msgstr "Muestra cómo se detecta tu Stylus, sus botones y tu mano. Útil en un informe de error."
 
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Muestra dos páginas una junto a otra, como un libro impreso abierto, también en un PDF cuyas páginas son todas sueltas. Tu tinta se queda en la página donde la dibujaste. Una página más ancha que alta se muestra sola. Usa la vista de página y cambia a ella."
+
 #: ink/actions.lua
 msgid "Side button"
 msgstr "Botón lateral"
@@ -5447,6 +5480,10 @@ msgstr "Versión de este lector: %1, %2"
 msgid "This version of KOReader can't keep colours of your own on a highlight."
 msgstr "Esta versión de KOReader no puede guardar colores propios en un resaltado."
 
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr "Esto funciona con el rechazo de palma activado."
+
 #: ink/view/textformat.lua
 msgid "Tight"
 msgstr "Ajustado"
@@ -5583,6 +5620,10 @@ msgstr "Dos archivos solo se diferencian en las mayúsculas, y la nube los trata
 #: ink/sync/errors.lua
 msgid "Two names look the same"
 msgstr "Dos nombres parecen iguales"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Dos páginas lado a lado"
 
 #: ink/actions.lua
 msgid "Two-finger double tap"
@@ -5802,6 +5843,10 @@ msgstr "Cuando el lector se suspende"
 #: ink/guide.lua
 msgid "Where to start"
 msgstr "Por dónde empezar"
+
+#: ink/view/settings.lua
+msgid "While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."
+msgstr "Mientras te mueves por una página ampliada, un pequeño mapa muestra dónde estás y la página se dibuja cuando te detienes. Más fluido en una pantalla lenta."
 
 #: ink/framecover.lua
 #: ink/palette.lua
@@ -6062,39 +6107,3 @@ msgstr "“%s” ya existe. ¿Reemplazarlo?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "“%s” está en Biblioteca: Importados solo guarda lo que enviaste"
-
-#: main.lua
-msgid "Two pages side by side"
-msgstr "Dos páginas lado a lado"
-
-#: main.lua
-msgid "In landscape"
-msgstr "En horizontal"
-
-#: main.lua
-msgid "Always"
-msgstr "Siempre"
-
-#: main.lua
-msgid "First page on its own"
-msgstr "Primera página sola"
-
-#: main.lua
-msgid "For a book with a cover: the pairs then start from its second page."
-msgstr "Para un libro con portada: los pares empiezan entonces en su segunda página."
-
-#: main.lua
-msgid "Open every PDF this way"
-msgstr "Abrir todos los PDF así"
-
-#: main.lua
-msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
-msgstr "Los PDF nuevos se abren con esta opción. Un PDF que hayas ajustado tú conserva la suya."
-
-#: main.lua
-msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
-msgstr "Muestra dos páginas una junto a otra, como un libro impreso abierto, también en un PDF cuyas páginas son todas sueltas. Tu tinta se queda en la página donde la dibujaste. Una página más ancha que alta se muestra sola. Usa la vista de página y cambia a ella."
-
-#: ink/view/pencase.lua
-msgid "This works with Palm rejection on."
-msgstr "Esto funciona con el rechazo de palma activado."

@@ -543,6 +543,10 @@ msgstr "Также каждые"
 msgid "Also look inside pages (slower)"
 msgstr "Искать и внутри страниц (медленнее)"
 
+#: main.lua
+msgid "Always"
+msgstr "Всегда"
+
 #: ink/view/exportbook.lua
 msgid "An editable PDF can't hold these as annotations:"
 msgstr "Редактируемый PDF не может хранить это как аннотации:"
@@ -1988,6 +1992,10 @@ msgstr "Первая или последняя страница"
 msgid "First page"
 msgstr "Первая страница"
 
+#: main.lua
+msgid "First page on its own"
+msgstr "Первая страница отдельно"
+
 #: ink/actions.lua
 msgid "Fit the page"
 msgstr "По размеру страницы"
@@ -2048,6 +2056,10 @@ msgstr "Размер шрифта"
 #, lua-format
 msgid "Font: %s"
 msgstr "Шрифт: %s"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Для книги с обложкой: тогда пары начинаются со второй страницы."
 
 #: ink/guide.lua
 msgid "For pen readers: rest your hand while you write. Finger on the page sets what a finger does then."
@@ -2421,6 +2433,10 @@ msgstr "Импортированные PDF и изображения"
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "В ночном режиме KOReader чернила сохраняют цвет: синий остаётся синим, а тёмные чернила светлеют, чтобы читаться на тёмной странице."
+
+#: main.lua
+msgid "In landscape"
+msgstr "В альбомной ориентации"
 
 #: ink/reader/roomtool.lua
 msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
@@ -2970,6 +2986,10 @@ msgstr "Только вручную"
 msgid "Many files seem to be missing"
 msgstr "Похоже, пропало много файлов"
 
+#: ink/view/settings.lua
+msgid "Map while panning"
+msgstr "Карта при перемещении"
+
 #: ink/view/notebook.lua
 msgid "Margin ruled"
 msgstr "С полями"
@@ -3149,6 +3169,10 @@ msgstr "Тёмно-синий"
 #: ink/view/library.lua
 msgid "New"
 msgstr "Новый"
+
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Новые PDF открываются с этим выбором. PDF, настроенный вами, сохраняет свой."
 
 #: ink/view/document.lua
 msgid "New drawing"
@@ -3486,6 +3510,7 @@ msgstr "Дуб"
 
 #: ink/view/settings.lua
 #: ink/view/sync.lua
+#: main.lua
 msgid "Off"
 msgstr "Выкл."
 
@@ -3562,6 +3587,10 @@ msgstr "Открыть Ink Away"
 #: main.lua
 msgid "Open as Ink Away notebook"
 msgstr "Открыть как блокнот Ink Away"
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Открывать так все PDF"
 
 #: ink/view/images.lua
 msgid "Open image as background"
@@ -4565,6 +4594,10 @@ msgstr "Отображается в названиях копий при кон�
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
 msgstr "Показывает, как приходят ваша ручка, её кнопки и рука. Пригодится в отчёте об ошибке."
 
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "Показывает две страницы рядом, как раскрытая печатная книга, даже в PDF только с одиночными страницами. Ваши чернила остаются на той странице, где вы рисовали. Страница, которая шире своей высоты, показывается отдельно. Использует постраничный режим и переключается на него."
+
 #: ink/actions.lua
 msgid "Side button"
 msgstr "Боковая кнопка"
@@ -5447,6 +5480,10 @@ msgstr "Версия с этого устройства: %1, %2"
 msgid "This version of KOReader can't keep colours of your own on a highlight."
 msgstr "Эта версия KOReader не может сохранять ваши цвета для выделения."
 
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr "Это работает при включённой защите от касания ладони."
+
 #: ink/view/textformat.lua
 msgid "Tight"
 msgstr "Плотно"
@@ -5583,6 +5620,10 @@ msgstr "Два файла отличаются только регистром �
 #: ink/sync/errors.lua
 msgid "Two names look the same"
 msgstr "Два одинаковых по виду имени"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Две страницы рядом"
 
 #: ink/actions.lua
 msgid "Two-finger double tap"
@@ -5802,6 +5843,10 @@ msgstr "Когда устройство засыпает"
 #: ink/guide.lua
 msgid "Where to start"
 msgstr "С чего начать"
+
+#: ink/view/settings.lua
+msgid "While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."
+msgstr "Пока вы перемещаетесь по увеличенной странице, маленькая карта показывает, где вы находитесь, а страница рисуется, когда вы остановитесь. Плавнее на медленном экране."
 
 #: ink/framecover.lua
 #: ink/palette.lua
@@ -6062,39 +6107,3 @@ msgstr "«%s» уже существует. Заменить?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "«%s» в разделе «Библиотека»: «Полученные» хранит только то, что вы отправили"
-
-#: main.lua
-msgid "Two pages side by side"
-msgstr "Две страницы рядом"
-
-#: main.lua
-msgid "In landscape"
-msgstr "В альбомной ориентации"
-
-#: main.lua
-msgid "Always"
-msgstr "Всегда"
-
-#: main.lua
-msgid "First page on its own"
-msgstr "Первая страница отдельно"
-
-#: main.lua
-msgid "For a book with a cover: the pairs then start from its second page."
-msgstr "Для книги с обложкой: тогда пары начинаются со второй страницы."
-
-#: main.lua
-msgid "Open every PDF this way"
-msgstr "Открывать так все PDF"
-
-#: main.lua
-msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
-msgstr "Новые PDF открываются с этим выбором. PDF, настроенный вами, сохраняет свой."
-
-#: main.lua
-msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
-msgstr "Показывает две страницы рядом, как раскрытая печатная книга, даже в PDF только с одиночными страницами. Ваши чернила остаются на той странице, где вы рисовали. Страница, которая шире своей высоты, показывается отдельно. Использует постраничный режим и переключается на него."
-
-#: ink/view/pencase.lua
-msgid "This works with Palm rejection on."
-msgstr "Это работает при включённой защите от касания ладони."

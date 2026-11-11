@@ -13,6 +13,9 @@ local Screen = Device.screen
 
 local ZOOM_RATIO = 1.5    -- one zoom press multiplies by this, for even steps
 local ZOOM_MAX = 8.0
+local PAN_SETTLE_SEC = 0.2   -- a panned page is drawn once it has rested this long (see panMapStep)
+local WHITE = Blitbuffer.COLOR_WHITE
+local BLACK = Blitbuffer.COLOR_BLACK
 
 local InkAwayView = {}
 
@@ -314,7 +317,92 @@ function InkAwayView:panByScreen(dx, dy)
         self:liveDirty("ui", { x0 = 0, y0 = 0, x1 = v.area_w, y1 = v.area_h })
         return
     end
+    if self:panMapOn() then return self:panMapStep() end
     self:redraw()
+end
+
+------------------------------------------------------------------------------
+-- The pan map (Settings, Screen: on for a colour panel unless turned off)
+--
+-- A colour panel takes several tenths of a second over a refresh of the whole
+-- drawing area, so a page that is scaled and refreshed as the finger moves
+-- trails far behind it, however the steps are paced. The page is left as it is
+-- instead while it is panned, and a small map in the middle of the area shows
+-- where the view is: the page's outline with the visible part as a box inside
+-- it. Only the map is refreshed, with the fast waveform. Once nothing has moved
+-- for PAN_SETTLE_SEC the page is drawn where it ended, once.
+--
+-- A grey panel refreshes quickly enough for the page to follow the finger, so
+-- the map is off there unless it is asked for (a large or slow one may want it).
+------------------------------------------------------------------------------
+
+-- Is a pan shown as the map? As set in Settings, else on a colour panel only.
+-- (Android paces its pans its own way, see panByScreen.)
+function InkAwayView:panMapOn()
+    if self:onAndroid() then return false end
+    local set = self:getSetting("inkaway_pan_map")
+    if set == nil then return self:colourPanel() end
+    return set == true
+end
+
+-- The map in area-local pixels: the page's outline {x, y, w, h}, the visible
+-- part's box inside it, and the outline's line width.
+function InkAwayView:panMapRects()
+    local v = self.view
+    local scale = math.min(v.area_w, v.area_h) / 4 / math.max(v.canvas_w, v.canvas_h)
+    local line = math.max(2, math.floor(Screen:scaleBySize(2)))
+    local w = math.max(8 * line, math.floor(v.canvas_w * scale))
+    local h = math.max(8 * line, math.floor(v.canvas_h * scale))
+    local x = math.floor((v.area_w - w) / 2)
+    local y = math.floor((v.area_h - h) / 2)
+    local function span(pan, seen, page, len)
+        local n = math.max(3 * line, math.min(len, math.floor(math.min(seen, page) / page * len + 0.5)))
+        local at = math.floor(pan / page * len + 0.5)
+        return math.max(0, math.min(len - n, at)), n
+    end
+    local ix, iw = span(v.pan_x, v.area_w / v.zoom, v.canvas_w, w)
+    local iy, ih = span(v.pan_y, v.area_h / v.zoom, v.canvas_h, h)
+    return { x = x, y = y, w = w, h = h }, { x = x + ix, y = y + iy, w = iw, h = ih }, line
+end
+
+-- One step of a pan: show the map where the view is now, and put off the page.
+function InkAwayView:panMapStep()
+    self._pan_map = true
+    local m, _, line = self:panMapRects()
+    local r = { x0 = m.x - line, y0 = m.y - line, x1 = m.x + m.w + line, y1 = m.y + m.h + line }
+    -- only the map changed, so the paint blits just that part of the area
+    self._blit_rect = InkGeom.growRect(self._blit_rect, r.x0, r.y0, r.x1, r.y1)
+    self:liveDirty("fast", r)
+    UIManager:unschedule(self._pan_settle_cb)
+    UIManager:scheduleIn(PAN_SETTLE_SEC, self._pan_settle_cb)
+end
+
+-- The pan has rested (or something needs the page where it is, see beginStroke):
+-- take the map away and draw the page there.
+function InkAwayView:settlePan()
+    UIManager:unschedule(self._pan_settle_cb)
+    if not self._pan_map then return end
+    self._pan_map = nil
+    if self.closing then return end
+    self:liveDrop()   -- a map refresh still waiting is covered by this one
+    self:redraw()
+end
+
+-- Paint the map over the drawing area (see paintTo).
+function InkAwayView:paintPanMap(bb, x, y)
+    local v = self.view
+    local m, i, line = self:panMapRects()
+    local ox, oy = x + v.area_x, y + v.area_y
+    local function frame(r, t)
+        bb:paintRect(ox + r.x, oy + r.y, r.w, t, BLACK)
+        bb:paintRect(ox + r.x, oy + r.y + r.h - t, r.w, t, BLACK)
+        bb:paintRect(ox + r.x, oy + r.y, t, r.h, BLACK)
+        bb:paintRect(ox + r.x + r.w - t, oy + r.y, t, r.h, BLACK)
+    end
+    -- a white margin keeps the outline clear of whatever is on the page
+    bb:paintRect(ox + m.x - line, oy + m.y - line, m.w + 2 * line, m.h + 2 * line, WHITE)
+    frame(m, line)
+    frame(i, 2 * line)
 end
 
 -- Recompute the drawing area (it shrinks by nb_bar_h in notebook mode) and the

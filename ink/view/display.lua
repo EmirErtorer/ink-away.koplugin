@@ -830,6 +830,11 @@ end
 function InkAwayView:renderView()
     if not (self.area_bb and self.canvas_bb) then return end
     self._view_stale = nil
+    -- the page is drawn where it is, so a pan map has nothing left to stand in for
+    if self._pan_map then
+        self._pan_map = nil
+        UIManager:unschedule(self._pan_settle_cb)
+    end
     self._blit_rect = nil   -- the whole area_bb is rebuilt, so paintTo must blit it all,
     -- even if a stroke starts before that paint (a page turn and a pen landing in
     -- the same input batch): its small rect must not replace the full blit
