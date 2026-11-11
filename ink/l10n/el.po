@@ -2994,6 +2994,10 @@ msgstr "Μόνο χειροκίνητα"
 msgid "Many files seem to be missing"
 msgstr "Πολλά αρχεία φαίνεται να λείπουν"
 
+#: ink/view/settings.lua
+msgid "Map while panning"
+msgstr "Χάρτης κατά τη μετακίνηση"
+
 #: ink/view/notebook.lua
 msgid "Margin ruled"
 msgstr "Με περιθώριο"
@@ -5847,6 +5851,10 @@ msgstr "Όταν η συσκευή μπαίνει σε αναστολή"
 #: ink/guide.lua
 msgid "Where to start"
 msgstr "Από πού να ξεκινήσετε"
+
+#: ink/view/settings.lua
+msgid "While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."
+msgstr "Όσο κινείστε σε μια μεγεθυμένη σελίδα, ένας μικρός χάρτης δείχνει πού βρίσκεστε και η σελίδα σχεδιάζεται όταν σταματήσετε. Πιο ομαλό σε αργή οθόνη."
 
 #: ink/framecover.lua
 #: ink/palette.lua

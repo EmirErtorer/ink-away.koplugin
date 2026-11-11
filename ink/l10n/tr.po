@@ -2994,6 +2994,10 @@ msgstr "Yalnızca elle"
 msgid "Many files seem to be missing"
 msgstr "Birçok dosya eksik görünüyor"
 
+#: ink/view/settings.lua
+msgid "Map while panning"
+msgstr "Kaydırırken harita"
+
 #: ink/view/notebook.lua
 msgid "Margin ruled"
 msgstr "Kenar çizgili"
@@ -5847,6 +5851,10 @@ msgstr "Okuyucu uykuya geçtiğinde"
 #: ink/guide.lua
 msgid "Where to start"
 msgstr "Nereden başlamalı"
+
+#: ink/view/settings.lua
+msgid "While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."
+msgstr "Yakınlaştırılmış bir sayfada gezinirken küçük bir harita nerede olduğunuzu gösterir ve durduğunuzda sayfa çizilir. Yavaş bir ekranda daha akıcıdır."
 
 #: ink/framecover.lua
 #: ink/palette.lua

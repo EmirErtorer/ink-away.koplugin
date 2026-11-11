@@ -308,6 +308,7 @@ function InkAwayView:pureBlackPen()
 end
 
 function InkAwayView:beginStroke(sx, sy)
+    self:settlePan()   -- ink goes onto the page where it is, not where a pan left it on screen
     self:elipsaStroke(true)
     -- the pen's stroke on a Boox whose firmware inks it already: no live refresh
     -- of its own (see liveDirty), the real stroke shown once at the lift

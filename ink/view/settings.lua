@@ -322,6 +322,16 @@ function InkAwayView:openSettings()
             end
             add(vspan(14))
 
+            -- a pan shown as a small map, the page drawn once it stops (see panMapStep)
+            if not self:onAndroid() then
+                add(ToggleRow:new{ label = _("Map while panning"), is_on = self:panMapOn(),
+                    width = content_w, parent = menu,
+                    callback = function(on) self:setSetting("inkaway_pan_map", on) end })
+                add(vspan(4))
+                add(self:sheetHint(_("While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."), content_w))
+                add(vspan(14))
+            end
+
             -- ghosting cleanup: a full refresh every N strokes, 0 (off) to 50 in steps of 5
             add(SliderRow:new{ label = _("Ghosting"), value = math.min(50, self.ghost_clean or 0), min = 0, max = 50, step = 5,
                 width = content_w, parent = menu,

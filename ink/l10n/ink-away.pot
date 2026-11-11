@@ -2969,6 +2969,10 @@ msgstr ""
 msgid "Many files seem to be missing"
 msgstr ""
 
+#: ink/view/settings.lua
+msgid "Map while panning"
+msgstr ""
+
 #: ink/view/notebook.lua
 msgid "Margin ruled"
 msgstr ""
@@ -5791,6 +5795,10 @@ msgstr ""
 
 #: ink/guide.lua
 msgid "Where to start"
+msgstr ""
+
+#: ink/view/settings.lua
+msgid "While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."
 msgstr ""
 
 #: ink/framecover.lua

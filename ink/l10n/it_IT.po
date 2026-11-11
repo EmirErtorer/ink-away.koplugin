@@ -2994,6 +2994,10 @@ msgstr "Solo manuale"
 msgid "Many files seem to be missing"
 msgstr "Sembrano mancare molti file"
 
+#: ink/view/settings.lua
+msgid "Map while panning"
+msgstr "Mappa durante lo spostamento"
+
 #: ink/view/notebook.lua
 msgid "Margin ruled"
 msgstr "Con margine"
@@ -5847,6 +5851,10 @@ msgstr "Quando il lettore va in stop"
 #: ink/guide.lua
 msgid "Where to start"
 msgstr "Da dove iniziare"
+
+#: ink/view/settings.lua
+msgid "While you move around a zoomed-in page, a small map shows where you are and the page is drawn when you stop. Smoother on a slow screen."
+msgstr "Mentre ti sposti su una pagina ingrandita, una piccola mappa mostra dove sei e la pagina viene disegnata quando ti fermi. Più fluido su uno schermo lento."
 
 #: ink/framecover.lua
 #: ink/palette.lua

@@ -11,6 +11,9 @@ versions marked *Prerelease* were test builds.
 ### Added
 - In a book, a long press on the page number at the bottom bookmarks the page (KOReader's own bookmark, so it is in the reader's list), and a second long press takes it away. It works with any tool in hand, by finger or pen, without closing the toolbar, and never draws. It needs the reader's footer to be on. A tap there does nothing.
 
+### Changed
+- Panning a zoomed-in page on a colour reader no longer lags behind your finger. While you pan, a small map in the middle of the screen shows the page with a box for the part in view, and the page itself is drawn once, a moment after you stop. Settings, Screen, "Map while panning" turns it off, or turns it on for a grey reader whose screen is slow to follow.
+
 ### Fixed
 - Picking a picture, a background or a folder lists hidden folders (a `.emotis` of reaction images) when KOReader's file list is set to show hidden files.
 - A notebook opens on the page you left it on again. Opening a second notebook used to store its page under the first one, so the first one came back on page 1; and the page was only kept in memory, so a reader that was switched off or crashed forgot it. It is now written out when you leave a notebook or close Ink Away.
