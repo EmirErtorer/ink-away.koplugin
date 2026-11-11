@@ -828,7 +828,11 @@ end
 function InkAwayView:onIaHold(_, ges)
     if self:fingerRejected(ges and ges.pos) then return true end
     if self._clip_press then return true end
-    if self._fab_press then self._fab_press = nil; return true end
+    if self._fab_press then
+        local kind = self._fab_press; self._fab_press = nil
+        self:fabHold(kind)   -- (most controls do nothing on a hold)
+        return true
+    end
     -- a long press in the text box being edited offers to paste there
     if self.editing_text and self:textHoldAt(ges and ges.pos) then return true end
     -- swallow holds while drawing or placing, so they never become a long-press menu

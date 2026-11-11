@@ -543,6 +543,10 @@ msgstr "Ayrıca her"
 msgid "Also look inside pages (slower)"
 msgstr "Sayfaların içine de bak (daha yavaş)"
 
+#: main.lua
+msgid "Always"
+msgstr "Her zaman"
+
 #: ink/view/exportbook.lua
 msgid "An editable PDF can't hold these as annotations:"
 msgstr "Düzenlenebilir bir PDF bunları ek açıklama olarak tutamaz:"
@@ -749,6 +753,14 @@ msgstr "Kitap mürekkebi, Araç çubuğu: solda, sağda, üstte veya altta."
 #: main.lua
 msgid "Book notes"
 msgstr "Kitap notları"
+
+#: ink/reader/inkview.lua
+msgid "Bookmark added"
+msgstr "Yer imi eklendi"
+
+#: ink/reader/inkview.lua
+msgid "Bookmark removed"
+msgstr "Yer imi kaldırıldı"
 
 #: ink/guide.lua
 msgid "Books"
@@ -1988,6 +2000,10 @@ msgstr "İlk veya son sayfa"
 msgid "First page"
 msgstr "İlk sayfa"
 
+#: main.lua
+msgid "First page on its own"
+msgstr "İlk sayfa tek başına"
+
 #: ink/actions.lua
 msgid "Fit the page"
 msgstr "Sayfaya sığdır"
@@ -2048,6 +2064,10 @@ msgstr "Yazı boyutu"
 #, lua-format
 msgid "Font: %s"
 msgstr "Yazı tipi: %s"
+
+#: main.lua
+msgid "For a book with a cover: the pairs then start from its second page."
+msgstr "Kapaklı bir kitap için: çiftler bu durumda ikinci sayfadan başlar."
 
 #: ink/guide.lua
 msgid "For pen readers: rest your hand while you write. Finger on the page sets what a finger does then."
@@ -2421,6 +2441,10 @@ msgstr "İçe aktarılan PDF'ler ve resimler"
 #: ink/view/settings.lua
 msgid "In KOReader's night mode, ink keeps its colour: blue stays blue, and dark ink turns light so it reads on the dark page."
 msgstr "KOReader'ın gece modunda mürekkep rengini korur: mavi mavi kalır, koyu mürekkep koyu sayfada okunsun diye açılır."
+
+#: main.lua
+msgid "In landscape"
+msgstr "Yatay konumda"
 
 #: ink/reader/roomtool.lua
 msgid "In this render mode, rooms are made of whole paragraphs. The Book and Web modes make them exact."
@@ -3150,6 +3174,10 @@ msgstr "Lacivert"
 msgid "New"
 msgstr "Yeni"
 
+#: main.lua
+msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
+msgstr "Yeni PDF'ler bu seçimle açılır. Kendi ayarladığınız bir PDF kendi seçimini korur."
+
 #: ink/view/document.lua
 msgid "New drawing"
 msgstr "Yeni çizim"
@@ -3486,6 +3514,7 @@ msgstr "Meşe"
 
 #: ink/view/settings.lua
 #: ink/view/sync.lua
+#: main.lua
 msgid "Off"
 msgstr "Kapalı"
 
@@ -3562,6 +3591,10 @@ msgstr "Ink Away'i aç"
 #: main.lua
 msgid "Open as Ink Away notebook"
 msgstr "Ink Away defteri olarak aç"
+
+#: main.lua
+msgid "Open every PDF this way"
+msgstr "Her PDF'yi böyle aç"
 
 #: ink/view/images.lua
 msgid "Open image as background"
@@ -4565,6 +4598,10 @@ msgstr "Çakışma kopyalarının adlarında görünür; böylece bir sürümün
 msgid "Shows how your pen, its buttons and your hand arrive. Handy in a bug report."
 msgstr "Kaleminizin, düğmelerinin ve elinizin nasıl geldiğini gösterir. Hata raporunda işe yarar."
 
+#: main.lua
+msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
+msgstr "İki sayfayı, açık bir basılı kitap gibi yan yana gösterir; tüm sayfaları tek olan bir PDF'de de. Mürekkebiniz çizdiğiniz sayfada kalır. Eni boyundan büyük bir sayfa tek başına gösterilir. Sayfa görünümünü kullanır ve ona geçer."
+
 #: ink/actions.lua
 msgid "Side button"
 msgstr "Yan düğme"
@@ -5447,6 +5484,10 @@ msgstr "Bu okuyucudaki sürüm: %1, %2"
 msgid "This version of KOReader can't keep colours of your own on a highlight."
 msgstr "Bu KOReader sürümü vurgu üzerinde kendi renklerini tutamaz."
 
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr "Bu, avuç içi reddi açıkken çalışır."
+
 #: ink/view/textformat.lua
 msgid "Tight"
 msgstr "Sıkı"
@@ -5583,6 +5624,10 @@ msgstr "İki dosya yalnızca büyük harflerle ayrılıyor, bulut bunları tek d
 #: ink/sync/errors.lua
 msgid "Two names look the same"
 msgstr "İki ad aynı görünüyor"
+
+#: main.lua
+msgid "Two pages side by side"
+msgstr "Yan yana iki sayfa"
 
 #: ink/actions.lua
 msgid "Two-finger double tap"
@@ -6062,39 +6107,3 @@ msgstr "“%s” zaten var. Değiştirilsin mi?"
 #, lua-format
 msgid "“%s” is in Library: Imported only holds what you sent"
 msgstr "“%s” Kitaplık içinde: Alınanlar yalnızca gönderdiklerinizi tutar"
-
-#: main.lua
-msgid "Two pages side by side"
-msgstr "Yan yana iki sayfa"
-
-#: main.lua
-msgid "In landscape"
-msgstr "Yatay konumda"
-
-#: main.lua
-msgid "Always"
-msgstr "Her zaman"
-
-#: main.lua
-msgid "First page on its own"
-msgstr "İlk sayfa tek başına"
-
-#: main.lua
-msgid "For a book with a cover: the pairs then start from its second page."
-msgstr "Kapaklı bir kitap için: çiftler bu durumda ikinci sayfadan başlar."
-
-#: main.lua
-msgid "Open every PDF this way"
-msgstr "Her PDF'yi böyle aç"
-
-#: main.lua
-msgid "New PDFs open with this choice. A PDF you set yourself keeps its own."
-msgstr "Yeni PDF'ler bu seçimle açılır. Kendi ayarladığınız bir PDF kendi seçimini korur."
-
-#: main.lua
-msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
-msgstr "İki sayfayı, açık bir basılı kitap gibi yan yana gösterir; tüm sayfaları tek olan bir PDF'de de. Mürekkebiniz çizdiğiniz sayfada kalır. Eni boyundan büyük bir sayfa tek başına gösterilir. Sayfa görünümünü kullanır ve ona geçer."
-
-#: ink/view/pencase.lua
-msgid "This works with Palm rejection on."
-msgstr "Bu, avuç içi reddi açıkken çalışır."

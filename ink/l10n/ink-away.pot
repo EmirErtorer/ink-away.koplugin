@@ -753,6 +753,14 @@ msgstr ""
 msgid "Book notes"
 msgstr ""
 
+#: ink/reader/inkview.lua
+msgid "Bookmark added"
+msgstr ""
+
+#: ink/reader/inkview.lua
+msgid "Bookmark removed"
+msgstr ""
+
 #: ink/guide.lua
 msgid "Books"
 msgstr ""

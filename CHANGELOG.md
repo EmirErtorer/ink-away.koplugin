@@ -8,7 +8,11 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- In a book, a long press on the page number at the bottom bookmarks the page (KOReader's own bookmark, so it is in the reader's list), and a second long press takes it away. It works with any tool in hand, by finger or pen, without closing the toolbar, and never draws. It needs the reader's footer to be on. A tap there does nothing.
+
 ### Fixed
+- Picking a picture, a background or a folder lists hidden folders (a `.emotis` of reaction images) when KOReader's file list is set to show hidden files.
 - A notebook opens on the page you left it on again. Opening a second notebook used to store its page under the first one, so the first one came back on page 1; and the page was only kept in memory, so a reader that was switched off or crashed forgot it. It is now written out when you leave a notebook or close Ink Away.
 
 ## [4.4.3] - 2026-11-09 *Prerelease*

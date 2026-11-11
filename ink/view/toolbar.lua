@@ -557,6 +557,10 @@ function InkAwayView:fabAction(kind)
     end
 end
 
+-- A long press on a floating control. None of the canvas's controls do anything
+-- on one; a book's page number does (ReaderInkView).
+function InkAwayView:fabHold(_kind) end
+
 -- The Pan button: the first tap picks Pan, a second goes back to the tool in use
 -- before it.
 function InkAwayView:togglePan()

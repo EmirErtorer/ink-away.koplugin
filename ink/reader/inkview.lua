@@ -27,6 +27,7 @@ local logger = require("logger")
 local _ = require("ink/l10n")
 local Canvas = require("ink/canvas")
 local InkAwayView = require("ink/view")
+local InkGeom = require("ink/geom")
 local ToggleRow = require("ink/ui/controls").ToggleRow
 local VBar = require("ink/reader/vbar")
 local HLColour = require("ink/reader/hlcolour")
@@ -396,6 +397,41 @@ function ReaderInkView:highlightPromptAt(pos)
     return true
 end
 
+-- The strip where the reader shows the page number (its footer, at the bottom of
+-- the screen), or nil when the footer is off. A press there is a control like the
+-- floating buttons, so it works with any tool in hand and never starts a stroke.
+function ReaderInkView:pageNumberRect()
+    local footer = self.book and self.book.ui and self.book.ui.view and self.book.ui.view.footer
+    if not (footer and self.book.ui.view.footer_visible and footer.getHeight) then return nil end
+    local h = footer:getHeight()
+    if not h or h <= 0 then return nil end
+    return { x = 0, y = self.screen_h - h, w = self.screen_w, h = h }
+end
+
+-- A tap on the page number does nothing (it sits where a hand rests); a long press
+-- toggles KOReader's own bookmark on the page shown.
+function ReaderInkView:fabAction(kind)
+    if kind == "pagenum" then return end
+    return InkAwayView.fabAction(self, kind)
+end
+
+function ReaderInkView:fabHold(kind)
+    if kind ~= "pagenum" then return end
+    self:toggleBookmark()
+end
+
+-- Bookmark the page shown, or take its bookmark away, in the reader's own list.
+function ReaderInkView:toggleBookmark()
+    local ui = self.book and self.book.ui
+    local bookmark = ui and ui.bookmark
+    if not (bookmark and bookmark.onToggleBookmark) then return false end
+    if not pcall(function() bookmark:onToggleBookmark() end) then return false end
+    local on = ui.view and ui.view.dogear_visible
+    self:pageChanged()   -- the page again, with or without its dog-ear
+    self:showNotice(on and _("Bookmark added") or _("Bookmark removed"), 2)
+    return true
+end
+
 function ReaderInkView:holdMenuAt(pos)
     if self:hitTestImage(pos.x, pos.y) or self:hitTestShape(pos.x, pos.y) or self:hitTestText(pos.x, pos.y) then
         return InkAwayView.holdMenuAt(self, pos)
@@ -751,9 +787,13 @@ function ReaderInkView:fabRect(which)
 end
 
 function ReaderInkView:fabHit(px, py)
-    if self._bar_toggle_hidden or self.editing_text then return nil end
-    local r = self:fabRect("bar")
-    if r and px >= r.x and px < r.x + r.w and py >= r.y and py < r.y + r.h then return "bar" end
+    if not (self._bar_toggle_hidden or self.editing_text) then
+        local r = self:fabRect("bar")
+        if r and px >= r.x and px < r.x + r.w and py >= r.y and py < r.y + r.h then return "bar" end
+    end
+    -- the page number: a long press bookmarks (see pageNumberRect)
+    local p = self:pageNumberRect()
+    if p and InkGeom.inRect(px, py, p) then return "pagenum" end
     return nil
 end
 
