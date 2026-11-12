@@ -7,6 +7,9 @@ is on its [GitHub release](https://github.com/EmirErtorer/ink-away.koplugin/rele
 versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
+### Added
+
+- Add Simplified Chinese (zh_CN) translation by adding file `ink/l10n/zh_CN.po`
 
 ### Fixed
 - A notebook opens on the page you left it on again. Opening a second notebook used to store its page under the first one, so the first one came back on page 1; and the page was only kept in memory, so a reader that was switched off or crashed forgot it. It is now written out when you leave a notebook or close Ink Away.
