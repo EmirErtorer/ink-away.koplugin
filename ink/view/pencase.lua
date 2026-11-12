@@ -587,6 +587,11 @@ function InkAwayView:openPenInput()
                     if on then self:startBooxInk() else self:stopBooxInk() end
                 end })
             add(vspan(4))
+            add(vspan(4))
+            if not self.palm_reject then
+                add(self:sheetHint(_("This works with Palm rejection on."), content_w))
+                add(vspan(4))
+            end
             add(self:sheetHint(_("The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."), content_w))
         end
         -- any Android reader: only what changed goes to the screen (see ink/androidwindow.lua)

@@ -219,6 +219,7 @@ function InkAwayView:leaveDocument()
     if self.editing_text then self:finishTextEdit(true) end
     self:resetLasso()   -- drop any selection first
     self:saveDocument()
+    self:writeLastPage()
     self:shelfSnapshot()
     self:layerCachesDrop()   -- a layered drawing's caches go with it
     self:syncNoteLeft()      -- (cloud sync: no notebook is open now)
@@ -292,6 +293,9 @@ function InkAwayView:openDocument(path)
     self.save_area = nil
     self.export_opts = type(data.export) == "table" and data.export or nil
     if Project.isNotebook(data) then
+        -- under its own path from the start: the page it opens on is kept as it
+        -- loads, not under the notebook that was open before
+        self.doc_path = path
         self:openNotebookData(data, path)
     else
         self:exitNotebook()

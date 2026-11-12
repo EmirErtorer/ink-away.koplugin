@@ -6094,3 +6094,7 @@ msgstr "Yeni PDF'ler bu seçimle açılır. Kendi ayarladığınız bir PDF kend
 #: main.lua
 msgid "Shows two pages next to each other, as a printed book falls open, also for a PDF whose pages are all single ones. Your ink stays on the page you drew it on. A page wider than tall is shown alone. This uses the page view, and switches to it."
 msgstr "İki sayfayı, açık bir basılı kitap gibi yan yana gösterir; tüm sayfaları tek olan bir PDF'de de. Mürekkebiniz çizdiğiniz sayfada kalır. Eni boyundan büyük bir sayfa tek başına gösterilir. Sayfa görünümünü kullanır ve ona geçer."
+
+#: ink/view/pencase.lua
+msgid "This works with Palm rejection on."
+msgstr "Bu, avuç içi reddi açıkken çalışır."

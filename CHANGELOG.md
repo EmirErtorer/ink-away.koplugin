@@ -11,6 +11,11 @@ versions marked *Prerelease* were test builds.
 
 - Add Simplified Chinese (zh_CN) translation by adding file `ink/l10n/zh_CN.po`
 
+### Fixed
+- A notebook opens on the page you left it on again. Opening a second notebook used to store its page under the first one, so the first one came back on page 1; and the page was only kept in memory, so a reader that was switched off or crashed forgot it. It is now written out when you leave a notebook or close Ink Away.
+
+## [4.4.3] - 2026-11-09 *Prerelease*
+
 ### Added
 - Two pages side by side for a PDF, CBZ or other fixed-page book, also when all its pages are single ones: in the book's Ink Away menu, always or only in landscape, with the first page on its own if it has a cover, and optionally for every PDF. Ink stays on the page it was drawn on.
 - Notebooks, imported PDFs included, open on the page you left them on. It is kept on each reader, not in the notebook, so turning pages never changes the file or the cloud copy, and it follows the notebook when it is renamed or moved.
@@ -23,6 +28,11 @@ versions marked *Prerelease* were test builds.
 - In books given their first room from this version on, an italic or other inline element that starts inside a paragraph is one more place a room can start.
 
 ### Fixed
+- Boox: Ink Away finds the firmware's pen layer on firmware that keeps it on `ViewUpdateHelper` (the Note X3 Pro), and it no longer leaves pages frozen after writing. Ink shows from the first stroke, strokes written in a row stay together, and the page settles half a second after the pen rests. By lisontowind (#82).
+- Boox: the pen layer pauses at once for the eraser end and held pen tools, and on focus loss, sleep and menus.
+- Boox: Fast refresh while drawing asks the panel about six times a second instead of up to 25, which piled up and left the ink behind the pen, and asks nothing while the Boox draws the ink itself.
+- Boox: after the pen rests, only what changed is redrawn, not the whole page.
+- Boox: Test pen and touch says whether the pen layer was found, why not, and which pen calls the firmware has.
 - Ink on the right-hand page of a two-page view (the MuPDFtwoPages plugin) no longer disappears when you leave the pages: it was kept, but only the left page's ink was drawn back.
 - With the Paper Dots plugin set to show only on the page, its texture stays while annotating.
 - The sticker sheet turns its pages with the reader's page turn buttons, as the other sheets do. (#79)
