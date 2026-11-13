@@ -513,12 +513,25 @@ function InkAwayView:holdReject()
     UIManager:scheduleIn(PEN_LIFT_DEBOUNCE, self._pen_clear)
 end
 
+-- A palm that landed as an ordinary touch has a contact in KOReader's gesture
+-- detector. Once it is claimed as a palm its frames (its lift too) no longer reach
+-- the detector, which would keep the contact for ever: every later tap would pair
+-- with it as a two-finger tap (undo) or go nowhere, even after Ink Away closes,
+-- until the reader next sleeps. Drop it from the detector.
+function InkAwayView:forgetPalmContact(key)
+    local input = self._stylus_input or Device.input
+    local gd = input and input.gesture_detector
+    local c = gd and gd.getContact and gd:getContact(key)
+    if c and gd.dropContact then pcall(gd.dropContact, gd, c) end
+end
+
 -- A palm KOReader promoted to a stylus tool number and routed to us. It never
 -- draws; we only track that it is down and keep fingers rejected. A palm whose
 -- tool reverts to an ordinary finger reappears as a normal gesture, and the held
 -- rejection window (refreshed by onIaTouch and onIaPan) covers it until it lifts.
 function InkAwayView:penPalm(slot)
     local key = slot.slot or 0
+    self:forgetPalmContact(key)
     local id = tonumber(slot.id)
     local promoted = false
     if id and id >= 0 then

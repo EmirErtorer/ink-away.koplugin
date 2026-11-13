@@ -702,6 +702,40 @@ do
     uiok(H.PenBridge.install(w.input) == nil, "L4: a device's own touch handler is left alone")
 end
 
+-- A palm that lands as an ordinary touch and is claimed as a palm a moment later
+-- must not leave a contact in KOReader's gesture detector: its lift never reaches
+-- the detector, and every finger tap after would be a two-finger tap (undo) or
+-- nothing, even after Ink Away closes.
+do
+    for _, tool in ipairs({ 1, 2 }) do
+        local w = H.newWorld({})
+        local undos = 0
+        local undo = w.view.undo
+        w.view.undo = function(s, ...) undos = undos + 1; return undo(s, ...) end
+        pen.enter(w, 300, 300, 10); pen.touch(w, 300, 300, 10)
+        H.panel.down(w, 1, 50, 560, 800, 0, 10)
+        for i = 1, 5 do pen.move(w, 300 + i * 15, 300, 8) end
+        H.panel.move(w, { { 1, 562, 802, tool } }, 10)
+        for i = 1, 5 do pen.move(w, 380 + i * 15, 300, 8) end
+        pen.lift(w, 10); pen.leave(w, 10)
+        H.panel.up(w, 1, 40)
+        H.tick(w, 800)
+        w.view:onCloseWidget()
+        local gd = w.input.gesture_detector
+        uiok(gd.contact_count == 0, "G" .. tool .. ": no contact is left in the gesture detector (" .. gd.contact_count .. ")")
+        local n0 = #w.gestures
+        for i = 1, 3 do
+            H.panel.down(w, 0, 200 + i, 600, 1100, 0, 30); H.tick(w, 40)
+            H.panel.up(w, 0, 30); H.tick(w, 600)
+        end
+        local taps, twos = 0, 0
+        for i = n0 + 1, #w.gestures do
+            if w.gestures[i] == "tap" then taps = taps + 1 elseif w.gestures[i] == "two_finger_tap" then twos = twos + 1 end
+        end
+        uiok(taps == 3 and twos == 0 and undos == 0, "G" .. tool .. ": finger taps after it are taps, not undo")
+    end
+end
+
 print()
 print("SUMMARY  id    fedStrokes ops connects palmMarks penPalmLines eraseOps hoverInk panelInk teleports  touchFramesDrawn  endDown endRejected")
 for _, row in ipairs(rows) do
