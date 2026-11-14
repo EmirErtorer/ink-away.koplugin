@@ -2226,6 +2226,10 @@ msgstr "Wrócić do %1?"
 msgid "Go back to it"
 msgstr "Wróć do niej"
 
+#: ink/view/library.lua
+msgid "Go to folder"
+msgstr "Przejdź do folderu"
+
 #: ink/view/selection.lua
 msgid "Go to link"
 msgstr "Przejdź do łącza"

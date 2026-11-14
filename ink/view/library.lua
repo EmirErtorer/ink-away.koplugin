@@ -48,6 +48,48 @@ function InkAwayView:libraryTitle(dir)
     return Storage.baseName(dir)
 end
 
+-- The path from the library's top down to folder `dir`, for the grid's top bar:
+-- { { label, cb }, ... }, each going to its folder; nil at the top (or for a
+-- folder not under it), where the title alone shows.
+function InkAwayView:libraryCrumbs(dir)
+    local root = (self:libraryDir() or ""):gsub("/+$", "")
+    dir = (dir or ""):gsub("/+$", "")
+    if root == "" or dir == root or not Storage.within(dir, root) then return nil end
+    local paths = {}
+    local p = dir
+    for _i = 1, 64 do
+        paths[#paths + 1] = p
+        if p == root then break end
+        local up = Storage.dirName(p)
+        if up == p or not Storage.within(up, root) then return nil end
+        p = up
+    end
+    if paths[#paths] ~= root then return nil end
+    local crumbs = {}
+    for k = #paths, 1, -1 do
+        local path = paths[k]
+        crumbs[#crumbs + 1] = { self:libraryTitle(path),
+            k > 1 and function() self:libraryGo(path) end or nil, path = path }
+    end
+    return crumbs
+end
+
+-- The folders the path in the top bar folds into "…": a sheet to pick one.
+function InkAwayView:libraryCrumbsSheet(hidden)
+    local field = "_library_crumbs"
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    self:showSheet(field, function()
+        local content = VerticalGroup:new{ align = "left" }
+        table.insert(content, self:sheetTitle(_("Go to folder"), content_w, _("Close"), closeSelf))
+        for _i, c in ipairs(hidden) do
+            table.insert(content, VerticalSpan:new{ width = S(10) })
+            table.insert(content, self:actionButton(c[1], content_w, function() closeSelf(); c[2]() end, nil, nil, "folder"))
+        end
+        return content
+    end)
+end
+
 -- The looks of folder `dir`'s subfolders (from its binder file, read only
 -- when it has subfolders), by name.
 function InkAwayView:folderLooks(dir, folders)
@@ -109,6 +151,8 @@ function InkAwayView:openLibrary(dir, over_grid)
         },
         on_back = (dir ~= root) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil,
         on_back_top = (dir ~= root) and function() self:libraryGo(self:libraryDir()) end or nil,
+        crumbs = self:libraryCrumbs(dir),
+        on_crumbs_more = function(hidden) self:libraryCrumbsSheet(hidden) end,
         render = function(it, w, h)
             if it.picture then return self:pictureThumb(it.path, w, h) end
             return self:docThumb(it.path, w, h)
@@ -128,6 +172,7 @@ function InkAwayView:libraryGo(dir)
     lib.gpage = 0
     lib.on_back = (dir ~= self:libraryDir()) and function() self:libraryGo(Storage.dirName(self._lib_dir)) end or nil
     lib.on_back_top = (dir ~= self:libraryDir()) and function() self:libraryGo(self:libraryDir()) end or nil
+    lib.crumbs = self:libraryCrumbs(dir)
     lib:setItems(self:libraryItems(dir), self:libraryTitle(dir))
 end
 

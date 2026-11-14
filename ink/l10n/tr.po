@@ -2226,6 +2226,10 @@ msgstr "%1 sürümüne geri dönülsün mü?"
 msgid "Go back to it"
 msgstr "Ona geri dön"
 
+#: ink/view/library.lua
+msgid "Go to folder"
+msgstr "Klasöre git"
+
 #: ink/view/selection.lua
 msgid "Go to link"
 msgstr "Bağlantıya git"

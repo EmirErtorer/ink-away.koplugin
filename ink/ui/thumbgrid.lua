@@ -40,6 +40,11 @@ local ThumbGrid = InputContainer:extend{
     on_hold = nil,      -- function(item) after a hold
     on_back = nil,      -- function(): shows a back arrow before the title
     on_back_top = nil,  -- function(): a hold on that arrow, straight to the top
+    crumbs = nil,       -- the folders from the top down to the one shown, { { label, cb }, ... }
+                        -- (the last one is the folder shown): drawn in place of the title,
+                        -- each folder above a pill to tap
+    on_crumbs_more = nil, -- function(crumbs): a tap on the "…" pill that stands for the
+                        -- folders left out where the path is too long for the bar
     on_close = nil,     -- function() once the grid has closed
     actions = nil,      -- header buttons left of the close pill: { { label, cb, dark, icon = svg path }, ... }
     close_label = nil,  -- the close pill's text (Close by default)
@@ -226,6 +231,93 @@ function ThumbGrid:onShow()
     return true
 end
 
+-- Which parts of a path fit in `room` pixels: `ws` the width of each part (the
+-- last is the folder shown), `sep` the width of a separator, `ell` of the "…"
+-- pill, `min_cur` the least the last part may shrink to. Returns the parts to
+-- draw in order, { i = k, w } or { more = true, from, to, w } (the parts k from..to
+-- left out); the folders nearest the one shown are kept first (a hold on the back
+-- arrow goes to the top).
+function ThumbGrid.fitCrumbs(ws, room, sep, ell, min_cur)
+    local n = #ws
+    local function width(list)
+        local w = 0
+        for k, e in ipairs(list) do w = w + e.w + (k > 1 and sep or 0) end
+        return w
+    end
+    local function part(k) return { i = k, w = ws[k] } end
+    local all = {}
+    for k = 1, n do all[k] = part(k) end
+    if width(all) <= room then return all end
+    -- "…" for the top folders, then as many of the folders above the shown one as fit
+    for m = n - 2, 1, -1 do
+        local list = { { more = true, from = 1, to = n - m - 1, w = ell } }
+        for k = n - m, n do list[#list + 1] = part(k) end
+        if width(list) <= room then return list end
+    end
+    -- "…" and the folder shown, shortened when even that is too long
+    local list = { { more = true, from = 1, to = n - 1, w = ell }, part(n) }
+    if width(list) > room then list[2].w = math.max(min_cur or 0, room - ell - sep) end
+    return list
+end
+
+-- The path of the folder shown, at `x0` in the top bar, in `room` pixels: the
+-- folders above it as pills (the header's buttons' grey), "›" between, the
+-- folder shown in bold. Every name is cut short with an ellipsis rather than
+-- run into the next one, and the middle of a long path folds into a "…" pill.
+function ThumbGrid:paintCrumbs(bb, x0, y, room)
+    local S = function(px) return Screen:scaleBySize(px) end
+    local crumbs = self.crumbs
+    local n = #crumbs
+    local cface = Font:getFace("cfont", 16)
+    local tface = Font:getFace("cfont", 19)
+    local pad, chip_h = S(10), S(32)
+    local chip_y = y + math.floor(self.top_h / 2 - chip_h / 2)
+    local cap_a = math.max(S(56), math.floor(room * 0.4)) - 2 * pad
+    local cap_c = math.max(S(56), math.floor(room * 0.6))
+    local function textW(text, face, bold, max_w)
+        local t = TextWidget:new{ text = text, face = face, bold = bold, max_width = max_w }
+        local w = t:getSize().w
+        t:free()
+        return w
+    end
+    local ws = {}
+    for k = 1, n - 1 do ws[k] = textW(crumbs[k][1], cface, false, cap_a) + 2 * pad end
+    ws[n] = textW(crumbs[n][1], tface, true, cap_c)
+    local sep_w = textW("\u{203A}", cface, false) + S(10)
+    local ell_w = textW("\u{2026}", cface, false) + 2 * pad
+    local parts = ThumbGrid.fitCrumbs(ws, room, sep_w, ell_w, S(40))
+    local hits = {}
+    local cx = x0
+    for k, e in ipairs(parts) do
+        local last = (k == #parts)
+        if last and e.i == n then
+            local t = TextWidget:new{ text = crumbs[n][1], face = tface, bold = true, max_width = e.w }
+            local tsz = t:getSize()
+            t:paintTo(bb, cx, y + math.floor(self.top_h / 2 - tsz.h / 2))
+            t:free()
+        else
+            bb:paintRoundedRect(cx, chip_y, e.w, chip_h, CARD, S(11))
+            local t = TextWidget:new{ text = e.more and "\u{2026}" or crumbs[e.i][1], face = cface,
+                max_width = e.w - 2 * pad }
+            local tsz = t:getSize()
+            t:paintTo(bb, cx + math.floor((e.w - tsz.w) / 2), chip_y + math.floor((chip_h - tsz.h) / 2))
+            t:free()
+            -- (the whole height of the bar answers a tap, and the gaps around a pill)
+            hits[#hits + 1] = { x = cx - math.floor(sep_w / 2), y = y, w = e.w + sep_w, h = self.top_h,
+                crumb = not e.more and crumbs[e.i] or nil, from = e.from, to = e.to }
+        end
+        cx = cx + e.w
+        if not last then
+            local t = TextWidget:new{ text = "\u{203A}", face = cface, fgcolor = LABEL }
+            local tsz = t:getSize()
+            t:paintTo(bb, cx + math.floor((sep_w - tsz.w) / 2), y + math.floor(self.top_h / 2 - tsz.h / 2))
+            t:free()
+            cx = cx + sep_w
+        end
+    end
+    self._crumb_hits = hits
+end
+
 function ThumbGrid:paintTo(bb, x, y)
     self:prepare()
     local sw, sh = self.sw, self.sh
@@ -298,10 +390,15 @@ function ThumbGrid:paintTo(bb, x, y)
         t:free()
         if fits then break end
     end
-    local title = TextWidget:new{ text = self.title, face = Font:getFace("cfont", size), bold = true, max_width = room }
-    local tsz = title:getSize()
-    title:paintTo(bb, tx, y + math.floor(self.top_h / 2 - tsz.h / 2))
-    title:free()
+    self._crumb_hits = nil
+    if self.crumbs and #self.crumbs > 1 then
+        self:paintCrumbs(bb, tx, y, room)
+    else
+        local title = TextWidget:new{ text = self.title, face = Font:getFace("cfont", size), bold = true, max_width = room }
+        local tsz = title:getSize()
+        title:paintTo(bb, tx, y + math.floor(self.top_h / 2 - tsz.h / 2))
+        title:free()
+    end
     bb:paintRect(x, y + self.top_h - 1, sw, 1, GREY)
 
     -- the tab column: each tab a card with its colour as a strip on the left; the
@@ -486,6 +583,9 @@ function ThumbGrid:onTgTap(_, ges)
         if hit(r, p) then self.actions[i][2](); return true end
     end
     if hit(self._back, p) then self.on_back(); return true end
+    for _i, c in ipairs(self._crumb_hits or {}) do
+        if hit(c, p) then self:crumbTapped(c); return true end
+    end
     local tab = self:tabAt(p)
     if tab == "up" then self.tpage = math.max(0, self.tpage - 1); UIManager:setDirty(self, "ui"); return true end
     if tab == "down" then self.tpage = self.tpage + 1; UIManager:setDirty(self, "ui"); return true end
@@ -499,6 +599,23 @@ function ThumbGrid:onTgTap(_, ges)
     local it = self:itemAt(p)
     if it and self.on_pick then self.on_pick(it) end
     return true
+end
+
+-- A tap on a pill of the path: its folder, or for "…" the folders it stands for
+-- (straight there when it is only one).
+function ThumbGrid:crumbTapped(c)
+    if c.crumb then
+        if c.crumb[2] then c.crumb[2]() end
+        return
+    end
+    local hidden = {}
+    for k = c.from, c.to do hidden[#hidden + 1] = self.crumbs[k] end
+    if #hidden == 1 or not self.on_crumbs_more then
+        local last = hidden[#hidden]
+        if last and last[2] then last[2]() end
+    else
+        self.on_crumbs_more(hidden)
+    end
 end
 
 function ThumbGrid:onTgHold(_, ges)

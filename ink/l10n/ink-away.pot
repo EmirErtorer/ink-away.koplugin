@@ -2201,6 +2201,10 @@ msgstr ""
 msgid "Go back to it"
 msgstr ""
 
+#: ink/view/library.lua
+msgid "Go to folder"
+msgstr ""
+
 #: ink/view/selection.lua
 msgid "Go to link"
 msgstr ""

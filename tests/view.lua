@@ -7038,6 +7038,63 @@ do
     UIManager.reset()
 end
 
+-- ---- the library's path in its top bar (breadcrumbs) -------------------------------------
+do
+    local ThumbGrid = require("ink/ui/thumbgrid")
+    local fit = ThumbGrid.fitCrumbs
+    local function shape(parts)
+        local out = {}
+        for _, e in ipairs(parts) do out[#out + 1] = e.more and ("[" .. e.from .. "-" .. e.to .. "]") or tostring(e.i) end
+        return table.concat(out, " ")
+    end
+    ok(shape(fit({ 80, 60, 90, 120 }, 500, 10, 30)) == "1 2 3 4", "crumbs: a path that fits shows whole")
+    ok(shape(fit({ 80, 60, 90, 120 }, 330, 10, 30)) == "[1-1] 2 3 4", "crumbs: the top folders fold into … first")
+    ok(shape(fit({ 80, 60, 90, 120 }, 260, 10, 30)) == "[1-2] 3 4", "crumbs: the folders nearest the one shown are kept")
+    ok(shape(fit({ 80, 60, 90, 120 }, 170, 10, 30)) == "[1-3] 4", "crumbs: then … and the folder shown")
+    local tight = fit({ 80, 60, 90, 300 }, 150, 10, 30, 40)
+    ok(shape(tight) == "[1-3] 4" and tight[2].w == 110, "crumbs: the folder shown shrinks to what is left")
+    tight = fit({ 80, 300 }, 50, 10, 30, 40)
+    ok(tight[2].w == 40, "crumbs: never below its least width")
+    ok(shape(fit({ 80, 120 }, 150, 10, 30)) == "[1-1] 2", "crumbs: one folder above folds into … too")
+    -- the library builds the path, and each part goes to its folder
+    local LIB = require("testenv").libraryDir() .. "/crumbstest"
+    local Storage = require("ink/storage")
+    for _, d in ipairs({ "", "/2026", "/2026/November", "/2026/November/1-7" }) do Storage.ensureDir(LIB .. d) end
+    local saved_lib = G_reader_settings.data.inkaway_library_dir
+    G_reader_settings.data.inkaway_library_dir = LIB
+    UIManager.reset()
+    local view = dofile("ink/view.lua"):new{}
+    UIManager:show(view)
+    ok(view:libraryCrumbs(LIB) == nil and view:libraryCrumbs(LIB .. "/") == nil, "crumbs: none at the top")
+    ok(view:libraryCrumbs("/somewhere/else") == nil, "crumbs: none for a folder outside the library")
+    local c = view:libraryCrumbs(LIB .. "/2026/November/1-7/")
+    ok(c and #c == 4 and c[1][1] == "Library" and c[2][1] == "2026" and c[3][1] == "November" and c[4][1] == "1-7",
+        "crumbs: Library, 2026, November, 1-7 (a trailing slash makes no difference)")
+    ok(c and c[4][2] == nil and c[2].path == LIB .. "/2026", "crumbs: the folder shown has no tap; the others their path")
+    view:openLibrary(LIB .. "/2026/November/1-7")
+    local lib = view._library
+    ok(lib.crumbs and #lib.crumbs == 4, "crumbs: the library's grid gets the path")
+    lib.crumbs[2][2]()
+    ok(view._lib_dir == LIB .. "/2026" and #lib.crumbs == 2 and lib.title == "2026", "crumbs: a tap on 2026 shows 2026")
+    lib.crumbs[1][2]()
+    ok(view._lib_dir == LIB and lib.crumbs == nil and lib.title == "Library", "crumbs: Library goes to the top")
+    -- "…": one folder behind it goes straight there, more open a sheet of them
+    view:libraryGo(LIB .. "/2026/November/1-7")
+    lib:crumbTapped({ from = 2, to = 2 })
+    ok(view._lib_dir == LIB .. "/2026", "crumbs: … standing for one folder goes to it")
+    view:libraryGo(LIB .. "/2026/November/1-7")
+    lib:crumbTapped({ from = 1, to = 3 })
+    local sheet = view._library_crumbs
+    ok(sheet ~= nil and findButton(sheet, "November") ~= nil and findButton(sheet, "Library") ~= nil,
+        "crumbs: … standing for more opens a sheet with them")
+    findButton(sheet, "November").callback()
+    ok(view._lib_dir == LIB .. "/2026/November" and view._library_crumbs == nil, "crumbs: a folder in the sheet goes there")
+    UIManager:close(lib)
+    UIManager:close(view)
+    G_reader_settings.data.inkaway_library_dir = saved_lib
+    UIManager.reset()
+end
+
 print(("view: %d checks, %d failures"):format(checks, failures))
 require("testenv").cleanup()
 os.exit(failures == 0 and 0 or 1)
