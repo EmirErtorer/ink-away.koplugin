@@ -2931,6 +2931,10 @@ msgstr ""
 msgid "Looking for changes…"
 msgstr ""
 
+#: ink/reader/roomsui.lua
+msgid "Loop ink, shapes or pictures to move, copy or change them"
+msgstr ""
+
 #: ink/guide.lua
 msgid "Loop writing, shapes, pictures or text for its menu: cut, copy, duplicate, turn, flip, colour, size, opacity, to front, delete."
 msgstr ""
@@ -4616,6 +4620,10 @@ msgstr ""
 msgid "Sky"
 msgstr ""
 
+#: ink/reader/roomsui.lua
+msgid "Slower than ordinary rooms: when a room needs a line without a mark yet, the book is loaded again, which takes a while in a big book."
+msgstr ""
+
 #: ink/view/pencase.lua
 msgid "Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."
 msgstr ""
@@ -5052,6 +5060,10 @@ msgstr ""
 
 #: ink/reader/roomsui.lua
 msgid "The book could not be put back."
+msgstr ""
+
+#: ink/reader/roomsui.lua
+msgid "The button keeps the one you pick. Hold it to switch again."
 msgstr ""
 
 #: ink/view/textformat.lua

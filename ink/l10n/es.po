@@ -2956,6 +2956,10 @@ msgstr "Buscando una versión más reciente…"
 msgid "Looking for changes…"
 msgstr "Buscando cambios…"
 
+#: ink/reader/roomsui.lua
+msgid "Loop ink, shapes or pictures to move, copy or change them"
+msgstr "Rodea tinta, formas o imágenes para moverlas, copiarlas o cambiarlas"
+
 #: ink/guide.lua
 msgid "Loop writing, shapes, pictures or text for its menu: cut, copy, duplicate, turn, flip, colour, size, opacity, to front, delete."
 msgstr "Selecciona con el lazo escritura, formas, imágenes o texto para ver su menú: cortar, copiar, duplicar, girar, voltear, color, tamaño, opacidad, traer al frente, eliminar."
@@ -4662,6 +4666,10 @@ msgstr "Tamaño"
 msgid "Sky"
 msgstr "Cielo"
 
+#: ink/reader/roomsui.lua
+msgid "Slower than ordinary rooms: when a room needs a line without a mark yet, the book is loaded again, which takes a while in a big book."
+msgstr "Más lento que los espacios normales: cuando un espacio necesita una línea que aún no tiene marca, el libro se vuelve a cargar, lo que tarda un rato en un libro grande."
+
 #: ink/view/pencase.lua
 msgid "Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."
 msgstr "Suaviza las líneas temblorosas. Con valores más altos el trazo es más estable, pero va un poco por detrás de tu dedo."
@@ -5101,6 +5109,10 @@ msgstr ""
 #: ink/reader/roomsui.lua
 msgid "The book could not be put back."
 msgstr "No se pudo restaurar el libro."
+
+#: ink/reader/roomsui.lua
+msgid "The button keeps the one you pick. Hold it to switch again."
+msgstr "El botón recuerda lo que elijas. Mantenlo pulsado para cambiar de nuevo."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

@@ -783,5 +783,60 @@ do
     view:onCloseWidget()
 end
 
+-- The Lasso button as a group (ink/reader/roomsui.lua): a badge in its corner, a
+-- hold for the Lasso or Make room, and the button keeps the one picked.
+do
+    Screen:setSize(1072, 1448)
+    UIManager.reset()
+    package.loaded["ink/view"] = nil
+    package.loaded["ink/reader/inkview"] = nil
+    local ReaderInkView = require("ink/reader/inkview")
+    G_reader_settings.data.inkaway_lasso_group = nil
+    local book = standInBook()
+    function book:canRoom() return self.can ~= false end
+    function book:rooms() return {} end
+    function book:roomsShown() return true end
+    local view = ReaderInkView:new{ book = book }
+    local started = 0
+    view.startRoomTool = function() started = started + 1 end
+    local function lassoEntry()
+        for _i, e in ipairs(view._toolbar_icons or {}) do if e.id == "lasso" then return e end end
+    end
+    local e = lassoEntry()
+    ok(e and e.badge and e.path:find("lasso%.svg$"), "group: the Lasso button shows the lasso, with a badge")
+    ok(e.button.hold_callback ~= nil, "group: and answers a hold")
+    e.button.hold_callback()
+    local sheet = view._lasso_group
+    ok(sheet and findButton(sheet, "Lasso") and findButton(sheet, "Make room"), "group: a hold offers the Lasso and Make room")
+    findButton(sheet, "Make room").callback()
+    e = lassoEntry()
+    ok(view._lasso_group == nil and started == 1, "group: Make room picked starts the room tool")
+    ok(G_reader_settings.data.inkaway_lasso_group == "room" and e.path:find("room%.svg$") and e.badge,
+        "group: and the button shows Make room now, still with its badge")
+    e.button.callback()
+    ok(started == 2 and view.tool ~= "lasso", "group: a tap on it starts the room tool again")
+    e.button.hold_callback()
+    findButton(view._lasso_group, "Lasso").callback()
+    e = lassoEntry()
+    ok(view.tool == "lasso" and e.path:find("lasso%.svg$") and G_reader_settings.data.inkaway_lasso_group == "lasso",
+        "group: the Lasso picked takes the lasso, and the button shows it again")
+    e.button.callback()
+    ok(view._lasso_dialog ~= nil, "group: tapped again, the Lasso's sheet as before")
+    view:closeSheet("_lasso_dialog")
+    view:onCloseWidget()
+    -- where no room can be made (a PDF): no badge, the plain Lasso even after Make room was picked
+    G_reader_settings.data.inkaway_lasso_group = "room"
+    UIManager.reset()
+    book = standInBook()
+    function book:canRoom() return false end
+    view = ReaderInkView:new{ book = book }
+    e = lassoEntry()
+    ok(e and not e.badge and e.path:find("lasso%.svg$"), "group: no badge and the plain Lasso where rooms cannot be made")
+    e.button.hold_callback()
+    ok(view._lasso_group == nil and view.tool == "lasso", "group: there a hold just takes the lasso")
+    view:onCloseWidget()
+    G_reader_settings.data.inkaway_lasso_group = nil
+end
+
 print(("readerview: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)

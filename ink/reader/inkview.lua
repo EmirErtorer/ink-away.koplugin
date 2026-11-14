@@ -674,9 +674,16 @@ function ReaderInkView:buildToolbar()
         { id = "erase", icon = "eraser", tool = true, cb = function()
             if self.tool == "erase" then self:openEraserSettings() else self:setTool("erase") end
         end },
-        -- (tapped again: its sheet, with Make room)
-        { id = "lasso", icon = "lasso", tool = true, cb = function()
-            if self.tool == "lasso" then self:openLassoMenu() else self:setTool("lasso") end
+        -- a group of two (the badge in its corner): the Lasso or Make room, whichever
+        -- was picked last; a hold chooses (ink/reader/roomsui.lua). The Lasso tapped
+        -- again: its sheet.
+        { id = "lasso", icon = self:lassoGroupTool() == "room" and "room" or "lasso", tool = true,
+            badge = self:canMakeRoom(), cb = function()
+            if self:lassoGroupTool() == "room" then self:startRoomTool()
+            elseif self.tool == "lasso" then self:openLassoMenu() else self:setTool("lasso") end
+        end, hold = function()
+            if self:canMakeRoom() then self:openLassoGroup()
+            elseif self.tool == "lasso" then self:openLassoMenu() else self:setTool("lasso") end
         end },
         { id = "shape", icon = "shape", tool = true, cb = function()
             if self.tool == "shape" then self:openShapePicker() else self:setTool("shape") end
@@ -709,7 +716,8 @@ function ReaderInkView:canPinSelection()
     return book ~= nil and type(book.canPin) == "function" and book:canPin() == true
 end
 
--- The Stickers button comes or goes: the toolbar is built again.
+-- The Stickers button comes or goes, or a button shows another tool: the
+-- toolbar is built again.
 function ReaderInkView:stickersBarChanged()
     self:flushPending()
     self:buildToolbar()

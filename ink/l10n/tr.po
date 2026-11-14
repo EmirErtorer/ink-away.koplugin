@@ -2956,6 +2956,10 @@ msgstr "Daha yeni bir sürüm aranıyor…"
 msgid "Looking for changes…"
 msgstr "Değişiklikler aranıyor…"
 
+#: ink/reader/roomsui.lua
+msgid "Loop ink, shapes or pictures to move, copy or change them"
+msgstr "Mürekkebi, şekilleri ya da resimleri taşımak, kopyalamak veya değiştirmek için çevreleyin"
+
 #: ink/guide.lua
 msgid "Loop writing, shapes, pictures or text for its menu: cut, copy, duplicate, turn, flip, colour, size, opacity, to front, delete."
 msgstr "Menüsü için yazıyı, şekilleri, resimleri veya metni kementle çevreleyin: kes, kopyala, çoğalt, döndür, çevir, renk, boyut, saydamlık, öne getir, sil."
@@ -4662,6 +4666,10 @@ msgstr "Boyut"
 msgid "Sky"
 msgstr "Gökyüzü"
 
+#: ink/reader/roomsui.lua
+msgid "Slower than ordinary rooms: when a room needs a line without a mark yet, the book is loaded again, which takes a while in a big book."
+msgstr "Normal boşluklardan yavaştır: bir boşluk henüz işareti olmayan bir satıra ihtiyaç duyduğunda kitap yeniden yüklenir, bu da büyük bir kitapta biraz zaman alır."
+
 #: ink/view/pencase.lua
 msgid "Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."
 msgstr "Titrek çizgileri yumuşatır. Yüksek değerler çizgiyi sabitler ama parmağınızın biraz gerisinden gelir."
@@ -5101,6 +5109,10 @@ msgstr ""
 #: ink/reader/roomsui.lua
 msgid "The book could not be put back."
 msgstr "Kitap eski haline getirilemedi."
+
+#: ink/reader/roomsui.lua
+msgid "The button keeps the one you pick. Hold it to switch again."
+msgstr "Düğme seçtiğinizi hatırlar. Yeniden değiştirmek için basılı tutun."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

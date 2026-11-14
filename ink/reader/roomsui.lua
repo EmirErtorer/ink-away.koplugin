@@ -126,6 +126,59 @@ function RoomsUI:startRoomTool(room)
 end
 
 ------------------------------------------------------------------------------
+-- The Lasso button's group: the Lasso and Make room
+------------------------------------------------------------------------------
+
+RoomsUI.GROUP_SETTING = "inkaway_lasso_group"
+
+-- The tool the Lasso button stands for now: "room" when Make room was picked
+-- last (and works in this book), else "lasso".
+function RoomsUI:lassoGroupTool()
+    if self:getSetting(RoomsUI.GROUP_SETTING) == "room" and self:canMakeRoom() then return "room" end
+    return "lasso"
+end
+
+-- Make `tool` ("lasso" or "room") the one the button stands for, and its icon.
+function RoomsUI:setLassoGroupTool(tool)
+    local was = self:lassoGroupTool()
+    self:setSetting(RoomsUI.GROUP_SETTING, tool == "room" and "room" or "lasso")
+    if self:lassoGroupTool() ~= was and type(self.stickersBarChanged) == "function" then
+        self:stickersBarChanged()
+    end
+end
+
+-- A hold on the Lasso button: the two tools it holds, the one it stands for now
+-- first in the accent; a tap picks one, uses it, and the button keeps it.
+function RoomsUI:openLassoGroup()
+    local field = "_lasso_group"
+    local content_w = self:sheetWidth()
+    local closeSelf = function() self:closeSheet(field) end
+    local now = self:lassoGroupTool()
+    self:showSheet(field, function()
+        local content = VerticalGroup:new{ align = "left" }
+        local function add(w) table.insert(content, w) end
+        add(self:sheetTitle(_("Lasso"), content_w, _("Close"), closeSelf))
+        add(VerticalSpan:new{ width = S(12) })
+        add(self:actionTile("lasso", _("Lasso"), _("Loop ink, shapes or pictures to move, copy or change them"), content_w,
+            function()
+                closeSelf()
+                self:setLassoGroupTool("lasso")
+                self:setTool("lasso")
+            end, nil, nil, now ~= "lasso" and "quiet" or nil))
+        add(VerticalSpan:new{ width = S(10) })
+        add(self:actionTile("room", _("Make room"), _("Draw a box and the text moves out of it"), content_w,
+            function()
+                closeSelf()
+                self:setLassoGroupTool("room")
+                self:startRoomTool()
+            end, nil, nil, now ~= "room" and "quiet" or nil))
+        add(VerticalSpan:new{ width = S(10) })
+        add(self:sheetHint(_("The button keeps the one you pick. Hold it to switch again."), content_w))
+        return content
+    end)
+end
+
+------------------------------------------------------------------------------
 -- The Lasso's sheet
 ------------------------------------------------------------------------------
 
@@ -236,6 +289,8 @@ function RoomsUI:addExactRows(add, content_w, menu, closeSelf)
         end })
     add(VerticalSpan:new{ width = S(4) })
     add(self:sheetHint(_("Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."), content_w))
+    add(VerticalSpan:new{ width = S(4) })
+    add(self:sheetHint(_("Slower than ordinary rooms: when a room needs a line without a mark yet, the book is loaded again, which takes a while in a big book."), content_w))
     if book:hasExact() then
         add(VerticalSpan:new{ width = S(10) })
         add(self:actionButton(_("Back to the original book"), content_w, function()

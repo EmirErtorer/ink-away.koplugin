@@ -2956,6 +2956,10 @@ msgstr "Αναζήτηση νεότερης έκδοσης…"
 msgid "Looking for changes…"
 msgstr "Αναζήτηση αλλαγών…"
 
+#: ink/reader/roomsui.lua
+msgid "Loop ink, shapes or pictures to move, copy or change them"
+msgstr "Κυκλώστε μελάνι, σχήματα ή εικόνες για να τα μετακινήσετε, να τα αντιγράψετε ή να τα αλλάξετε"
+
 #: ink/guide.lua
 msgid "Loop writing, shapes, pictures or text for its menu: cut, copy, duplicate, turn, flip, colour, size, opacity, to front, delete."
 msgstr "Κυκλώστε με το λάσο γράψιμο, σχήματα, εικόνες ή κείμενο για το μενού του: αποκοπή, αντιγραφή, διπλασιασμός, περιστροφή, αναστροφή, χρώμα, μέγεθος, αδιαφάνεια, μπροστά, διαγραφή."
@@ -4662,6 +4666,10 @@ msgstr "Μέγεθος"
 msgid "Sky"
 msgstr "Ουρανός"
 
+#: ink/reader/roomsui.lua
+msgid "Slower than ordinary rooms: when a room needs a line without a mark yet, the book is loaded again, which takes a while in a big book."
+msgstr "Πιο αργό από τους απλούς χώρους: όταν ένας χώρος χρειάζεται μια γραμμή που δεν έχει ακόμη σημάδι, το βιβλίο φορτώνεται ξανά, κάτι που αργεί σε ένα μεγάλο βιβλίο."
+
 #: ink/view/pencase.lua
 msgid "Smooths shaky lines. Higher values steady the stroke but trail your finger slightly."
 msgstr "Εξομαλύνει τις τρεμάμενες γραμμές. Οι υψηλότερες τιμές σταθεροποιούν τη γραμμή αλλά ακολουθούν λίγο πίσω από το δάχτυλό σας."
@@ -5101,6 +5109,10 @@ msgstr ""
 #: ink/reader/roomsui.lua
 msgid "The book could not be put back."
 msgstr "Το βιβλίο δεν μπόρεσε να επαναφερθεί."
+
+#: ink/reader/roomsui.lua
+msgid "The button keeps the one you pick. Hold it to switch again."
+msgstr "Το κουμπί κρατά αυτό που επιλέγετε. Κρατήστε το πατημένο για να αλλάξετε ξανά."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

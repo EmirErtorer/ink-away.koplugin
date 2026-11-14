@@ -12,6 +12,7 @@ along the bar), _vb_thick (the bar's thickness) and _vbar_h (its length); a
 bar down a side also keeps them as _btn_h and _bar_w.
 ]]
 
+local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -47,7 +48,8 @@ function VBar.fitThickness(m)
 end
 
 -- The bar of buttons, `len` long, along `side` (left by default): specs are
--- { id, icon, tool, cb }. `fit`, when given, is the thickness to take (the
+-- { id, icon, tool, cb, hold, badge } (hold: a hold on the button; badge: a small
+-- triangle in the icon's corner, the sign that the button holds more tools). `fit`, when given, is the thickness to take (the
 -- book's margin there, see VBar.fitThickness) instead of the usual one; the
 -- icons are sized to it.
 function VBar:buildVBar(specs, len, side, fit)
@@ -70,12 +72,14 @@ function VBar:buildVBar(specs, len, side, fit)
     local group = across and HorizontalGroup:new{ align = "center" } or VerticalGroup:new{ align = "center" }
     for i, s in ipairs(specs) do
         local size = (i == n) and (len - cell * (n - 1)) or cell
-        local raw = s.cb
-        local b = Button:new{ icon = "inkaway." .. s.icon, icon_width = isz, icon_height = isz,
-            callback = function()
-                local ok, err = xpcall(raw, debug.traceback)
+        local function guarded(fn)
+            return fn and function()
+                local ok, err = xpcall(fn, debug.traceback)
                 if not ok then logger.warn("Ink Away book toolbar '" .. s.id .. "' failed: " .. tostring(err)) end
-            end,
+            end or nil
+        end
+        local b = Button:new{ icon = "inkaway." .. s.icon, icon_width = isz, icon_height = isz,
+            callback = guarded(s.cb), hold_callback = guarded(s.hold),
             width = across and size or thick, height = across and thick or size,
             bordersize = 0, radius = 0, background = nil, margin = 0, padding = 0, show_parent = self }
         local path = self:pluginDir() .. "ink/icons/" .. s.icon .. ".svg"
@@ -83,7 +87,7 @@ function VBar:buildVBar(specs, len, side, fit)
         if ok_icon and icon then self:setButtonLabel(b, icon) end
         if b.frame then b.frame.background = nil end
         if s.tool then self.tool_buttons[s.id] = { button = b } end
-        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true,
+        self._toolbar_icons[i] = { button = b, id = s.id, tool = s.tool == true, badge = s.badge == true,
             icon = ok_icon and icon or nil, path = path, size = isz }
         table.insert(group, b)
     end
@@ -154,6 +158,23 @@ function VBar:drawToolbarIcons(bb, ox, oy)
             self:paintPenMark(bb, self:vbarCell(i, ox, oy))
             break
         end
+    end
+    for i, e in ipairs(self._toolbar_icons or {}) do
+        if e.badge then VBar.paintBadge(bb, e.size, i == self._active_btn_idx, self:vbarCell(i, ox, oy)) end
+    end
+end
+
+-- The small triangle at the bottom right of a button's icon (`isz` px, centred in
+-- the cell x, y, w, h) that says a hold on it gives more tools: black, or the
+-- accent's text colour on the active tool's pill.
+function VBar.paintBadge(bb, isz, active, x, y, w, h)
+    local t = math.max(4, math.floor(isz * 0.3))
+    local gap = Screen:scaleBySize(2)
+    local x1 = math.min(x + w - Screen:scaleBySize(6), math.floor(x + w / 2 + isz / 2) + gap)
+    local y1 = math.min(y + h - Screen:scaleBySize(6), math.floor(y + h / 2 + isz / 2) + gap)
+    local color = active and Accent.get().text or Blitbuffer.COLOR_BLACK
+    for k = 0, t - 1 do
+        bb:paintRect(x1 - k, y1 - t + 1 + k, k + 1, 1, color)
     end
 end
 
