@@ -1161,16 +1161,37 @@ function Book:reloadForRooms(after)
     UIManager:show(note)
     UIManager:forceRePaint()
     pcall(document.invalidateCacheFile, document)
+    -- The reload is finished by whichever of KOReader's callback and the new reader's
+    -- own "ready" event comes first (Book.finishReload): a plugin that wraps
+    -- ReaderUI.showReader with fewer arguments (the Kobo plugin does) drops the
+    -- callback, and the note would stay over the book for ever.
+    local pending = { note = note, after = after }
+    pending.watchdog = function()
+        if Book.pending_reload == pending then
+            logger.warn("Ink Away: the book did not report that it was ready, closing the note")
+            Book.finishReload(nil)
+        end
+    end
+    Book.pending_reload = pending
+    UIManager:scheduleIn(60, pending.watchdog)
     UIManager:nextTick(function()
-        ui:reloadDocument(nil, true, function(new_ui)
-            UIManager:close(note)
-            local book = new_ui and Book.by_ui[new_ui]
-            if book and after then
-                -- (once the reader is up and has drawn its page)
-                UIManager:scheduleIn(0.2, function() after(book) end)
-            end
-        end)
+        ui:reloadDocument(nil, true, function(new_ui) Book.finishReload(new_ui) end)
     end)
+end
+
+-- The book is loaded again (see reloadForRooms): close the note and run what was
+-- to follow, once. `new_ui` is the new reader, when known.
+function Book.finishReload(new_ui)
+    local pending = Book.pending_reload
+    if not pending then return end
+    Book.pending_reload = nil
+    UIManager:unschedule(pending.watchdog)
+    UIManager:close(pending.note)
+    local book = new_ui and Book.by_ui[new_ui]
+    if book and pending.after then
+        -- (once the reader is up and has drawn its page)
+        UIManager:scheduleIn(0.2, function() pending.after(book) end)
+    end
 end
 
 -- Add room `r` (from Rooms.plan), or change the room with its id, and lay the

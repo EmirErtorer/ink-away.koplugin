@@ -482,16 +482,22 @@ function InkAway:syncBook()
     if not md5 then pcall(function() md5 = require("util").partialMD5(ui.document.file) end) end
     if not md5 then return end
     self.sync_md5 = md5
-    pcall(SyncManager.preOpenBook, md5, book.sidecar, ui.document.file, function(fetched)
-        if self.book ~= book then return end
+    local file = ui.document.file
+    pcall(SyncManager.preOpenBook, md5, book.sidecar, file, function(fetched)
+        -- (the answer can come after the book was closed or loaded again, when its
+        -- reader has no document any more)
+        if self.book ~= book or not ui.document then return end
         if fetched then pcall(book.reload, book) end
-        pcall(SyncManager.bookOpened, md5, book.sidecar, ui.document.file)
+        pcall(SyncManager.bookOpened, md5, book.sidecar, file)
     end)
 end
 
 -- The book is up: one whose rooms need markers it was not laid out with (they
 -- came with the cloud sync, or its saved layout is older) is loaded again with them.
 function InkAway:onReaderReady()
+    -- a book loaded again for rooms is ready (whatever became of KOReader's own callback)
+    local bok, Book = pcall(require, "ink/reader/book")
+    if bok and Book.pending_reload and self.book then pcall(Book.finishReload, self.ui) end
     -- two pages, for a book that shows them (with them off, nothing is installed)
     local two = self:twoPage()
     if two and two.mode ~= "off" then two:apply(true) end

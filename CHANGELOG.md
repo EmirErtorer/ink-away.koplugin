@@ -8,6 +8,10 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Fixed
+- Making the first room in a book could leave "Preparing this book for rooms" over the page for good, with the toolbar gone, until the reader was powered off (Kobo, with the Kobo plugin installed). The plugin passes the book's reload on to KOReader without the callback Ink Away used to close the note and bring the annotation mode back, so neither happened. Ink Away now also closes the note when the reloaded book reports it is ready, and a timer closes it as a last resort.
+- A reader could crash and restart when cloud sync's check for newer ink on opening a book answered after the book had been closed or loaded again (as the first room's reload does).
+
 ## [4.4.4] - 2026-11-13 *Prerelease*
 
 ### Added
