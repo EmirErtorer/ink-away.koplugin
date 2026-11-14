@@ -145,6 +145,7 @@ function RoomsUI:openLassoMenu()
         else
             add(self:sheetHint(_("Make room works in books whose text reflows, shown one page at a time."), content_w, 15))
         end
+        if self:canMakeRoom() and type(self.book.exactAvailable) == "function" then self:addExactRows(add, content_w, menu, closeSelf) end
         local rooms = self.book and type(self.book.rooms) == "function" and self.book:rooms() or {}
         if #rooms > 0 then
             add(VerticalSpan:new{ width = S(12) })
@@ -211,6 +212,52 @@ function RoomsUI:openRoomsList(pg)
         return content
     end
     self:showSheet(field, build)
+end
+
+-- What Exact lines does, said when it is switched on.
+function RoomsUI.exactNotice()
+    return _("Exact lines is on. A room can then start on any line of the text: Ink Away wraps one word of that line in an invisible mark, in a private copy of the book that it keeps in its own cache. The book's file is never changed, moved or sent, and the copy can always be made again from it. \"Back to the original book\" in this menu takes the marks away.")
+end
+
+-- Exact lines in the Lasso's sheet: the switch and its hint, and the way back to
+-- the book as it is on the reader.
+function RoomsUI:addExactRows(add, content_w, menu, closeSelf)
+    local book = self.book
+    local Exact = require("ink/reader/exactbook")
+    add(VerticalSpan:new{ width = S(12) })
+    if not book:exactAvailable() then
+        add(self:sheetHint(_("Exact lines needs an EPUB shown in the Book or Web render mode."), content_w))
+        return
+    end
+    add(ToggleRow:new{ label = _("Exact lines"), is_on = Exact.enabled(), width = content_w, parent = menu,
+        callback = function(on)
+            Exact.setEnabled(on)
+            if on then self:tell(RoomsUI.exactNotice()) end
+        end })
+    add(VerticalSpan:new{ width = S(4) })
+    add(self:sheetHint(_("Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."), content_w))
+    if book:hasExact() then
+        add(VerticalSpan:new{ width = S(10) })
+        add(self:actionButton(_("Back to the original book"), content_w, function()
+            closeSelf(); self:restoreOriginalBook()
+        end))
+    end
+end
+
+-- Read the book as it is on the reader again: its marks go, and the book is loaded
+-- from its own file. Not while a room hangs on one.
+function RoomsUI:restoreOriginalBook()
+    self:settleForRooms()
+    local ok, why = self.book:removeExactMarks()
+    if not ok then
+        if why == "rooms" then
+            self:tell(_("Remove the rooms made on exact lines first (Rooms in this book), then go back to the original book."))
+        else
+            self:tell(_("The book could not be put back."))
+        end
+        return
+    end
+    self.book:reloadForRooms(function(again) again:annotate() end)
 end
 
 -- Go to a room's page (the rooms shown first) and pick it in the Make room tool.

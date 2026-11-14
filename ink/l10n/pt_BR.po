@@ -670,6 +670,10 @@ msgstr "A sincronização automática pode deixar o leitor mais lento e gastar b
 msgid "Back"
 msgstr "Voltar"
 
+#: ink/reader/roomsui.lua
+msgid "Back to the original book"
+msgstr "Voltar ao livro original"
+
 #: ink/view/gestures.lua
 msgid "Back to the usual"
 msgstr "Voltar ao normal"
@@ -1807,6 +1811,18 @@ msgstr "Tudo já é igual aqui e na nuvem."
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
 msgstr "Tudo o que você desenhou, escreveu e colocou neste livro some, em todas as páginas. Os destaques que o marca-texto transformou em destaques do leitor ficam, e as notas do livro também."
 
+#: ink/reader/roomsui.lua
+msgid "Exact lines"
+msgstr "Linhas exatas"
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines is on. A room can then start on any line of the text: Ink Away wraps one word of that line in an invisible mark, in a private copy of the book that it keeps in its own cache. The book's file is never changed, moved or sent, and the copy can always be made again from it. \"Back to the original book\" in this menu takes the marks away."
+msgstr "Linhas exatas está ativado. Um espaço pode então começar em qualquer linha do texto: o Ink Away envolve uma palavra dessa linha numa marca invisível, numa cópia privada do livro que guarda em seu próprio cache. O arquivo do livro nunca é alterado, movido nem enviado, e a cópia sempre pode ser refeita a partir dele. \"Voltar ao livro original\" neste menu tira as marcas."
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines needs an EPUB shown in the Book or Web render mode."
+msgstr "Linhas exatas precisa de um EPUB mostrado no modo de renderização Livro ou Web."
+
 #: ink/view/toolbar.lua
 msgid "Exit"
 msgstr "Sair"
@@ -2777,6 +2793,10 @@ msgstr "Bloco legal"
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Deixar seguir o texto"
+
+#: ink/reader/roomsui.lua
+msgid "Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."
+msgstr "Deixa um espaço começar em qualquer linha, não só num parágrafo. Trabalha numa cópia privada do livro; o arquivo do livro nunca é alterado."
 
 #: ink/actions.lua
 #: ink/launcher.lua
@@ -4181,6 +4201,10 @@ msgstr "Remover espaço"
 msgid "Remove the background picture"
 msgstr "Remover a imagem de fundo"
 
+#: ink/reader/roomsui.lua
+msgid "Remove the rooms made on exact lines first (Rooms in this book), then go back to the original book."
+msgstr "Tire primeiro os espaços feitos em linhas exatas (Espaços neste livro) e depois volte ao livro original."
+
 #: ink/reader/inkview.lua
 msgid "Remove these highlights?"
 msgstr "Remover estes destaques?"
@@ -5069,6 +5093,10 @@ msgid ""
 msgstr ""
 "Não foi possível encontrar a imagem de fundo:\n"
 "%s"
+
+#: ink/reader/roomsui.lua
+msgid "The book could not be put back."
+msgstr "Não foi possível restaurar o livro."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

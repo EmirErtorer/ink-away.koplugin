@@ -670,6 +670,10 @@ msgstr "Автоматическая синхронизация может за�
 msgid "Back"
 msgstr "Вернуться"
 
+#: ink/reader/roomsui.lua
+msgid "Back to the original book"
+msgstr "Вернуться к исходной книге"
+
 #: ink/view/gestures.lua
 msgid "Back to the usual"
 msgstr "Вернуть обычное"
@@ -1807,6 +1811,18 @@ msgstr "Здесь и в облаке уже всё одинаково."
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
 msgstr "Всё, что вы нарисовали, написали и разместили в этой книге, исчезнет на каждой странице. Выделения, которые текстовыделитель превратил в выделения читалки, остаются, как и заметки книги."
 
+#: ink/reader/roomsui.lua
+msgid "Exact lines"
+msgstr "Точные строки"
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines is on. A room can then start on any line of the text: Ink Away wraps one word of that line in an invisible mark, in a private copy of the book that it keeps in its own cache. The book's file is never changed, moved or sent, and the copy can always be made again from it. \"Back to the original book\" in this menu takes the marks away."
+msgstr "Точные строки включены. Тогда место может начинаться с любой строки текста: Ink Away оборачивает одно слово этой строки в невидимую метку в закрытой копии книги, которую хранит в собственном кэше. Файл книги никогда не меняется, не переносится и не отправляется, а копию всегда можно сделать заново из него. «Вернуться к исходной книге» в этом меню убирает метки."
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines needs an EPUB shown in the Book or Web render mode."
+msgstr "Точным строкам нужен EPUB в режиме отображения «Книга» или Web."
+
 #: ink/view/toolbar.lua
 msgid "Exit"
 msgstr "Выход"
@@ -2777,6 +2793,10 @@ msgstr "Блокнот для заметок"
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Пусть следует за текстом"
+
+#: ink/reader/roomsui.lua
+msgid "Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."
+msgstr "Позволяет месту начинаться с любой строки, а не только с абзаца. Работает с закрытой копией книги; файл книги никогда не меняется."
 
 #: ink/actions.lua
 #: ink/launcher.lua
@@ -4181,6 +4201,10 @@ msgstr "Убрать место"
 msgid "Remove the background picture"
 msgstr "Удалить фоновое изображение"
 
+#: ink/reader/roomsui.lua
+msgid "Remove the rooms made on exact lines first (Rooms in this book), then go back to the original book."
+msgstr "Сначала уберите места, сделанные на точных строках (Места в этой книге), а затем вернитесь к исходной книге."
+
 #: ink/reader/inkview.lua
 msgid "Remove these highlights?"
 msgstr "Удалить эти выделения?"
@@ -5069,6 +5093,10 @@ msgid ""
 msgstr ""
 "Фоновое изображение не найдено:\n"
 "%s"
+
+#: ink/reader/roomsui.lua
+msgid "The book could not be put back."
+msgstr "Не удалось вернуть книгу."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

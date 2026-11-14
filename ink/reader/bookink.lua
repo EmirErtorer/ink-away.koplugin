@@ -3,11 +3,12 @@ A book's ink, kept as inkaway.lua in the book's own KOReader folder: the same
 ".sdr" folder as the reader's settings for the book, wherever the "Book metadata
 location" setting puts it (next to the book, in KOReader's docsettings folder,
 or by the book's hash). { version, items = { { op, a }, ... }, notes, rooms,
-rooms_off, rooms_ready, room_marks, hl_notes } (see ink/reader/place.lua for the items; notes is the path of the
+rooms_off, rooms_ready, room_marks, exact_marks, hl_notes } (see ink/reader/place.lua for the items; notes is the path of the
 book's notebook, see ink/reader/booknotes.lua; rooms the space made in its text and
 rooms_off whether it is hidden, rooms_ready whether the book is laid out with the
 markers its exact rooms need, see ink/reader/rooms.lua, and room_marks 2 when
-inline elements carry them too; hl_notes the reader's
+inline elements carry them too; exact_marks the words wrapped in the book's edited copy
+for Make room on exact lines, see ink/reader/exactbook.lua; hl_notes the reader's
 highlights that have a handwritten note in the book's notes, by their date and time,
 with the KOReader note Ink Away gave them, see ink/reader/hlnotes.lua).
 
@@ -35,6 +36,11 @@ local BookInk = {}
 
 BookInk.FILE = "inkaway.lua"
 BookInk.VERSION = 1
+-- A book with words wrapped for exact room is written as version 2, which an older
+-- Ink Away shows but does not change (it would write the file without the marks,
+-- and every place the marks moved would be lost): this one reads both.
+BookInk.VERSION_EXACT = 2
+BookInk.READS = 2
 -- Pictures placed on the book are kept beside its ink, in this folder, and its
 -- ink names them "@book/<file>" (see BookInk.keepPicture).
 BookInk.PICTURES = "inkaway-pictures"
@@ -107,7 +113,7 @@ function BookInk.load(sidecar_dir)
         if s then
             local data = decode(s)
             if data then
-                if (tonumber(data.version) or 1) > BookInk.VERSION then data.read_only = true end
+                if (tonumber(data.version) or 1) > BookInk.READS then data.read_only = true end
                 return data
             end
             -- damaged: kept aside (never over an earlier one), so the next
@@ -137,9 +143,11 @@ end
 -- The file's text: the head, then the items from their kept text.
 local function encode(data)
     local rooms = data.rooms and #data.rooms > 0 and data.rooms or nil
-    local head = Project.encode({ version = BookInk.VERSION, notes = data.notes, rooms = rooms,
+    local head = Project.encode({
+        version = (data.exact_marks and #data.exact_marks > 0) and BookInk.VERSION_EXACT or BookInk.VERSION, notes = data.notes, rooms = rooms,
         rooms_off = rooms and data.rooms_off or nil, rooms_ready = data.rooms_ready or nil,
         room_marks = data.rooms_ready and data.room_marks or nil,
+        exact_marks = data.exact_marks and #data.exact_marks > 0 and data.exact_marks or nil,
         hl_notes = data.hl_notes and next(data.hl_notes) and data.hl_notes or nil })   -- "return {...,}"
     local parts = {}
     for i, item in ipairs(data.items) do parts[i] = itemText(item) end
@@ -153,6 +161,50 @@ function BookInk.valid(path)
     local data = s and decode(s)
     if not data then return false, "not a book's ink" end
     return true
+end
+
+-- The words wrapped in the book's edited copy (see ink/reader/exactbook.lua) of
+-- two copies of its ink: every mark of both, once, by its id.
+function BookInk.mergeExact(a, b)
+    local out, seen = {}, {}
+    for _i, list in ipairs({ a or {}, b or {} }) do
+        for _j, m in ipairs(list) do
+            if type(m) == "table" and m.id and not seen[m.id] then
+                seen[m.id] = true
+                out[#out + 1] = m
+            end
+        end
+    end
+    return #out > 0 and out or nil
+end
+
+-- Only the words wrapped in the book's edited copy, from the head of its ink file
+-- (read before the book opens, so it must not read the strokes after it), or nil.
+function BookInk.peekMarks(sidecar_dir)
+    local p = BookInk.path(sidecar_dir)
+    if not p then return nil end
+    for _i, sfx in ipairs(SUFFIXES) do
+        local f = io.open(p .. sfx, "rb")
+        if f then
+            local head = ""
+            while true do
+                local chunk = f:read(16384)
+                if not chunk then break end
+                head = head .. chunk
+                if head:find('["items"]={', 1, true) then break end
+            end
+            f:close()
+            local cut = head:find('["items"]={', 1, true)
+            if cut then
+                local ok, data = pcall(Project.decode, head:sub(1, cut - 1) .. '["items"]={},}')
+                if ok and type(data) == "table" and type(data.exact_marks) == "table" then
+                    return #data.exact_marks > 0 and data.exact_marks or nil
+                end
+                return nil
+            end
+        end
+    end
+    return nil
 end
 
 -- The highlights with a handwritten note in both copies (dt -> its KOReader note).
@@ -174,7 +226,7 @@ end
 function BookInk.merge(first_path, second_path)
     local a_text, b_text = readFile(first_path), readFile(second_path)
     local a, b = a_text and decode(a_text), b_text and decode(b_text)
-    if not (a and b) or (tonumber(a.version) or 1) > BookInk.VERSION or (tonumber(b.version) or 1) > BookInk.VERSION then
+    if not (a and b) or (tonumber(a.version) or 1) > BookInk.READS or (tonumber(b.version) or 1) > BookInk.READS then
         return nil
     end
     local seen, items = {}, {}
@@ -192,6 +244,7 @@ function BookInk.merge(first_path, second_path)
     return encode({ items = items, notes = b.notes or a.notes, rooms = Rooms.merge(b.rooms, a.rooms),
         rooms_off = b.rooms_off, rooms_ready = (a.rooms_ready or b.rooms_ready) or nil,
         room_marks = math.max(a.room_marks or 0, b.room_marks or 0) > 0 and math.max(a.room_marks or 0, b.room_marks or 0) or nil,
+        exact_marks = BookInk.mergeExact(b.exact_marks, a.exact_marks),
         hl_notes = mergeMarks(a.hl_notes, b.hl_notes) })
 end
 
@@ -200,7 +253,7 @@ end
 -- see ink/reader/rooms.lua), or highlights with a handwritten note?
 function BookInk.empty(data)
     return #data.items == 0 and not data.notes and not (data.rooms and #data.rooms > 0) and not data.rooms_ready
-        and not (data.hl_notes and next(data.hl_notes))
+        and not (data.hl_notes and next(data.hl_notes)) and not (data.exact_marks and #data.exact_marks > 0)
 end
 
 -- Keep it. One with no ink, no book notes and no room removes the files, so such
@@ -300,6 +353,7 @@ local function merge(into, from)
     if from.rooms_ready then into.rooms_ready = true end
     if (from.room_marks or 0) > (into.room_marks or 0) then into.room_marks = from.room_marks end
     into.hl_notes = mergeMarks(into.hl_notes, from.hl_notes)
+    into.exact_marks = BookInk.mergeExact(into.exact_marks, from.exact_marks)
     return into
 end
 

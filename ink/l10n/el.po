@@ -670,6 +670,10 @@ msgstr "Ο αυτόματος συγχρονισμός μπορεί να επι�
 msgid "Back"
 msgstr "Επιστροφή"
 
+#: ink/reader/roomsui.lua
+msgid "Back to the original book"
+msgstr "Πίσω στο αρχικό βιβλίο"
+
 #: ink/view/gestures.lua
 msgid "Back to the usual"
 msgstr "Επιστροφή στα συνήθη"
@@ -1807,6 +1811,18 @@ msgstr "Όλα είναι ήδη ίδια εδώ και στο cloud."
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
 msgstr "Ό,τι σχεδιάσατε, γράψατε και τοποθετήσατε σε αυτό το βιβλίο φεύγει, σε κάθε σελίδα. Οι επισημάνσεις που ο υπογραμμιστής έκανε δικές του επισημάνσεις του αναγνώστη μένουν, όπως και οι σημειώσεις του βιβλίου."
 
+#: ink/reader/roomsui.lua
+msgid "Exact lines"
+msgstr "Ακριβείς γραμμές"
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines is on. A room can then start on any line of the text: Ink Away wraps one word of that line in an invisible mark, in a private copy of the book that it keeps in its own cache. The book's file is never changed, moved or sent, and the copy can always be made again from it. \"Back to the original book\" in this menu takes the marks away."
+msgstr "Οι ακριβείς γραμμές είναι ενεργές. Ένας χώρος μπορεί τότε να ξεκινά σε οποιαδήποτε γραμμή του κειμένου: το Ink Away τυλίγει μία λέξη της γραμμής σε ένα αόρατο σημάδι, σε ένα ιδιωτικό αντίγραφο του βιβλίου που κρατά στη δική του κρυφή μνήμη. Το αρχείο του βιβλίου δεν αλλάζει, δεν μετακινείται και δεν στέλνεται ποτέ, και το αντίγραφο μπορεί πάντα να ξαναγίνει από αυτό. Το \"Πίσω στο αρχικό βιβλίο\" σε αυτό το μενού αφαιρεί τα σημάδια."
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines needs an EPUB shown in the Book or Web render mode."
+msgstr "Οι ακριβείς γραμμές θέλουν ένα EPUB σε λειτουργία απόδοσης Book ή Web."
+
 #: ink/view/toolbar.lua
 msgid "Exit"
 msgstr "Έξοδος"
@@ -2777,6 +2793,10 @@ msgstr "Μπλοκ νομικού"
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Να ακολουθεί ξανά το κείμενο"
+
+#: ink/reader/roomsui.lua
+msgid "Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."
+msgstr "Αφήνει έναν χώρο να ξεκινά σε οποιαδήποτε γραμμή, όχι μόνο σε παράγραφο. Δουλεύει σε ιδιωτικό αντίγραφο του βιβλίου· το αρχείο του βιβλίου δεν αλλάζει ποτέ."
 
 #: ink/actions.lua
 #: ink/launcher.lua
@@ -4181,6 +4201,10 @@ msgstr "Αφαίρεση χώρου"
 msgid "Remove the background picture"
 msgstr "Αφαίρεση της εικόνας φόντου"
 
+#: ink/reader/roomsui.lua
+msgid "Remove the rooms made on exact lines first (Rooms in this book), then go back to the original book."
+msgstr "Αφαίρεσε πρώτα τους χώρους που έγιναν σε ακριβείς γραμμές (Χώροι σε αυτό το βιβλίο) και μετά γύρισε στο αρχικό βιβλίο."
+
 #: ink/reader/inkview.lua
 msgid "Remove these highlights?"
 msgstr "Να αφαιρεθούν αυτές οι επισημάνσεις;"
@@ -5069,6 +5093,10 @@ msgid ""
 msgstr ""
 "Δεν βρέθηκε η εικόνα φόντου:\n"
 "%s"
+
+#: ink/reader/roomsui.lua
+msgid "The book could not be put back."
+msgstr "Το βιβλίο δεν μπόρεσε να επαναφερθεί."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

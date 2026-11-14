@@ -8,6 +8,9 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+- Make room on exact lines, an option in the Lasso's sheet ("Exact lines", off until you switch it on). A room could only start at a paragraph or at an italic, link or similar mark inside one, so a box drawn in the middle of a paragraph that began on the page before was pushed far down the page or refused. With the option on, Ink Away wraps the first word of the line the box starts on in an invisible mark, in a private copy of the book kept in its own cache folder, and the room starts on that very line. The book's file is never changed, moved or sent: its md5 (reading progress sync) and its place stay as they are, and the copy is built again from the book whenever it is missing, also on a reader the book was moved or synced to. Highlights, notes, bookmarks, the reading place and Ink Away's own ink and rooms are moved with the mark, and "Back to the original book" in the same sheet takes every mark away and moves them back (once the rooms made on exact lines are removed). EPUB only, in the Book or Web render mode.
+
 ## [4.4.4] - 2026-11-13 *Prerelease*
 
 ### Added

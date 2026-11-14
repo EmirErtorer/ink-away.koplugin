@@ -670,6 +670,10 @@ msgstr "Automatyczna synchronizacja może spowolnić czytnik i zużywać bateri�
 msgid "Back"
 msgstr "Powrót"
 
+#: ink/reader/roomsui.lua
+msgid "Back to the original book"
+msgstr "Wróć do oryginalnej książki"
+
 #: ink/view/gestures.lua
 msgid "Back to the usual"
 msgstr "Wróć do zwykłego"
@@ -1807,6 +1811,18 @@ msgstr "Wszystko jest już takie samo tutaj i w chmurze."
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
 msgstr "Wszystko, co narysowałeś, napisałeś i umieściłeś na tej książce, znika, na każdej stronie. Zakreślenia, które zakreślacz zamienił w zakreślenia czytnika, zostają, podobnie jak notatki książki."
 
+#: ink/reader/roomsui.lua
+msgid "Exact lines"
+msgstr "Dokładne wiersze"
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines is on. A room can then start on any line of the text: Ink Away wraps one word of that line in an invisible mark, in a private copy of the book that it keeps in its own cache. The book's file is never changed, moved or sent, and the copy can always be made again from it. \"Back to the original book\" in this menu takes the marks away."
+msgstr "Dokładne wiersze są włączone. Miejsce może wtedy zaczynać się w dowolnym wierszu tekstu: Ink Away otacza jedno słowo tego wiersza niewidocznym znacznikiem, w prywatnej kopii książki, którą trzyma we własnej pamięci podręcznej. Plik książki nigdy nie jest zmieniany, przenoszony ani wysyłany, a kopię zawsze można zrobić od nowa z tego pliku. \"Wróć do oryginalnej książki\" w tym menu usuwa znaczniki."
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines needs an EPUB shown in the Book or Web render mode."
+msgstr "Dokładne wiersze wymagają EPUB wyświetlanego w trybie renderowania Książka lub Web."
+
 #: ink/view/toolbar.lua
 msgid "Exit"
 msgstr "Wyjdź"
@@ -2777,6 +2793,10 @@ msgstr "Blok prawniczy"
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Niech podąża za tekstem"
+
+#: ink/reader/roomsui.lua
+msgid "Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."
+msgstr "Pozwala zacząć miejsce w dowolnym wierszu, nie tylko przy akapicie. Działa na prywatnej kopii książki; plik książki nigdy nie jest zmieniany."
 
 #: ink/actions.lua
 #: ink/launcher.lua
@@ -4181,6 +4201,10 @@ msgstr "Usuń miejsce"
 msgid "Remove the background picture"
 msgstr "Usuń obraz tła"
 
+#: ink/reader/roomsui.lua
+msgid "Remove the rooms made on exact lines first (Rooms in this book), then go back to the original book."
+msgstr "Najpierw usuń miejsca zrobione w dokładnych wierszach (Miejsca w tej książce), a potem wróć do oryginalnej książki."
+
 #: ink/reader/inkview.lua
 msgid "Remove these highlights?"
 msgstr "Usunąć te zakreślenia?"
@@ -5069,6 +5093,10 @@ msgid ""
 msgstr ""
 "Nie znaleziono obrazu tła:\n"
 "%s"
+
+#: ink/reader/roomsui.lua
+msgid "The book could not be put back."
+msgstr "Nie udało się przywrócić książki."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

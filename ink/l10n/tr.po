@@ -670,6 +670,10 @@ msgstr "Otomatik eşitleme okuyucuyu yavaşlatabilir ve pil harcayabilir. “Şi
 msgid "Back"
 msgstr "Geri"
 
+#: ink/reader/roomsui.lua
+msgid "Back to the original book"
+msgstr "Özgün kitaba dön"
+
 #: ink/view/gestures.lua
 msgid "Back to the usual"
 msgstr "Olağan haline dön"
@@ -1807,6 +1811,18 @@ msgstr "Her şey burada ve bulutta zaten aynı."
 msgid "Everything you drew, wrote and placed on this book goes, on every page. Highlights the highlighter turned into the reader's own stay, and so do the book's notes."
 msgstr "Bu kitaba çizdiğiniz, yazdığınız ve yerleştirdiğiniz her şey, her sayfadan gider. Vurgulayıcının okuyucunun kendi vurgusuna çevirdiği vurgular kalır, kitabın notları da."
 
+#: ink/reader/roomsui.lua
+msgid "Exact lines"
+msgstr "Tam satırlar"
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines is on. A room can then start on any line of the text: Ink Away wraps one word of that line in an invisible mark, in a private copy of the book that it keeps in its own cache. The book's file is never changed, moved or sent, and the copy can always be made again from it. \"Back to the original book\" in this menu takes the marks away."
+msgstr "Tam satırlar açık. Bir boşluk bu durumda metnin herhangi bir satırında başlayabilir: Ink Away o satırdaki bir sözcüğü, kendi önbelleğinde tuttuğu kitabın özel bir kopyasında görünmez bir işarete sarar. Kitabın dosyası asla değiştirilmez, taşınmaz ya da gönderilmez; kopya her zaman ondan yeniden yapılabilir. Bu menüdeki \"Özgün kitaba dön\" işaretleri kaldırır."
+
+#: ink/reader/roomsui.lua
+msgid "Exact lines needs an EPUB shown in the Book or Web render mode."
+msgstr "Tam satırlar için Kitap ya da Web işleme kipinde gösterilen bir EPUB gerekir."
+
 #: ink/view/toolbar.lua
 msgid "Exit"
 msgstr "Çıkış"
@@ -2777,6 +2793,10 @@ msgstr "Hukuk bloknotu"
 #: ink/view/selection.lua
 msgid "Let it follow the text"
 msgstr "Metni takip etsin"
+
+#: ink/reader/roomsui.lua
+msgid "Lets a room start on any line, not only at a paragraph. Works on a private copy of the book; the book's file is never changed."
+msgstr "Bir boşluğun yalnızca paragrafta değil, herhangi bir satırda başlamasını sağlar. Kitabın özel bir kopyası üzerinde çalışır; kitabın dosyası asla değiştirilmez."
 
 #: ink/actions.lua
 #: ink/launcher.lua
@@ -4181,6 +4201,10 @@ msgstr "Boşluğu kaldır"
 msgid "Remove the background picture"
 msgstr "Arka plan resmini kaldır"
 
+#: ink/reader/roomsui.lua
+msgid "Remove the rooms made on exact lines first (Rooms in this book), then go back to the original book."
+msgstr "Önce tam satırlarda yapılan boşlukları kaldırın (Bu kitaptaki boşluklar), sonra özgün kitaba dönün."
+
 #: ink/reader/inkview.lua
 msgid "Remove these highlights?"
 msgstr "Bu vurgular kaldırılsın mı?"
@@ -5069,6 +5093,10 @@ msgid ""
 msgstr ""
 "Arka plan resmi bulunamadı:\n"
 "%s"
+
+#: ink/reader/roomsui.lua
+msgid "The book could not be put back."
+msgstr "Kitap eski haline getirilemedi."
 
 #: ink/view/textformat.lua
 msgid "The clipboard is empty."

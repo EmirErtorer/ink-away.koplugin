@@ -570,7 +570,7 @@ function Book:pageBlocks()
     end)
     if self:floats() then self:findIndents(list, words) end
     if self:inlineMarks() then self:findAnchors(list, words) end
-    self._blocks = { key = key, list = list, first = words[1] and words[1].xp, last = words[#words] and words[#words].xp }
+    self._blocks = { key = key, list = list, words = words, first = words[1] and words[1].xp, last = words[#words] and words[#words].xp }
     return list
 end
 
@@ -849,7 +849,15 @@ end
 -- else a room of whole paragraphs, Rooms.plan), with `except` the room being
 -- changed. Returns the room, the box it keeps, the area it frees; or nil and why.
 function Book:planRoom(rect, except)
-    if self:floats() then return Rooms.planBox(rect, self:pageModel(except)) end
+    if self:floats() then
+        local room, box, free, loose = Rooms.planBox(rect, self:pageModel(except))
+        -- where no room starts at the box's top, a word of that line wrapped does
+        if (loose or (not room and box == "no_break")) and self:exactOn() then
+            local r2, b2, f2 = self:exactPlan(rect, except)
+            if r2 then return r2, b2, f2 end
+        end
+        return room, box, free, loose
+    end
     local room, box = Rooms.plan(rect, self:pageBlocks(), self:textArea())
     return room, box, box
 end
@@ -860,7 +868,10 @@ end
 -- (rooms of whole paragraphs have no such places).
 function Book:snapRoomRect(rect, keep, except)
     if not self:floats() then return nil end
-    return Rooms.snapTop(rect, self:pageModel(except), keep)
+    local snapped = Rooms.snapTop(rect, self:pageModel(except), keep)
+    -- (with exact lines on, a word of the top line is wrapped instead: no move)
+    if snapped and self:exactOn() and self:exactPlan(rect, except) then return nil end
+    return snapped
 end
 
 -- Where a box room's marker is pushed down from: the last word of the paragraph
@@ -1161,16 +1172,37 @@ function Book:reloadForRooms(after)
     UIManager:show(note)
     UIManager:forceRePaint()
     pcall(document.invalidateCacheFile, document)
+    -- The reload is finished by whichever of KOReader's callback and the new reader's
+    -- own "ready" event comes first (Book.finishReload): a plugin that wraps
+    -- ReaderUI.showReader with fewer arguments (the Kobo plugin does) drops the
+    -- callback, and the note would stay over the book for ever.
+    local pending = { note = note, after = after }
+    pending.watchdog = function()
+        if Book.pending_reload == pending then
+            logger.warn("Ink Away: the book did not report that it was ready, closing the note")
+            Book.finishReload(nil)
+        end
+    end
+    Book.pending_reload = pending
+    UIManager:scheduleIn(60, pending.watchdog)
     UIManager:nextTick(function()
-        ui:reloadDocument(nil, true, function(new_ui)
-            UIManager:close(note)
-            local book = new_ui and Book.by_ui[new_ui]
-            if book and after then
-                -- (once the reader is up and has drawn its page)
-                UIManager:scheduleIn(0.2, function() after(book) end)
-            end
-        end)
+        ui:reloadDocument(nil, true, function(new_ui) Book.finishReload(new_ui) end)
     end)
+end
+
+-- The book is loaded again (see reloadForRooms): close the note and run what was
+-- to follow, once. `new_ui` is the new reader, when known.
+function Book.finishReload(new_ui)
+    local pending = Book.pending_reload
+    if not pending then return end
+    Book.pending_reload = nil
+    UIManager:unschedule(pending.watchdog)
+    UIManager:close(pending.note)
+    local book = new_ui and Book.by_ui[new_ui]
+    if book and pending.after then
+        -- (once the reader is up and has drawn its page)
+        UIManager:scheduleIn(0.2, function() pending.after(book) end)
+    end
 end
 
 -- Add room `r` (from Rooms.plan), or change the room with its id, and lay the
@@ -1203,7 +1235,12 @@ function Book:putRoom(r)
         if data.read_only then return nil, "read_only" end
         -- the book's first exact room: kept now, laid out when the book is loaded
         -- again with its markers (Book:reloadForRooms)
-        if not data.rooms_ready then
+        local pending = self._exact_pending
+        local wraps = pending and pending.xp == r.xp
+        if not data.rooms_ready or wraps then
+            -- (a word wrapped moves the xpointers, and is laid out when the book is
+            -- loaded again from its edited copy)
+            if wraps then self:addExactMark(r) end
             data.rooms, data.rooms_off, data.rooms_ready = rooms, nil, true
             data.room_marks = 2   -- (inline elements carry markers too: Book:inlineMarks)
             self:save()
@@ -2112,5 +2149,7 @@ function Book:paintSurface(s, bb, force_ink)
         end
     end
 end
+
+require("ink/reader/exactrooms").into(Book)
 
 return Book

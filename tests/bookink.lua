@@ -298,6 +298,47 @@ do
     sh("rm -rf '" .. root .. "'")
 end
 
+-- ---- the words wrapped for exact room live in the book's ink file ------------------------
+do
+    local tmp = (os.getenv("TMPDIR") or "/tmp") .. "/inkaway_exact_marks"
+    os.execute("rm -rf '" .. tmp .. "'; mkdir -p '" .. tmp .. "'")
+    local mark = function(id, off) return { id = id, frag = 3, steps = { { name = "p", idx = 4 } }, text = 1, off = off, word = "tripod" } end
+    local data = BookInk.new()
+    ok(BookInk.empty(data), "exact: a fresh book has nothing")
+    data.exact_marks = { mark("a", 10), mark("b", 99) }
+    ok(not BookInk.empty(data), "exact: marks alone are worth keeping")
+    ok(BookInk.save(tmp .. "/one.sdr", data), "exact: saved")
+    local back = BookInk.load(tmp .. "/one.sdr")
+    local raw = io.open(BookInk.path(tmp .. "/one.sdr"), "rb"):read("*a")
+    ok(raw:find('"version"%]=2') ~= nil, "exact: a book with marks is written as version 2, so an older Ink Away leaves it alone")
+    ok(not back.read_only, "exact: and this version changes it")
+    ok(back.exact_marks and #back.exact_marks == 2 and back.exact_marks[2].off == 99 and back.exact_marks[1].steps[1].name == "p",
+        "exact: the marks come back whole")
+    local peek = BookInk.peekMarks(tmp .. "/one.sdr")
+    ok(peek and #peek == 2 and peek[1].id == "a", "exact: the marks alone are read from the head of the file")
+    -- with ink after the head, still only the head is needed
+    data.items[1] = { op = { kind = "ink", width = 2, alpha = 255, pts = { 1, 1, 3, 3 } }, a = { page = 9, x = 1, y = 1 } }
+    BookInk.save(tmp .. "/two.sdr", data)
+    local p2 = BookInk.peekMarks(tmp .. "/two.sdr")
+    ok(p2 and #p2 == 2, "exact: the marks are read with ink after them")
+    ok(BookInk.peekMarks(tmp .. "/nothing.sdr") == nil, "exact: a book without a file has no marks")
+    data.exact_marks = nil
+    BookInk.save(tmp .. "/three.sdr", data)
+    ok(BookInk.peekMarks(tmp .. "/three.sdr") == nil, "exact: a book without marks has none")
+    -- two readers' copies put together: every mark of both, once
+    local a, b = BookInk.new(), BookInk.new()
+    a.exact_marks = { mark("a", 10), mark("c", 30) }
+    b.exact_marks = { mark("a", 10), mark("b", 20) }
+    BookInk.save(tmp .. "/ma.sdr", a); BookInk.save(tmp .. "/mb.sdr", b)
+    local text = BookInk.merge(BookInk.path(tmp .. "/ma.sdr"), BookInk.path(tmp .. "/mb.sdr"))
+    local merged = text and require("ink/project").decode(text)
+    local ids = {}
+    for _i, m in ipairs(merged and merged.exact_marks or {}) do ids[#ids + 1] = m.id end
+    table.sort(ids)
+    ok(table.concat(ids, ",") == "a,b,c", "exact: a sync merge keeps every mark once (" .. table.concat(ids, ",") .. ")")
+    os.execute("rm -rf '" .. tmp .. "'")
+end
+
 -- ---- several pages on the screen; only the ink shown is replaced ------------------------
 do
     local Book = require("ink/reader/book")
