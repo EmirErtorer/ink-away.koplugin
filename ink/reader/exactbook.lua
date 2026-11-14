@@ -29,8 +29,18 @@ local logger = require("logger")
 
 local Exact = {}
 
+-- (marks kept with a book carry a hash of their text node, not the whole node)
+pcall(function()
+    local sha2 = require("ffi/sha2")
+    if sha2 and sha2.md5 then require("ink/reader/exactmark").hash = sha2.md5 end
+end)
+
 Exact.SETTING = "inkaway_exact_rooms"
 Exact.KEEP = 6   -- copies kept in the cache folder, newest first
+-- The copy's files are stored as they are, not compressed again: building it is
+-- about four times faster (a reader's CPU is slow at deflate), the copy a little
+-- bigger, and only one copy of a book is kept (Exact.prune).
+Exact.STORE_ALL = true
 
 -- Is making rooms on exact lines switched on?
 function Exact.enabled()
@@ -63,9 +73,21 @@ local function makeDir(d)
     return lfs_ok and lfs.attributes(d, "mode") == "directory"
 end
 
+local sig_memo = setmetatable({}, { __mode = "k" })
+
 -- A short signature of the marks: their ids, in order of id (a mark is never
 -- changed once made, only added).
 function Exact.signature(marks)
+    -- (a list of marks is replaced, never changed, so its signature is kept with it)
+    local memo = marks and sig_memo[marks]
+    if memo and memo.n == #marks then return memo.sig end
+    local sig = Exact.signatureOf(marks)
+    if marks then sig_memo[marks] = { n = #marks, sig = sig } end
+    return sig
+end
+
+-- The signature worked out, without the memo.
+function Exact.signatureOf(marks)
     local ids = {}
     for _i, m in ipairs(marks or {}) do ids[#ids + 1] = tostring(m.id) end
     table.sort(ids)
@@ -111,6 +133,20 @@ function Exact.copyMarks(marks)
     return out
 end
 
+-- Marks made small to be kept with the book: the text node they were checked
+-- against becomes its hash (ExactMark.hash), when there is one.
+function Exact.slim(marks)
+    local hash = require("ink/reader/exactmark").hash
+    if not hash then return marks end
+    for _i, m in ipairs(marks or {}) do
+        if type(m.node_text) == "string" then
+            m.node_md5 = hash(m.node_text)
+            m.node_text = nil
+        end
+    end
+    return marks
+end
+
 -- The DOM version crengine numbers a book's fragments by.
 local function domVersion()
     local ok, v = pcall(function()
@@ -123,28 +159,82 @@ end
 -- The marks applied to `file`: { marks = <copies, each with its `split`>, results,
 -- entries (the edited chapters, by path), reader (open on the book) } or nil and
 -- why. Reads only the chapters the marks are in. The caller closes the reader.
-function Exact.compute(file, marks)
+-- What was read of the last books asked about: their spine and the chapters read,
+-- so a box dragged in the Make room tool reads nothing from the file again (the
+-- file is known by its path, size and time; a changed one is read afresh).
+local sources = {}
+local SOURCES_KEPT, CHAPTERS_KEPT = 2, 6
+
+local function fileStamp(file)
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    local attr = ok and lfs.attributes(file)
+    if not attr then return nil end
+    return file .. "|" .. tostring(attr.size) .. "|" .. tostring(attr.modification)
+end
+
+-- The book's source: { spine, chapter(path) -> bytes or nil }, or nil and why.
+function Exact.source(file)
+    local stamp = fileStamp(file)
+    if not stamp then return nil, "unreadable" end
+    for i, src in ipairs(sources) do
+        if src.stamp == stamp then
+            if i > 1 then table.remove(sources, i); table.insert(sources, 1, src) end
+            return src
+        end
+    end
     local Archiver = require("ffi/archiver")
     local ExactMark = require("ink/reader/exactmark")
     local reader = Archiver.Reader:new()
     if not reader:open(file) then return nil, "unreadable" end
     -- (the reader knows an entry only once it has been through the list)
     for _e in reader:iterate() do end
-    local function read(path) return reader:extractToMemory(path) end
-    local ok, spine = pcall(ExactMark.spine, read, { dom_version = domVersion() })
-    if not (ok and spine and #spine > 0) then reader:close(); return nil, "no_spine" end
+    local ok, spine = pcall(ExactMark.spine, function(path) return reader:extractToMemory(path) end,
+        { dom_version = domVersion() })
+    reader:close()
+    if not (ok and spine and #spine > 0) then return nil, "no_spine" end
+    local src = { stamp = stamp, file = file, spine = spine, chapters = {}, order = {} }
+    function src.chapter(path)
+        local bytes = src.chapters[path]
+        if bytes ~= nil then return bytes or nil end
+        local r = Archiver.Reader:new()
+        if r:open(src.file) then
+            for _e in r:iterate() do end
+            bytes = r:extractToMemory(path)
+            r:close()
+        end
+        src.chapters[path] = bytes or false
+        src.order[#src.order + 1] = path
+        if #src.order > CHAPTERS_KEPT then src.chapters[table.remove(src.order, 1)] = nil end
+        return bytes
+    end
+    table.insert(sources, 1, src)
+    if #sources > SOURCES_KEPT then table.remove(sources) end
+    return src
+end
+
+-- Forget what was read (the tests, and a book's copy built from changed marks).
+function Exact.forgetSources() sources = {} end
+
+-- The marks applied to `file`: { marks = <copies, each with its `split`>, results,
+-- entries (the edited chapters, by path) } or nil and why. Reads only the
+-- chapters the marks are in (once: Exact.source keeps them).
+function Exact.compute(file, marks)
+    local ExactMark = require("ink/reader/exactmark")
+    local src, why = Exact.source(file)
+    if not src then return nil, why end
+    local spine = src.spine
     local chapters = {}
     for _i, m in ipairs(marks) do
         local path = spine[m.frag]
-        if path and chapters[path] == nil then chapters[path] = read(path) or false end
+        if path and chapters[path] == nil then chapters[path] = src.chapter(path) or false end
     end
     for _path, bytes in pairs(chapters) do
-        if not bytes then reader:close(); return nil, "missing_chapter" end
+        if not bytes then return nil, "missing_chapter" end
     end
     local copies = Exact.copyMarks(marks)
     local aok, entries, results = pcall(ExactMark.apply, chapters, copies, spine)
-    if not (aok and entries) then reader:close(); return nil, aok and results or entries end
-    return { marks = copies, results = results or {}, entries = entries, reader = reader }
+    if not (aok and entries) then return nil, aok and results or entries end
+    return { marks = copies, results = results or {}, entries = entries }
 end
 
 -- The element xpointer of each mark's span in the edited copy ({ [mark id] = xp }),
@@ -153,7 +243,6 @@ end
 function Exact.spanXPointers(file, marks)
     local c, why = Exact.compute(file, marks)
     if not c then return nil, why end
-    c.reader:close()
     local out = {}
     for i, r in ipairs(c.results) do
         if r.applied and r.xp then out[marks[i].id] = r.xp end
@@ -168,7 +257,10 @@ function Exact.build(file, marks, dest)
     local Archiver = require("ffi/archiver")
     local c, why = Exact.compute(file, marks)
     if not c then return nil, why end
-    local reader, entries = c.reader, c.entries
+    local entries = c.entries
+    local reader = Archiver.Reader:new()
+    if not reader:open(file) then return nil, "unreadable" end
+    for _e in reader:iterate() do end
     local function read(path) return reader:extractToMemory(path) end
     local skipped = {}
     for i, r in ipairs(c.results) do
@@ -190,7 +282,7 @@ function Exact.build(file, marks, dest)
             if e.mode == "file" and e.path ~= "mimetype" then
                 local bytes = entries[e.path] or reader:extractToMemory(e.path)
                 if not bytes then error("could not read " .. e.path) end
-                writer:setZipCompression(STORED[extension(e.path)] and "store" or "deflate")
+                writer:setZipCompression((Exact.STORE_ALL or STORED[extension(e.path)]) and "store" or "deflate")
                 assert(writer:addFileFromMemory(e.path, bytes))
             end
         end

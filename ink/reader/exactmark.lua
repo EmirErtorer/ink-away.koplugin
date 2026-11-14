@@ -963,7 +963,7 @@ end
 
 -- Plans one marker over character c (1-based) of text node t: the word around it
 -- (or from it, when exact), or nil and a reason.
-local function planWord(doc, t, c, exact)
+local function planWord(doc, t, c, exact, lead)
     local why = refusal(t)
     if why then return nil, why end
     local d, bad = nodeText(doc, t)
@@ -977,6 +977,17 @@ local function planWord(doc, t, c, exact)
     while c1 < d.n and d.cps[c1 + 1] ~= 32 do c1 = c1 + 1 end
     local w = {}
     for k = c0, c1 do w[#w + 1] = utf8char(d.cps[k]) end
+    -- (lead: the span starts at the space before the word. crengine keeps a line's
+    -- break chance on the character before a word, and a marker float there would
+    -- take it: the word before would be pushed to the next line.)
+    -- lead = "must" refuses a word with no space before it in its node.
+    if lead then
+        if c0 > 1 and d.cps[c0 - 1] == 32 then
+            c0 = c0 - 1
+        elseif lead == "must" then
+            return nil, "no-space"
+        end
+    end
     return { t = t, c0 = c0, c1 = c1, bstart = d.bs[c0], bend = d.be[c1], word = concat(w) }
 end
 
@@ -1263,13 +1274,17 @@ end
 -- mark.frag finds the file. Each mark is { frag, steps, text, off, id, word }
 -- (or { xp, id, word }); word must be the wrapped word or its start. A mark
 -- inside a word wraps the whole word, or from its offset on when word only
--- matches from there (exact = true always does). node_text, the whole text node
+-- matches from there (exact = true always does); lead = true takes in the space
+-- before the word too (see planWord). node_text, the whole text node
 -- as the engine holds it (document:getTextFromXPointer(xp)), is checked when
 -- given, and needed where the node's index could depend on the book's CSS.
 -- Returns a copy of entries with the edited chapters replaced, and a result per
 -- mark: { applied, why, xp, word, split }, where xp is the span's element
 -- xpointer in the edited chapter. Each mark also gets mark.split (false when it
 -- was not applied): toNew, toOld and affects read it from the stored marks.
+-- (node_md5 in place of node_text: ExactMark.hash(node_text), when a hash
+-- function is set; ink/reader/exactbook.lua sets md5, so marks kept with a book
+-- do not carry whole paragraphs.)
 function ExactMark.apply(entries, marks, spine)
     local out, results = {}, {}
     for k, v in pairs(entries) do out[k] = v end
@@ -1304,12 +1319,14 @@ function ExactMark.apply(entries, marks, spine)
                 r.why = d
             elseif it.m.node_text and it.m.node_text ~= d.str then
                 r.why = "node-text"
-            elseif not it.m.node_text and indexDependsOnCss(t) then
+            elseif not it.m.node_text and it.m.node_md5 and ExactMark.hash and ExactMark.hash(d.str) ~= it.m.node_md5 then
+                r.why = "node-text"
+            elseif not it.m.node_text and not (it.m.node_md5 and ExactMark.hash) and indexDependsOnCss(t) then
                 r.why = "needs node_text"
             elseif it.off >= d.n then
                 r.why = "offset"
             else
-                local op, why = planWord(doc, t, it.off + 1, it.m.exact)
+                local op, why = planWord(doc, t, it.off + 1, it.m.exact, it.m.lead)
                 if op and not wordMatches(it.m.word, op.word) and not it.m.exact and op.c0 < it.off + 1 then
                     -- the mark starts inside a word (a line after a hyphen): from there
                     local from = planWord(doc, t, it.off + 1, true)
@@ -1354,7 +1371,7 @@ end
 -- The split records of a list of marks (marks that went through apply, its
 -- results, wrap infos or splits), in the order their spans went in; nil when a
 -- mark never went through apply, as its split cannot be known without the file.
-local function splitsOf(marks)
+local function sortedSplits(marks)
     local list = {}
     for _, m in ipairs(marks or {}) do
         local sp = m.split or (m.parent_steps and m)
@@ -1369,6 +1386,36 @@ local function splitsOf(marks)
         return (a.seq or 0) < (b.seq or 0)
     end)
     return list
+end
+
+-- The same, kept with the list of marks it came from (a list of marks is not
+-- changed once its splits are known), and by chapter: { all, byFrag, any } (any:
+-- a split that names no chapter, which every xpointer must go through).
+local split_memo = setmetatable({}, { __mode = "k" })
+local function splitsOf(marks)
+    local memo = marks and split_memo[marks]
+    if memo and memo.n == #marks then return memo end
+    local list = sortedSplits(marks)
+    if not list then return nil end
+    local by, any = {}, false
+    for _, sp in ipairs(list) do
+        if sp.frag then
+            by[sp.frag] = by[sp.frag] or {}
+            table.insert(by[sp.frag], sp)
+        else
+            any = true
+        end
+    end
+    memo = { n = marks and #marks or 0, all = list, byFrag = by, any = any }
+    if marks then split_memo[marks] = memo end
+    return memo
+end
+
+-- The splits an xpointer of chapter `frag` goes through, in order.
+local NONE = {}
+local function splitsFor(memo, frag)
+    if memo.any then return memo.all end
+    return memo.byFrag[frag] or NONE
 end
 
 -- True when the first n steps of a path equal steps.
@@ -1482,9 +1529,9 @@ end
 function ExactMark.toNew(xp, marks)
     local p = asParsed(xp)
     if not p then return nil, "xpointer" end
-    local list = splitsOf(marks)
-    if not list then return nil, "nosplit" end
-    for _, sp in ipairs(list) do p = forward(p, sp) end
+    local memo = splitsOf(marks)
+    if not memo then return nil, "nosplit" end
+    for _, sp in ipairs(splitsFor(memo, p.frag)) do p = forward(p, sp) end
     return ExactMark.format(p)
 end
 
@@ -1494,8 +1541,9 @@ end
 function ExactMark.toOld(xp, marks)
     local p = asParsed(xp)
     if not p then return nil, "xpointer" end
-    local list = splitsOf(marks)
-    if not list then return nil, "nosplit" end
+    local memo = splitsOf(marks)
+    if not memo then return nil, "nosplit" end
+    local list = splitsFor(memo, p.frag)
     local flag
     for i = #list, 1, -1 do
         local q, f = backward(p, list[i])

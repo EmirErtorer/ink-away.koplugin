@@ -96,6 +96,97 @@ local function wordText(document, xp)
     return text
 end
 
+-- The spans of the book's marks and `mark` ({ [id] = xp }) and the marks with
+-- their splits, or nil and why. Kept for the marks the book has now: a box
+-- dragged in the Make room tool asks for the same line many times a second.
+function ExactRooms:exactSpans(mark)
+    local key = mark.id .. "|" .. Exact.signature(self:exactMarks())
+    local memo = self._exact_memo
+    if not memo or memo.n > 64 then memo = { n = 0, by = {} }; self._exact_memo = memo end
+    local hit = memo.by[key]
+    if hit then return hit.xps, hit.computed end
+    local marks_all = Exact.copyMarks(self:exactMarks())
+    marks_all[#marks_all + 1] = mark
+    local xps, computed = Exact.spanXPointers(self.ui.document.file, marks_all)
+    memo.by[key] = { xps = xps, computed = computed }
+    memo.n = memo.n + 1
+    return xps, computed
+end
+
+-- A mark for the word at `xp` (a word start of the book as it is shown), or nil:
+-- where it is in the file's own terms, the word, and the text node it is in when
+-- no mark has cut that node yet.
+function ExactRooms:markAt(xp)
+    local document = self.ui.document
+    local orig_xp = self:originalXP(xp)
+    local at = ExactMark.parse(orig_xp)
+    if not (at and at.text and at.off) then return nil, "no_position" end
+    local word = wordText(document, xp)
+    if not word then return nil, "no_word" end
+    -- (lead: the span begins at the space before the word, so the line before keeps
+    -- its last word; a mark of the older kind, "x...", begins at the word)
+    local mark = { id = string.format("y%d_%d_%d_%s", at.frag, at.text, at.off, stepsKey(at.steps)),
+        frag = at.frag, steps = at.steps, text = at.text, off = at.off, word = word, lead = true }
+    -- (a book's own style can change how its nodes are counted: the node checked)
+    if orig_xp == xp then
+        local nok, node = pcall(document.getTextFromXPointer, document, xp)
+        if nok and type(node) == "string" then mark.node_text = node end
+    end
+    return mark
+end
+
+-- Pages before and after the room's page whose lines get a mark too, when a mark
+-- is added (the book is loaded again for it anyway): a room made later on one of
+-- them hangs on its line's mark, with no loading again.
+ExactRooms.SPARE_BEFORE, ExactRooms.SPARE_AFTER = 2, 4
+ExactRooms.SPARE_WORDS = 6000   -- (words looked at, at most)
+
+-- Marks for the first word of each line of the pages around the current one
+-- that has nothing to hang a room on (a paragraph's first line has its
+-- paragraph's marker; a line that begins inside a word, or inside an inline
+-- element, is left to an exact room of its own). `known` holds ids to skip.
+function ExactRooms:spareMarks(known)
+    local document = self.ui.document
+    local page = self:currentPage()
+    local out = {}
+    if not page then return out end
+    pcall(function()
+        local count = document:getPageCount()
+        local p0 = math.max(1, page - ExactRooms.SPARE_BEFORE)
+        local p1 = math.min(count, page + ExactRooms.SPARE_AFTER)
+        local stop = p1 < count and document:getPageXPointer(p1 + 1) or nil
+        local xp = document:getNextVisibleWordStart(document:getPageXPointer(p0))
+        local prev_xp, prev_y, prev_block
+        for _n = 1, ExactRooms.SPARE_WORDS do
+            if not xp then break end
+            if stop and (document:compareXPointers(xp, stop) or 0) <= 0 then break end
+            local y = document:getPosFromXPointer(xp)
+            local block = Rooms.blockOf(xp)
+            if prev_y and y and y > prev_y and block and block == prev_block then
+                -- a new line of the same paragraph: its first word, when the line
+                -- begins with it (not with the end of a word cut by a hyphen)
+                local pend = document:getNextVisibleWordEnd(prev_xp)
+                local ey = pend and document:getPosFromXPointer(pend)
+                local path = xp:gsub("/text%(%).*$", ""):gsub("%.%d+$", "")
+                if ey and ey < y and path == block then
+                    local mark = self:markAt(xp)
+                    -- (only where a space comes before the word: see ExactMark's planWord)
+                    if mark then mark.lead = "must" end
+                    if mark and not known[mark.id] then
+                        known[mark.id] = true
+                        out[#out + 1] = mark
+                    end
+                end
+            end
+            prev_xp, prev_y, prev_block = xp, y or prev_y, block
+            local nxt = document:getNextVisibleWordStart(xp)
+            if not nxt or nxt == xp then break end
+            xp = nxt
+        end
+    end)
+    return out
+end
+
 -- The room a box makes when a word of its top line is wrapped, where it could
 -- not start exactly otherwise (Rooms.planBox): the room (and the box it keeps
 -- and the area it frees), with the mark to add kept in self._exact_pending; or nil
@@ -129,25 +220,12 @@ function ExactRooms:exactPlan(rect, except)
     end
     if not block then return nil, "no_block" end
     -- the word, in the file's own terms (the book may be read from a copy already)
-    local orig_xp = self:originalXP(w.xp)
-    local at = ExactMark.parse(orig_xp)
-    if not (at and at.text and at.off) then return nil, "no_position" end
-    local word = wordText(document, w.xp)
-    if not word then return nil, "no_word" end
-    local mark = { id = string.format("x%d_%d_%d_%s", at.frag, at.text, at.off, stepsKey(at.steps)),
-        frag = at.frag, steps = at.steps, text = at.text, off = at.off, word = word }
-    -- the text node as the file has it, when the book shows it whole (no earlier
-    -- mark has cut it): a book's own style can change how its nodes are counted
-    if orig_xp == w.xp then
-        local nok, node = pcall(document.getTextFromXPointer, document, w.xp)
-        if nok and type(node) == "string" then mark.node_text = node end
-    end
+    local mark, why = self:markAt(w.xp)
+    if not mark then return nil, why end
     for _i, m in ipairs(self:exactMarks()) do
         if m.id == mark.id then return nil, "marked" end   -- (a span is there already)
     end
-    local marks_all = Exact.copyMarks(self:exactMarks())
-    marks_all[#marks_all + 1] = mark
-    local xps, computed = Exact.spanXPointers(document.file, marks_all)
+    local xps, computed = self:exactSpans(mark)
     local span = xps and xps[mark.id]
     if not span then return nil, computed or "no_span" end
     if not Rooms.hostable(span) then return nil, "not_hostable" end
@@ -241,11 +319,31 @@ function ExactRooms:addExactMark(r)
     if not (pending and pending.xp == r.xp) then return false end
     local before, before_xps = self:exactState()
     if not before then return false end
-    local after = pending.marks
+    local after, after_xps = pending.marks, pending.xps
+    -- the lines of the pages around get their marks in the same go (only when all of
+    -- them, the book's and the new one, still go in as they did)
+    local known = {}
+    for _i, m in ipairs(after) do known[m.id] = true end
+    local spares = self:spareMarks(known)
+    if #spares > 0 then
+        local all = Exact.copyMarks(after)
+        for _i, m in ipairs(spares) do all[#all + 1] = m end
+        local xps2, computed2 = Exact.spanXPointers(self.ui.document.file, all)
+        local ok = computed2 ~= nil
+        local kept = {}
+        for i, m in ipairs(computed2 or {}) do
+            if m.split then
+                kept[#kept + 1] = m
+            elseif i <= #after then
+                ok = false   -- (a mark the book needs did not go in with them)
+            end
+        end
+        if ok and xps2[pending.mark.id] then after, after_xps = kept, xps2 end
+    end
     local bad = false
     -- (an earlier mark's span is the same span afterwards, where the numbering moved it)
     local by_span = {}
-    for id, xp in pairs(before_xps or {}) do by_span[xp] = pending.xps[id] end
+    for id, xp in pairs(before_xps or {}) do by_span[xp] = after_xps[id] end
     self:moveXPointers(function(xp)
         if by_span[xp] then return by_span[xp] end
         local orig = #before > 0 and ExactMark.toOld(xp, before) or xp
@@ -253,11 +351,27 @@ function ExactRooms:addExactMark(r)
         if not new then bad = true end
         return new
     end, r)
+    -- the room itself was planned with the new mark alone: moved to the final copy
+    if after ~= pending.marks then
+        local pend_span = {}
+        for id, xp in pairs(pending.xps) do pend_span[xp] = after_xps[id] end
+        local function mv(x)
+            if type(x) ~= "string" then return x end
+            if pend_span[x] then return pend_span[x] end
+            local orig = ExactMark.toOld(x, pending.marks)
+            local new = orig and ExactMark.toNew(orig, after)
+            if not new then bad = true end
+            return new or x
+        end
+        r.xp, r.sp = mv(r.xp), mv(r.sp)
+        pending.xp = r.xp
+    end
     if bad then logger.warn("Ink Away: some places in the book could not be moved to the edited copy") end
+    Exact.slim(after)
     local data = self:data()
     data.exact_marks = after
     data.room_marks = 2   -- (inline elements carry markers: the span is one)
-    self._exact_pending, self._exact_state = nil, nil
+    self._exact_pending, self._exact_state, self._exact_memo = nil, nil, nil
     return true
 end
 
@@ -279,7 +393,7 @@ function ExactRooms:removeExactMarks()
     self:moveXPointers(function(xp) return (ExactMark.toOld(xp, state)) end)
     local data = self:data()
     data.exact_marks = nil
-    self._exact_state = nil
+    self._exact_state, self._exact_memo = nil, nil
     self:save()
     if copy then os.remove(copy) end
     return true

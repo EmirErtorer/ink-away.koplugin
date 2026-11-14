@@ -350,5 +350,51 @@ do
     ok(E.spine(function() return nil end) == nil, "spine: no container")
 end
 
+-- ---- lead spans, the split cache, node hashes -------------------------------------------
+do
+    local xhtml = page("<p>One two three four, five six.</p>")
+    local spine = { "c.xhtml" }
+    local function run(marks) return E.apply({ ["c.xhtml"] = xhtml }, marks, spine) end
+    -- "four," at offset 14 (One two three |four,): lead takes the space before it
+    local marks = { { id = "a", frag = 1, steps = steps("p[1]"), text = 1, off = 14, word = "four,", lead = true } }
+    local out, res = run(marks)
+    ok(res[1].applied and out["c.xhtml"]:find('three<span class="iar" id="iara"> four,</span> five', 1, true) ~= nil,
+        "lead: the span starts at the space before the word")
+    ok(res[1].split and res[1].split.off == 13 and res[1].split.len == 6, "lead: the split takes the space in")
+    -- the word itself is in the span after its space; the text after moves on
+    ok(E.toNew("/body[1]/DocFragment[1]/body[1]/p[1]/text()[1].14", marks) == "/body[1]/DocFragment[1]/body[1]/p[1]/span[1]/text()[1].1",
+        "lead: the word's start is the span's second character")
+    ok(E.toNew("/body[1]/DocFragment[1]/body[1]/p[1]/text()[1].21", marks) == "/body[1]/DocFragment[1]/body[1]/p[1]/text()[2].2",
+        "lead: a place after the word moves to the text after the span")
+    for _, o in ipairs({ 0, 5, 12, 13, 14, 17, 19, 20, 21, 25 }) do
+        local xp = "/body[1]/DocFragment[1]/body[1]/p[1]/text()[1]." .. o
+        ok(E.toOld(E.toNew(xp, marks), marks) == xp, "lead: there and back at offset " .. o)
+    end
+    -- no space before the word in its node: "must" refuses, true wraps the word alone
+    local x2 = page("<p>well-known words</p>")
+    local m2 = { { id = "b", frag = 1, steps = steps("p[1]"), text = 1, off = 5, word = "known", lead = "must", exact = true } }
+    local _o2, r2 = E.apply({ ["c.xhtml"] = x2 }, m2, spine)
+    ok(not r2[1].applied and r2[1].why == "no-space", "lead must: refused without a space before the word")
+    m2[1].lead = true
+    _o2, r2 = E.apply({ ["c.xhtml"] = x2 }, m2, spine)
+    ok(r2[1].applied and r2[1].split.off == 5, "lead true: the word alone when no space is before it")
+    -- the split list is kept with the marks, and asked again gives the same places
+    local a1 = E.toNew("/body[1]/DocFragment[1]/body[1]/p[1]/text()[1].25", marks)
+    local a2 = E.toNew("/body[1]/DocFragment[1]/body[1]/p[1]/text()[1].25", marks)
+    ok(a1 == a2 and a1 ~= nil, "splits: the kept list gives the same answer")
+    ok(E.toNew("/body[1]/DocFragment[2]/body[1]/p[1]/text()[1].25", marks) == "/body[1]/DocFragment[2]/body[1]/p[1]/text()[1].25",
+        "splits: another chapter is left alone")
+    -- node_md5 in place of node_text, with a hash function set
+    local saved = E.hash
+    E.hash = function(str) return "h" .. #str end
+    local m3 = { { id = "c", frag = 1, steps = steps("p[1]"), text = 1, off = 14, word = "four,", lead = true, node_md5 = "h" .. #"One two three four, five six." } }
+    local _o3, r3 = run(m3)
+    ok(r3[1].applied, "node_md5: the hash of the right node is accepted")
+    m3 = { { id = "c", frag = 1, steps = steps("p[1]"), text = 1, off = 14, word = "four,", node_md5 = "h1" } }
+    _o3, r3 = run(m3)
+    ok(not r3[1].applied and r3[1].why == "node-text", "node_md5: a wrong hash is refused")
+    E.hash = saved
+end
+
 print(("exactmark: %d checks, %d failures"):format(checks, failures))
 os.exit(failures == 0 and 0 or 1)
