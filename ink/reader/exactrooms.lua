@@ -23,6 +23,20 @@ local ExactMark = require("ink/reader/exactmark")
 
 local ExactRooms = {}
 
+-- KOReader writes a book's xpointers in the style of the DOM version the book was
+-- first opened with: "/body/DocFragment[9]/body/p[3]/text().5" before 20260812 (every
+-- KOReader release up to 2026.07, and books first opened before August 2026), and
+-- "/body[1]/DocFragment[9]/body[1]/p[3]/text()[1].5" after. Both name the same place.
+local function isXPointer(v)
+    return type(v) == "string" and v:match("^/body[/%[]") ~= nil
+end
+
+-- One spelling for both styles (every index written), to compare xpointers by.
+local function canon(xp)
+    local p = ExactMark.parse(xp)
+    return p and ExactMark.format(p) or xp
+end
+
 -- A short text for a path of element steps, for a mark's id.
 local function stepsKey(steps)
     local parts = {}
@@ -265,7 +279,7 @@ end
 function ExactRooms:moveXPointers(fn, skip)
     local function mv(t, key)
         local v = t[key]
-        if type(v) == "string" and v:sub(1, 6) == "/body[" then
+        if isXPointer(v) then
             local n = fn(v)
             if n then t[key] = n end
         end
@@ -277,7 +291,7 @@ function ExactRooms:moveXPointers(fn, skip)
             mv(a, "page"); mv(a, "pos0"); mv(a, "pos1")
         end
     end
-    if ui.rolling and type(ui.rolling.xpointer) == "string" then
+    if ui.rolling and isXPointer(ui.rolling.xpointer) then
         local n = fn(ui.rolling.xpointer)
         if n then ui.rolling.xpointer = n end
     end
@@ -302,7 +316,7 @@ function ExactRooms:moveXPointers(fn, skip)
             mv(r, "xp"); mv(r, "sp")
             if type(r.xps) == "table" then
                 for k, x in ipairs(r.xps) do
-                    local n = type(x) == "string" and fn(x)
+                    local n = isXPointer(x) and fn(x)
                     if n then r.xps[k] = n end
                 end
             end
@@ -343,9 +357,10 @@ function ExactRooms:addExactMark(r)
     local bad = false
     -- (an earlier mark's span is the same span afterwards, where the numbering moved it)
     local by_span = {}
-    for id, xp in pairs(before_xps or {}) do by_span[xp] = after_xps[id] end
+    for id, xp in pairs(before_xps or {}) do by_span[canon(xp)] = after_xps[id] end
     self:moveXPointers(function(xp)
-        if by_span[xp] then return by_span[xp] end
+        local span = by_span[canon(xp)]
+        if span then return span end
         local orig = #before > 0 and ExactMark.toOld(xp, before) or xp
         local new = orig and ExactMark.toNew(orig, after)
         if not new then bad = true end
@@ -354,10 +369,10 @@ function ExactRooms:addExactMark(r)
     -- the room itself was planned with the new mark alone: moved to the final copy
     if after ~= pending.marks then
         local pend_span = {}
-        for id, xp in pairs(pending.xps) do pend_span[xp] = after_xps[id] end
+        for id, xp in pairs(pending.xps) do pend_span[canon(xp)] = after_xps[id] end
         local function mv(x)
             if type(x) ~= "string" then return x end
-            if pend_span[x] then return pend_span[x] end
+            if pend_span[canon(x)] then return pend_span[canon(x)] end
             local orig = ExactMark.toOld(x, pending.marks)
             local new = orig and ExactMark.toNew(orig, after)
             if not new then bad = true end
@@ -385,9 +400,9 @@ function ExactRooms:removeExactMarks()
     local xps, state = Exact.spanXPointers(file, marks)
     if not state then return false, "unreadable" end
     local spans = {}
-    for _id, xp in pairs(xps or {}) do spans[xp] = true end
+    for _id, xp in pairs(xps or {}) do spans[canon(xp)] = true end
     for _i, r in ipairs(self:rooms()) do
-        if spans[r.xp] or (r.sp and spans[r.sp]) then return false, "rooms" end
+        if spans[canon(r.xp)] or (r.sp and spans[canon(r.sp)]) then return false, "rooms" end
     end
     local copy = Exact.pathFor(file, marks)
     self:moveXPointers(function(xp) return (ExactMark.toOld(xp, state)) end)
@@ -397,6 +412,91 @@ function ExactRooms:removeExactMarks()
     self:save()
     if copy then os.remove(copy) end
     return true
+end
+
+-- Once the book is read from its edited copy: every xpointer written the way crengine
+-- writes it for this book (Ink Away writes every index, and rooms are found by
+-- comparing their xpointers with the ones crengine gives), and the places still in the
+-- original book's terms moved into the copy. Ink Away 4.5.0 moved only xpointers of
+-- the newer style, so on an older KOReader nothing moved when a word was wrapped: the
+-- highlights after it pointed at nothing, which KOReader up to 2026.07 cannot sort
+-- (the book would not open), and the room was lost. A highlight is moved only when it
+-- does not read its own text where it is and does once moved (or points at nothing).
+-- Returns how many xpointers changed.
+function ExactRooms:settleXPointers()
+    local ui = self.ui
+    local document = ui.document
+    if not (document and document._ink_exact_copy) or #self:exactMarks() == 0 then return 0 end
+    local state = self:exactState()
+    if not state or #state == 0 then return 0 end
+    local function valid(xp)
+        local ok, v = pcall(document.isXPointerInDocument, document, xp)
+        return ok and v == true
+    end
+    local function moved(xp)
+        local n = ExactMark.toNew(xp, state)
+        return n and valid(n) and n or nil
+    end
+    local function engine(xp)
+        local ok, n = pcall(document.getNormalizedXPointer, document, xp)
+        return ok and type(n) == "string" and n or xp
+    end
+    local function plain(s)
+        if type(s) ~= "string" then return nil end
+        return (s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", ""))
+    end
+    local function textOf(x0, x1)
+        local ok, t = pcall(document.getTextFromXPointers, document, x0, x1)
+        return ok and plain(t) or nil
+    end
+    local changed, annotations_moved = 0, false
+    -- KOReader's highlights, notes and bookmarks: checked against their own text
+    local ann = ui.annotation and ui.annotation.annotations
+    for _i, a in ipairs(type(ann) == "table" and ann or {}) do
+        local keys = {}
+        for _j, k in ipairs({ "page", "pos0", "pos1" }) do
+            if isXPointer(a[k]) then keys[#keys + 1] = k end
+        end
+        if #keys > 0 then
+            local here = true
+            for _j, k in ipairs(keys) do if not valid(a[k]) then here = false end end
+            local has_text = a.text and isXPointer(a.pos0) and isXPointer(a.pos1)
+            local reads = here and (not has_text or textOf(a.pos0, a.pos1) == plain(a.text))
+            if not reads then
+                local cand = {}
+                for _j, k in ipairs(keys) do cand[k] = moved(a[k]) end
+                local all = true
+                for _j, k in ipairs(keys) do if not cand[k] then all = false end end
+                if all and (not here or not has_text or textOf(cand.pos0, cand.pos1) == plain(a.text)) then
+                    for _j, k in ipairs(keys) do a[k] = cand[k] end
+                    changed = changed + 1
+                    annotations_moved = true
+                end
+            end
+        end
+    end
+    -- the rest (and the style of everything): what points at nothing is moved
+    local place = ui.rolling and ui.rolling.xpointer
+    local place_lost = isXPointer(place) and not valid(place)
+    self:moveXPointers(function(xp)
+        local n = valid(xp) and xp or moved(xp)
+        if not n then return nil end
+        n = engine(n)
+        if n ~= xp then changed = changed + 1; return n end
+        return nil
+    end)
+    if annotations_moved and ui.annotation and ui.annotation.updateAnnotations then
+        pcall(ui.annotation.updateAnnotations, ui.annotation, true)
+    end
+    if place_lost and ui.rolling.xpointer ~= place and ui.rolling.onGotoXPointer then
+        local to = ui.rolling.xpointer
+        pcall(ui.rolling.onGotoXPointer, ui.rolling, to)
+    end
+    if changed > 0 then
+        logger.info("Ink Away: xpointers settled in the edited copy:", changed)
+        self:save()
+    end
+    return changed
 end
 
 function ExactRooms.into(Class)

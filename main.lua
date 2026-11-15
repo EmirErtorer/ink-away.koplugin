@@ -82,6 +82,11 @@ function InkAway:init()
         InkAway._rooms_css = true
         -- a book with words wrapped for exact room is read from its edited copy
         pcall(function() require("ink/reader/exactbook").install() end)
+        -- a highlight that points at nothing must not stop a book opening (KOReader
+        -- up to 2026.07 cannot sort it)
+        pcall(function()
+            require("ink/reader/annotationorder").install(require("apps/reader/modules/readerannotation"))
+        end)
         pcall(function()
             local StyleTweak = require("apps/reader/modules/readerstyletweak")
             local orig = StyleTweak.getCssText
@@ -497,6 +502,9 @@ end
 -- The book is up: one whose rooms need markers it was not laid out with (they
 -- came with the cloud sync, or its saved layout is older) is loaded again with them.
 function InkAway:onReaderReady()
+    -- a book read from its edited copy: its xpointers in crengine's own style, and any
+    -- left in the original book's terms moved (before KOReader sorts its highlights)
+    if self.book and self.book.settleXPointers then pcall(self.book.settleXPointers, self.book) end
     -- a book loaded again for rooms is ready (whatever became of KOReader's own callback)
     local bok, Book = pcall(require, "ink/reader/book")
     if bok and Book.pending_reload and self.book then pcall(Book.finishReload, self.ui) end

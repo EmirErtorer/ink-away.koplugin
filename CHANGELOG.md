@@ -8,6 +8,17 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Fixed
+
+- A book could stop opening after its first exact-line room, on KOReader 2026.07
+  and older or with a book first opened before August 2026: those write a book's
+  places in an older style that Exact lines did not move, so the highlights after
+  the wrapped word pointed at nothing, which KOReader could not sort ("invalid
+  order function for sorting"), and the room was lost. Places of both styles now
+  move, a book already caught opens again with its highlights back where they
+  were, and a highlight that points at nothing can no longer stop any book opening
+  on an older KOReader.
+
 ## [4.5.0] - 2026-11-14
 
 Everything from the 4.4.1, 4.4.2, 4.4.3 and 4.4.4 test builds, now stable, plus
