@@ -20,6 +20,9 @@ local Storage = require("ink/storage")
 
 local Shelf = {}
 
+-- What redraws a shelf showing these documents when their covers land (Bookshelf's, by name).
+Shelf.listeners = {}
+
 -- The source id a Bookshelf shelf stores. Never change it: shelves readers made
 -- would stop finding their notebooks.
 Shelf.ID = "inkaway_notebooks"
@@ -307,6 +310,15 @@ function Shelf.newCovers(opts)
         return Storage.ensureDir(dir) and dir or nil
     end
 
+    -- The folder the documents' page pictures (snapshots and drafts) are in:
+    -- the cover folder, unless `opts.pageDir()` names another (a home other
+    -- than Bookshelf keeps its covers apart but shows the same pictures).
+    local function pages(dir)
+        if opts.pageDir then return opts.pageDir() end
+        return dir
+    end
+    C.pageDir = pages
+
     -- The redraw after covers land, once for a run of them.
     local function changed() opts.changed() end
     C.changed = changed
@@ -319,7 +331,7 @@ function Shelf.newCovers(opts)
         local dir = C.dir()
         if dir then
             local file = Storage.join(dir, Shelf.coverName(nb.path, nb.stamp, nb.key))
-            if opts.render(nb.path, file, nb.look, Shelf.pageFile(dir, nb.path)) then
+            if opts.render(nb.path, file, nb.look, Shelf.pageFile(pages(dir), nb.path)) then
                 -- shown until a newer one lands (a draft page, say, gives
                 -- the notebook a new stamp before its next cover is drawn)
                 C.last[nb.path] = file
@@ -342,7 +354,7 @@ function Shelf.newCovers(opts)
         local nb = table.remove(C.drafts, 1)
         if not nb then return end
         C.drafting[nb.path] = nil
-        local dir = C.dir()
+        local dir = pages(C.dir())
         if dir and not Shelf.pageFile(dir, nb.path) then
             if opts.draft(nb.path, Shelf.draftFile(dir, nb.path)) then
                 opts.unschedule(changed)
@@ -358,6 +370,7 @@ function Shelf.newCovers(opts)
     -- Queue a draft page for `nb` if it has no page picture yet (and none
     -- failed): one shown on its cover first (`first`), else after those.
     function C.wantDraft(nb, dir, first)
+        dir = dir and pages(dir)
         if not (opts.draft and dir) or C.drafting[nb.path] or C.draft_failed[nb.path] then return end
         if Shelf.pageFile(dir, nb.path) then return end
         C.drafting[nb.path] = true
@@ -402,8 +415,8 @@ function Shelf.newCovers(opts)
         if dir and Storage.exists(path) then
             local look = (opts.lookOf or Shelf.lookOf)(path)
             local key = (opts.lookKey or Shelf.lookKey)(look)
-            local file = Storage.join(dir, Shelf.coverName(path, (opts.stampOf or Shelf.stampOf)(dir, path, look), key))
-            if Storage.exists(file) or opts.render(path, file, look, Shelf.pageFile(dir, path)) then
+            local file = Storage.join(dir, Shelf.coverName(path, (opts.stampOf or Shelf.stampOf)(pages(dir), path, look), key))
+            if Storage.exists(file) or opts.render(path, file, look, Shelf.pageFile(pages(dir), path)) then
                 C.failed[path] = nil
             end
         end
@@ -422,6 +435,7 @@ function Shelf.newCovers(opts)
             current[Shelf.snapshotName(nb.path)] = true
             current[Shelf.draftName(nb.path)] = true
         end
+        -- (page pictures kept in another folder are that folder's owner's to clear)
         for _, e in ipairs(Storage.list(dir)) do
             if e.mode == "file" and not current[e.name] and (e.name:match("%.png$") or e.name:match("%.tmp$"))
                     and (now or os.time()) - (e.mtime or 0) >= Shelf.STALE_AFTER then
@@ -520,6 +534,46 @@ function Shelf.spec(opts)
     }
 end
 
+-- Ink Away's own cover queue for the notebooks (made once): it keeps their
+-- first pages' snapshots and draft pages in its folder and draws covers in
+-- Ink Away's six styles; `changed()` redraws whatever shows them.
+function Shelf.ownCovers(changed)
+    if changed then Shelf.listeners.shelf = changed end
+    if Shelf.covers then return Shelf.covers end
+    local UIManager = require("ui/uimanager")
+    Shelf.covers = Shelf.newCovers{
+        cacheDir = Storage.cacheDir,
+        -- each cover's buffers (several MB for a big page) go at once,
+        -- not whenever the collector gets round to them
+        render = function(path, file, look, snapshot)
+            local done = Cover.write(path, file, { style = look and look.style,
+                colour = look and look.colour, snapshot = snapshot })
+            collectgarbage()
+            return done
+        end,
+        schedule = function(s, fn) UIManager:scheduleIn(s, fn) end,
+        unschedule = function(fn) UIManager:unschedule(fn) end,
+        changed = function() for _k, fn in pairs(Shelf.listeners) do pcall(fn) end end,
+        draft = function(path, file)
+            local done = Cover.writePage(path, file)
+            collectgarbage()
+            return done
+        end,
+        busy = Shelf.busy,
+    }
+    return Shelf.covers
+end
+
+-- Keep the notebooks' first-page snapshots for a home other than Bookshelf
+-- (a home screen plugin that shows them, such as SolarUI), as Bookshelf has
+-- them kept: snapshots are taken as notebooks are left. Returns Ink Away's
+-- own cover queue, whose dir() is the folder of the snapshots and drafts.
+function Shelf.host()
+    local covers = Shelf.ownCovers()
+    Shelf.registered = true
+    return covers
+end
+
 -- Put the notebooks on Bookshelf, when it is there and new enough. `plugin` is
 -- Ink Away's plugin (its openCanvas opens a notebook). Returns whether the
 -- source was registered; false, quietly, without Bookshelf.
@@ -529,32 +583,8 @@ function Shelf.register(ui, plugin)
             and (tonumber(bs.SOURCE_API) or 0) >= 1) then
         return false
     end
-    local UIManager = require("ui/uimanager")
     local _ = require("ink/l10n")
-    local covers = Shelf.covers
-    if not covers then
-        covers = Shelf.newCovers{
-            cacheDir = Storage.cacheDir,
-            -- each cover's buffers (several MB for a big page) go at once,
-            -- not whenever the collector gets round to them
-            render = function(path, file, look, snapshot)
-                local done = Cover.write(path, file, { style = look and look.style,
-                    colour = look and look.colour, snapshot = snapshot })
-                collectgarbage()
-                return done
-            end,
-            schedule = function(s, fn) UIManager:scheduleIn(s, fn) end,
-            unschedule = function(fn) UIManager:unschedule(fn) end,
-            changed = function() Shelf.redrawShelf(bs) end,
-            draft = function(path, file)
-                local done = Cover.writePage(path, file)
-                collectgarbage()
-                return done
-            end,
-            busy = Shelf.busy,
-        }
-        Shelf.covers = covers
-    end
+    local covers = Shelf.ownCovers(function() Shelf.redrawShelf(bs) end)
     local ok = pcall(function()
         local done = bs:registerSource(Shelf.ID, Shelf.spec{
             _ = _,

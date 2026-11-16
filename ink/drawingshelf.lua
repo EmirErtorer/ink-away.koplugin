@@ -25,6 +25,9 @@ local Storage = require("ink/storage")
 
 local DShelf = {}
 
+-- What redraws a shelf showing these documents when their covers land (Bookshelf's, by name).
+DShelf.listeners = {}
+
 -- The source id a Bookshelf shelf stores. Never change it.
 DShelf.ID = "inkaway_drawings"
 
@@ -336,6 +339,43 @@ function DShelf.spec(opts)
     }
 end
 
+-- Ink Away's own cover queue for the drawings (made once), as
+-- Shelf.ownCovers is for the notebooks: it keeps the drawings' snapshots and
+-- draft pictures in its folder and draws covers in Ink Away's frames.
+function DShelf.ownCovers(changed)
+    if changed then DShelf.listeners.shelf = changed end
+    if DShelf.covers then return DShelf.covers end
+    local UIManager = require("ui/uimanager")
+    DShelf.covers = DShelf.newCovers{
+        cacheDir = Storage.cacheDir,
+        -- each cover's buffers go at once, not when the collector gets to them
+        render = function(path, file, look, picture)
+            local done = FrameCover.write(file, { frame = look.frame, option = look.option,
+                shape = look.shape, file = picture, name = Storage.stem(path) })
+            collectgarbage()
+            return done
+        end,
+        draft = function(path, file)
+            local done = DShelf.writeDraft(path, file)
+            collectgarbage()
+            return done
+        end,
+        schedule = function(s, fn) UIManager:scheduleIn(s, fn) end,
+        unschedule = function(fn) UIManager:unschedule(fn) end,
+        changed = function() for _k, fn in pairs(DShelf.listeners) do pcall(fn) end end,
+        busy = Shelf.busy,
+    }
+    return DShelf.covers
+end
+
+-- Keep the drawings' snapshots for a home other than Bookshelf (see
+-- Shelf.host). Returns Ink Away's own drawings cover queue.
+function DShelf.host()
+    local covers = DShelf.ownCovers()
+    DShelf.registered = true
+    return covers
+end
+
 -- Put the drawings on Bookshelf, when it is there and new enough (see
 -- Shelf.register). Returns whether the source was registered.
 function DShelf.register(ui, plugin)
@@ -344,31 +384,8 @@ function DShelf.register(ui, plugin)
             and (tonumber(bs.SOURCE_API) or 0) >= 1) then
         return false
     end
-    local UIManager = require("ui/uimanager")
     local _ = require("ink/l10n")
-    local covers = DShelf.covers
-    if not covers then
-        covers = DShelf.newCovers{
-            cacheDir = Storage.cacheDir,
-            -- each cover's buffers go at once, not when the collector gets to them
-            render = function(path, file, look, picture)
-                local done = FrameCover.write(file, { frame = look.frame, option = look.option,
-                    shape = look.shape, file = picture, name = Storage.stem(path) })
-                collectgarbage()
-                return done
-            end,
-            draft = function(path, file)
-                local done = DShelf.writeDraft(path, file)
-                collectgarbage()
-                return done
-            end,
-            schedule = function(s, fn) UIManager:scheduleIn(s, fn) end,
-            unschedule = function(fn) UIManager:unschedule(fn) end,
-            changed = function() DShelf.redrawShelf(bs) end,
-            busy = Shelf.busy,
-        }
-        DShelf.covers = covers
-    end
+    local covers = DShelf.ownCovers(function() DShelf.redrawShelf(bs) end)
     local ok = pcall(function()
         local done = bs:registerSource(DShelf.ID, DShelf.spec{
             _ = _,
