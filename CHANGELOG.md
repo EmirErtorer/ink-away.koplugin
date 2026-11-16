@@ -8,6 +8,12 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-11-17
+
+### Added
+
+- **Your notebooks and drawings on SolarUI's shelf.** Ink Away now keeps the pictures of your notebooks and drawings for any home screen that asks for them, not only Bookshelf, so SolarUI's notebook shelf shows them in its own covers and opens each one on the page you left. Bookshelf keeps working as before.
+
 ## [4.5.1] - 2026-11-16
 
 A hotfix for exact-line rooms on KOReader 2026.07 and older.
