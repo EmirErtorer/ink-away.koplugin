@@ -19,6 +19,7 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
+local Theme = require("ink/ui/theme")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -350,8 +351,10 @@ function InkAwayView:stickerTile(item, body, w, h, chosen)
         local size = math.min(w, h) - Screen:scaleBySize(8)
         local bb = thumbFor(self, item, body, size)
         if bb then
-            self:setButtonLabel(btn, ImageWidget:new{ image = bb, width = size, height = size,
-                image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK })
+            -- kept (see ink/ui/theme.lua): KOReader already turns a picture for its
+            -- night mode, so a light sheet over it must not turn it back to blue
+            self:setButtonLabel(btn, Theme.keep(ImageWidget:new{ image = bb, width = size, height = size,
+                image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }))
         end
     end
     local edge = Screen:scaleBySize(chosen and 3 or 1)

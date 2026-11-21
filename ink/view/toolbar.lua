@@ -729,11 +729,19 @@ function InkAwayView:drawPenStrip(bb, ox, oy, r)
         local y = oy + r.y + r.pad
         local sample = self._strip_samples[i]
         -- (blitted after the dark inversion: each pen shows as it draws)
-        if sample then bb:blitFrom(sample, x + inset, y + inset, 0, 0, tw, th) end
+        if sample then
+            bb:blitFrom(sample, x + inset, y + inset, 0, 0, tw, th)
+            -- KOReader's night mode inverts the screen: turned so it shows as painted
+            if Theme.nightMode() then bb:invertRect(x + inset, y + inset, tw, th) end
+        end
         if case.sel == i then
             local uh = math.max(3, Screen:scaleBySize(3))
             Accent.paintRounded(bb, x + inset, y + r.sh - uh, tw, uh, math.floor(uh / 2))
-            if dark and not Accent.get().custom then bb:invertRect(x + inset, y + r.sh - uh, tw, uh) end
+            -- black follows the control; a theme colour shows as itself, night mode or not
+            local custom = Accent.get().custom
+            if (dark and not custom) or (custom and Theme.nightMode()) then
+                bb:invertRect(x + inset, y + r.sh - uh, tw, uh)
+            end
         end
     end
 end

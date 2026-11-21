@@ -12,6 +12,7 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
+local Theme = require("ink/ui/theme")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
@@ -299,8 +300,9 @@ function InkAwayView:imageBrowserCell(st, index, cell_w, cell_h)
         -- ImageWidget ignores fgcolor, but Button's tap highlight inverts
         -- label_widget.fgcolor whenever `text` is set (ours is ""), and a nil one
         -- crashes (see imageLabel in sheetkit.lua)
-        self:setButtonLabel(b, ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
-            scale_factor = 0, image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK })
+        -- kept in its own colours in dark and night mode (see ink/ui/theme.lua)
+        self:setButtonLabel(b, Theme.keep(ImageWidget:new{ image = bb, width = cell_w - 2 * pad, height = cell_h - 2 * pad,
+            scale_factor = 0, image_disposable = false, fgcolor = Blitbuffer.COLOR_BLACK }))
     end
     return b
 end

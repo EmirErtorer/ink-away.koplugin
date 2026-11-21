@@ -246,8 +246,8 @@ function ColorPicker:paintTo(bb, x, y)
 
     -- dark (see ink/ui/theme.lua): the panel inverted, the colours kept
     local dark = Theme.invert()
-    if dark then
-        bb:invertRect(bx, by, self.box_w, self.box_h)
+    if dark then bb:invertRect(bx, by, self.box_w, self.box_h) end
+    if Theme.keepInverted() then
         Theme.invertRounded(bb, wx, wy, D, D, floor(D / 2))
         bb:invertRect(sx, cy - floor(th / 2), sw, th)
         bb:invertRect(px + 1, py + 1, sww - 2, pr.h - 2)

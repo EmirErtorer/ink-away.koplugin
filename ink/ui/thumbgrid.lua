@@ -532,8 +532,8 @@ function ThumbGrid:paintTo(bb, x, y)
         label(string.format("%d / %d", self.gpage + 1, self:gridCount()),
             x + sw / 2, pcy, Font:getFace("cfont", 15), LABEL)
     end
-    if Theme.invert() then
-        bb:invertRect(x, y, sw, sh)
+    if Theme.invert() then bb:invertRect(x, y, sw, sh) end
+    if Theme.keepInverted() then
         for _i, k in ipairs(keeps) do Theme.invertRounded(bb, k[1], k[2], k[3], k[4], k[5]) end
     end
 end

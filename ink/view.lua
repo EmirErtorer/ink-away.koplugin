@@ -1058,11 +1058,15 @@ end
 -- Dark (see ink/ui/theme.lua): the toolbar at (tx, ty) inverted, the pen in
 -- hand's colour and an active tool in a theme colour given back.
 function InkAwayView:darkToolbar(bb, tx, ty)
-    if not (Theme.invert() and self.toolbar) then return end
-    local sz = self.toolbar:getSize()
-    local w = self._vb_side and sz.w or self.screen_w
-    local x = self._vb_side and tx or 0
-    bb:invertRect(x, ty, w, sz.h)
+    if not self.toolbar then return end
+    if Theme.invert() then
+        local sz = self.toolbar:getSize()
+        local w = self._vb_side and sz.w or self.screen_w
+        local x = self._vb_side and tx or 0
+        bb:invertRect(x, ty, w, sz.h)
+    end
+    -- the colours, turned so they show as painted (in KOReader's night mode too)
+    if not Theme.keepInverted() then return end
     local m = self._pen_mark_rect
     if m then bb:invertRect(m.x, m.y, m.w, m.h) end
     local p = self._pill_rect

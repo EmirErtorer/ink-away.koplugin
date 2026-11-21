@@ -156,7 +156,53 @@ do
     end
     Device.screen.night_mode = false
     mode(nil)
-    ok(Theme.mode() == "light", "no setting is light")
+    ok(Theme.mode() == "system", "no setting follows KOReader's night mode")
+    Device.screen.night_mode = true
+    ok(Theme.dark() and not Theme.invert(), "so in night mode the controls are dark, as KOReader's are")
+    Device.screen.night_mode = false
+    ok(not Theme.dark() and not Theme.invert(), "and light without it")
+end
+
+-- A panel with a rounded colour part kept (a theme colour button, a sticker
+-- preview), in day and night mode with each look (#89): the panel shows the look
+-- chosen, the part its own colour, and round its rounded corners the panel shows,
+-- not a square of another shade. KOReader's own turning of a picture for night
+-- mode (its whole rectangle) is left out of a kept part.
+do
+    local pic = { image = true, original_in_nightmode = nil }
+    setmetatable(pic, { __index = { original_in_nightmode = true } })
+    local part = Theme.keep({ dimen = { x = 100, y = 80, w = 120, h = 60 }, label = pic }, 20)
+    ok(rawget(pic, "original_in_nightmode") == false, "a picture in a kept part is not turned for night mode by KOReader")
+    local root = { part }
+    local COL = BB.ColorRGB32(250, 220, 60, 0xFF)
+    local function shown(bb, x, y, night)
+        local r, g, b = px(bb, x, y)
+        if night then return 255 - r, 255 - g, 255 - b end
+        return r, g, b
+    end
+    for _i, case in ipairs({ { false, "light" }, { false, "dark" }, { true, "light" }, { true, "dark" }, { true, nil } }) do
+        local night, m = case[1], case[2]
+        Device.screen.night_mode = night
+        mode(m)
+        local bb = BB.new(W, H, BB.TYPE_BBRGB32)
+        bb:fill(BB.COLOR_WHITE)
+        for j = 0, 59 do   -- the rounded colour part, row by row
+            local dy = j < 20 and (20 - j - 0.5) or (j > 39 and (j - 39 - 0.5) or 0)
+            local inset = dy > 0 and math.ceil(20 - math.sqrt(math.max(0, 400 - dy * dy)) - 0.5) or 0
+            bb:paintRectRGB32(100 + inset, 80 + j, 120 - 2 * inset, 1, COL)
+        end
+        Theme.apply(bb, root, 0, 0, W, H, 0)
+        local tag = (night and "night, " or "day, ") .. tostring(m or "default")
+        local pr = shown(bb, 20, 20, night)
+        ok((pr < 128) == Theme.dark(), tag .. ": the panel shows " .. (Theme.dark() and "dark" or "light"))
+        local r, g, b = shown(bb, 160, 110, night)
+        ok(r == 250 and g == 220 and b == 60, ("%s: the kept part shows its own colour (%d,%d,%d)"):format(tag, r, g, b))
+        local cr, cg, cb = shown(bb, 101, 81, night)
+        ok(cr == pr and cg == pr and cb == pr, ("%s: its corner shows the panel, not a square (%d)"):format(tag, cr))
+        bb:free()
+    end
+    Device.screen.night_mode = false
+    mode(nil)
 end
 
 print(("realbb theme: %d checks, %d failures"):format(checks, failures))

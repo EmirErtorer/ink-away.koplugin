@@ -630,6 +630,10 @@ function InkAwayView:drawLayerStrip(bb, ox, oy, r)
             bb:paintRect(x + inset * 3, active_at + math.floor(r.rh / 2), r.w - inset * 6, t,
                 (dark and not a.custom) and Blitbuffer.COLOR_BLACK or a.text)
         end
+        -- a theme colour shows as itself in KOReader's night mode too
+        if a.custom and Theme.nightMode() then
+            Theme.invertRounded(bb, x + inset, active_at + inset / 2, r.w - 2 * inset, r.rh - inset, Screen:scaleBySize(10))
+        end
     end
 end
 

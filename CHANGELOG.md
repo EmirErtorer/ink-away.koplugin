@@ -12,6 +12,20 @@ versions marked *Prerelease* were test builds.
 
 - **Ink Away in Simplified Chinese**, by gytwo (#88).
 
+### Changed
+
+- Ink Away's controls now follow KOReader's night mode by default (Appearance:
+  System), so they go dark with the rest of KOReader. Light and Dark still keep
+  the look you chose (#89).
+
+### Fixed
+
+- In KOReader's night mode the colours in Ink Away's menus showed as their
+  opposites: a yellow sticker in the sticker sheet looked blue, and rounded
+  buttons such as Done had square corners round them. Sticker and picture
+  previews, swatches, pen samples and the theme colour now show as themselves in
+  night mode with every look (#89).
+
 ## [4.5.2] - 2026-11-17
 
 ### Added

@@ -198,8 +198,8 @@ function BrushMaker:paintTo(bb, x, y)
 
     -- dark (see ink/ui/theme.lua): the panel inverted, the kept parts back
     local dark = Theme.invert()
-    if dark then
-        Theme.invertRounded(bb, bx, by, bw, bh, radius)
+    if dark then Theme.invertRounded(bb, bx, by, bw, bh, radius) end
+    if Theme.keepInverted() then
         for _i, k in ipairs(keeps) do Theme.invertRounded(bb, k[1], k[2], k[3], k[4], k[5]) end
     end
     for _i, k in ipairs(knobs) do

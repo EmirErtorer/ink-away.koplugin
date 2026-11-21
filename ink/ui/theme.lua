@@ -11,7 +11,7 @@ painted. An accent that is not a colour (black, the default) is inverted with th
 rest and becomes white: the active tool, Done and the switches stay as easy to
 read on a dark control as black ones are on a light one.
 
-The mode is Light, Dark or System; System follows KOReader's night mode. When
+The mode is Light, Dark or System; System, the default, follows KOReader's night mode. When
 KOReader's night mode is on it already inverts the whole screen, so the controls
 are inverted here only when that would not give the look chosen.
 ]]
@@ -28,11 +28,12 @@ local function setting(k)
     return G and G.readSetting and G:readSetting(k)
 end
 
--- "light", "dark" or "system".
+-- "light", "dark" or "system" (the default: the controls go dark with KOReader's
+-- night mode, as the rest of KOReader does).
 function Theme.mode()
     local m = setting(Theme.SETTING)
-    if m == "dark" or m == "system" then return m end
-    return "light"
+    if m == "light" or m == "dark" then return m end
+    return "system"
 end
 
 -- Is KOReader's night mode on (the whole screen inverted)?
@@ -56,11 +57,34 @@ function Theme.invert()
     return Theme.dark() ~= Theme.nightMode()
 end
 
--- Mark a widget whose colours are kept in dark (see Theme.restore); `r` is its
--- corner radius, so the panel shows round its corners as everywhere else.
+-- Mark a widget whose colours are kept in dark and in KOReader's night mode (see
+-- Theme.restore); `r` is its corner radius, so the panel shows round its corners
+-- as everywhere else. KOReader turns a picture for night mode by inverting its
+-- whole rectangle, which left square corners round a rounded button and a
+-- transparent picture: the pictures in a kept part leave that to Theme.restore,
+-- which turns the part inside its rounded shape.
 function Theme.keep(w, r)
-    if w then w._ia_keep, w._ia_keep_r = true, r or 0 end
+    if not w then return w end
+    w._ia_keep, w._ia_keep_r = true, r or 0
+    local seen = {}
+    local function own(t)
+        if type(t) ~= "table" or seen[t] then return end
+        seen[t] = true
+        if t.original_in_nightmode ~= nil and (t.image ~= nil or t.file ~= nil) then t.original_in_nightmode = false end
+        for k, c in pairs(t) do
+            if type(c) == "table" and k ~= "parent" and k ~= "show_parent" and k ~= "dimen" then own(c) end
+        end
+    end
+    own(w)
     return w
+end
+
+-- Must the kept parts be inverted, after the control's own inversion (if any), to
+-- show as painted? KOReader's night mode inverts them with the screen, and the
+-- control's inversion here does too; they come out right when the look is dark
+-- (in day mode Ink Away inverts the control, in night mode KOReader does).
+function Theme.keepInverted()
+    return Theme.dark()
 end
 
 -- Invert the rect, leaving out what lies outside its rounded corners of radius
@@ -152,12 +176,13 @@ function Theme.restore(bb, root, x, y, w, h)
 end
 
 -- Dark for a control painted at (x, y, w, h) with corner radius r: invert it
--- and give back the kept parts of `root`. Nothing in light.
+-- when the screen does not already, and give back the kept parts of `root` (see
+-- Theme.keepInverted). Returns whether the control was inverted here.
 function Theme.apply(bb, root, x, y, w, h, r)
-    if not Theme.invert() then return false end
-    Theme.invertRounded(bb, x, y, w, h, r)
-    if root then Theme.restore(bb, root, x, y, w, h) end
-    return true
+    local inv = Theme.invert()
+    if inv then Theme.invertRounded(bb, x, y, w, h, r) end
+    if root and Theme.keepInverted() then Theme.restore(bb, root, x, y, w, h) end
+    return inv
 end
 
 return Theme
