@@ -44,6 +44,11 @@ BookInk.READS = 2
 -- Pictures placed on the book are kept beside its ink, in this folder, and its
 -- ink names them "@book/<file>" (see BookInk.keepPicture).
 BookInk.PICTURES = "inkaway-pictures"
+-- On disk each one ends in this, after its own name: Kobo's software imports
+-- every .png and .jpg it finds as a book, and the book's folder (<book>.sdr) is
+-- not hidden, so a picture named as it is showed up in Kobo's library. The ink
+-- and the cloud still name it as it was ("@book/<file>.png").
+BookInk.PICTURE_SUFFIX = ".inkaway"
 local BOOK_REF = "@book/"
 
 local SUFFIXES = { "", ".old" }
@@ -366,6 +371,34 @@ function BookInk.picturesDir(sidecar_dir)
     return sidecar_dir .. "/" .. BookInk.PICTURES
 end
 
+-- A picture's file name on disk, from the name its ink gives it, and back.
+function BookInk.diskName(name) return name .. BookInk.PICTURE_SUFFIX end
+function BookInk.inkName(disk_name)
+    local sfx = BookInk.PICTURE_SUFFIX
+    if disk_name:sub(-#sfx) == sfx then return disk_name:sub(1, -#sfx - 1) end
+    return disk_name   -- (as an earlier Ink Away kept it)
+end
+
+-- Give the pictures an earlier Ink Away kept under their own names (a .png, a
+-- .jpg) their name on disk, so Kobo's library no longer lists them (it drops a
+-- book whose file is gone at its next look). Their ink is unchanged. Returns
+-- how many were renamed.
+function BookInk.hidePictures(sidecar_dir)
+    if not sidecar_dir then return 0 end
+    local dir = BookInk.picturesDir(sidecar_dir)
+    if not Storage.isDir(dir) then return 0 end
+    local n = 0
+    for _i, e in ipairs(Storage.list(dir)) do
+        if e.mode == "file" and BookInk.inkName(e.name) == e.name then
+            local to = dir .. "/" .. BookInk.diskName(e.name)
+            if isFile(to) then os.remove(e.path)   -- (both: the hidden one is the same picture)
+            elseif os.rename(e.path, to) then n = n + 1 end
+        end
+    end
+    if n > 0 then logger.info("Ink Away: pictures of the book renamed out of Kobo's library:", n) end
+    return n
+end
+
 -- A picture's file name in the book's folder: named by its content, so a
 -- picture placed twice is kept once.
 local function pictureName(path)
@@ -386,11 +419,16 @@ end
 function BookInk.keepPicture(sidecar_dir, path)
     if type(path) ~= "string" or not sidecar_dir or path:sub(1, #BOOK_REF) == BOOK_REF then return path end
     local dir = BookInk.picturesDir(sidecar_dir)
-    if path:sub(1, #dir + 1) == dir .. "/" then return BOOK_REF .. path:sub(#dir + 2) end
+    if path:sub(1, #dir + 1) == dir .. "/" then return BOOK_REF .. BookInk.inkName(path:sub(#dir + 2)) end
     local name = pictureName(path)
-    local dst = dir .. "/" .. name
+    local dst = dir .. "/" .. BookInk.diskName(name)
     if not isFile(dst) then
-        if not (makePath(dir) and Storage.copyFile(path, dst)) then return path end
+        local old = dir .. "/" .. name   -- kept by an earlier Ink Away under its own name
+        if isFile(old) then
+            if not os.rename(old, dst) then return BOOK_REF .. name end
+        elseif not (makePath(dir) and Storage.copyFile(path, dst)) then
+            return path
+        end
     end
     return BOOK_REF .. name
 end
@@ -398,7 +436,11 @@ end
 -- A picture's path on disk, from the book's ink's name for it.
 function BookInk.picturePath(sidecar_dir, path)
     if type(path) == "string" and sidecar_dir and path:sub(1, #BOOK_REF) == BOOK_REF then
-        return BookInk.picturesDir(sidecar_dir) .. "/" .. path:sub(#BOOK_REF + 1)
+        local base = BookInk.picturesDir(sidecar_dir) .. "/" .. path:sub(#BOOK_REF + 1)
+        local disk = BookInk.diskName(base)
+        -- (one an earlier Ink Away kept, not renamed yet: see hidePictures)
+        if not isFile(disk) and isFile(base) then return base end
+        return disk
     end
     return path
 end
@@ -415,7 +457,7 @@ function BookInk.prunePictures(sidecar_dir, items)
         if type(p) == "string" and p:sub(1, #BOOK_REF) == BOOK_REF then used[p:sub(#BOOK_REF + 1)] = true end
     end
     for _i, e in ipairs(Storage.list(dir)) do
-        if e.mode == "file" and not used[e.name] then os.remove(e.path) end
+        if e.mode == "file" and not used[BookInk.inkName(e.name)] then os.remove(e.path) end
     end
     pcall(os.remove, dir)   -- only when empty
 end

@@ -182,7 +182,8 @@ BookIndex.note(B.sync, MD5, bBook, B.dir .. "/elsewhere/Dune.epub")
 r = run(B)
 eq(r.downloaded, 3, "once the book is known there, its ink, picture and name arrive")
 eq(inkCount(bBook), 2, "in the book's folder on that reader")
-eq(read(bBook .. "/inkaway-pictures/p1.png"), "picture", "with its picture")
+eq(read(bBook .. "/inkaway-pictures/p1.png.inkaway"), "picture", "with its picture, under its name on disk (out of Kobo's library)")
+ok(read(bBook .. "/inkaway-pictures/p1.png") == nil, "never as a .png, which Kobo would list as a book")
 ok(read(bBook .. "/metadata.epub.lua") == nil, "and nothing else")
 
 -- 8. two readers draw on the same book: the ink is combined, not copied twice

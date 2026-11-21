@@ -45,6 +45,8 @@ end
 function Book:data()
     if not self._data then
         self._data = self.has_file and BookInk.load(self.sidecar) or BookInk.new()
+        -- pictures an earlier Ink Away kept as .png/.jpg, out of Kobo's library
+        if self.has_file then pcall(BookInk.hidePictures, self.sidecar) end
     end
     return self._data
 end

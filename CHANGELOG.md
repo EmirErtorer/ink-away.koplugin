@@ -20,6 +20,15 @@ versions marked *Prerelease* were test builds.
 
 ### Fixed
 
+- On a Kobo, pictures put on a book (your own stickers, pictures you insert, clips)
+  showed up as books in Kobo's own library, after Kobo looked through the reader
+  again (at a USB connection). Ink Away keeps a copy of each in the book's
+  KOReader folder, which Kobo does not skip, as a .png or .jpg, and Kobo lists
+  every picture it finds. They are now kept under a name Kobo does not read as a
+  picture; a book's pictures from earlier versions are renamed the next time the
+  book is opened, and Kobo drops them from its library at its next look. The
+  annotations and their pictures stay exactly as they were. Built-in stickers
+  were never affected: they are drawn from shapes and keep no file.
 - In KOReader's night mode the colours in Ink Away's menus showed as their
   opposites: a yellow sticker in the sticker sheet looked blue, and rounded
   buttons such as Done had square corners round them. Sticker and picture

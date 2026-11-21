@@ -738,6 +738,57 @@ do
     os.execute("rm -rf '" .. root .. "'")
 end
 
+-- ---- a book's pictures stay out of Kobo's library ----------------------------------------------
+-- Kobo's software lists every .png/.jpg it finds as a book, the book's folder
+-- (<book>.sdr) included: a picture is kept there under a name that is not an image's.
+do
+    local root = os.tmpname(); os.remove(root)
+    os.execute("mkdir -p '" .. root .. "/pics' '" .. root .. "/a.sdr'")
+    local function exists(p) local h = io.open(p, "rb"); if h then h:close() end; return h ~= nil end
+    local function ls(dir)
+        local out = {}
+        local h = io.popen("ls '" .. dir .. "' 2>/dev/null")
+        for line in h:lines() do out[#out + 1] = line end
+        h:close()
+        return out
+    end
+    local function imageNamed(dir)
+        for _i, n in ipairs(ls(dir)) do if n:lower():match("%.png$") or n:lower():match("%.jpe?g$") then return n end end
+    end
+    local pic = root .. "/pics/sticker.png"
+    local f = io.open(pic, "wb"); f:write(string.rep("y", 200)); f:close()
+    local sdr = root .. "/a.sdr"
+    local dir = BookInk.picturesDir(sdr)
+    local ref = BookInk.keepPicture(sdr, pic)
+    ok(ref:match("^@book/.+%.png$") ~= nil, "kobo: the ink still names it as a .png (" .. ref .. ")")
+    ok(imageNamed(dir) == nil and #ls(dir) == 1, "kobo: on disk it is not named as an image (" .. tostring(ls(dir)[1]) .. ")")
+    ok(BookInk.picturePath(sdr, ref):sub(-#BookInk.PICTURE_SUFFIX) == BookInk.PICTURE_SUFFIX
+        and exists(BookInk.picturePath(sdr, ref)), "kobo: and its ink finds it")
+    ok(BookInk.keepPicture(sdr, BookInk.picturePath(sdr, ref)) == ref, "kobo: one already there keeps its name in the ink")
+    -- a book as an earlier Ink Away left it: the picture under its own name
+    local old_name = ref:sub(#"@book/" + 1)
+    os.rename(BookInk.picturePath(sdr, ref), dir .. "/" .. old_name)
+    ok(exists(BookInk.picturePath(sdr, ref)) and BookInk.picturePath(sdr, ref) == dir .. "/" .. old_name,
+        "kobo: a picture an earlier Ink Away kept still shows before it is renamed")
+    ok(BookInk.hidePictures(sdr) == 1 and imageNamed(dir) == nil, "kobo: opening the book renames it out of Kobo's library")
+    ok(exists(BookInk.picturePath(sdr, ref)), "kobo: and its ink, unchanged, finds it under the new name")
+    ok(BookInk.hidePictures(sdr) == 0, "kobo: renamed once")
+    -- placed again while the old copy is still there: renamed, not copied twice
+    os.rename(BookInk.picturePath(sdr, ref), dir .. "/" .. old_name)
+    ok(BookInk.keepPicture(sdr, pic) == ref and imageNamed(dir) == nil and #ls(dir) == 1,
+        "kobo: placing it again moves the old copy instead of making a second")
+    -- both names there (copied back by hand): the image-named one goes
+    local c = io.open(dir .. "/" .. old_name, "wb"); c:write("y"); c:close()
+    BookInk.hidePictures(sdr)
+    ok(imageNamed(dir) == nil and #ls(dir) == 1, "kobo: with both, only the hidden one stays")
+    -- pruning sees the hidden name as the ink's
+    BookInk.prunePictures(sdr, { { op = { kind = "image", path = ref } } })
+    ok(exists(BookInk.picturePath(sdr, ref)), "kobo: prune keeps a picture in use")
+    BookInk.prunePictures(sdr, {})
+    ok(not exists(BookInk.picturePath(sdr, ref)), "kobo: and removes it once unused")
+    os.execute("rm -rf '" .. root .. "'")
+end
+
 -- ---- a book's annotations to the trash and back ------------------------------------------------
 do
     local Trash = require("ink/trash")

@@ -25,6 +25,7 @@ drive it.
 local _ = require("ink/l10n")
 local Storage = require("ink/storage")
 local BookIndex = require("ink/sync/bookindex")
+local BookInk = require("ink/reader/bookink")
 
 local Areas = {}
 
@@ -168,7 +169,18 @@ function Areas.build(env)
             local rest = under(rel, books)
             local md5, file = (rest or ""):match("^(%x+)/(.+)$")
             local book = md5 and env.books and env.books()[md5]
-            if book and book.dir and bookFile(file) then return Storage.join(book.dir, file) end
+            if book and book.dir and bookFile(file) then
+                -- a picture is named on disk with its suffix (see BookInk.PICTURE_SUFFIX)
+                local pic = file:match("^inkaway%-pictures/(.+)$")
+                if pic then
+                    local plain = Storage.join(book.dir, "inkaway-pictures/" .. pic)
+                    local disk = Storage.join(book.dir, "inkaway-pictures/" .. BookInk.diskName(pic))
+                    -- (one an earlier Ink Away kept, in a book not opened since)
+                    if not Storage.exists(disk) and Storage.exists(plain) then return plain end
+                    return disk
+                end
+                return Storage.join(book.dir, file)
+            end
         end
         function a.walk(add)
             for md5, book in pairs(env.books and env.books() or {}) do
@@ -184,7 +196,10 @@ function Areas.build(env)
                         end
                     end
                     for _i, e in ipairs(Storage.list(Storage.join(book.dir, "inkaway-pictures"))) do
-                        if e.mode == "file" then add(books .. "/" .. md5 .. "/inkaway-pictures/" .. e.name, e.path, e.mtime) end
+                        -- (in the cloud under the name its ink gives it, as before)
+                        if e.mode == "file" then
+                            add(books .. "/" .. md5 .. "/inkaway-pictures/" .. BookInk.inkName(e.name), e.path, e.mtime)
+                        end
                     end
                 end
             end
