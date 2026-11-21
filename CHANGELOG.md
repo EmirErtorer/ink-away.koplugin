@@ -8,6 +8,10 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+### Added
+
+- **Ink Away in Simplified Chinese**, by gytwo (#88).
+
 ## [4.5.2] - 2026-11-17
 
 ### Added

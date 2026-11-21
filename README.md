@@ -58,7 +58,7 @@ assign **Ink Away: copy part of the screen** to a gesture while reading.
 * **Notebooks:** any number of pages on eighteen papers and planners, PDFs opened as notebooks, links and a contents page, a library with folders, search and a 30-day trash.
 * **Books:** ink anchored to the words, a smart highlighter that makes KOReader's own highlights, and a notebook for each book.
 * **Export:** PNG, PDF and editable PDF. A book comes out as a fixed PDF laid out as you read it, in your colours, with selectable text. You can also send files to a phone or computer over Wi-Fi.
-* **Made for e-ink:** palm rejection, stylus buttons, dark mode, colour screens, light refreshes, and Ink Away in ten languages. It can also give your notebooks and drawings their own shelves on [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin).
+* **Made for e-ink:** palm rejection, stylus buttons, dark mode, colour screens, light refreshes, and Ink Away in eleven languages. It can also give your notebooks and drawings their own shelves on [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin).
 
 The full list, with every setting and gesture, is in [docs/FEATURES.md](docs/FEATURES.md). What changed in each version is in the [changelog](CHANGELOG.md).
 

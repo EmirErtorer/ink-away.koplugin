@@ -370,7 +370,7 @@ do
         local found = Check.language(text, lang.code, MSGS)
         ok(#found == 0, lang.code .. ": " .. table.concat(found, "; "):sub(1, 400))
     end
-    ok(#Langs == 10, "languages: the ten of tools/l10n/langs.lua are shipped")
+    ok(#Langs == 11, "languages: the eleven of tools/l10n/langs.lua are shipped")
     local extra = {}
     for name in io.popen("ls ink/l10n"):lines() do
         if name:match("%.po$") and not seen[name] then extra[#extra + 1] = name end

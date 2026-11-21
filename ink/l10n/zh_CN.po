@@ -1,4 +1,4 @@
-# Ink Away translation template, made by tools/l10n/extract.lua: do not edit it by hand.
+# Ink Away: Simplified Chinese translation.
 msgid ""
 msgstr ""
 "Project-Id-Version: Ink Away\n"
@@ -6,6 +6,8 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Language: zh_CN\n"
+"Language-Team: Simplified Chinese\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 
 #: ink/view/menus.lua
 #: ink/view/settings.lua
@@ -275,7 +277,7 @@ msgstr "1. 用手机相机扫描此二维码。"
 
 #: ink/view/sync.lua
 msgid "1. Scan this with your phone's camera. The phone must be on the same Wi-Fi as the reader."
-msgstr "1. 用手机相机扫描此二维码。手机和阅读器必须连接同一个 Wi‑Fi。"
+msgstr "1. 用手机相机扫描此二维码。手机和阅读器必须连接同一个 Wi-Fi。"
 
 #: ink/view/sync.lua
 msgid "12h"
@@ -527,7 +529,7 @@ msgstr "允许接收文件"
 
 #: ink/view/sync.lua
 msgid "Allow turning on Wi-Fi"
-msgstr "允许自动开启 Wi‑Fi"
+msgstr "允许自动开启 Wi-Fi"
 
 #: ink/view/gestures.lua
 msgid "Already in use"
@@ -770,7 +772,7 @@ msgstr "书籍"
 
 #: ink/guide.lua
 msgid "Bookshelf"
-msgstr "书架"
+msgstr "Bookshelf"
 
 #: ink/view/gestures.lua
 msgid "Both"
@@ -1055,7 +1057,7 @@ msgstr "重新连接"
 
 #: ink/sync/errors.lua
 msgid "Connect to Wi-Fi, or allow Ink Away to turn it on in the sync settings."
-msgstr "连接 Wi‑Fi，或者在同步设置里允许 Ink Away 开启 Wi‑Fi。"
+msgstr "连接 Wi-Fi，或者在同步设置里允许 Ink Away 开启 Wi-Fi。"
 
 #: ink/view/sync.lua
 #, lua-format
@@ -1147,7 +1149,7 @@ msgstr "检查失败：%1。"
 
 #: ink/view/export.lua
 msgid "Could not create the bookshelf ornaments folder."
-msgstr "无法创建书架装饰文件夹。"
+msgstr "无法创建Bookshelf装饰文件夹。"
 
 #: ink/view/library.lua
 msgid "Could not create the folder."
@@ -1285,7 +1287,7 @@ msgid ""
 "Check your Wi-Fi, or try the other source above."
 msgstr ""
 "图片服务连接失败。\n"
-"检查Wi‑Fi，或者切换上方其他图源。"
+"检查Wi-Fi，或者切换上方其他图源。"
 
 #: ink/view/imagebrowser.lua
 #: ink/view/images.lua
@@ -1316,7 +1318,7 @@ msgstr "书架封面…"
 
 #: ink/coverpicker.lua
 msgid "Covers on Bookshelf"
-msgstr "书架封面显示"
+msgstr "Bookshelf封面显示"
 
 #: ink/palette.lua
 msgid "Cream"
@@ -1657,7 +1659,7 @@ msgstr ""
 "\n"
 "Ink Away会在你书写时调用Boox的快速刷新，笔停下后墨迹会渲染出灰度与彩色效果。\n"
 "\n"
-"KOReader会交替交由Boox自身针对KOReader的刷新模式处理。如果页面闪烁、墨迹跟不上笔触：进入墨水中心 → 应用优化 → KOReader，刷新模式选择均衡（旧款Boox为Regal）或快速。\n"
+"KOReader其余的刷新均交由Boox自身针对KOReader的刷新模式处理。如果页面闪烁、墨迹跟不上笔触：进入墨水中心 → 应用优化 → KOReader，刷新模式选择均衡（旧款Boox为Regal）或快速。\n"
 "\n"
 "设置 → 指南 → 你的阅读器，可再次查看本提示。"
 
@@ -1722,7 +1724,7 @@ msgstr "自上次同步后，此设备和另一台设备都修改了该笔记本
 
 #: ink/view/receive.lua
 msgid "Either way they stay in Library › Imported. To be asked again, turn on \"Ask to open notebooks that arrive\" in Phone or computer (Wi-Fi)."
-msgstr "无论哪种方式，文件都会保存在资料库 → 已导入。如需接收文件时弹窗询问，在「手机或电脑（Wi‑Fi）」中开启「收到笔记本时询问是否打开」。"
+msgstr "无论哪种方式，文件都会保存在资料库 → 已导入。如需接收文件时弹窗询问，在「手机或电脑（Wi-Fi）」中开启「收到笔记本时询问是否打开」。"
 
 #: ink/framecover.lua
 msgid "Emerald and gold"
@@ -1827,11 +1829,11 @@ msgstr "退出"
 
 #: ink/view/ocrapi.lua
 msgid "Experimental. Convert to text sends a picture of the lassoed writing to the service below and puts back the text it reads. Wi-Fi has to be on."
-msgstr "实验性功能。转为文字会把套索选中的笔迹截图发送至下方服务，返回识别后的文本，需要开启Wi‑Fi。"
+msgstr "实验性功能。转为文字会把套索选中的笔迹截图发送至下方服务，返回识别后的文本，需要开启Wi-Fi。"
 
 #: ink/view/ocrapi.lua
 msgid "Experimental. Convert to text sends a picture of the lassoed writing to your AI service and puts back the text it reads. Set the three below from your service's account and documentation, then lasso some writing and choose Convert to text, with Wi-Fi on."
-msgstr "实验性功能。转为文字会把套索选中的笔迹截图发送至你的AI服务，返回识别文本。根据服务商账号文档填写下方三项配置，开启Wi‑Fi后，套索框选手写内容并选择转为文字即可。"
+msgstr "实验性功能。转为文字会把套索选中的笔迹截图发送至你的AI服务，返回识别文本。根据服务商账号文档填写下方三项配置，开启Wi-Fi后，套索框选手写内容并选择转为文字即可。"
 
 #: ink/guide.lua
 #: ink/view/export.lua
@@ -2115,7 +2117,7 @@ msgstr "书架边框样式…"
 
 #: ink/view/images.lua
 msgid "Free pictures from Wikimedia and Openverse. Needs Wi-Fi."
-msgstr "从维基共享资源与Openverse获取免费图片，需要Wi‑Fi。"
+msgstr "从维基共享资源与Openverse获取免费图片，需要Wi-Fi。"
 
 #: ink/sync/errors.lua
 msgid "Free some space in your account or buy more. Nothing was lost on this reader."
@@ -2912,19 +2914,19 @@ msgstr "加载图片… %d/%d"
 
 #: ink/actions.lua
 msgid "Long two-finger swipe down"
-msgstr "双指长按向下滑动"
+msgstr "双指长距离向下滑动"
 
 #: ink/guide.lua
 msgid "Long two-finger swipe down."
-msgstr "双指长按向下滑动。"
+msgstr "双指长距离向下滑动。"
 
 #: ink/actions.lua
 msgid "Long two-finger swipe up"
-msgstr "双指长按向上滑动"
+msgstr "双指长距离向上滑动"
 
 #: ink/guide.lua
 msgid "Long two-finger swipe up."
-msgstr "双指长按向上滑动。"
+msgstr "双指长距离向上滑动。"
 
 #: ink/view/imagebrowser.lua
 msgid "Long-press an image to add it."
@@ -3355,9 +3357,9 @@ msgid ""
 "\n"
 "If you are drawing with a pen, this reader reports it as a finger: turn off Palm rejection in the pen menu to draw. Settings, Help, Test pen and touch shows how your pen arrives."
 msgstr ""
-"Ink Away启动后未检测到手写笔，开启掌纹识别时手指只能平移页面。\n"
+"Ink Away启动后未检测到手写笔，开启防误触时手指只能平移页面。\n"
 "\n"
-"如果你在用手写笔却被识别成手指，请在笔刷菜单关闭掌纹识别再绘图。设置-帮助-测试笔触可以查看识别情况。"
+"如果你在用手写笔却被识别成手指，请在笔刷菜单关闭防误触再绘图。设置-帮助-测试笔触可以查看识别情况。"
 
 #: ink/view/images.lua
 msgid "No pictures or folders here."
@@ -3558,7 +3560,7 @@ msgstr "关闭：彩色笔迹落笔时先显示黑色，笔尖停稳后再上色
 
 #: ink/view/pencase.lua
 msgid "On Android, palm rejection needs a KOReader newer than 2026.07.1 (a nightly build from August 2026 or later). Earlier versions report the pen as a finger, so Ink Away can't tell it from your hand. Your pen draws as it is."
-msgstr "安卓端掌纹识别需要 KOReader 2026.07.1 之后版本（2026年8月及以后的开发版）。旧版本会把笔识别成手指，Ink Away无法区分，直接按手指处理。"
+msgstr "Android端防误触需要 KOReader 2026.07.1 之后版本（2026年8月及以后的开发版）。旧版本会把笔识别成手指，Ink Away无法区分，直接按手指处理。"
 
 #: ink/view/updates.lua
 msgid "On its own Ink Away looks once a day, when it opens on Wi-Fi; it never turns Wi-Fi on."
@@ -3743,7 +3745,7 @@ msgstr "第 %d / %d 页"
 #: ink/view/trash.lua
 #, lua-format
 msgid "Page %d of %s"
-msgstr "%s 的第 %d 页"
+msgstr "第 %d 页，%s"
 
 #: ink/view/export.lua
 msgid "Page numbers"
@@ -3813,7 +3815,7 @@ msgstr "彩绘方框"
 #: ink/guide.lua
 #: ink/view/pencase.lua
 msgid "Palm rejection"
-msgstr "掌纹识别"
+msgstr "防误触"
 
 #: ink/view/input.lua
 msgid ""
@@ -3821,9 +3823,9 @@ msgid ""
 "\n"
 "To draw with a finger, turn off Palm rejection in the pen menu, Pen and input."
 msgstr ""
-"掌纹识别已开启：手写笔可绘图，手指在页面无操作。\n"
+"防误触已开启：手写笔可绘图，手指在页面无操作。\n"
 "\n"
-"想用手指绘图，请在笔刷菜单「笔触与输入」关闭掌纹识别。"
+"想用手指绘图，请在笔刷菜单「笔触与输入」关闭防误触。"
 
 #: ink/view/input.lua
 msgid ""
@@ -3831,13 +3833,13 @@ msgid ""
 "\n"
 "To draw with a finger, turn off Palm rejection in the pen menu, Pen and input."
 msgstr ""
-"掌纹识别已开启：手写笔绘图，手指用来平移页面。\n"
+"防误触已开启：手写笔绘图，手指用来平移页面。\n"
 "\n"
-"想用手指绘图，请在笔刷菜单「笔触与输入」关闭掌纹识别。"
+"想用手指绘图，请在笔刷菜单「笔触与输入」关闭防误触。"
 
 #: ink/view/pencase.lua
 msgid "Palm rejection needs KOReader 2026.07 or newer (that release added the pen input support). Please update KOReader and it will start working. On a reader without a pen it does nothing."
-msgstr "掌纹识别需要 KOReader 2026.07 及以上版本（该版本新增手写笔支持），请升级。无手写笔设备该功能无效。"
+msgstr "防误触需要 KOReader 2026.07 及以上版本（该版本新增手写笔支持），请升级。无手写笔设备该功能无效。"
 
 #: ink/guide.lua
 msgid "Pan, above the zoom, moves the page; tap it again to go back to your tool. Two fingers move the page with any tool."
@@ -3923,7 +3925,7 @@ msgstr "笔触与输入设置"
 
 #: ink/guide.lua
 msgid "Pen and input, Fast refresh while drawing: ink shows with the Boox's fast refresh as you write."
-msgstr "笔触与输入 - 绘图快速刷新：书写时使用文石快刷模式实时显示笔迹。"
+msgstr "笔触与输入 - 绘图快速刷新：书写时使用Boox快刷模式实时显示笔迹。"
 
 #: ink/guide.lua
 msgid "Pen and input, Pen taps menus and buttons: work the toolbar and menus with the pen too."
@@ -3963,20 +3965,20 @@ msgstr "笔刷、颜色与偏好设置"
 
 #: ink/view/share.lua
 msgid "Phone or computer (Wi-Fi)"
-msgstr "手机或电脑（Wi‑Fi）"
+msgstr "手机或电脑（Wi-Fi）"
 
 #: ink/view/library.lua
 msgid "Phone or computer (Wi-Fi)…"
-msgstr "手机或电脑（Wi‑Fi）…"
+msgstr "手机或电脑（Wi-Fi）…"
 
 #: ink/view/share.lua
 msgid "Phone or computer sharing stopped: Wi-Fi is off"
-msgstr "Wi‑Fi传输已停止：Wi‑Fi已关闭"
+msgstr "Wi-Fi传输已停止：Wi-Fi已关闭"
 
 #: ink/view/share.lua
 #, lua-format
 msgid "Phone or computer sharing stopped: nothing happened for %d minutes"
-msgstr "Wi‑Fi传输已停止：%d分钟无操作"
+msgstr "Wi-Fi传输已停止：%d分钟无操作"
 
 #: ink/view/library.lua
 msgid "Pick a PDF that is already on this reader. It becomes a notebook in this folder."
@@ -4319,7 +4321,7 @@ msgstr "保存"
 
 #: ink/view/export.lua
 msgid "Save as bookshelf ornament"
-msgstr "存为书架装饰图"
+msgstr "存为Bookshelf装饰图"
 
 #: ink/view/notebook.lua
 msgid "Save as template…"
@@ -4356,7 +4358,7 @@ msgid ""
 "Saved as a transparent PNG in the bookshelf ornaments folder.\n"
 "End the name with .invert for a dark-mode version."
 msgstr ""
-"已保存透明PNG到书架装饰目录。\n"
+"已保存透明PNG到Bookshelf装饰目录。\n"
 "文件名后缀加 .invert 可生成深色模式版本。"
 
 #: ink/view/document.lua
@@ -4370,7 +4372,7 @@ msgid ""
 "Saved bookshelf ornament:\n"
 "%s"
 msgstr ""
-"已保存书架装饰图：\n"
+"已保存Bookshelf装饰图：\n"
 "%s"
 
 #: ink/view/export.lua
@@ -4423,11 +4425,11 @@ msgstr "正在导出 %d 页图片"
 
 #: ink/view/images.lua
 msgid "Scan a QR code to send pictures over Wi-Fi."
-msgstr "扫码通过Wi‑Fi传输图片。"
+msgstr "扫描 QR 码，通过 Wi-Fi 传输图片。"
 
 #: ink/view/share.lua
 msgid "Scan with a phone or computer on the same Wi-Fi, or open:"
-msgstr "同Wi‑Fi下用手机/电脑扫码，或访问地址："
+msgstr "同Wi-Fi下用手机/电脑扫码，或访问地址："
 
 #: ink/view/settings.lua
 msgid "Scan with your phone"
@@ -4508,11 +4510,11 @@ msgstr "选中并编辑"
 
 #: ink/view/export.lua
 msgid "Send to phone or computer (Wi-Fi)…"
-msgstr "发送到手机或电脑（Wi‑Fi）…"
+msgstr "发送到手机或电脑（Wi-Fi）…"
 
 #: ink/view/library.lua
 msgid "Send your notebooks and drawings to a phone or computer, or add PDFs and pictures from one, with a QR code."
-msgstr "扫码将笔记本、涂鸦传到手机电脑，也可以从电脑手机上传PDF、图片。"
+msgstr "扫描 QR 码，将笔记本、涂鸦传到手机电脑，也可以从电脑手机上传PDF、图片。"
 
 #: ink/view/share.lua
 #, lua-format
@@ -4539,7 +4541,7 @@ msgstr "来自手机（%d）"
 
 #: ink/view/share.lua
 msgid "Served by your reader over your Wi-Fi. When you're done, close Phone or computer (Wi-Fi) on the reader."
-msgstr "由阅读器在局域网提供服务。传输完成后，请在阅读器上关闭「手机或电脑（Wi‑Fi）」。"
+msgstr "由阅读器在局域网提供服务。传输完成后，请在阅读器上关闭「手机或电脑（Wi-Fi）」。"
 
 #: ink/view/export.lua
 msgid "Set"
@@ -4567,7 +4569,7 @@ msgstr "设置 - 残影清除：每画几笔就全屏刷新，快速消除快速
 
 #: ink/guide.lua
 msgid "Settings, Updates: the latest release, and prereleases apart. Once a day, opening on Wi-Fi, Ink Away looks; a dot on Settings means news."
-msgstr "设置 - 更新：区分正式版和预发布版。在Wi‑Fi环境下打开时，Ink Away每日自动检查一次；设置上出现圆点代表有更新。"
+msgstr "设置 - 更新：区分正式版和预发布版。在Wi-Fi环境下打开时，Ink Away每日自动检查一次；设置上出现圆点代表有更新。"
 
 #: ink/guide.lua
 msgid "Settings, When Ink Away opens: the last document, the Library or your Notebooks."
@@ -4861,7 +4863,7 @@ msgstr "已停止：%1"
 #: ink/view/share.lua
 #, lua-format
 msgid "Stops when closed or after %d idle minutes. Use a Wi-Fi you trust."
-msgstr "关闭后或闲置%d分钟自动停止，请使用可信Wi‑Fi。"
+msgstr "关闭后或闲置%d分钟自动停止，请使用可信Wi-Fi。"
 
 #: ink/view/notebook.lua
 #: ink/view/settings.lua
@@ -4941,15 +4943,15 @@ msgstr "自动同步会拖慢设备、消耗电量。你可以自行控制同步
 
 #: ink/view/sync.lua
 msgid "Syncing by itself runs in the background but uses the processor, Wi-Fi and battery, and can slow the reader. If it does, tap Manual only and use Sync now."
-msgstr "后台自动同步会占用处理器、Wi‑Fi和电量，可能造成卡顿。如有卡顿，改为仅手动同步，使用立即同步。"
+msgstr "后台自动同步会占用处理器、Wi-Fi和电量，可能造成卡顿。如有卡顿，改为仅手动同步，使用立即同步。"
 
 #: ink/view/sync.lua
 msgid "Syncing by itself uses Wi-Fi only when it is already on, unless you allow this. \"Sync now\" may always turn it on."
-msgstr "自动同步仅在Wi‑Fi已开启时使用网络（除非你另行授权）；立即同步可以自动开启Wi‑Fi。"
+msgstr "自动同步仅在Wi-Fi已开启时使用网络（除非你另行授权）；立即同步可以自动开启Wi-Fi。"
 
 #: ink/sync/errors.lua
 msgid "Syncing waits for Wi-Fi, and Ink Away is set not to turn it on by itself."
-msgstr "同步需要Wi‑Fi，Ink Away设置为不会自动打开Wi‑Fi。"
+msgstr "同步需要Wi-Fi，Ink Away设置为不会自动打开Wi-Fi。"
 
 #: ink/sync/errors.lua
 msgid "Syncing was stopped."
@@ -4961,7 +4963,7 @@ msgstr "本次同步会删除云端大量笔记，已中止，未执行删除。
 
 #: ink/view/sync.lua
 msgid "Syncs just before the reader sleeps, which uses Wi-Fi and battery."
-msgstr "设备休眠前同步，会消耗Wi‑Fi和电量。"
+msgstr "设备休眠前同步，会消耗Wi-Fi和电量。"
 
 #: ink/view/settings.lua
 msgid "System"
@@ -5076,7 +5078,7 @@ msgstr "该服务账号的API密钥，一般在API密钥页面。密钥仅发送
 
 #: ink/view/pencase.lua
 msgid "The Boox draws the pen's ink itself as you write, as its own notes app does, and Ink Away puts your pen's real colour and texture in place when the pen lifts. Turn it off if ink stays behind where it shouldn't."
-msgstr "文石设备自带底层笔迹渲染，和原厂笔记APP一样；抬笔后Ink Away替换为真实颜色与纹理。如果出现异常残影，可关闭该选项。"
+msgstr "Boox设备自带底层笔迹渲染，和原厂笔记APP一样；抬笔后Ink Away替换为真实颜色与纹理。如果出现异常残影，可关闭该选项。"
 
 #: ink/guide.lua
 msgid "The Library"
@@ -5118,11 +5120,11 @@ msgstr "剪贴板为空。"
 
 #: ink/sync/errors.lua
 msgid "The cloud answered in a way Ink Away does not understand."
-msgstr "云端返回格式无法识别。"
+msgstr "云端返回的格式 Ink Away 无法识别。"
 
 #: ink/sync/errors.lua
 msgid "The cloud asked Ink Away to slow down."
-msgstr "云端请求限流，请稍后再同步。"
+msgstr "云端要求 Ink Away 降低请求频率，请稍后再同步。"
 
 #: ink/sync/errors.lua
 msgid "The cloud did not answer in time."
@@ -5150,7 +5152,7 @@ msgstr "该设备的登录凭证已失效或被删除，无法登录云端。"
 
 #: ink/sync/errors.lua
 msgid "The cloud refused this request. Ink Away may be missing a permission."
-msgstr "云端拒绝请求，可能缺少权限。"
+msgstr "云端拒绝了请求，Ink Away 可能缺少某项权限。"
 
 #: ink/sync/errors.lua
 msgid "The cloud service reported an error on its side."
@@ -5503,11 +5505,11 @@ msgstr "该段落已有文本框，请在其他段落起始位置新建，或修
 
 #: ink/view/share.lua
 msgid "This reader can't share over Wi-Fi."
-msgstr "该设备不支持Wi‑Fi分享。"
+msgstr "该设备不支持Wi-Fi分享。"
 
 #: ink/view/share.lua
 msgid "This reader has no address on a network yet. Connect it to Wi-Fi and try again."
-msgstr "设备暂无网络地址，连接Wi‑Fi后重试。"
+msgstr "设备暂无网络地址，连接Wi-Fi后重试。"
 
 #: ink/sync/errors.lua
 msgid "This reader is not connected to a cloud account."
@@ -5645,11 +5647,11 @@ msgstr "关闭图层？"
 
 #: ink/sync/errors.lua
 msgid "Turn on Wi-Fi and try again. Your notebooks are safe and nothing was lost."
-msgstr "打开Wi‑Fi重试，笔记安全，无丢失。"
+msgstr "打开Wi-Fi重试，笔记安全，无丢失。"
 
 #: ink/view/ocrapi.lua
 msgid "Turn on Wi-Fi to convert online."
-msgstr "开启Wi‑Fi进行在线识别。"
+msgstr "开启Wi-Fi进行在线识别。"
 
 #: ink/view/share.lua
 msgid "Turn on to send PDFs and pictures here."
@@ -5914,7 +5916,7 @@ msgstr "白边"
 
 #: ink/sync/errors.lua
 msgid "Wi-Fi is off"
-msgstr "Wi‑Fi已关闭"
+msgstr "Wi-Fi已关闭"
 
 #: ink/view/imagebrowser.lua
 msgid "Wikimedia"
@@ -5938,7 +5940,7 @@ msgstr "包含笔迹"
 
 #: ink/guide.lua
 msgid "With the Bookshelf plugin installed, save a drawing as one of its ornaments."
-msgstr "安装书架插件后，可以将绘图保存为书架装饰。"
+msgstr "安装Bookshelf插件后，可以将绘图保存为书架装饰。"
 
 #: ink/guide.lua
 msgid "With the lasso, tap a shape or picture to pick it out: move, resize, turn or delete it. On a drawing, a hold with Pan does it too."

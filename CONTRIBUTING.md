@@ -111,8 +111,8 @@ their pattern.
 
 ## Translating
 
-Ink Away speaks ten languages: German, Greek, Spanish, French, Italian, Polish,
-Brazilian Portuguese, Portuguese, Russian and Turkish. Its words live in
+Ink Away speaks eleven languages: German, Greek, Spanish, French, Italian, Polish,
+Brazilian Portuguese, Portuguese, Russian, Turkish and Simplified Chinese. Its words live in
 `ink/l10n/`, one `.po` file per language, named with the code KOReader uses
 (`it_IT`, `pt_BR`, `tr`), and it uses the one for the language KOReader is set to.
 "Ink Away" itself is a name and is never translated, in any language.
