@@ -20,6 +20,13 @@ versions marked *Prerelease* were test builds.
 
 ### Fixed
 
+- A big notebook could stop opening, with "main function has more than 65536
+  constants" (#92). Ink Away keeps a notebook as one file of Lua tables, and
+  LuaJIT reads a file only while it holds fewer than 65,536 tables and texts in
+  one piece, which some 70 pages of handwriting can pass. Such a notebook now
+  opens again, nothing lost, and a big notebook, drawing or book's ink is now
+  saved in parts that any Ink Away reads, so there is no limit on pages or
+  strokes. Small files are written exactly as before.
 - On a Kobo, pictures put on a book (your own stickers, pictures you insert, clips)
   showed up as books in Kobo's own library, after Kobo looked through the reader
   again (at a USB connection). Ink Away keeps a copy of each in the book's

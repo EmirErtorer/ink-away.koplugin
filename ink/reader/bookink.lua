@@ -136,13 +136,15 @@ end
 -- changes once made (an edit makes a new one), so saving writes out only the
 -- items that are new since the last save.
 local item_text = setmetatable({}, { __mode = "k" })
+local item_cost = setmetatable({}, { __mode = "k" })
 local function itemText(item)
     local s = item_text[item]
     if not s then
         s = Project.encode(item):sub(8)   -- without "return "
         item_text[item] = s
+        item_cost[item] = Project.cost(s)
     end
-    return s
+    return s, item_cost[item]
 end
 
 -- The file's text: the head, then the items from their kept text.
@@ -154,9 +156,17 @@ local function encode(data)
         room_marks = data.rooms_ready and data.room_marks or nil,
         exact_marks = data.exact_marks and #data.exact_marks > 0 and data.exact_marks or nil,
         hl_notes = data.hl_notes and next(data.hl_notes) and data.hl_notes or nil })   -- "return {...,}"
-    local parts = {}
-    for i, item in ipairs(data.items) do parts[i] = itemText(item) end
-    return head:sub(1, -2) .. '["items"]={' .. table.concat(parts, ",") .. "},}"
+    local parts, costs, total = {}, {}, 0
+    for i, item in ipairs(data.items) do
+        parts[i], costs[i] = itemText(item)
+        total = total + costs[i]
+    end
+    if total <= Project.ROOM then
+        return head:sub(1, -2) .. '["items"]={' .. table.concat(parts, ",") .. "},}"
+    end
+    -- a book with a great deal of ink (#92): the items filled in parts, so the
+    -- file loads however much there is
+    return head:sub(1, -2) .. '["items"]=' .. Project.listOf(parts, costs) .. ",}"
 end
 BookInk.encode = encode
 
@@ -196,10 +206,10 @@ function BookInk.peekMarks(sidecar_dir)
                 local chunk = f:read(16384)
                 if not chunk then break end
                 head = head .. chunk
-                if head:find('["items"]={', 1, true) then break end
+                if head:find('["items"]=', 1, true) then break end
             end
             f:close()
-            local cut = head:find('["items"]={', 1, true)
+            local cut = head:find('["items"]=', 1, true)
             if cut then
                 local ok, data = pcall(Project.decode, head:sub(1, cut - 1) .. '["items"]={},}')
                 if ok and type(data) == "table" and type(data.exact_marks) == "table" then

@@ -58,7 +58,7 @@ end
 -- Reading documents
 ------------------------------------------------------------------------------
 
-local PAGES_KEY = '["pages"]={'
+local PAGES_KEY = '["pages"]='
 
 -- The start of a notebook file up to its pages, as a table (its template and
 -- page-title list), without reading the pages. Nil for a drawing or a file that

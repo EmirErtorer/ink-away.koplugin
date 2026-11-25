@@ -431,6 +431,27 @@ do
     ok(#Project.decode(BookInk.encode(data)).items == 3, "file: a new item is added to the kept ones")
 end
 
+-- ---- a book with a great deal of ink still loads (#92) ---------------------------------
+do
+    local Project = require("ink/project")
+    local data = { version = 1, notes = "/x/N.inkaway", exact_marks = { { id = "m1", xp = "/b/p[3].2" } }, items = {} }
+    for i = 1, 30000 do
+        data.items[i] = { op = { kind = "ink", width = 3, alpha = 255, color = { 0, 0, 0 }, pts = { i, 2, i + 1.5, 4 } },
+            a = { page = 1 + i % 300, x = 1, y = 2 } }
+    end
+    local s = BookInk.encode(data)
+    local c = load(s, "x", "t", {})
+    local good, back = c ~= nil, nil
+    if c then good, back = pcall(c) end
+    ok(good and back and #back.items == 30000 and back.items[30000].op.pts[3] == 30001.5,
+        "#92: 30000 ink items load, in older versions too")
+    local tmp = os.tmpname(); os.remove(tmp); os.execute("mkdir -p '" .. tmp .. "/big.sdr'")
+    local f = io.open(BookInk.path(tmp .. "/big.sdr"), "wb"); f:write(s); f:close()
+    local peek = BookInk.peekMarks(tmp .. "/big.sdr")
+    ok(peek and peek[1] and peek[1].id == "m1", "#92: the marks before the items are still read on their own")
+    os.execute("rm -rf '" .. tmp .. "'")
+end
+
 -- ---- a change outside the ops is undone and redone through the history -----------------
 do
     local Canvas = require("ink/canvas")

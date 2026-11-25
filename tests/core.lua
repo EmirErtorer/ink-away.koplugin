@@ -415,6 +415,73 @@ do
 end
 
 ------------------------------------------------------------------------------
+-- project: no size limit (#92). LuaJIT refuses a chunk whose one function holds
+-- more than 65536 constants, and every table and string of a file is one: a
+-- notebook of some 70 pages of handwriting stopped opening.
+------------------------------------------------------------------------------
+do
+    local Project = require("ink/project")
+    local function stroke(i)
+        local pts, pr = {}, {}
+        for k = 1, 6 do pts[#pts + 1] = i * 0.37 + k; pts[#pts + 1] = k * 1.5; pr[#pr + 1] = 100 + k end
+        return { kind = "ink", width = 3, alpha = 255, color = { 0, 0, 0 }, style = "solid", seed = i, pts = pts, pr = pr }
+    end
+    local nb = { w = 600, h = 800, template = { style = "lines", size = 40 }, pages = {} }
+    for p = 1, 60 do
+        local ops = {}
+        for i = 1, 400 do ops[i] = stroke(p * 1000 + i) end
+        ops[#ops + 1] = { kind = "text", x = 1, y = 2, w = 50, paras = { { text = 'a "q" ] } { , \\ x\nend' } } }
+        nb.pages[p] = { id = "p" .. p, title = "Page " .. p, ops = ops }
+    end
+    local function plain(s)   -- what an older Ink Away does: load, with no help
+        local c = load(s, "x", "t", {})
+        if not c then return nil end
+        local good, d = pcall(c)
+        return good and d or nil
+    end
+    -- the file 4.5.2 wrote: one piece, refused by LuaJIT
+    -- (built from small pieces: encode now splits a big value)
+    local one = { "return {[\"v\"]=2,[\"w\"]=600,[\"h\"]=800,[\"pages\"]={" }
+    for p = 1, #nb.pages do
+        local page = nb.pages[p]
+        local op_texts = {}
+        for i, op in ipairs(page.ops) do op_texts[i] = Project.encode(op):sub(8) end
+        one[#one + 1] = string.format('{[\"id\"]=%q,[\"title\"]=%q,[\"ops\"]={%s,},},', page.id, page.title, table.concat(op_texts, ","))
+    end
+    one[#one + 1] = "},}"
+    local old = table.concat(one)
+    ok(plain(old) == nil, "#92: a big notebook written in one piece is refused by LuaJIT (reproduced)")
+    local back = Project.deserialize(old)
+    ok(back and #back.pages == 60 and #back.pages[60].ops == 401, "#92: Ink Away opens it anyway, every page and stroke")
+    ok(back and back.pages[60].ops[401].paras[1].text == nb.pages[60].ops[401].paras[1].text,
+        "#92: text with quotes, brackets and braces comes back exactly")
+    ok(back and back.pages[17].ops[200].pts[3] == nb.pages[17].ops[200].pts[3], "#92: strokes come back exactly")
+    -- a big notebook is now written so any Ink Away loads it
+    local new = Project.serializeNotebook(nb)
+    local d = plain(new)
+    ok(d and #d.pages == 60 and d.toc and d.toc.n == 60 and #d.pages[60].ops == 401, "#92: a big notebook saved now loads, in older versions too")
+    local cut = new:find('["pages"]=', 1, true)
+    local head = cut and Project.decode(new:sub(1, cut - 1) .. "}")
+    ok(head and head.toc and head.toc.n == 60, "#92: its head (page titles) is still read on its own by search")
+    -- one enormous page, and very many pages
+    local big = { w = 600, h = 800, pages = { { id = "x", ops = {} } } }
+    for i = 1, 30000 do big.pages[1].ops[i] = stroke(i) end
+    d = plain(Project.serializeNotebook(big))
+    ok(d and #d.pages[1].ops == 30000, "#92: a page with 30000 strokes loads")
+    local many = { w = 600, h = 800, pages = {} }
+    for p = 1, 20000 do many.pages[p] = { id = "m" .. p, ops = { stroke(p) } } end
+    d = plain(Project.serializeNotebook(many))
+    ok(d and #d.pages == 20000 and d.pages[20000].id == "m20000", "#92: a notebook of 20000 pages loads")
+    -- a big drawing, and a small notebook written exactly as it always was
+    local cv = { w = 600, h = 800, ops = big.pages[1].ops }
+    d = plain(Project.serialize(cv, { bg = "b.png" }))
+    ok(d and #d.ops == 30000 and d.bg == "b.png", "#92: a drawing of 30000 strokes loads")
+    local small = { w = 600, h = 800, pages = { { id = "s", ops = { stroke(1) } } } }
+    ok(not Project.serializeNotebook(small):find("function", 1, true), "#92: a small notebook is written as before")
+    ok(Project.split("return {1} os.exit()") == nil and Project.deserialize("os.exit()") == nil, "#92: anything but data is still refused")
+end
+
+------------------------------------------------------------------------------
 -- geom: stabilizer and snapping
 ------------------------------------------------------------------------------
 do
