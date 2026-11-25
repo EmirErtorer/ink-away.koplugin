@@ -8,6 +8,11 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.5.3] - 2026-11-25
+
+A fix for big notebooks that would no longer open (#92), plus night mode, Kobo and
+Simplified Chinese.
+
 ### Added
 
 - **Ink Away in Simplified Chinese**, by gytwo (#88).
@@ -1403,7 +1408,9 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.1...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.3...HEAD
+[4.5.3]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.2...v4.5.3
+[4.5.2]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.1...v4.5.2
 [4.5.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.0...v4.5.1
 [4.5.0]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.0...v4.5.0
 [4.4.4]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.4.3...v4.4.4
