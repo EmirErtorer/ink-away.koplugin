@@ -452,6 +452,40 @@ do
     os.execute("rm -rf '" .. tmp .. "'")
 end
 
+-- ---- ink an earlier version put aside comes back (#92) ------------------------------------
+-- Up to 4.5.2 a book's ink past LuaJIT's limit could not be read: it was renamed
+-- inkaway.lua.unreadable (its backup .unreadable.2) and the book opened empty.
+do
+    local Project = require("ink/project")
+    local tmp = os.tmpname(); os.remove(tmp)
+    local dir = tmp .. "/journal.sdr"
+    os.execute("mkdir -p '" .. dir .. "'")
+    local function write(name, text) local f = io.open(dir .. "/" .. name, "wb"); f:write(text); f:close() end
+    local function exists(name) local f = io.open(dir .. "/" .. name, "rb"); if f then f:close() end; return f ~= nil end
+    local function stroke(i) return { op = { kind = "ink", width = 3, alpha = 255, pts = { i, 1, i + 0.5, 2 } }, a = { page = 1 + i % 30, x = 1, y = 2 } } end
+    -- what 4.5.2 left: the journal (and the same in its backup) put aside, and a
+    -- new file with the ink written since the book opened empty
+    local old = { version = 1, notes = "/x/Book notes/Journal.inkaway", hl_notes = { ["2026-11-01 10:00:00"] = "(Handwritten note)" }, items = {} }
+    for i = 1, 500 do old.items[i] = stroke(i) end
+    write("inkaway.lua.unreadable", BookInk.encode(old))
+    write("inkaway.lua.unreadable.2", BookInk.encode(old))
+    local since = { version = 1, items = { stroke(9001), stroke(9002) } }
+    write("inkaway.lua", BookInk.encode(since))
+    write("inkaway.lua.unreadable.3", "return {broken")   -- truly damaged: left as it is
+    local d = BookInk.load(dir)
+    ok(#d.items == 502, "#92: the journal put aside comes back, with no copy twice (" .. #d.items .. ")")
+    ok(d.items[1].op.pts[1] == 1 and d.items[501].op.pts[1] == 9001, "#92: the old ink comes first, the ink written since after it")
+    ok(d.notes == old.notes and d.hl_notes and d.hl_notes["2026-11-01 10:00:00"], "#92: its book notes and handwritten-note links come back too")
+    ok(exists("inkaway.lua.recovered") and exists("inkaway.lua.recovered.2") and not exists("inkaway.lua.unreadable"),
+        "#92: the files put aside are kept, as .recovered")
+    ok(exists("inkaway.lua.unreadable.3"), "#92: a file that is really damaged is left as it is")
+    local again = BookInk.load(dir)
+    ok(#again.items == 502, "#92: the ink brought back is saved: it is all there the next time")
+    local back = Project.decode(io.open(dir .. "/inkaway.lua", "rb"):read("*a"))
+    ok(back and #back.items == 502 and back.recovered == nil, "#92: written to the book's file, with nothing extra in it")
+    os.execute("rm -rf '" .. tmp .. "'")
+end
+
 -- ---- a change outside the ops is undone and redone through the history -----------------
 do
     local Canvas = require("ink/canvas")

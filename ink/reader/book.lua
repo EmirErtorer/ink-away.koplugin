@@ -37,7 +37,7 @@ function Book.new(ui, integration)
     local ok, where = pcall(BookInk.locate, file)
     if ok and where then self.sidecar, self.dirs = where.dir, where.dirs
     else logger.warn("Ink Away: could not find the book's folder:", where) end
-    self.has_file = self.sidecar ~= nil and BookInk.exists(self.sidecar)
+    self.has_file = self.sidecar ~= nil and (BookInk.exists(self.sidecar) or BookInk.hasAside(self.sidecar))
     return self
 end
 
@@ -1981,7 +1981,7 @@ function Book:reload(keep, css_before)
     if before == nil then before = self:roomsCss() or false end
     if not keep then
         self._data = nil
-        self.has_file = self.sidecar ~= nil and BookInk.exists(self.sidecar)
+        self.has_file = self.sidecar ~= nil and (BookInk.exists(self.sidecar) or BookInk.hasAside(self.sidecar))
     end
     self.rev = self.rev + 1
     self._placed, self._index, self._index_key = nil, nil, nil

@@ -75,6 +75,13 @@ function BookInk.exists(sidecar_dir)
     return p ~= nil and (isFile(p) or isFile(p .. ".old"))
 end
 
+-- Is there ink an earlier version put aside as unreadable in this folder (#92)?
+-- BookInk.load brings it back.
+function BookInk.hasAside(sidecar_dir)
+    local p = BookInk.path(sidecar_dir)
+    return p ~= nil and (isFile(p .. ".unreadable") or isFile(p .. ".unreadable.2"))
+end
+
 local function readFile(p)
     local f = io.open(p, "rb")
     if not f then return nil end
@@ -109,10 +116,73 @@ local function makePath(dir)
     return Storage.ensureDir(dir)
 end
 
+-- Ink an earlier version put aside as unreadable (inkaway.lua.unreadable, .2...),
+-- brought back into `data` (#92: up to 4.5.2 a book's ink past LuaJIT's limit of
+-- 65536 constants could not be read, so it was put aside and the book opened
+-- empty, though nothing was lost). Each file this version reads has its items
+-- added before the ink drawn since (it is older), those not already there, and
+-- the fields `data` lacks; it is then kept as inkaway.lua.recovered (.2...),
+-- never deleted. Returns how many items came back.
+local function recoverAside(p, data)
+    local back, seen, earlier = 0, nil, {}
+    for n = 1, 50 do
+        local aside = n == 1 and (p .. ".unreadable") or (p .. ".unreadable." .. n)
+        if not isFile(aside) then
+            if n > 2 then break end
+        else
+            local s = readFile(aside)
+            local old = s and decode(s)
+            if old and (tonumber(old.version) or 1) <= BookInk.READS then
+                if not seen then
+                    seen = {}
+                    for _j, it in ipairs(data.items) do seen[Project.encode(it)] = true end
+                end
+                for _j, it in ipairs(old.items) do
+                    local t = Project.encode(it)
+                    if not seen[t] then
+                        seen[t] = true
+                        earlier[#earlier + 1] = it
+                        back = back + 1
+                    end
+                end
+                for _j, k in ipairs({ "notes", "rooms", "rooms_off", "rooms_ready", "room_marks", "exact_marks", "hl_notes" }) do
+                    if data[k] == nil and old[k] ~= nil then data[k] = old[k] end
+                end
+                local kept, m = p .. ".recovered", 1
+                while isFile(kept) do m = m + 1; kept = p .. ".recovered." .. m end
+                os.rename(aside, kept)
+                logger.info("Ink Away: the book's ink put aside earlier is back:", aside, "kept as", kept)
+            end
+        end
+    end
+    if back > 0 then
+        for _j, it in ipairs(data.items) do earlier[#earlier + 1] = it end
+        data.items = earlier
+    end
+    return back
+end
+
 -- The book's ink, or a fresh, empty one.
 function BookInk.load(sidecar_dir)
     local p = BookInk.path(sidecar_dir)
     if not p then return BookInk.new() end
+    local data = BookInk.loadOnly(p)
+    if not data.read_only then
+        local ok, back = pcall(recoverAside, p, data)
+        if ok and back and back > 0 then
+            data.recovered = back
+            -- written at once, so the ink brought back is in the file again
+            pcall(BookInk.save, sidecar_dir, data)
+        elseif not ok then
+            logger.warn("Ink Away: could not bring back the ink put aside:", back)
+        end
+    end
+    return data
+end
+
+-- The book's ink from its file or the backup, or a fresh one; a file that cannot
+-- be read is put aside, never written over.
+function BookInk.loadOnly(p)
     for _i, sfx in ipairs(SUFFIXES) do
         local s = readFile(p .. sfx)
         if s then
@@ -524,6 +594,10 @@ function BookInk.locate(doc_path)
     local dirs = BookInk.dirsFor(doc_path)
     for _i, d in ipairs(dirs) do
         if BookInk.exists(d) then return { dir = d, dirs = dirs } end
+    end
+    -- (only ink an earlier version put aside: there, where load brings it back)
+    for _i, d in ipairs(dirs) do
+        if BookInk.hasAside(d) then return { dir = d, dirs = dirs } end
     end
     local have = BookInk.find(doc_path)
     if have then
