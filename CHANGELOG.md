@@ -8,6 +8,23 @@ versions marked *Prerelease* were test builds.
 
 ## [Unreleased]
 
+## [4.5.4] - 2026-11-26
+
+A fix that brings back the ink of books that showed up empty.
+
+### Fixed
+
+- A book with a great deal of ink (a PDF used as a daily journal, for one) could
+  open with none of it, though its files were still in the book's folder. Up to
+  4.5.2, a book's ink past LuaJIT's limit of 65,536 constants (the same limit as
+  in #92) could not be read, so Ink Away put the file aside as
+  inkaway.lua.unreadable, with its backup, and showed the book empty. 4.5.3 reads
+  ink of any size, but did not look at files already put aside, and a book that
+  had only those was taken for one without ink. Now that ink is brought back
+  when the book is opened, before any ink drawn since, with nothing twice, and the
+  files put aside are kept as inkaway.lua.recovered. Updating from inside Ink Away
+  needs KOReader restarted before the new version runs.
+
 ## [4.5.3] - 2026-11-25
 
 A fix for big notebooks that would no longer open (#92), plus night mode, Kobo and
@@ -1408,7 +1425,8 @@ First stable version.
 
 The first public release.
 
-[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.3...HEAD
+[Unreleased]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.4...HEAD
+[4.5.4]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.3...v4.5.4
 [4.5.3]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.2...v4.5.3
 [4.5.2]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.1...v4.5.2
 [4.5.1]: https://github.com/EmirErtorer/ink-away.koplugin/compare/v4.5.0...v4.5.1
